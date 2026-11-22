@@ -6,7 +6,7 @@ published numbers did not match those receipts:
 
 * it said the t = 0 field difference was "exactly 0.0 for every field" when
   the receipt records ``T`` at 2.5e-09 and ``QNWFA``/``QNIFA`` at 2e-08;
-* it counted V3 failures for WOOF over the 111 scalar rows ("7 of 111")
+* it counted V3 failures for WOOF-ArWen over the 111 scalar rows ("7 of 111")
   and for the control over all 195 -- two denominators in one table row;
 * it published the domain aerosol budget agreement as 1.6e-04 when the
   series give 1.530e-04;
@@ -74,7 +74,7 @@ def test_the_receipts_exist_and_describe_the_case_this_document_describes():
     assert arwen["tested_model"] == "arwen"
     assert control["tested_model"] == "novec", (
         "the control must put a SECOND WRF BUILD in the tested slot; a "
-        "control that tests WOOF again measures nothing")
+        "control that tests WOOF-ArWen again measures nothing")
     assert arwen["wrf_build"] == control["wrf_build"] == "vec", (
         "both comparisons must be read against the same reference build")
 
@@ -225,7 +225,7 @@ def test_the_aerosol_budget_agreement_is_the_series_own_number():
             f"{field} agreement must be published as {relative:.3e}")
 
     # The endpoints themselves, so the ratio can be re-derived by hand.
-    for row, model in ((wrf, "WRF"), (arwen, "WOOF")):
+    for row, model in ((wrf, "WRF"), (arwen, "WOOF-ArWen")):
         for frame in (row[0], row[-1]):
             assert f"{frame['nwfa_mean']:.2f}" in page, (
                 f"{model} nwfa_mean {frame['nwfa_mean']:.2f} is not published")

@@ -27,7 +27,7 @@ def validate_config(cfg):
         raise ValueError('windturbines_spec requires every-step MYNN (bl_pbl_physics=5, bldt=0)')
     if cfg.windturbines_spec == 'none':
         raise ValueError('fitch_legacy requires windturbines_spec=ideal or a native windspec filename')
-    if cfg.windfarm_induction:
+    if cfg.windfarm_induction not in (0, -1):
         raise ValueError('windfarm_induction belongs to modern Fitch; WRF V3.5 defines no induction selector')
     if cfg.windturbines_spec != 'ideal':
         read_spec(cfg.windturbines_spec)

@@ -1479,6 +1479,9 @@ def test_without_the_configuration_an_added_knob_is_named(monkeypatch):
         # WRF 4.7.1 MYNN tke_budget suboption (MYNN only).
         "snicar_snowbc_intmix", "snicar_snowdust_intmix", "snicar_snowshape_opt",
         "tke_budget",
+        # Noah-MP ground SCF selector (sf_surface_physics=4 only).
+        "opt_scf",
+        "snicar_fresh_grain_opt",
     }
     assert unread <= set(added)
     added = sorted(set(added) - unread)

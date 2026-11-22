@@ -107,7 +107,10 @@ def image(nz,device,exact):
     mode='strict' if exact else 'fast'
     digest=hashlib.sha256(text.encode()).hexdigest()
     filename=f'{arch}-nz{nz}-{mode}-{digest[:16]}.cubin'
-    prebuilt=DATA/'images'/filename
+    # A checkout reads woof/data/mynn471/images; an install reads the gpuwm-kernels
+    # companion, which carries the set (woof.data_assets.VERIFY_ORACLE_TREES).
+    from woof.data_assets import verify_oracle_path
+    prebuilt=verify_oracle_path('mynn471/images')/filename
     cache=Path(os.environ.get('XDG_CACHE_HOME',str(Path.home()/'.cache')))/'woof'/'mynn471'
     binary=prebuilt if prebuilt.exists() else cache/filename
     if not binary.exists():
@@ -172,38 +175,83 @@ extern "C" __global__ void mynn471_pack(int n,const unsigned long long *table,
 '''
 
 
+_PACK_TABLES = {}
+
+
 @lru_cache(maxsize=8)
 def pack_kernel(device):
     import cupy as cp
     return cp.RawKernel(PACK_SOURCE,'mynn471_pack',options=('-std=c++17',))
 
 
+_PACK_CODES = {np.dtype(t): i for i, t in enumerate(('f4', 'i4', 'bool', 'f8', 'i8', 'u4', 'u8'))}
+_PACK_LAYOUT = {}
+
+
+def _pack_layout(meta, skipped=()):
+    """Fields in launch order (grouped by element count) and each group's rows."""
+    layout = _PACK_LAYOUT.get((id(meta), skipped))
+    if layout is None or layout[0] is not meta:
+        fields = [(name, f) for name, f in meta['arguments'].items()
+                  if f['type'] != 'character' and name not in skipped]
+        fields.sort(key=lambda item: item[1]['count'])        # stable: native order within a count
+        groups = []; start = 0
+        while start < len(fields):
+            count = fields[start][1]['count']; stop = start
+            while stop < len(fields) and fields[stop][1]['count'] == count:
+                stop += 1
+            groups.append((count, start, stop)); start = stop
+        layout = (meta, fields, groups)
+        _PACK_LAYOUT[(id(meta), skipped)] = layout
+    return layout[1], layout[2]
+
+
 def pack_inputs(meta,slabs,arena,values,aliases,scalars,n):
-    """Pack all fields in one launch, preserving each input's actual strides."""
+    """Pack all fields, preserving each input's actual strides (one launch per element count).
+
+    The table is built as plain Python rows (per-element numpy assignment
+    cost ~1 ms of host time a call), launched in groups of equal element
+    count so no grid is padded to the widest field, and its device copy is
+    kept per distinct table: the step's value pointers are its stable
+    scratch slots, so after the first call there is no host-to-device copy
+    (a pageable upload waits for the stream).
+    """
     import cupy as cp
-    fields=[(name,f) for name,f in meta['arguments'].items() if f['type']!='character']
-    table=np.zeros((len(fields),8),dtype=np.uint64)
-    codes={np.dtype(t):i for i,t in enumerate(('f4','i4','bool','f8','i8','u4','u8'))}
-    for j,(name,f) in enumerate(fields):
-        value=values.get(name,values.get(aliases.get(name,name),scalars.get(name,0)))
-        table[j,1:4]=(f['offset'],f['count'],f['slab']=='i32')
-        if isinstance(value,cp.ndarray):
-            if value.ndim>2:raise ValueError('MYNN input rank exceeds two: '+name)
-            table[j,0]=value.data.ptr
-            table[j,4]=codes[value.dtype]
-            table[j,5]=1
-            if value.ndim:table[j,6]=value.strides[0] if value.shape[0]>1 else 0
-            if value.ndim==2:table[j,7]=value.strides[1] if value.shape[1]>1 else 0
+    import struct
+    # Arguments the column itself clears before any read (schema key
+    # initialised_by_column, generated from the driver text) need no packed
+    # constant; a state array given for one is still packed.
+    cleared = meta.get('initialised_by_column', ())
+    skipped = tuple(name for name in cleared
+                    if not isinstance(values.get(name, values.get(aliases.get(name, name))), cp.ndarray))
+    fields, groups = _pack_layout(meta, skipped)
+    rows = []
+    for name, f in fields:
+        value = values.get(name, values.get(aliases.get(name, name), scalars.get(name, 0)))
+        integer = f['slab'] == 'i32'
+        if isinstance(value, cp.ndarray):
+            if value.ndim > 2:
+                raise ValueError('MYNN input rank exceeds two: ' + name)
+            shape, strides = value.shape, value.strides
+            rows.append((value.data.ptr, f['offset'], f['count'], integer, _PACK_CODES[value.dtype], 1,
+                         (strides[0] if shape[0] > 1 else 0) if value.ndim else 0,
+                         (strides[1] if shape[1] > 1 else 0) if value.ndim == 2 else 0))
         else:
-            dtype=np.float32 if f['slab']=='f32' else np.int32
-            table[j,0]=np.asarray(value,dtype=dtype).view(np.uint32).item()
-    # The numerical kernel has not used its work arena yet. Its first bytes
-    # carry this transient table, consumed on the same stream before reuse.
-    metadata=arena[:table.nbytes].view(cp.uint64).reshape(table.shape)
-    metadata.set(table)
-    width=n*max(f['count'] for _,f in fields)
-    pack_kernel(cp.cuda.Device().id)(((width+127)//128,len(fields)),(128,),
-                                    (np.int32(n),metadata,slabs['f32'],slabs['i32']))
+            bits = (int(value) & 0xFFFFFFFF if integer
+                    else struct.unpack('<I', struct.pack('<f', float(value)))[0])
+            rows.append((bits, f['offset'], f['count'], integer, 0, 0, 0, 0))
+    table = np.array(rows, dtype=np.uint64)
+    key = (cp.cuda.Device().id, table.tobytes())
+    metadata = _PACK_TABLES.get(key)
+    if metadata is None:
+        if len(_PACK_TABLES) >= 16:
+            _PACK_TABLES.clear()
+        metadata = cp.asarray(table)
+        _PACK_TABLES[key] = metadata
+    kernel = pack_kernel(cp.cuda.Device().id)
+    for count, start, stop in groups:
+        kernel(((n * count + 127) // 128, stop - start), (128,),
+               (np.int32(n), metadata[start:stop], slabs['f32'], slabs['i32']))
 
 
 def driver(values,*,initflag,delt,scratch=None,closure=2.6,**options):
@@ -283,6 +331,62 @@ def driver(values,*,initflag,delt,scratch=None,closure=2.6,**options):
     if options.get('bl_mynn_output',0):
         out.update({name:get(name.replace('3d','')+'1') for name in PLUMES})
     return out
+
+
+COPY_SOURCE = r'''
+extern "C" __global__ void mynn471_copy(const unsigned long long *table){
+ const unsigned long long *m=table+8*blockIdx.y;
+ long long rows=(long long)m[2],cols=(long long)m[3];
+ long long k=(long long)blockIdx.x*blockDim.x+threadIdx.x;
+ if(k>=rows*cols)return;
+ long long r=k/cols,c=k%cols;
+ char *d=(char*)m[0]+r*(long long)m[4]+c*(long long)m[5];
+ const char *s=(const char*)m[1]+r*(long long)m[6]+c*(long long)m[7];
+ *(unsigned int*)d=*(const unsigned int*)s;
+}
+'''
+_COPY_TABLES = {}
+
+
+@lru_cache(maxsize=8)
+def copy_kernel(device):
+    import cupy as cp
+    return cp.RawKernel(COPY_SOURCE, 'mynn471_copy')
+
+
+def copy_many(pairs):
+    """``dst[...] = src`` for every (dst, src) pair in one launch.
+
+    The generated routes hand back ~40 slab views that the PBL wrapper
+    writes into the model state; one launch per assignment costs more host
+    time than the copies cost the card. Equal shapes and one 4-byte dtype
+    per pair (anything else, or a rank above two, uses the plain
+    assignment); the words copied are the same words.
+    """
+    import cupy as cp
+    rows = []
+    for dst, src in pairs:
+        if (dst.shape != src.shape or dst.dtype != src.dtype or dst.dtype.itemsize != 4
+                or dst.ndim > 2 or dst.size == 0):
+            dst[...] = src
+            continue
+        if dst.ndim == 1:
+            rows.append((dst.data.ptr, src.data.ptr, 1, dst.shape[0], 0, dst.strides[0], 0, src.strides[0]))
+        else:
+            rows.append((dst.data.ptr, src.data.ptr, dst.shape[0], dst.shape[1],
+                         dst.strides[0], dst.strides[1], src.strides[0], src.strides[1]))
+    if not rows:
+        return
+    table = np.array(rows, dtype=np.int64).view(np.uint64)
+    key = (cp.cuda.Device().id, table.tobytes())
+    device = _COPY_TABLES.get(key)
+    if device is None:
+        if len(_COPY_TABLES) >= 16:
+            _COPY_TABLES.clear()
+        device = cp.asarray(table)
+        _COPY_TABLES[key] = device
+    width = max(r[2] * r[3] for r in rows)
+    copy_kernel(cp.cuda.Device().id)(((width + 127) // 128, len(rows)), (128,), (device,))
 
 
 # WRF 4.7.1 module_bl_mynnedmf_driver.F:878-953 and :666-673.

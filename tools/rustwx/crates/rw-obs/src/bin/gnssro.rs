@@ -415,7 +415,7 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
 fn stream_download(agent: &ureq::Agent, url: &str, target: &Path) -> Result<(u64, String), Box<dyn Error>> {
     use sha2::Digest;
 
-    let mut response = agent.get(url).call().map_err(|e| err(format!("GET {url}: {e}")))?;
+    let mut response = rw_http::get(agent, url).map_err(|e| err(format!("GET {url}: {e}")))?;
     let status = response.status().as_u16();
     if !(200..300).contains(&status) {
         return Err(err(format!("GET {url} answered HTTP {status}")));
@@ -455,7 +455,7 @@ fn cmd_cdaac_fetch(options: &Options) -> Result<String, Box<dyn Error>> {
     for mission in options.missions() {
         for day in &days {
             let url = cdaac_url(&mission, *day);
-            let head = agent.head(&url).call();
+            let head = rw_http::head(&agent, &url);
             let response = match head {
                 Ok(r) if (200..300).contains(&r.status().as_u16()) => r,
                 // ureq 3 hands a 4xx back as an error; a 404 is a day the

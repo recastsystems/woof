@@ -3,7 +3,14 @@
 The four coefficient tables below are byte-for-byte copies from
 [`earth-system-radiation/rrtmgp-data`](https://github.com/earth-system-radiation/rrtmgp-data)
 tag `v1.9` (2025-01-27), commit
-`eff0433faf9cbac3ad14fbf608bef0c26ebc4c79`.
+`eff0433faf9cbac3ad14fbf608bef0c26ebc4c79`. They are also byte-identical at
+the latest release, tag `v1.9.2` (2026-10-07), commit
+`8ba21ca40c506d886fac5c8d3be1e812b4b8cc54`, which is the pin of record: the
+SHA-256 values below were re-checked against v1.9.2 on 2026-11-09, as were
+`LICENSE` and `rrtmgp-aerosols-merra-{lw,sw}.nc`. Between v1.9 and v1.9.2
+upstream changed only the reduced g-point cloud tables
+(`rrtmgp-clouds-lw-g128.nc`, `rrtmgp-clouds-sw-g112.nc`, not shipped here)
+and added example reference files.
 
 | Local file | Upstream source URL | Tag / commit | SHA256 | Exact license |
 |---|---|---|---|---|
@@ -36,7 +43,7 @@ size and hash):
 | `reference/rsu_Efx_RTE-RRTMGP-181204_rad-irf_r1i1p1f1_gn.nc` | `0ea3f4272d9ef088db6ffd07153587863a052e3cf8b3bf04bfb7c9288ed8b324` | CC-BY-NC-SA-4.0 |
 
 The reference results restrict reuse to non-commercial purposes, which is
-why no WOOF artifact or repository carries them.
+why no WOOF-ArWen artifact or repository carries them.
 
 ## The derived climatology
 

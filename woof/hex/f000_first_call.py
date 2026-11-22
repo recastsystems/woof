@@ -215,7 +215,7 @@ def read_arwen_first_call(backend: Any, cp: Any, *, solve_cells: int | None = No
 
 def complete_arwen_start_frame(arrays: dict[str, Any], first_call: Mapping[str, Any] | None,
                                f000_completion: Mapping[str, Any] | None) -> dict[str, Any]:
-    """The WOOF route's f000 completion: q2 counts as carried only when the start file had it."""
+    """The WOOF-ArWen route's f000 completion: q2 counts as carried only when the start file had it."""
 
     q2 = (f000_completion or {}).get("q2") or {}
     carried = None if not q2 else (q2.get("source") == "start file q2")

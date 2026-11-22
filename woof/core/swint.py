@@ -93,8 +93,12 @@ STATE_FIELDS = (
 # Calendar scalars at the CURRENT xtime.
 # ---------------------------------------------------------------------------
 
-def calendar_scalars(start_time: datetime, elapsed_seconds: float):
+def calendar_scalars(start_time: datetime, elapsed_seconds: float, *,
+                     generation: str = "wrf_480"):
     """``(julian, xtime, gmt)`` float32 at ``elapsed_seconds``.
+
+    ``wrf_480`` (the default) returns WRF's frame words
+    (woof.core.solar.radiation_calendar); ``wrf_461`` the statements below.
 
     The same statements the legacy RRTMG adapter forms for its radiation
     call (woof/core/rrtmg_legacy.py ``RRTMGLegacyRadiation.__call__``,
@@ -102,6 +106,11 @@ def calendar_scalars(start_time: datetime, elapsed_seconds: float):
     run on one calendar; the step's own ``xtime`` without the
     ``radt * 0.5`` the driver adds only for the radiation call.
     """
+    from woof.core.solar import radiation_calendar
+    if generation == "wrf_480":
+        return radiation_calendar(start_time, elapsed_seconds, generation=generation)
+    from woof.core.solar import solar_generation
+    solar_generation(generation)
     valid_time = start_time + timedelta(seconds=float(elapsed_seconds))
     julday = int(valid_time.timetuple().tm_yday)
     hour = (valid_time.hour + valid_time.minute / 60.0
@@ -362,7 +371,8 @@ class ShortwaveInterpolation:
     def coszen_loc(self, elapsed_seconds: float):
         """Fill and return the device ``coszen_loc`` at ``elapsed_seconds``."""
         return self.coszen_loc_at(
-            *calendar_scalars(self.start_time, elapsed_seconds))
+            *calendar_scalars(self.start_time, elapsed_seconds,
+                              generation=self.solar_generation))
 
     def _interpolate(self, fields):
         f = {name: self._flat(fields[name], name) for name in STATE_FIELDS}

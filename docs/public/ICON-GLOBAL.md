@@ -158,7 +158,7 @@ remedy rather than falling back.
 ## Readiness
 
 The registry records this source as runnable: a strict implementation route
-exists and a real cycle prepares and runs end to end. WOOF's separate
+exists and a real cycle prepares and runs end to end. WOOF-ArWen's separate
 stock-WRF acceptance status is not claimed for it.
 
 What this route does not do in this release: model-level SLEVE/HHL ingestion,

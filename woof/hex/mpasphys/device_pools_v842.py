@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from ..device_memory_release import phase_release
 from ..physics_suites import load_table
 from .driver_v842 import Backend
@@ -313,6 +315,9 @@ class NativeDevicePoolViews(Mapping):
         Prepared scheme scratch is not Registry output. Its native allocation
         is retained solely for ABI shape discovery and eventual finalization.
         """
+        from ..speed_words import PUBLISH_FAST, on
+        if on(PUBLISH_FAST) and hasattr(getattr(self.cp, "cuda", None), "alloc_pinned_memory"):
+            return self._publish_fast()
         for key, (host, packed, selection) in self.resident_buffers.items():
             if key[0] == 'prepared':
                 continue
@@ -324,6 +329,101 @@ class NativeDevicePoolViews(Mapping):
             self.native.put_field(key[0], key[1], host, level=key[2],
                                   nlevels=self.native._fields[key[0], key[1]][2])
             self.transfers['publication_download_bytes'] += packed.nbytes
+
+    #: GPUWM_HEX_PUBLISH_FAST: the reusable pinned staging block (bytes) of one rank.
+    FAST_PUBLISH_BYTES = 64 << 20
+
+    def _publish_fast(self):
+        """publish() with the same words: each field made Fortran-ordered on the card (a uint32 view for 4-byte
+        words, as publish() downloads them), copied through one reusable pinned block on a side stream that waits
+        for the step, and assigned into the host pool as publish() assigns its download.
+
+        THE COST THIS REMOVES (8 ranks of the CONUS globe, the audit of 19 Nov 2026): every field's
+        ``.get(order='F')`` is a pageable download plus a host transpose; the step-360 publication took 13.4 s.
+        Fields under the block size share it (64-byte aligned) and are assigned once it is full; a larger field
+        streams through it in whole slabs of its slowest axis.  put_field runs per field in publish()'s order.
+        """
+        cp = self.cp
+        items = [(key, value) for key, value in self.resident_buffers.items() if key[0] != 'prepared']
+        if not items:
+            return
+        side = getattr(self, '_fast_stream', None)
+        if side is None:
+            side = self._fast_stream = cp.cuda.Stream(non_blocking=True)
+        block = getattr(self, '_fast_block', None)
+        if block is None:
+            block = self._fast_block = cp.cuda.alloc_pinned_memory(self.FAST_PUBLISH_BYTES)
+        staged = np.frombuffer(block, dtype=np.uint8, count=self.FAST_PUBLISH_BYTES)
+        ready = cp.cuda.Event(disable_timing=True)
+        ready.record(cp.cuda.get_current_stream())
+        side.wait_event(ready)
+        word_types = (np.dtype(np.float32), np.dtype(np.int32))
+        pending = []   # (key, host, selection, offset, nbytes, shape, device dtype, dtype, keep)
+        offset = 0
+
+        def put(key, host):
+            self.native.put_field(key[0], key[1], host, level=key[2], nlevels=self.native._fields[key[0], key[1]][2])
+
+        def assign(host, selection, words, dtype):
+            value = words.view(dtype) if words.dtype != dtype else words
+            host[selection] = value
+
+        def drain():
+            nonlocal offset
+            if not pending:
+                return
+            side.synchronize()
+            for key, host, selection, start, nbytes, shape, wire, dtype, _ in pending:
+                words = np.ndarray(shape, dtype=wire, buffer=staged[start:start + nbytes], order='F')
+                assign(host, selection, words, dtype)
+                put(key, host)
+            pending.clear()
+            offset = 0
+
+        with side:
+            for key, (host, packed, selection) in items:
+                dtype = np.dtype(packed.dtype)
+                nbytes = int(packed.nbytes)
+                if not nbytes:
+                    drain()
+                    assign(host, selection, packed.get(), dtype)
+                    put(key, host)
+                    continue
+                wire = np.dtype(np.uint32) if dtype in word_types else dtype
+                device = packed.view(cp.uint32) if dtype in word_types else packed
+                device = device if device.flags.f_contiguous else cp.asfortranarray(device)
+                if nbytes <= self.FAST_PUBLISH_BYTES:
+                    start = (offset + 63) & ~63
+                    if start + nbytes > self.FAST_PUBLISH_BYTES:
+                        drain()
+                        start = 0
+                    cp.cuda.runtime.memcpyAsync(block.ptr + start, device.data.ptr, nbytes,
+                                                cp.cuda.runtime.memcpyDeviceToHost, side.ptr)
+                    pending.append((key, host, selection, start, nbytes, tuple(packed.shape), wire, dtype, device))
+                    offset = start + nbytes
+                else:
+                    drain()
+                    shape = tuple(packed.shape)
+                    slab = nbytes // max(1, shape[-1]) if shape else nbytes
+                    words = np.empty(shape, dtype=wire, order='F')
+                    if shape and slab * shape[-1] == nbytes and slab <= self.FAST_PUBLISH_BYTES:
+                        per = max(1, self.FAST_PUBLISH_BYTES // slab)
+                        for first in range(0, shape[-1], per):
+                            last = min(shape[-1], first + per)
+                            size = (last - first) * slab
+                            cp.cuda.runtime.memcpyAsync(block.ptr, device.data.ptr + first * slab, size,
+                                                        cp.cuda.runtime.memcpyDeviceToHost, side.ptr)
+                            side.synchronize()
+                            words[..., first:last] = np.ndarray((*shape[:-1], last - first), dtype=wire,
+                                                                buffer=staged[:size], order='F')
+                    else:
+                        words = device.get(stream=side, order='F')
+                        side.synchronize()
+                    assign(host, selection, words, dtype)
+                    put(key, host)
+                    del device
+                self.transfers['publication_download_bytes'] += nbytes
+            drain()
 
     def resident_pool(self, name):
         """Resident rings; RRFS fork MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_convection.F:668-710."""
@@ -516,7 +616,8 @@ def register_cuda_slots(registry,config,provider,resources=None):
         pwp = register_pwp(config, provider)
     for slot,scheme in config.selectors.items():
         if not config.active(slot) or config.backends[slot]!=Backend.HEX_CUDA:continue
-        descriptor=rows[slot].get('cuda_entries',{}).get(scheme)
+        from .driver_v842 import slot_cuda_entry
+        descriptor=slot_cuda_entry(config,rows,slot,scheme)
         if descriptor is None:
             raise RuntimeError(f'MPAS CUDA slot {slot}/{scheme} has no published callback descriptor')
         try:

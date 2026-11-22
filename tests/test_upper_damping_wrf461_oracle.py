@@ -49,9 +49,8 @@ def test_damp_magnitude_is_wrfs_float32_product():
 
 
 def test_every_damping_coefficient_site_uses_the_float32_product():
-    """The single, ensemble and fused launchers all take damp_magnitude."""
-    for rel in ("woof/core/acoustic.py", "woof/ensemble/batch_acoustic.py",
-                "woof/ensemble/batch_acoustic_fusion.py"):
+    """The single and ensemble launchers both take damp_magnitude."""
+    for rel in ("woof/core/acoustic.py", "woof/ensemble/batch_acoustic.py"):
         text = (ROOT / rel).read_text(encoding="utf-8")
         assert "dtau * cfg.dampcoef" not in text, rel
         assert "damp_magnitude(cfg, dtau)" in text, rel

@@ -40,7 +40,7 @@ def class_receipts(stacks, steps, *, devices=None):
 
 
 def attach_lake_mask(backend, mesh, *, local_timestep=False):
-    """TC-only geography for the WOOF column route, at construction time.
+    """TC-only geography for the WOOF-ArWen column route, at construction time.
 
     Native/static land use may already fold lakes into water. Keep the
     original exclusion independent of the stock surface-layer lake input,
@@ -50,7 +50,7 @@ def attach_lake_mask(backend, mesh, *, local_timestep=False):
     if getattr(driver, 'tc_surface', None) is None:
         return None
     if local_timestep:
-        raise ValueError('TC lake-mask binding is not qualified for WOOF-route local time stepping')
+        raise ValueError('TC lake-mask binding is not qualified for WOOF-ArWen-route local time stepping')
     import numpy as np
     import cupy as cp
     mask = mesh.arrays.get('tc_lakemask')

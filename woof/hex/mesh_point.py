@@ -163,13 +163,42 @@ def parse_point(text: str) -> tuple[float, float]:
     except ValueError as error:
         raise PointPlanRefusal(f"--point {text!r} is not two numbers: {error}") from error
     if not -90.0 <= lat <= 90.0 or not -180.0 <= lon <= 360.0:
+        swapped = (f"; --point takes LAT,LON, and read the other way round this is a valid point: did you mean "
+                   f"--point {lon:g},{lat:g}?" if -90.0 <= lon <= 90.0 and -180.0 <= lat <= 360.0 else "")
         raise PointPlanRefusal(
             f"--point {text!r} is outside the sphere (latitude -90..90, "
-            f"longitude -180..360)"
+            f"longitude -180..360){swapped}"
         )
+    swapped = swapped_point_refusal(lat, lon)
+    if swapped is not None:
+        raise PointPlanRefusal(swapped)
     if lon > 180.0:
         lon -= 360.0
     return lat, lon
+
+
+#: A point this close to a pole is the pole: a longitude names no place there.
+POLE_POINT_LATITUDE = 89.5
+
+
+def swapped_point_refusal(lat: float, lon: float, option: str = "--point") -> str | None:
+    """Why ``lat, lon`` is most likely a LON,LAT pair typed the wrong way round, or None.
+
+    A point at a pole (latitude within :data:`POLE_POINT_LATITUDE`) given a longitude other than 0 is refused: at
+    the pole a longitude says nothing about where the core is, so the pair is nearly always LON,LAT
+    (``-90,37.5`` meant 37.5 N, 90 W).  A core truly centred on the pole is written ``LAT,0``.
+
+    THE BREAKAGE THIS PREVENTS (gpuwm 3.0.3 candidate check, 2026-11-15, the same door in WOOF-ArWen): ``--point
+    -90,37.5`` built a domain centred on the South Pole, and nothing said the point was the pole or looked
+    swapped.  A point outside a regional source's grid is refused later by the source's own coverage check.
+    """
+
+    if not -90.0 <= lon <= 90.0 or abs(lat) < POLE_POINT_LATITUDE or lon == 0.0:
+        return None
+    pole = "South" if lat < 0 else "North"
+    return (f"{option} {lat:g},{lon:g} is at the {pole} Pole (latitude {lat:g}), where a longitude names no place, "
+            f"so latitude and longitude look swapped.  {option} takes LAT,LON: did you mean {option} {lon:g},{lat:g}?  "
+            f"For a core centred on the pole itself, write {option} {math.copysign(90.0, lat):g},0")
 
 
 def ladder_rungs(background_km: float, fine_dx_m: float) -> list[float]:
@@ -206,7 +235,8 @@ def ladder_rungs(background_km: float, fine_dx_m: float) -> list[float]:
             f"{above * 1000.0:g} m and cost about {(below / above) ** 2:.0f}x "
             f"the cells this plan would price.  The rungs on either side are "
             f"{below * 1000.0:g} m and {above * 1000.0:g} m; pass one of them, "
-            f"or change --background-km"
+            f"or change --background-km, or keep {fine_dx_m:g} m and let the background "
+            f"move onto its ladder with --background-fit nearest (finer, coarser)"
         )
     return [background_km / (2.0 ** level) for level in range(1, k + 1)]
 
@@ -551,6 +581,13 @@ class PointRequest:
     #: the cap at ``point``.  ``point`` is then its centroid and
     #: ``radius_km`` its equal-area radius, both descriptive.
     shape: Mapping[str, Any] | None = None
+    #: An expanded mesh row (:func:`woof.hex.mesh_ask.expand`) with a cut: the
+    #: spec, the cut and the halo are the row's, and ``point``, ``radius_km``
+    #: and the factors describe the zone the region is cut around.
+    ask: Mapping[str, Any] | None = None
+    #: The generator's own words for a geometry other than its default
+    #: (``--geometry 2 --rings keep``): given to every build and dry run.
+    generator_words: tuple[str, ...] = ()
 
     @property
     def fine_km(self) -> float:
@@ -580,9 +617,179 @@ def drawn_shape(arguments: argparse.Namespace) -> dict[str, Any] | None:
     return None
 
 
+#: The words that ask for more than the registered ladder; any of them makes
+#: the request a mesh row (:mod:`woof.hex.mesh_ask`).  None of them given, the
+#: door writes the spec it always wrote, byte for byte.
+ASK_WORDS = ("background_fit", "growth_per_cell", "ramp_cells", "ring_cells", "hold_fine", "rim_km",
+             "rim_spacing_km", "zone")
+
+
+def arguments_ask_more(arguments: argparse.Namespace) -> bool:
+    """True when the arguments use a word only a mesh row can honour."""
+
+    return any(getattr(arguments, word, None) not in (None, False, [], ()) for word in ASK_WORDS)
+
+
+def _zone_argument(text: str) -> dict[str, Any]:
+    """One ``--zone``: a JSON object, or a file holding one."""
+
+    candidate = str(text).strip()
+    try:
+        document = json.loads(candidate if candidate.startswith("{") else Path(candidate).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise PointPlanRefusal(
+            f"--zone {text!r} is neither a JSON object nor a file holding one ({error}); a zone is "
+            f'{{"shape": {{"kind": "cap", "center_deg": [LAT, LON], "radius_km": KM}}, "fine_dx_m": M}}') from error
+    if not isinstance(document, dict):
+        raise PointPlanRefusal(f"--zone {text!r} is not a JSON object")
+    return document
+
+
+def arguments_row(arguments: argparse.Namespace, *, globe: bool | None = None) -> dict[str, Any]:
+    """The mesh row the door's own arguments describe.
+
+    With none of :data:`ASK_WORDS` the row is the registered ladder (exact
+    fit, the region drawn at the radius asked, the two ladder factors).
+    """
+
+    from . import mesh_ask
+
+    shape = drawn_shape(arguments)
+    # A drawn outline is held fine, as the limited-area door has always grown one; a circle is held
+    # only when asked, because the registered ladder ends its ramp AT the radius.
+    drawn = shape is not None and shape["kind"] != "cap"
+    if shape is not None and getattr(arguments, "point", None) is not None:
+        raise PointPlanRefusal(
+            "--point and a drawn core (--shape/--ellipse) were both given; the drawn "
+            "region's centre is its own, so name one")
+    if shape is None:
+        if getattr(arguments, "point", None) is None:
+            raise PointPlanRefusal(
+                "no fine core was named: pass --point LAT,LON (with --radius-km), "
+                "--shape FILE or --ellipse LAT,LON,SEMI_MAJOR_KM,SEMI_MINOR_KM[,AZIMUTH_DEG]")
+        lat, lon = parse_point(arguments.point)
+        shape = {"kind": "cap", "center_deg": [lat, lon], "radius_km": float(arguments.radius_km)}
+    grading: dict[str, Any] = {}
+    ring_cells = getattr(arguments, "ring_cells", None)
+    for word in ("growth_per_cell", "ramp_cells"):
+        if getattr(arguments, word, None) is not None:
+            grading[word] = float(getattr(arguments, word))
+    if not grading:
+        grading["transition_factor"] = float(arguments.transition_factor)
+    if ring_cells is not None:
+        grading["kind"] = "rings"
+        grading["ring_cells"] = float(ring_cells)
+    else:
+        grading["kind"] = "ladder"
+        grading["ring_factor"] = float(arguments.ring_factor)
+    zones = [{"name": "core", "shape": shape, "fine_dx_m": float(arguments.fine_dx_m)}]
+    for index, text in enumerate(getattr(arguments, "zone", None) or ()):
+        zone = _zone_argument(text)
+        zone.setdefault("name", f"zone{index + 1}")
+        zones.append(zone)
+    row: dict[str, Any] = {
+        "kind": mesh_ask.ROW_KIND,
+        "background_km": float(arguments.background_km),
+        "fit": getattr(arguments, "background_fit", None) or "exact",
+        "hold_fine_to_outline": bool(getattr(arguments, "hold_fine", False)) or drawn,
+        "grading": grading,
+        "zones": zones,
+    }
+    if getattr(arguments, "name", None):
+        row["name"] = arguments.name
+    if globe is None:
+        globe = bool(getattr(arguments, "global_mesh", False))
+    if not globe:
+        rim_km = getattr(arguments, "rim_km", None)
+        if rim_km is None:
+            # The shipped cut: the core radius times the pad.
+            reach = (float(shape["radius_km"]) if shape["kind"] == "cap"
+                     else math.sqrt(mesh_ask.shape_area_km2(mesh_ask.shape_row(shape)) / math.pi))
+            rim_km = (float(arguments.cull_pad_scale) - 1.0) * reach
+        domain: dict[str, Any] = {"kind": "region", "rim_km": float(rim_km), "around": "core"}
+        if getattr(arguments, "rim_spacing_km", None) is not None:
+            domain["rim_spacing_km"] = float(arguments.rim_spacing_km)
+        row["domain"] = domain
+    elif getattr(arguments, "rim_km", None) is not None or getattr(arguments, "rim_spacing_km", None) is not None:
+        raise PointPlanRefusal("--rim-km and --rim-spacing-km describe a limited-area cut; a globe has no rim")
+    return row
+
+
+def expand_arguments(arguments: argparse.Namespace, *, globe: bool | None = None) -> dict[str, Any]:
+    from . import mesh_ask
+
+    try:
+        return mesh_ask.expand(arguments_row(arguments, globe=globe), geometry=getattr(arguments, "geometry", None),
+                               ramp_onset=getattr(arguments, "ramp_onset", None))
+    except mesh_ask.MeshAskRefusal as error:
+        raise PointPlanRefusal(str(error)) from error
+
+
+def arguments_geometry(arguments: argparse.Namespace) -> int:
+    """The generator geometry a door's own words name (``mesh_ask.DEFAULT_GEOMETRY`` when none is named), refused in the row's words."""
+
+    from . import mesh_ask
+
+    try:
+        return int(mesh_ask.door_generator(arguments)["geometry"])
+    except mesh_ask.MeshAskRefusal as error:
+        raise PointPlanRefusal(str(error)) from error
+
+
+def ask_request(row: Mapping[str, Any], arguments: argparse.Namespace) -> PointRequest:
+    """A mesh row with a cut, as the request the limited-area road builds."""
+
+    from . import mesh_ask
+
+    try:
+        asked = mesh_ask.expand(row, geometry=getattr(arguments, "geometry", None),
+                                ramp_onset=getattr(arguments, "ramp_onset", None))
+    except mesh_ask.MeshAskRefusal as error:
+        raise PointPlanRefusal(str(error)) from error
+    if asked["cut"] is None:
+        raise PointPlanRefusal(
+            "this mesh row is a whole globe; the limited-area road needs a domain of kind region with rim_km "
+            "(or run it as a globe: mesh-plan --global-mesh --spec ROW.json)")
+    base = next(zone for zone in asked["zones"] if zone["name"] == asked["cut"]["around"])
+    radius = (float(base["shape"]["radius_km"]) if base["shape"]["kind"] == "cap"
+              else math.sqrt(float(base["area_km2"]) / math.pi))
+    return PointRequest(
+        point=(float(base["centre_deg"][0]), float(base["centre_deg"][1])),
+        fine_dx_m=float(asked["anchor_fine_km"]) * 1000.0,
+        radius_km=radius,
+        background_km=float(asked["background"]["built_km"]),
+        transition_factor=float(base["grading"]["ramp_scale_cells"]),
+        # Geometry 2 lays no rings; the number is descriptive there.
+        ring_factor=float(base["grading"]["legacy_ring_factor"] or DEFAULT_RING_FACTOR),
+        cull_pad_scale=float(arguments.cull_pad_scale),
+        card=resolve_card(arguments.card),
+        vram_gib=arguments.vram_gib,
+        mesh_exe=arguments.mesh_exe,
+        name=getattr(arguments, "name", None),
+        shape=None,
+        ask=asked,
+        generator_words=tuple((asked.get("generator") or {}).get("words", ())),
+    )
+
+
 def request_from_arguments(arguments: argparse.Namespace) -> PointRequest:
     from . import mesh_shape
 
+    if getattr(arguments, "spec", None) is not None:
+        from . import mesh_ask
+
+        try:
+            row = mesh_ask.load_row(arguments.spec)
+        except mesh_ask.MeshAskRefusal as error:
+            raise PointPlanRefusal(str(error)) from error
+        if not mesh_ask.is_row(row):
+            raise PointPlanRefusal(
+                f"{arguments.spec} is the generator's own resolution spec, not a mesh row; the limited-area "
+                f"road reads a row (zones and a region domain)")
+        return ask_request(row, arguments)
+    # Geometry 2 builds every request as a row: one region a zone, any ratio of spacings, no ladder.
+    if arguments_ask_more(arguments) or arguments_geometry(arguments) == 2:
+        return ask_request(arguments_row(arguments, globe=False), arguments)
     shape = drawn_shape(arguments)
     if shape is not None and getattr(arguments, "point", None) is not None:
         raise PointPlanRefusal(
@@ -623,6 +830,8 @@ def request_spec(request: PointRequest) -> dict[str, Any]:
     """The resolution spec a request builds: the cap ladder at the point, or
     the same ladder around a drawn region (:mod:`woof.hex.mesh_shape`)."""
 
+    if request.ask is not None:
+        return dict(request.ask["spec"])
     if request.shape is None:
         return ladder_spec(
             request.point,
@@ -650,6 +859,8 @@ def request_spec(request: PointRequest) -> dict[str, Any]:
 
 
 def request_cull_region(request: PointRequest) -> dict[str, Any]:
+    if request.ask is not None:
+        return dict(request.ask["cut"]["region"])
     if request.shape is None:
         return cull_region(request.point, request.radius_km, request.cull_pad_scale)
     from . import mesh_shape
@@ -662,6 +873,12 @@ def request_cull_region(request: PointRequest) -> dict[str, Any]:
 
 
 def request_halo_region(request: PointRequest, halo_km: float) -> dict[str, Any]:
+    if request.ask is not None:
+        from . import mesh_ask
+
+        if not halo_km > 0.0:
+            raise PointPlanRefusal(f"--halo-km {halo_km} is not positive")
+        return mesh_ask.grown(request.ask["cut"]["region"], float(halo_km), 5.0)
     if request.shape is None:
         return halo_region(request.point, request.radius_km, request.cull_pad_scale, halo_km)
     from . import mesh_shape
@@ -687,6 +904,7 @@ def plan_point(request: PointRequest) -> dict[str, Any]:
         engine=request.mesh_exe,
         card=generator_card,
         vram_gib=request.vram_gib if generator_card else None,
+        **({"generator_words": request.generator_words} if request.generator_words else {}),
     )
     attainment = sizing.get("region_attainment") or []
     attained_km = (
@@ -694,7 +912,33 @@ def plan_point(request: PointRequest) -> dict[str, Any]:
         if attainment and attainment[-1].get("attained_spacing_km")
         else request.fine_km
     )
-    if request.shape is None:
+    if request.ask is not None:
+        from . import mesh_ask
+
+        counted = mesh_ask.census(request.ask)
+        whole = mesh_ask.census({**request.ask, "cut": None})["columns"]
+        scale = float(sizing.get("predicted_cells") or whole) / max(whole, 1)
+        cut_row = request.ask["cut"]
+        cut_shape = cut_row["region"]
+        cull = {
+            "basis": "area_integral",
+            "predicted_cells": round(counted["columns"] * scale, 1),
+            "core_cells": round(sum(zone["columns"] for zone in counted["zones"]) * scale, 1),
+            "core_radius_km": float(request.radius_km),
+            "cut_radius_km": (float(cut_shape["radius_km"]) if cut_shape["kind"] == "cap"
+                              else math.sqrt(mesh_ask.shape_area_km2(cut_shape) / math.pi)),
+            "spacing_at_cut_km": counted["spacing_at_cut_km"],
+            "boundary_rings": int(cut_row["boundary_rings"]),
+            # The rings' width past the cut: the HRRR window (hrrr_intermediate.target_from_plan) reaches this far.
+            # Without it a geometry-2 regional run stopped at init with its outer rings outside the first guess
+            # (0.6.2, the 3 km Iowa storm box). Each ring is walked at its own spacing, which keeps growing
+            # past the cut (mesh_ask.boundary_ring_reach_km); never less than the rings at the cut's spacing.
+            "halo_km": max(int(cut_row["boundary_rings"]) * float(counted["spacing_at_cut_km"]),
+                           mesh_ask.boundary_ring_reach_km(request.ask)),
+            "zones": counted["zones"],
+            "attainment_basis": "the generator's field on a lattice, scaled to its own whole-sphere count",
+        }
+    elif request.shape is None:
         cull = predicted_cull_cells(
             spec=spec,
             radius_km=request.radius_km,
@@ -728,16 +972,33 @@ def plan_point(request: PointRequest) -> dict[str, Any]:
         verdict["max_core_radius_km_on_this_card"] = (
             max_radius_for_cells(int(verdict["cells_that_fit"]), request,
                                  attained_fine_km=attained_km)
-            if request.shape is None else None)
+            if request.shape is None and request.ask is None else None)
+    generator = (request.ask or {}).get("generator") if request.ask is not None else None
+    ramp = bool(generator) and int(generator.get("geometry", 1)) == 2
+    priced: dict[str, Any] = {}
+    if ramp:
+        from . import mesh_ask
+
+        # Geometry 2: the plan says the step the cut admits, the step each suite's forecast will run and
+        # the card memory for 1, 2, 4 and 8 cards, on the columns geometry 2 will build inside the cut.
+        step, runs, memory = mesh_ask.price(
+            float(cull["predicted_cells"]), request.fine_dx_m, ramp=True,
+            cards=[request.card["admission_card"]] if request.card else None)
+        base = next(zone for zone in request.ask["zones"] if zone["name"] == request.ask["cut"]["around"])
+        priced = {"generator": dict(generator), "ramp": base["ramp"], "step": step, "forecast_step": runs,
+                  "memory": memory}
     return {
         "schema": "gpuwm-hex.point-plan/v1",
+        **priced,
+        "mesh_row_notes": [] if request.ask is None else list(request.ask["notes"]),
+        "rim_km": None if request.ask is None else float(request.ask["cut"]["rim_km"]),
         "point_deg": list(request.point),
         "fine_dx_m": request.fine_dx_m,
         "core_radius_km": request.radius_km,
         "background_km": request.background_km,
         "transition_factor": request.transition_factor,
         "ring_factor": request.ring_factor,
-        "ladder_km": ladder_rungs(request.background_km, request.fine_dx_m),
+        "ladder_km": [request.fine_km] if ramp else ladder_rungs(request.background_km, request.fine_dx_m),
         "spec": spec,
         "cull_region": region,
         "cull_pad_scale": request.cull_pad_scale,
@@ -767,14 +1028,29 @@ def _report(plan: Mapping[str, Any]) -> list[str]:
     edge = gates.get("short_dual_edge_floor") or {}
     lines = [
         f"mesh-plan --point: {plan['spec']['name']}",
+        *[f"  NOTE             {note}" for note in plan.get("mesh_row_notes") or ()],
         f"  centre           {lat:.4f} N {lon:.4f} E",
-        f"  ladder           {' > '.join(f'{r:g}' for r in plan['ladder_km'])} km "
-        f"on a {plan['background_km']:g} km background "
-        f"({len(plan['ladder_km'])} rungs, ramp {plan['transition_factor']:g}x, "
-        f"ring {plan['ring_factor']:g}x)",
-        f"  parent (global)  {parent['predicted_cells']:,.0f} cells (the generator's "
-        f"own sizing integral)",
     ]
+    ramp = plan.get("generator") is not None and int(plan["generator"].get("geometry", 1)) == 2
+    if ramp:
+        grown_to = plan["ramp"]
+        lines += [
+            "  generator        geometry 2: every spacing built as asked, one growth rate per cell, no obtuse "
+            "triangle (" + " ".join(plan["generator"]["words"]) + ")",
+            f"  ramp             {plan['fine_dx_m'] / 1000.0:g} km held to the outline, then "
+            f"+{100.0 * grown_to['growth_per_cell']:.1f} % a cell to the {plan['background_km']:g} km background",
+            f"  parent (global)  {parent['predicted_cells']:,.0f} cells (the generator's own count under "
+            f"geometry 2)",
+        ]
+    else:
+        lines += [
+            f"  ladder           {' > '.join(f'{r:g}' for r in plan['ladder_km'])} km "
+            f"on a {plan['background_km']:g} km background "
+            f"({len(plan['ladder_km'])} rungs, ramp {plan['transition_factor']:g}x, "
+            f"ring {plan['ring_factor']:g}x)",
+            f"  parent (global)  {parent['predicted_cells']:,.0f} cells (the generator's "
+            f"own sizing integral)",
+        ]
     if plan.get("drawn_shape"):
         lines += [
             f"  core             drawn, {len(plan['drawn_shape']['vertices_deg'])} vertices, "
@@ -791,8 +1067,10 @@ def _report(plan: Mapping[str, Any]) -> list[str]:
             f"  core             {plan['core_radius_km']:g} km at "
             f"{cull['attained_fine_spacing_km'] * 1000.0:.1f} m attained -> "
             f"{cull['core_cells']:,.0f} cells",
-            f"  cull             cut at {cull['cut_radius_km']:g} km (pad "
-            f"{plan['cull_pad_scale']:g}) -> {cull['predicted_cells']:,.0f} cells "
+            f"  cull             cut at {cull['cut_radius_km']:g} km ("
+            + (f"pad {plan['cull_pad_scale']:g}" if plan.get("rim_km") is None
+               else f"rim {plan['rim_km']:g} km outside the outline")
+            + f") -> {cull['predicted_cells']:,.0f} cells "
             f"predicted, {cull['boundary_rings']} boundary rings ({cull['basis']})",
         ]
     device = plan.get("device")
@@ -815,6 +1093,16 @@ def _report(plan: Mapping[str, Any]) -> list[str]:
                f", a core of up to {device['max_core_radius_km_on_this_card']:g} km at this "
                f"spacing and pad"),
         ])
+    if ramp:
+        from . import mesh_ask
+
+        lines.extend(mesh_ask.price_lines(plan["step"], plan["forecast_step"], plan["memory"]))
+        lines.extend([
+            "",
+            "  GATE              geometry 2 gates itself at the build: it writes no mesh with an obtuse triangle "
+            "and holds every edge at 0.79 of the spacing asked or more",
+        ])
+        return lines
     lines.extend([
         "",
         "  GATES THE SPEC DECIDES, applied here:",
@@ -1564,7 +1852,8 @@ def generate_point(
     )
     legs: list[dict[str, Any]] = []
 
-    argv: list[Any] = [mesh_exe, "--spec", spec_path, "--out", grid, "--receipt", grid_receipt]
+    argv: list[Any] = [mesh_exe, "--spec", spec_path, "--out", grid, "--receipt", grid_receipt,
+                       *request.generator_words]
     generator_card = request.card["generator_card"] if request.card else None
     if generator_card:
         argv += ["--card", generator_card]
@@ -1870,6 +2159,7 @@ def generate_point(
         "route_note": route_note,
         "plan": dict(plan),
         "engines": {"rw_mpas_mesh": str(mesh_exe), "rw_mpas_static": str(static_bin)},
+        **({"generator_words": list(request.generator_words)} if request.generator_words else {}),
         "geog": str(geog_root),
         "spec": str(spec_path),
         "parent": {
@@ -1960,6 +2250,42 @@ def add_point_arguments(parser: argparse.ArgumentParser) -> None:
         "--ring-factor", type=float, default=DEFAULT_RING_FACTOR, metavar="X",
         help=f"how many ramps of the next finer rung a cap sits outside it (default {DEFAULT_RING_FACTOR:g})")
     group.add_argument(
+        "--background-fit", choices=("exact", "nearest", "finer", "coarser"), default=None,
+        help="what to do when --fine-dx-m does not halve into --background-km: keep the fine "
+             "spacing and move the background onto its ladder, to the nearest rung, the finer or "
+             "the coarser one (default exact: refuse, naming both)")
+    group.add_argument(
+        "--growth-per-cell", type=float, default=None, metavar="G",
+        help="grade by the steepest growth a ramp asks for, as a fraction a cell (0.08 is 8 %%); "
+             "the ramp scale is 2/G cells.  Instead of --transition-factor")
+    group.add_argument(
+        "--ramp-cells", type=float, default=None, metavar="N",
+        help="the width of each ring's ramp to the next, in cells of its own spacing "
+             "(twice the ramp scale).  Instead of --transition-factor")
+    group.add_argument(
+        "--ring-cells", type=float, default=None, metavar="N",
+        help="the flat width of each ring, in cells of its own spacing (0: a ramp with no "
+             "plateau).  Instead of --ring-factor")
+    group.add_argument(
+        "--hold-fine", action="store_true",
+        help="hold the fine spacing on the whole radius or outline asked (the fine region is "
+             "drawn 1.5 ramp scales outside it); without it the ramp ends AT the radius and the "
+             "fine spacing holds to about two ramp scales inside")
+    group.add_argument(
+        "--rim-km", type=float, default=None, metavar="KM",
+        help="limited-area cut: its distance outside the core's outline (default: the pad)")
+    group.add_argument(
+        "--rim-spacing-km", type=float, default=None, metavar="KM",
+        help="limited-area cut: the spacing held from the end of the rings out to the cut and "
+             "across the boundary rings")
+    group.add_argument(
+        "--zone", action="append", default=None, metavar="JSON|FILE",
+        help='one more zone: {"shape": {...}, "fine_dx_m": M} (repeat).  A zone inside a coarser '
+             'one is nested; shapes: cap, ellipse, rounded_box, lat_lon_box, polygon, GeoJSON')
+    from . import mesh_ask
+
+    mesh_ask.add_generator_arguments(group)
+    group.add_argument(
         "--cull-pad-scale", type=float, default=DEFAULT_CULL_PAD_SCALE, metavar="X",
         help=f"the limited-area cut, as a multiple of the core radius (default {DEFAULT_CULL_PAD_SCALE:g}, the measured knee)")
     group.add_argument(
@@ -2014,15 +2340,17 @@ def run_point(arguments: argparse.Namespace) -> int:
         )
     device = plan.get("device")
     if device is not None and not device["fits"]:
+        largest = device.get("max_core_radius_km_on_this_card")
         raise PointPlanRefusal(
             f"refused before anything is built: the predicted cull "
             f"({plan['cull']['predicted_cells']:,.0f} cells) needs "
             f"{device['required_free_mib']:,.1f} MiB free on "
             f"{request.card['admission_card']} and the budget is "
             f"{device['budget_mib']:,.1f} MiB, short by {device['short_by_mib']:,.1f} "
-            f"MiB.  This card holds a core of up to "
-            f"{device['max_core_radius_km_on_this_card']:g} km at this spacing "
-            f"and pad; reduce --radius-km, coarsen --fine-dx-m, or name a bigger card"
+            f"MiB.  "
+            + ("" if largest is None else
+               f"This card holds a core of up to {largest:g} km at this spacing and pad; ")
+            + "reduce --radius-km, coarsen --fine-dx-m, or name a bigger card"
         )
     generate_point(
         request, plan,
@@ -2047,6 +2375,11 @@ __all__ = [
     "StaticBuilderRefusal",
     "PointRequest",
     "add_point_arguments",
+    "arguments_ask_more",
+    "arguments_geometry",
+    "arguments_row",
+    "ask_request",
+    "expand_arguments",
     "admit_pair",
     "admit_parent_grid",
     "check_halo_static",

@@ -2,8 +2,8 @@
 
 The tables in this module are a transcription of WRF v4.6.1 commit
 ``d66e442fccc04111067e29274c9f9eaccc3cef28``.  They deliberately separate
-WRF's verdict from WOOF implementation readiness: a WRF-legal tuple may
-still have a named WOOF structural blocker, but WOOF must never describe
+WRF's verdict from WOOF-ArWen implementation readiness: a WRF-legal tuple may
+still have a named WOOF-ArWen structural blocker, but WOOF-ArWen must never describe
 that blocker as a WRF incompatibility.
 
 Only the schemes ported by this release are represented.  Keeping the
@@ -74,7 +74,10 @@ class WRFCompatibilityCell:
 # verdict count by 10/6 and the pinned counts in
 # tests/test_wrf461_compatibility.py were re-measured off the enlarged
 # matrix rather than projected.
-MP_OPTIONS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 97, 106)
+# 96 (MAD-WRF) joined in 3.0.3 on its Registry package line, which
+# _MP_CITATION already carried (Registry.EM_COMMON:3047); 27 (UDM) and 29
+# (RCON) have no WRF v4.6.1 package and are declared in AXIS_EXCLUSIONS.
+MP_OPTIONS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106)
 # 11 (Shin-Hong) joined the PBL axis with the Shin-Hong port: an implemented
 # scheme with a certified oracle (max ULP 0 CPU authority against the
 # byte-frozen WRF v4.6.1 module_bl_shinhong.F,
@@ -154,6 +157,27 @@ CUMULUS_OPTIONS = (0, 1, 2, 3, 5, 6, 10, 11, 14, 16, 93, 94, 95, 96, 99)
 #: mistaking absence for illegality.
 AXIS_EXCLUSIONS = MappingProxyType({
     ("cu_physics", 7): "CAM ZM requires MYJ/Eta or CAM UW at get_tpert; those PBL choices are outside this physics_init matrix.",
+    ("mp_physics", 27): (
+        "UDM is ported from WRF v4.7.1 (module_mp_udm.F); WRF v4.6.1's "
+        "Registry.EM_COMMON binds no package at mp_physics=27, so there is "
+        "no v4.6.1 verdict to transcribe. The microphysics axis takes no "
+        "part in a cell's verdict, and UDM's own pairings are its registry "
+        "option's constraints."),
+    ("mp_physics", 29): (
+        "RCON is ported from WRF v4.7.1; WRF v4.6.1's Registry.EM_COMMON "
+        "binds no package at mp_physics=29, so there is no v4.6.1 verdict "
+        "to transcribe. The microphysics axis takes no part in a cell's "
+        "verdict, and RCON's own pairings are its registry option's "
+        "constraints."),
+    ("sf_sfclay_physics", 89): (
+        "The ideal SCM surface layer (Registry.EM_COMMON:3136, "
+        "idealscmsfcscheme) is the one surface layer WRF v4.6.1 assigns no "
+        "isfc for (module_physics_init.F:3140-3220; isfc is an "
+        "uninitialized local at :2768), so every PBL's isfc law has no "
+        "defined verdict over it. The one cell WRF does define, PBL off, "
+        "is transcribed as (0, 89) in PBL_SURFACE_LAYER_AUTHORITY, and the "
+        "registry's ideal-scm option admits only that pairing (pbl off, "
+        "land surface off)."),
     ("mp_physics", 900): (
         "TEMPO is a WOOF named scheme (woof.microphysics_schemes, id 900, "
         "outside WRF's mp_physics range): WRF v4.6.1 has no TEMPO option, so "
@@ -207,13 +231,13 @@ AXIS_EXCLUSIONS = MappingProxyType({
         "WRF v4.6.1's bl_init has no KEPSSCHEME case at all "
         "(module_physics_init.F pbl_select falls through to CASE DEFAULT), "
         "so WRF places no surface-layer or land-surface law on the "
-        "K-epsilon PBL for this matrix to transcribe. WOOF's own pairing "
+        "K-epsilon PBL for this matrix to transcribe. WOOF-ArWen's own pairing "
         "requirements (a surface layer that publishes PSIM/PSIH, no "
         "gwd_opt) are woof.config.validate_keps_config, each naming what "
         "it prevents. A row here would be a second authority over "
         "questions that already have one."),
     ("bl_pbl_physics", 900): (
-        "SASE is a WOOF closure with no WRF counterpart: WRF v4.6.1 "
+        "SASE is a WOOF-ArWen closure with no WRF counterpart: WRF v4.6.1 "
         "registers no package at bl_pbl_physics=900, so there is no "
         "verdict to transcribe and a row would be an invention. Its "
         "admission is stated on its own registry option and in "
@@ -415,17 +439,17 @@ _RADIATION_CITATION = MappingProxyType({
         "uses the no-action initialization path"),
     "rrtmg-rte-rrtmgp": WRFCitation(
         "Registry/Registry.EM_COMMON", "3109,3120",
-        "WRF's bundled RRTMG packages bind the 4/4 LW/SW selectors; WOOF's "
+        "WRF's bundled RRTMG packages bind the 4/4 LW/SW selectors; WOOF-ArWen's "
         "RTE+RRTMGP adapter is an explicitly receipted implementation of "
         "those same WRF selectors"),
     "rrtmg-legacy": WRFCitation(
         "Registry/Registry.EM_COMMON", "3109,3120",
-        "WRF's bundled RRTMG packages bind the 4/4 LW/SW selectors; WOOF's "
+        "WRF's bundled RRTMG packages bind the 4/4 LW/SW selectors; WOOF-ArWen's "
         "legacy variant ports that implementation directly"),
     "analytic": WRFCitation(
         "Registry/Registry.EM_COMMON", "3107-3125",
         "WRF v4.6.1 registers no ra_lw_physics=90 or ra_sw_physics=90 "
-        "package; analytic radiation is WOOF-specific"),
+        "package; analytic radiation is WOOF-ArWen-specific"),
 })
 
 _SOIL_LAYER_CITATION = WRFCitation(
@@ -664,7 +688,7 @@ def compatibility_cell(
     radiation: str,
     cu_physics: int,
 ) -> WRFCompatibilityCell:
-    """Build one cited cell without applying a WOOF structural gate."""
+    """Build one cited cell without applying a WOOF-ArWen structural gate."""
 
     pair_verdict, pair_citation = pbl_surface_layer_verdict(
         bl_pbl_physics, sf_sfclay_physics)

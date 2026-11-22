@@ -59,7 +59,7 @@ inverse density and moisture coefficients come from the native
 advection are disabled. The stored-theta fixture feeds the literal WRF
 theta-minus-300 words to both transport operators. The additional full-theta
 fixture feeds WRF T+300 to both operators, which measures the physical-theta
-carrier WOOF normally transports. It is explicitly an operator probe,
+carrier WOOF-ArWen normally transports. It is explicitly an operator probe,
 not the literal WRF stored-T call. Native `solve_em.F` passes `grid%t_2`
 and `grid%t_1` to these RK calls. Neither probe is a complete forecast
 comparison.

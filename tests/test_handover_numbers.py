@@ -3,7 +3,7 @@
 The defect (init-from-any-run proof, GFS 2024-05-06 12Z): a hex -> ArWen 3 km
 child (Morrison) started with rain and cloud mass at number 0 (an empty first
 map, 341,746 NaN reflectivity values) and took 469-518 such columns per hour
-through its ring; a WOOF -> ArWen 1 km downscale dropped the droplet number
+through its ring; a WOOF-ArWen -> ArWen 1 km downscale dropped the droplet number
 and started 60-70 dBZ rings.  These tests fail on the tree before the fix.
 """
 import numpy as np

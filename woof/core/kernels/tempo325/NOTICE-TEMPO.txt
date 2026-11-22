@@ -1,0 +1,25 @@
+The files in this directory are a C++/CUDA port of TEMPO
+(Thompson-Eidhammer Microphysics Parameterization for Operations),
+https://github.com/NCAR/TEMPO, commit c62699fb660ebbb14e4388f7b59a8b38decac1ab
+(tag tempo_v3.2.5).
+
+Copyright 2026, NOAA, UCAR/NCAR CU/CIRES
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Modifications: translated from Fortran to C++/CUDA for WOOF; all
+parameters and lookup tables are read from a flat float64 blob; Fortran
+optional arguments became nullable pointers; the module SAVE flag
+first_call_main carries tempo_run's is_first_step and is supplied by the
+caller; where v3.2.5 reads the local final_weight in sum_tendencies without
+setting it (main.F90:1752-1755) this port defines it as 1 (no scaling).

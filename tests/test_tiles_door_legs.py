@@ -97,7 +97,7 @@ def test_no_committed_case_file_names_a_machine() -> None:
     the author's filesystem into the repository.
     """
     forbidden = ("C:/", "C:\\", "/Users/", "\\Users\\", "AppData",
-                 "scratchpad", "Temp/claude", "/home/")
+                 "scratchpad", "Temp/", "/home/")
     for path in sorted(CASES.glob("shape_tiles_*")):
         text = path.read_text(encoding="utf-8")
         for token in forbidden:

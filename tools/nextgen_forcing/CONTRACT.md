@@ -39,7 +39,7 @@ float32 hook. Complete Rust-prepared Noah initial slabs/parameters and matching
 catchment order remain prerequisites. This API inspection does not establish
 a new physical case(b)/(c) initialization or a new numerical replay.
 
-Existing WOOF Noah-MP already receives atmosphere forcing. Its NextGen
+Existing WOOF-ArWen Noah-MP already receives atmosphere forcing. Its NextGen
 `noahowp.factory.prepare_exchange` runoff exchange needs no extra weather or
 PET stage. Its signed-i64/i32/f32 CSR is distinct from this optional
 meteorological helper's u64/u32/f64 CSR; preserve each owner's widths.

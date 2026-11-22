@@ -1,4 +1,4 @@
-"""A whole-file classic NetCDF product, written through WOOF's Rust.
+"""A whole-file classic NetCDF product, written through WOOF-ArWen's Rust.
 
 :mod:`woof.io.wrfout` drives :mod:`woof.io.nc_writer_bridge` as a *tape*:
 one unlimited record dimension, frames appended over time, the header frozen

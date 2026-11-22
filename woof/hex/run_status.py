@@ -21,7 +21,7 @@ Three files under the command's run directory:
 This is the hex counterpart of woof global's ``status.py`` (schema
 ``gpuwm-global-status-v1``).  The document shape is the same -- command,
 stage, stage_index, stage_count, step, step_count, started_utc,
-updated_utc, eta_s, state, reason, log -- so the WOOF Desktop global tab
+updated_utc, eta_s, state, reason, log -- so the WOOF-ArWen Desktop global tab
 and WOOF's global module read either one by switching the schema id they pin;
 the hex schema adds ``events`` (the events.jsonl path) and ``row``.
 

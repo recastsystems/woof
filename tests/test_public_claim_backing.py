@@ -358,7 +358,7 @@ def check_published(root: Path) -> list[Finding]:
 #: provable rather than asserted.  It is the negative-control fixture's
 #: text, and a test below requires it to be ABSENT from the live document.
 RETIRED_OVERREACH = (
-    "WOOF's ingest reproduces the WRF initial surface state at the\n"
+    "WOOF-ArWen's ingest reproduces the WRF initial surface state at the\n"
     "FP32/operator floor on every domain, so everything in the tables below\n"
     "is forecast divergence, not initial-condition error.")
 
@@ -470,7 +470,7 @@ def test_quoted_bullets_are_read_one_at_a_time():
     findings = _fixture_findings("quoted_bullets_do_not_bleed.md")
     assert [finding.rule for finding in findings] == ["unbacked-claim"], (
         findings)
-    assert "WOOF reproduces the WRF initial state" in findings[0].quote
+    assert "WOOF-ArWen reproduces the WRF initial state" in findings[0].quote
     assert "REFL_10CM" not in findings[0].quote
     assert "coverage floor" not in findings[0].quote
 
@@ -525,7 +525,7 @@ def test_an_injected_claim_fails_the_enforced_gate(tmp_path: Path):
     scratch = tmp_path / "docs" / "public"
     scratch.mkdir(parents=True)
     (scratch / "NEW.md").write_text(
-        "WOOF reproduces the WRF initial state at the FP32 floor on every\n"
+        "WOOF-ArWen reproduces the WRF initial state at the FP32 floor on every\n"
         "domain of every case.\n", encoding="utf-8")
     findings = check_tree(scratch, tmp_path)
     assert [finding.rule for finding in findings] == ["unbacked-claim"], (
@@ -544,7 +544,7 @@ def test_a_claim_planted_in_a_root_document_fails_the_enforced_gate(
     """
     (tmp_path / "docs" / "public").mkdir(parents=True)
     (tmp_path / "README.md").write_text(
-        "WOOF reproduces the WRF initial state at the FP32 floor on every\n"
+        "WOOF-ArWen reproduces the WRF initial state at the FP32 floor on every\n"
         "domain of every case.\n", encoding="utf-8")
     findings = check_published(tmp_path)
     assert [finding.rule for finding in findings] == ["unbacked-claim"], (

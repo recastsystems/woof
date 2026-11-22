@@ -52,7 +52,7 @@ class Cam3Radiation:
         from woof.core.rrtmg_legacy import legacy_cloud_fraction_flags
         t=atmosphere['temperature'];nz,ny,nx=t.shape;ncol=ny*nx
         if self.latitude_deg.shape!=(ny,nx):raise ValueError('CAM geography must match the model grid')
-        julian,xtime,gmt=calendar_scalars(self.start_time,state.elapsed_seconds);minutes=np.float32(cfg.radt if cfg.radt>0 else cfg.radt_minutes);period=_physics_period_seconds(minutes,cfg)
+        julian,xtime,gmt=calendar_scalars(self.start_time,state.elapsed_seconds,generation=getattr(cfg,'solar_generation','wrf_480'));minutes=np.float32(cfg.radt if cfg.radt>0 else cfg.radt_minutes);period=_physics_period_seconds(minutes,cfg)
         valid=self.start_time+timedelta(seconds=float(state.elapsed_seconds));degrad=np.float32(np.float32(3.141592653589793)/np.float32(180.))
         from woof.core.solar import solar_geometry_device
         pair,cosine,_hrang=solar_geometry_device(julian,np.float32(xtime+np.float32(minutes*0.5)),gmt,self.latitude_deg,self.longitude_deg,generation=getattr(cfg,'solar_generation','wrf_480'))

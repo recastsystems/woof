@@ -25,7 +25,7 @@ surface-only files, which cannot initialize atmospheric perturbations.
 Prepare once under a shared folder (`prepared/` below), then reuse the manifest in
 both timing arms and in cycling. `tools/ensemble_stage_mesh.py` stages a stock
 60/30 km global mesh under a locked shared directory. Existing 30 km meshes
-can be used directly. It must be run on a compute box, never the desktop.
+can be used directly. Run it on the machine that runs the ensemble.
 
 ```sh
 # After preparing the manifest (on a shared host, launch it through the host's card queue).
@@ -80,9 +80,8 @@ use MPAS's dot-separated clock; colons are interpreted by MPI-IO as filesystem
 URI separators and caused an actual open failure in validation.
 
 Member files follow the stock MPAS-JEDI state contract (`woof.hex.jedi_contract`).
-`jedi_open_checked` stays false in a run of this distribution: opening the states
-with MPAS-JEDI is part of the maintainers' data-assimilation tooling, which is not
-distributed.
+`jedi_open_checked` stays false in a run of this distribution, which does not open
+the states with MPAS-JEDI.
 
 `tools/ensemble_recover_export.py RUN` recovers export from completed forecasts
 after checking input hashes. It retains the prior error and reports forecast
@@ -92,7 +91,6 @@ The JSON files, forecast logs and hash receipts are retained. Source GRIB,
 intermediate and constructed vertical files are deleted after preparation
 has recorded each init. Forecast histories and exported simulation data must
 be disposed after their spread/JEDI consumption receipts are recorded.
-Do not copy simulation data to the desktop or Downloads.
 Use `tools/ensemble_dispose.py RUN` only after the run's consumers have finished;
 it records every removed file and size and retains the measurement receipts.
 

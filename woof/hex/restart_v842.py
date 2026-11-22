@@ -131,6 +131,45 @@ def _publish_stream(staged: Path, path: Path, mode: str) -> None:
         os.close(directory_fd)
 
 
+#: Handoff folders carry their owner's PID, so a later writer can tell a dead run's leftovers from a live one's.
+_HANDOFF_PREFIX = '.mpas-handoff-'
+_SWEPT_HANDOFF_ROOTS: set = set()
+
+
+def _sweep_dead_handoffs(root: Path) -> None:
+    """Remove handoff folders whose owning process is gone (once per process and root).
+
+    THE BREAKAGE THIS PREVENTS (global16 hex-fit16, verification host, 2026-11-06): a run killed mid-frame (here by the
+    host's out-of-memory killer) leaves its in-flight handoff folder on the tmpfs, 1.46 GB per history frame at
+    x1.163842, and tmpfs pages are RAM. Six killed 60 km runs left 8.2 GB in /dev/shm on a 30 GB host, so every
+    later run there was killed sooner. Only folders named with a PID (this writer's own naming) whose process
+    no longer exists, and that belong to this user, are removed; folders of live runs and older unnamed ones
+    are left alone.
+    """
+    key = str(root)
+    if key in _SWEPT_HANDOFF_ROOTS:
+        return
+    _SWEPT_HANDOFF_ROOTS.add(key)
+    try:
+        entries = list(root.glob(_HANDOFF_PREFIX + 'p*-*'))
+    except OSError:
+        return
+    uid = os.getuid() if hasattr(os, 'getuid') else None
+    for entry in entries:
+        pid_text = entry.name[len(_HANDOFF_PREFIX) + 1:].split('-', 1)[0]
+        if not pid_text.isdigit() or int(pid_text) == os.getpid():
+            continue
+        try:
+            if uid is not None and entry.stat().st_uid != uid:
+                continue
+            os.kill(int(pid_text), 0)
+            continue                      # the owner is alive
+        except ProcessLookupError:
+            shutil.rmtree(entry, ignore_errors=True)
+        except (PermissionError, OSError):
+            continue
+
+
 def _handoff_root(fields: Mapping[str, Any], fallback: Path) -> Path:
     """Where raw field words wait for rw_mpas_stream: memory, not the disk.
 
@@ -149,6 +188,8 @@ def _handoff_root(fields: Mapping[str, Any], fallback: Path) -> Path:
     try:
         need = sum(np.asarray(v.values).nbytes if isinstance(v, HistoryField) else
                    getattr(v, 'nbytes', 0) for v in fields.values())
+        if root.is_dir() and os.access(root, os.W_OK):
+            _sweep_dead_handoffs(root)
         if root.is_dir() and os.access(root, os.W_OK) and shutil.disk_usage(root).free > 2*need:
             return root
     except OSError:
@@ -209,7 +250,7 @@ def write_stream(path: str | Path, stream: Stream | str, mesh: object,
     scratch_root.mkdir(parents=True,exist_ok=True)
     handoff_root = _handoff_root(fields, scratch_root)
     with tempfile.TemporaryDirectory(prefix='.mpas-stream-',dir=scratch_root) as temporary, \
-         tempfile.TemporaryDirectory(prefix='.mpas-handoff-',dir=handoff_root) as raw:
+         tempfile.TemporaryDirectory(prefix=f'{_HANDOFF_PREFIX}p{os.getpid()}-',dir=handoff_root) as raw:
         stage=Path(temporary); handoff_dir=Path(raw); variables=[]; dimension_order=[]
         for index,name in enumerate(names):
             definition=field_definition(name,physics=physics)
@@ -327,7 +368,11 @@ def write_stream(path: str | Path, stream: Stream | str, mesh: object,
             shutil.copyfile(path,staged)
         attrs=_json_attrs(getattr(mesh,'attrs',{}))
         if global_attrs: attrs.update(_json_attrs(global_attrs))
-        request={'operation':'write','path':str(staged),'format':stream.options.get('io_type','pnetcdf'),
+        _fmt = stream.options.get('io_type', 'pnetcdf')
+        _max_bytes = max((int(np.asarray(v.values).nbytes) if isinstance(v, HistoryField) else int(getattr(v, 'nbytes', 0)) for v in fields.values()), default=0)
+        if _fmt == 'pnetcdf' and (_max_bytes >= (1 << 31) or os.environ.get('WOOF_HEX_NETCDF_64BIT', '0').strip().lower() in ('1', 'true', 'yes', 'on')):
+            _fmt = 'pnetcdf,cdf5'
+        request={'operation':'write','path':str(staged),'format':_fmt,
                'dimensions':{d:sizes[d] for d in dimension_order},'dimension_order':dimension_order,
                'variables':variables,'global_attrs':attrs,'global_attribute_order':list(attrs),
                # MPAS v8.4.2 SMIOL smiol.c:15,341-344 reserves a 128 KiB

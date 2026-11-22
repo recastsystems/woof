@@ -49,16 +49,16 @@ noahmp_bareflux_options.cuh, noahmp_fluxprep.cu, noahmp_leaves.cu,
 noahmp_radiation.cu, noahmp_snow.cu, noahmp_soilwater.cu, noahmp_vegeflux.cu,
 noahmp_vegprecip.cu, noahmp_water.cu, noahmp_water_options.cuh, p3_gnu239.cuh,
 rrtmg_lw.cu, rrtmg_sw.cu, rrtmgp_libm.cuh, thompson_aerosol_libm.cuh,
-tiedtke_support.cuh, vert_interp.cu. FDLIBM audited carriers (30 files):
+tiedtke_support.cuh, vert_interp.cu. FDLIBM audited carriers (31 files):
 atan_scalar_flt32.cuh, dudhia_sw.cu, flt32_log10_tanh.cuh,
 gf_wrf_normalization.cuh, km5_math.cuh, log10_flt32.cuh, mynn_libm.cuh,
 mynn_pbl.cu, mynn_surface_libm.cuh, noahmp_bareflux.cu, noahmp_energy.cu,
 noahmp_fluxprep.cu, noahmp_glacier.cu, noahmp_leaves.cu, noahmp_vegeflux.cu,
 nssl2_diagnostics.cu, nssl2_shape_diagnostics.cu, p3_gnu239.cuh,
 portable_libm64.cuh, ruc.cu, scalar_atan.cuh, sfclay.cu, sfclay_classic.cuh,
-shinhong.cu, tempo/tempo_common.cuh, terrain_drag.cu,
-thompson_aerosol_libm.cuh, thompson_classic.cu, thompson_fork.cu,
-ysu_480_topo.cuh.
+shinhong.cu, tempo/tempo_common.cuh, tempo325/tempo_common.cuh,
+terrain_drag.cu, thompson_aerosol_libm.cuh, thompson_classic.cu,
+thompson_fork.cu, ysu_480_topo.cuh.
 
 The wrf_vi_pressure_log helper in vert_interp.cu uses glibc_flt32.cuh's Arm
 logf tables and reproduces its range reduction and polynomial with fused
@@ -66,8 +66,8 @@ binary64 operations.  thompson_aerosol_libm.cuh's expf and powf cores run
 on glibc_flt32.cuh's Arm exp2f and powf tables.  The binary64 log10, log1p,
 atan and atan2 reductions (FDLIBM) appear in thompson_aerosol_libm.cuh, and
 the binary64 log10 also in thompson_classic.cu;
-tempo/tempo_common.cuh carries FDLIBM's binary64 log10 (e_log10.c) as
-TEMPO's device log10, and portable_libm64.cuh carries the log1pf (s_log1pf.c)
+tempo/tempo_common.cuh and tempo325/tempo_common.cuh carry FDLIBM's binary64
+log10 (e_log10.c) as TEMPO's device log10, and portable_libm64.cuh carries the log1pf (s_log1pf.c)
 and binary64 log1p (s_log1p.c, through Rust libm's log1p.rs) of its Rust libm
 transcription, whose MIT grant the repository NOTICE records beside it.
 dudhia_sw.cu's log10f is the same reduction as log10_flt32.cuh's.

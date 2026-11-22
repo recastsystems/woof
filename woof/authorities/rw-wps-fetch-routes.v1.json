@@ -8,6 +8,10 @@
     "ecmwf-forecasts.s3.eu-central-1.amazonaws.com": {
       "throttle": {"statuses": [503], "codes": ["SlowDown"], "first_wait_s": 2, "max_wait_s": 60, "budget_s": 600, "why": "ECMWF's AWS mirror answers S3's 503 SlowDown to about half of all requests whatever the object: 24 of 48 one-kilobyte range GETs to four objects at a low rate on 2026-09-30, and an IFS fetch of the 20 Sep 00Z cycle gave up on one file after 5 tries in 30 s while a plain GET of the same object answered 200. SlowDown is the host asking this client to slow down, so each further ask of a file waits a doubling, jittered interval from 2 s up to 60 s, for up to 600 s per file, before the file is refused."}
     },
+    "opendata.dwd.de": {
+      "transfer": {"idle_s": 20, "slow_after_s": 6, "slow_below_bytes_per_s": 200000, "fresh_connections": 2, "wide_files_in_flight": 24, "wide_below_bytes_per_s": 1000000, "sample": 10, "sample_min_bytes": 1000000},
+      "why": "DWD's open-data server serves a new ICON cycle slowly on some nights. 2026-11-11 02:00-05:30Z it served the 00Z cycle at a median 3.9 s per 3.3 MB object (0.6-0.7 MB/s per file, single objects up to 54 s at 50-70 kB/s) against 1.3 s (2.5 MB/s) on a normal night, so a WOOF ICON start (236 objects, 732 MB, 10 files in flight) took 132-190 s instead of 35 s. The slowness was per connection, not a limit on this client: a single desktop connection got 67-159 kB/s while ten box connections each got about 700 kB/s. So: a connection that waits 20 s for a byte, or averages under 200 kB/s after 6 s (about the slowest 5 percent of files that night, none on a normal night), asks for the rest of its file by byte range on a fresh connection, at most twice per file, and no byte is fetched twice. And once the last 10 files of at least 1 MB averaged under 1.0 MB/s, up to 24 files move at once: over files of 1 MB and more, normal nights (four ICON starts, 2026-11-11) never went below 1.30 MB/s over any 10 files and slow ones began at 0.46-0.63 MB/s; with the small invariants counted, a normal night's first ten read 1.19 MB/s and widened. Polite by bytes: 24 connections at that night's 0.6-0.7 MB/s draw 14-17 MB/s, less than the 21 MB/s ten connections draw on a normal night, and a fast night keeps ten."
+    },
     "nomads.ncep.noaa.gov": {
       "concurrent": 2,
       "missing_path": {"statuses": [403], "why": "NCEP's operational server answers 403, not 404, for a path under a cycle directory it has not created yet (A136 L1 check, 2026-09-30: every lead of a cycle not yet started). It also answers 403 to a client it has blocked, so a 403 here is only 'not there or refused': a lead counts as not posted on it when another host on the ladder said the lead is not there, and as not heard otherwise."},
@@ -1697,7 +1701,8 @@
       "measured": "2026-08-17",
       "hosts": [
         {"name": "ecmwf", "base": "https://data.ecmwf.int/forecasts", "default": true, "retention_hours": 72, "why": "the publisher's own door, which keeps its last four days of cycles and publishes each one first; 72 h counted, measured 2026-09-25, so an older cycle goes straight to the mirror"},
-        {"name": "aws", "base": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com", "retention_hours": null, "why": "the mirror, which keeps every cycle the publisher's door has dropped: it serves a cycle past the door's window, and any cycle with --transport aws"}
+        {"name": "aws", "base": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com", "retention_hours": null, "why": "the mirror, which keeps every cycle the publisher's door has dropped: it serves a cycle past the door's window, and any cycle with --transport aws"},
+        {"name": "google", "base": "https://storage.googleapis.com/ecmwf-open-data", "retention_hours": null, "why": "the official open-data mirror, holding the same keys and bytes as the AWS mirror and every cycle back to at least 2025-01 (measured 2026-11-10, 206 on each range read); the last rung, so an older cycle has a second archive when the AWS mirror answers 503 SlowDown to every GET, as it did on 2026-11-10 (WOOF run_3a2359c356a18cbc)"}
       ],
       "host_note": "the 0.4 and 0.25 degree open sets use CC-BY-4.0. IFS publishes LATER than AIFS; a cycle whose aifs-single tree is complete may hold only a BUFR track file here.",
       "publication_era_note": "A13: intervals are inclusive at valid_from and exclusive at valid_until, in UTC. Layout, pressure level, soil layer and forecast horizon transitions were measured in the mirror listings and indexes. The earliest preparable cycle and refusal advice are derived from the first era without prep_refusal.",
@@ -2120,8 +2125,8 @@
           "name": "google",
           "base": "https://storage.googleapis.com/ecmwf-open-data",
           "default": true,
-          "retention_hours": 72,
-          "why": "the official open-data mirror; measured 2026-10-24 from a rented box at 90 MB/s against 24 MB/s from the AWS mirror for the same 97 MB object, and the 0.1-degree pair is about 440 MB per lead"
+          "retention_hours": null,
+          "why": "the official open-data mirror, and an archive: measured 2026-11-10 it served the 2026-10-21 06Z 0.1-degree objects 20 days on and 0.25-degree oper, enfo and aifs-single cycles back to 2025-01 (206 on each range read), while the AWS mirror answered 503 SlowDown to every GET. The 72 h figure this row carried was wrong, and it left an older cycle with the AWS mirror alone (WOOF run_3a2359c356a18cbc). Measured 2026-10-24 from a rented box at 90 MB/s against 24 MB/s from the AWS mirror for the same 97 MB object"
         },
         {
           "name": "aws",
@@ -2322,8 +2327,8 @@
           "name": "google",
           "base": "https://storage.googleapis.com/ecmwf-open-data",
           "default": true,
-          "retention_hours": 72,
-          "why": "The official open-data mirror provides quoted strong object tags and rejects a mismatched If-Match. Live index and range requests verified 2026-10-02. Only a recent rolling window is assumed."
+          "retention_hours": null,
+          "why": "The official open-data mirror provides quoted strong object tags and rejects a mismatched If-Match. Live index and range requests verified 2026-10-02. Only a recent rolling window is assumed. It is also an archive, not a 72 h door: measured 2026-11-10 it served 0.25-degree enfo cycles 20 days old and older cycles back to 2025-01, while the AWS mirror answered 503 SlowDown to every GET (WOOF run_3a2359c356a18cbc)."
         },
         {
           "name": "aws",
@@ -2480,7 +2485,8 @@
       "measured": "2026-08-17",
       "hosts": [
         {"name": "ecmwf", "base": "https://data.ecmwf.int/forecasts", "default": true, "retention_hours": 72, "why": "the publisher's own door, which keeps its last four days of cycles and publishes each one first; 72 h counted, measured 2026-09-25, so an older cycle goes straight to the mirror"},
-        {"name": "aws", "base": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com", "retention_hours": null, "why": "the mirror, which keeps every cycle the publisher's door has dropped: it serves a cycle past the door's window, and any cycle with --transport aws"}
+        {"name": "aws", "base": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com", "retention_hours": null, "why": "the mirror, which keeps every cycle the publisher's door has dropped: it serves a cycle past the door's window, and any cycle with --transport aws"},
+        {"name": "google", "base": "https://storage.googleapis.com/ecmwf-open-data", "retention_hours": null, "why": "the official open-data mirror, holding the same keys and bytes as the AWS mirror and every cycle back to at least 2025-01 (measured 2026-11-10, 206 on each range read); the last rung, so an older cycle has a second archive when the AWS mirror answers 503 SlowDown to every GET, as it did on 2026-11-10 (WOOF run_3a2359c356a18cbc)"}
       ],
       "cycle_hours": [0, 6, 12, 18],
       "publication_lag": [

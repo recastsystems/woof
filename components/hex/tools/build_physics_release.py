@@ -367,7 +367,7 @@ def main():
         value['pin_sets']=['rrfs'] if key.endswith('-rrfs') else ['v8.4.2'] if key in ('native-library','mpas-source') else list(rb.PIN_SETS)
         resources[key]=value
     pins={'schema':SCHEMA,'image':IMAGE,'platform':'manylinux_2_28_x86_64',
-          'release_assets':{'repository':'FahrenheitResearch/gpuwm-hex','tag':'physics-resources-20261017'},
+          'release_assets':{'repository':'recastsystems/gpuwm-hex','tag':'physics-resources-20261017'},
           'resources':resources,'assets':assets,'upstream_files':list(upstream.values()),
           'licence':{'noahmp':'stubbed; UCAR code is not compiled or shipped',
                      'gnu_runtime':{'attempt_flags':['-static-libgfortran','-static-libgcc'],

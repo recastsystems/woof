@@ -1959,7 +1959,13 @@ fn build_windowed_render_request(
     source: SourceId,
 ) -> MapRenderRequest {
     let mut render_request = if product.is_uh() {
-        MapRenderRequest::for_core_weather_product(computed.field.clone(), WeatherProduct::Uh)
+        // The UH tracks: the UH ramp without the haze below 25 m2/s2, outlined
+        // at 75 (plot_design::apply_uh_track_style); RUSTWX_UH_FILL=off keeps
+        // the 2.9.13 look.
+        let mut tracks =
+            MapRenderRequest::for_core_weather_product(computed.field.clone(), WeatherProduct::Uh);
+        crate::plot_design::apply_uh_track_style(&mut tracks, &computed.field.values);
+        tracks
     } else {
         MapRenderRequest::from_core_field(computed.field.clone(), computed.scale.clone())
     };
@@ -2011,6 +2017,11 @@ fn build_windowed_render_request(
             | HrrrWindowedProduct::Dewpoint2m0to48hRange
     ) {
         render_request.legend.mode = LegendMode::Stepped;
+    }
+    if product.is_qpf() {
+        // One listed colour per band, every band the same length on the bar
+        // (`crate::qpf::qpf_inches_scale` names the breakage).
+        render_request.legend.mode = crate::qpf::qpf_legend_mode();
     }
     render_request.projected_domain = Some(rustwx_render::ProjectedDomain {
         x: projected.projected_x.clone(),

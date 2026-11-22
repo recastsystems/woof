@@ -224,8 +224,8 @@ def test_the_gate_sentence_lives_where_the_release_cut_drops_it():
     excluded = (REPO_ROOT / "RELEASE-EXCLUDE.txt").read_text(
         encoding="utf-8"
     ).splitlines()
-    assert "docs/superpowers/**" in excluded
-    assert INTERNAL_SPEC.startswith("docs/superpowers/")
+    assert "docs/internal/**" in excluded
+    assert INTERNAL_SPEC.startswith("docs/internal/")
     proof = _internal()["public_clone_proof"]
     assert proof["status"] == "run"
     assert proof["subtree_absent_from_public_clone"] is True

@@ -22,7 +22,7 @@ def dump(payload, stream):
 
     The block size, zlib level and order are unchanged, so the file bytes do not depend on the worker
     count. THE COST THIS REMOVES: eight workers in lockstep batches (compress a batch, then write it)
-    left the export of a 3.5 GB carrier at ~1-2 cores for ~20 s at every move (box-aws2x 2026-10-24).
+    left the export of a 3.5 GB carrier at ~1-2 cores for ~20 s at every move (a two-card cloud machine, 2026-10-24).
     """
     from collections import deque
     buffers = []

@@ -2589,9 +2589,24 @@ __device__ void mynn_boulac_elblavg(
                             tl = MYNN_DIV(MYNN_DIV(
                                 MYNN_ADD(b, sqrtf(radical)), bbb), beta);
                         } else if (thetaw[izz] != thetaw[iz]) {
+#if defined(MYNN_BOULAC_DOWN_SIGN)
+                            // Correct-mode ML1 (RunConfig.mynn_boulac_down_sign,
+                            // default on): the parcel sinks tl into a layer of
+                            // constant theta with energy beta*(theta(iz) -
+                            // theta(izz))*tl, the bbb -> 0 limit of the branch
+                            // above.  NCAR/MYNN-EDMF 399f50f (PR 94, issue 93;
+                            // in v6.1.1 2b2da61, Apache-2.0).  WRF v4.6.1
+                            // (module_bl_mynn.F) divides by theta(izz) -
+                            // theta(iz): tl < 0 and dld short by 2*tl.  Exact
+                            // mode compiles the WRF line.
+                            tl = MYNN_DIV(MYNN_SUB(qtke[iz], zdo_sup),
+                                MYNN_MUL(beta,
+                                         MYNN_SUB(thetaw[iz], thetaw[izz])));
+#else
                             tl = MYNN_DIV(MYNN_SUB(qtke[iz], zdo_sup),
                                 MYNN_MUL(beta,
                                          MYNN_SUB(thetaw[izz], thetaw[iz])));
+#endif
                         } else {
                             tl = 0.0f;
                         }

@@ -103,3 +103,42 @@ height field. Fitch's fast ATAN uses REAL32, as the native expression does.
 The strict real-input replay remains the authority for exact output words;
 `tests/test_wind_fast_quadrature_gpu.py` checks the cooperative integration
 against the original serial quadrature in fast numerics.
+
+## WRF v4.8.0 referee
+
+WRF v4.8.0 (06d4240ae989) ships `phys/module_wind_fitch.F` byte-identical to
+the c9d69bf7 module above (sha256 0857dc9e...), turns the induction correction
+on by default (Registry.EM_COMMON `windfarm_induction` default 1) and writes
+THRUST on every Fitch run (package `fitchscheme`: state power,thrust).
+`windfarm_fitch_version = "wrf_480"` (the default) follows it:
+woof/core/wind_fitch480.py with woof/core/kernels/wind_fitch_480.cu
+(`fitch_induction_480`, `fitch_original_480`). `"wrf_471"` keeps WindFarm and
+wind_mav.cu's `fitch_induction` unchanged.
+
+`native480/fitch_replay.F90` links the referee build's own compiled
+`module_wind_fitch.o` (from its `libwrflib.a`) and feeds it the captured real
+inputs of the induction case above; it does no arithmetic of its own.
+Build it inside `localhost/wrfref2404:1` against a pinned strict build tree:
+
+```sh
+bash native480/build_replay.sh /w/build/WRF-4.8.0-serial-pristine replay480 -DW480
+bash native480/build_replay.sh /w/build/WRF-4.7.1-serial-pristine replay471
+./replay480 fitch-native.in n480-ind1.out 1
+./replay480 fitch-native.in n480-ind0.out 0
+./replay471 fitch-native.in n471.out
+```
+
+Then, with a capture directory holding `fitch-native.in` and the referee's
+output renamed `fitch-native.out`:
+
+```sh
+export PYTHONPATH="$PWD" GPUWM_WRF_EXACT=1 GPUWM_WRF_GLIBC=2.39
+python tools/wind_mav_wrf471_oracle/replay_fitch_480.py CAP_IND1 --induction 1
+python tools/wind_mav_wrf471_oracle/replay_fitch_480.py CAP_IND0 --induction 0
+python tools/wind_mav_wrf471_oracle/bench_fitch_480.py NATIVE_DIR out.json   # production routing
+```
+
+Native `REAL**3.` compiles to glibc `powf(x, 3.0f)` under the strict recipe
+(GCC folds only `**2.` to `x*x` without unsafe math). Spelling the cube as
+`(x*x)*x` leaves 2 words different on this capture's original branch
+(`diag_cube` in the referee's evidence); the 4.8.0 kernels call glibc's `powf`.

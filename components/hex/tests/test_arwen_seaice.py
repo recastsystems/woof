@@ -8,7 +8,7 @@ import pytest
 @pytest.fixture
 def cp():
     if os.environ.get("S2S_SURFACE_GPU") != "1":
-        pytest.skip("requires GPU mutex and S2S_SURFACE_GPU=1")
+        pytest.skip("requires a CUDA card to itself and S2S_SURFACE_GPU=1")
     import cupy
     return cupy
 

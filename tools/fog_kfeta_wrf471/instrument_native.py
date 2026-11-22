@@ -16,7 +16,7 @@ for kind in ('sf','bl'):
     exec_anchor="   IF     (mminlu" if kind=='sf' else '  grav_settling2 ='
     start=s.index(exec_anchor)
     extra='''   cap_calls=cap_calls+1
-   CALL get_environment_variable('WOOF_CAPTURE_DIR',cap_dir,status=cap_status)
+   CALL get_environment_variable('GPUWM_CAPTURE_DIR',cap_dir,status=cap_status)
    cap_now = .false.
    IF (cap_status==0 .AND. .NOT. cap_done .AND. cap_calls>=6) THEN
       IF (MAXVAL(qc_curr(its:ite,kts:kte,jts:jte))>1.e-8 .OR. cap_calls>=30) THEN
@@ -58,7 +58,7 @@ decl='''   INTEGER :: cap_unit,cap_status
 assert anchor in s
 s=s.replace(anchor,anchor+decl,1)
 anchor='! New trigger function\n     IF (trigger.eq.2) THEN'
-extra='''   CALL get_environment_variable('WOOF_CAPTURE_DIR',cap_dir,status=cap_status)
+extra='''   CALL get_environment_variable('GPUWM_CAPTURE_DIR',cap_dir,status=cap_status)
    cap_now=.false.
    IF (cap_status==0 .AND. .NOT. cap_done .AND. KTAU>=31) THEN
       cap_now=.true.

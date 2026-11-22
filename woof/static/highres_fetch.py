@@ -805,11 +805,34 @@ def _read_sidecar(path: Path) -> dict | None:
         digest = payload.get("sha256")
         if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
             return None
-        if sha256_file(path) != digest:
+        if _verified_digest(path, "sha256") != digest:
             return None
     except (OSError, ValueError):
         return None
     return payload
+
+
+#: Digests this process already read, keyed on the file's identity
+#: (resolved path, size, mtime in ns, inode) and the algorithm.  A cached
+#: payload is checked against its sidecar on every cache hit, and the land
+#: cover is a 2.28 GB GeoTIFF: one build of a sub-km grid read it in full
+#: three times (sidecar SHA-256 twice, pinned MD5 once), 4.2 s of a 5.1 s
+#: build as measured, and a domain tree builds each grid twice.  A file
+#: replaced or rewritten gets a new identity and is read again.
+_VERIFIED_DIGESTS: dict[tuple, str] = {}
+
+
+def _verified_digest(path: Path, algorithm: str) -> str:
+    path = Path(path)
+    stat = path.stat()
+    key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns,
+           stat.st_ino, algorithm)
+    digest = _VERIFIED_DIGESTS.get(key)
+    if digest is None:
+        digest = (sha256_file(path) if algorithm == "sha256"
+                  else _md5_stream(path))
+        _VERIFIED_DIGESTS[key] = digest
+    return digest
 
 
 def _write_sidecar(path: Path, payload: dict) -> None:
@@ -1388,7 +1411,9 @@ def _require_cut_frame_window(bbox: FootprintBBox) -> None:
 
     - A domain ON the line has a narrow continued range (179.28 .. 180.72
       and the like).  The tiles either side of the line would be pasted a
-      planet apart, and moving the domain off 180 degrees builds.
+      planet apart.  Static production never hands a writer this
+      footprint: it builds it turned half a turn
+      (:func:`dateline_rotation_deg`), where the cut frame holds it.
     - A domain whose corners span 180 degrees of longitude or more has no
       continued range at all: :func:`_continued_longitude_range` reports
       it as the full -180..180 band, which the footprint margin then
@@ -1404,13 +1429,12 @@ def _require_cut_frame_window(bbox: FootprintBBox) -> None:
     once padded, and a continued range is by construction narrower than
     180.
 
-    This fires at PLAN REVIEW:
-    :func:`woof.static.highres_production._apply` calls it on the
-    footprint it has just computed, before the plan is resolved and
-    before one byte is requested, so neither domain enumerates or
-    downloads a tile it cannot mosaic.  Both window writers call it
-    again as a backstop, so no door can disagree with another about one
-    footprint.
+    The whole-band footprint is refused at PLAN REVIEW:
+    :func:`woof.static.highres_production._apply` calls this on every
+    footprint no turn holds, before one byte is requested.  Both window
+    writers call it again as a backstop, so a caller that hands a writer
+    a continued footprint directly gets this refusal rather than a
+    shifted mosaic.
     """
     if not (bbox.lon_max > 180.0 or bbox.lon_min < -180.0):
         return
@@ -1433,9 +1457,206 @@ def _require_cut_frame_window(bbox: FootprintBBox) -> None:
         "180 degrees, and the mosaic window is still written in the "
         "cut -180..180 frame, so the tiles either side of the line "
         "would be pasted a whole planet apart and the terrain would "
-        "arrive shifted.  Tile enumeration and source coverage already "
-        "handle the crossing; the window writer does not yet.  Move "
-        f"the domain off 180 degrees, {_BASELINE_WAY_OUT}")
+        "arrive shifted.  Build it turned half a turn instead "
+        "(rotate_footprint and rotate_tiles, with the grid turned by "
+        "the same angle, as static production does), "
+        f"{_BASELINE_WAY_OUT}")
+
+
+# ---------------------------------------------------------------------------
+# Dateline footprints: built in a frame turned half a turn about the pole
+# ---------------------------------------------------------------------------
+#
+# A footprint continued past 180 degrees (176.7 .. 197.0 for a Central
+# Pacific storm box) has no window in the cut -180..180 frame the writers
+# and the warp read: the warp asks the grid for each cell's longitude, gets
+# it cut into -180..180, and a window in the continued frame is then a
+# planet away from every cell east of the line.  Every projection a grid is
+# built on (Lambert, Mercator, polar) depends on longitude only through
+# ``lon - lon_0``, so turning the source tiles and the grid by the same
+# half turn changes no cell's terrain and puts the whole footprint in the
+# middle of the cut frame (176.7 .. 197.0 becomes -3.3 .. 17.0), where the
+# unchanged writers and warp build it as they build any other domain.
+# THE BREAKAGE THIS REMOVES (WOOF gate, 2026-11-12, tag nam-021d): the
+# cyclone run on the Central Pacific storm at 9.8 N 173.4 W refused in
+# prepare with "dateline-window-unbuilt" on the staged and the live release
+# alike, because its 1 km nest's statics corridor covers the whole 2,400 km
+# parent, 176.7 E .. 163.0 W.
+
+#: The turn a dateline footprint is built in.  Half a turn puts a
+#: footprint narrower than 180 degrees that crosses 180 degrees wholly
+#: inside -90 .. 90.
+DATELINE_ROTATION_DEG = 180.0
+
+_GEOTIFF_TIEPOINT_TAG = 33922
+_GEOTIFF_TRANSFORMATION_TAG = 34264
+_TIFF_DOUBLE = 12
+
+
+def dateline_rotation_deg(bbox: FootprintBBox) -> float:
+    """The longitude turn ``bbox`` is built in: 0 for a footprint the cut
+    frame holds, :data:`DATELINE_ROTATION_DEG` for one continued past 180.
+
+    A footprint that occupies every longitude (360 degrees wide once
+    padded: a domain wrapped round its projection pole) has no turn that
+    holds it and gets 0, so :func:`_require_cut_frame_window` still names
+    it."""
+    if not (bbox.lon_max > 180.0 or bbox.lon_min < -180.0):
+        return 0.0
+    if bbox.lon_max - bbox.lon_min >= 180.0:
+        return 0.0
+    return DATELINE_ROTATION_DEG
+
+
+def rotate_footprint(bbox: FootprintBBox, degrees: float) -> FootprintBBox:
+    """``bbox`` turned east by ``degrees``, its west edge in (-180, 180]."""
+    lon_min = bbox.lon_min + degrees
+    lon_max = bbox.lon_max + degrees
+    while lon_min <= -180.0:
+        lon_min, lon_max = lon_min + 360.0, lon_max + 360.0
+    while lon_min > 180.0:
+        lon_min, lon_max = lon_min - 360.0, lon_max - 360.0
+    return FootprintBBox(bbox.lat_min, bbox.lat_max, lon_min, lon_max)
+
+
+def _shift_geotiff_longitude(path: Path, delta: float) -> int:
+    """Move a GeoTIFF east by ``delta`` degrees in place: the X of every
+    tie point (ModelTiepointTag) and the X translation of a
+    ModelTransformationTag, in every IFD that carries one.  Pixels,
+    compression and every other tag are untouched.  Classic and BigTIFF,
+    either byte order.  Returns the number of tags moved; raises
+    ``ValueError`` when the file is not a TIFF or carries neither tag."""
+    import struct
+
+    moved = 0
+    with open(path, "r+b") as stream:
+        head = stream.read(16)
+        if head[:2] == b"II":
+            order = "<"
+        elif head[:2] == b"MM":
+            order = ">"
+        else:
+            raise ValueError(f"{path.name} is not a TIFF")
+        magic = struct.unpack_from(order + "H", head, 2)[0]
+        if magic == 42:
+            big, ifd = False, struct.unpack_from(order + "I", head, 4)[0]
+        elif magic == 43:
+            big, ifd = True, struct.unpack_from(order + "Q", head, 8)[0]
+        else:
+            raise ValueError(f"{path.name} is not a TIFF (magic {magic})")
+        count_fmt, entry_size, inline = (("Q", 20, 8) if big
+                                         else ("I", 12, 4))
+        seen: set[int] = set()
+        while ifd and ifd not in seen:
+            seen.add(ifd)
+            stream.seek(ifd)
+            if big:
+                entries = struct.unpack(order + "Q", stream.read(8))[0]
+            else:
+                entries = struct.unpack(order + "H", stream.read(2))[0]
+            table = stream.read(entries * entry_size)
+            next_ifd = struct.unpack(order + count_fmt,
+                                     stream.read(inline))[0]
+            for index in range(entries):
+                at = index * entry_size
+                tag, kind = struct.unpack_from(order + "HH", table, at)
+                if tag not in (_GEOTIFF_TIEPOINT_TAG,
+                               _GEOTIFF_TRANSFORMATION_TAG):
+                    continue
+                count = struct.unpack_from(order + count_fmt, table, at + 4)[0]
+                if kind != _TIFF_DOUBLE:
+                    raise ValueError(
+                        f"{path.name}: georeferencing tag {tag} is type "
+                        f"{kind}, not DOUBLE")
+                offset = struct.unpack_from(order + count_fmt, table,
+                                            at + 4 + inline)[0]
+                stream.seek(offset)
+                values = list(struct.unpack(order + f"{count}d",
+                                            stream.read(8 * count)))
+                if tag == _GEOTIFF_TIEPOINT_TAG:
+                    for point in range(count // 6):
+                        values[6 * point + 3] += delta
+                else:
+                    values[3] += delta
+                stream.seek(offset)
+                stream.write(struct.pack(order + f"{count}d", *values))
+                moved += 1
+            ifd = next_ifd
+    if not moved:
+        raise ValueError(f"{path.name} carries no GeoTIFF tie point or "
+                         "transformation to move")
+    return moved
+
+
+def rotate_tiles(tiles, degrees: float, cache_root: Path
+                 ) -> tuple[FetchedFile, ...]:
+    """Copies of one-degree source tiles turned east by ``degrees`` into
+    the frame :func:`rotate_footprint` puts their footprint in: each tile
+    moves by ``degrees`` or ``degrees - 360``, whichever lands its west
+    edge in [-180, 180).  The bytes are the tile's own with only the
+    georeferencing moved (:func:`_shift_geotiff_longitude`), cached beside
+    the derived windows by the source tile's SHA-256 and the move."""
+    out = []
+    for tile in tiles:
+        source = Path(tile.path)
+        moved_west = _geotiff_west(source) + degrees
+        delta = degrees
+        while moved_west >= 180.0:
+            moved_west, delta = moved_west - 360.0, delta - 360.0
+        while moved_west < -180.0:
+            moved_west, delta = moved_west + 360.0, delta + 360.0
+        url = f"derived:longitude {delta:+g} deg of {tile.url}"
+        target = (Path(cache_root) / "derived" / "dateline"
+                  / f"{tile.sha256[:20]}_{delta:+.0f}" / source.name)
+        cached = _cache_hit(target, url)
+        if cached is not None:
+            out.append(cached)
+            continue
+        with _derivation_writer(target) as partial:
+            cached = _cache_hit(target, url)
+            if cached is not None:
+                out.append(cached)
+                continue
+            shutil.copyfile(source, partial)
+            _shift_geotiff_longitude(partial, delta)
+            out.append(_publish_partial(partial, target, url=url))
+    return tuple(out)
+
+
+def _geotiff_west(path: Path) -> float:
+    """The west edge longitude of a GeoTIFF from its first tie point (or
+    its transformation's X translation), read without a raster library."""
+    import struct
+
+    with open(path, "rb") as stream:
+        head = stream.read(16)
+        order = "<" if head[:2] == b"II" else ">"
+        magic = struct.unpack_from(order + "H", head, 2)[0]
+        big = magic == 43
+        count_fmt, entry_size, inline = (("Q", 20, 8) if big
+                                         else ("I", 12, 4))
+        ifd = struct.unpack_from(order + ("Q" if big else "I"), head,
+                                 8 if big else 4)[0]
+        stream.seek(ifd)
+        entries = struct.unpack(order + ("Q" if big else "H"),
+                                stream.read(8 if big else 2))[0]
+        table = stream.read(entries * entry_size)
+        west = None
+        for index in range(entries):
+            at = index * entry_size
+            tag, kind = struct.unpack_from(order + "HH", table, at)
+            if tag not in (_GEOTIFF_TIEPOINT_TAG, _GEOTIFF_TRANSFORMATION_TAG):
+                continue
+            offset = struct.unpack_from(order + count_fmt, table,
+                                        at + 4 + inline)[0]
+            stream.seek(offset)
+            values = struct.unpack(order + "4d", stream.read(32))
+            west = values[3]
+            if tag == _GEOTIFF_TIEPOINT_TAG:
+                break
+    if west is None:
+        raise ValueError(f"{path.name} carries no GeoTIFF tie point")
+    return float(west)
 
 
 def derive_global_terrain_window(tiles, bbox: FootprintBBox,
@@ -1629,6 +1850,10 @@ def _human_bytes(count: int) -> str:
 
 
 def _md5_file(path: Path) -> str:
+    return _verified_digest(path, "md5")
+
+
+def _md5_stream(path: Path) -> str:
     digest = hashlib.md5(usedforsecurity=False)
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(_CHUNK), b""):

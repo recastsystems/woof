@@ -55,7 +55,7 @@ url = "https://www.nco.ncep.noaa.gov/pmb/codes/nwprod/hrrr.v4.1.21/fix/conus/hrr
 # (PROVENANCE.md).
 # The Hugging Face mirror object is listed last: it is not published yet
 # (publishing it is a public act awaiting approval) and answers 404 until then.
-mirrors = ["https://github.com/FahrenheitResearch/arwen/releases/download/v2.8.7/hrrr-conus-v4-hrrr_geo_em.d01.nc", "https://huggingface.co/datasets/deepguess/wps-geog-arwen/resolve/main/hrrr-conus-v4-hrrr_geo_em.d01.nc"]
+mirrors = ["https://github.com/recastsystems/arwen/releases/download/v2.8.7/hrrr-conus-v4-hrrr_geo_em.d01.nc", "https://huggingface.co/datasets/deepguess/wps-geog-arwen/resolve/main/hrrr-conus-v4-hrrr_geo_em.d01.nc"]
 sha256 = "a785b53fdb8493e376b88ece6e166ddd8046588dd1c0062181141bf2b012f6e2"
 bytes = 1112724420
 fields = [

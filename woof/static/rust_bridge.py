@@ -14,7 +14,7 @@ Why ctypes rather than pyo3: same ruling as
 a cdylib behind ctypes; one loading discipline, one staging path, one
 ABI-marker rule, no per-interpreter builds.
 
-Default-on contract (WOOF's fixed-means-default law): once a lane
+Default-on contract (WOOF-ArWen's fixed-means-default law): once a lane
 lands, the bare default path for its entry points is this bridge.  The
 pure-Python implementation stays importable as the parity reference
 and as an explicit fallback (``WOOF_STATIC_PYTHON=1``), and every use
@@ -658,6 +658,31 @@ def build_orographic(grid_handle: int, request: dict,
                  ctypes.c_uint32(halo_code), ctypes.byref(handle)),
            "build_orographic")
     return int(handle.value)
+
+def gwdo_wps281(topo_dir: str, lat, lon, dx: float, dy: float):
+    """WRF v4.8.0's gwd_opt = 1 statistics (WPS PR #281): an (11, n) float32 array in the order ELVMAX, VAR,
+    CON, OA1-4, OL1-4 for the ``n`` mass points ``lat``/``lon`` (float32 degrees)."""
+    import numpy as np
+
+    library = load()
+    if not hasattr(library, "gpuwm_static_gwdo_wps281"):
+        raise StaticBridgeError(
+            "the staged static-fields library predates WRF v4.8.0's ELVMAX producer (WPS PR #281), so "
+            "gwd_opt = 1 with gwdo_version = 'wrf_480' would run with no drag anywhere; restage the rebuilt "
+            "bridge or rebuild from this checkout: " + _checkout_build_command())
+    lat = np.ascontiguousarray(lat, dtype=np.float32)
+    lon = np.ascontiguousarray(lon, dtype=np.float32)
+    if lat.shape != lon.shape or lat.ndim != 1 or lat.size == 0:
+        raise ValueError("gwdo_wps281 needs equal, non-empty 1-D lat/lon arrays")
+    out = np.zeros((11, lat.size), dtype=np.float32)
+    entry = library.gpuwm_static_gwdo_wps281
+    entry.argtypes = [ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
+                      ctypes.c_float, ctypes.c_float, ctypes.c_void_p]
+    entry.restype = ctypes.c_int32
+    _check(library, entry(str(topo_dir).encode("utf-8"), lat.ctypes.data, lon.ctypes.data, lat.size,
+                          float(dx), float(dy), out.ctypes.data), "gwdo_wps281")
+    return out
+
 
 def require_extra_fields(library=None):
     """Bind the optional contract without changing native library loading."""

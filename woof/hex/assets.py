@@ -21,11 +21,13 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 
 SCHEMA = 'gpuwm-hex.on-demand-assets/v1'
 PINS = Path(__file__).resolve().parent / 'data/on-demand-assets.json'
 FROM_ENV = 'WOOF_HEX_ASSETS_FROM'
+_FETCH_ATTEMPTS = 4   # transient release-host failures retried (see _download)
 URL_ENV = 'WOOF_HEX_ASSETS_URL'
 FIRST_USE_ENV = 'WOOF_HEX_ASSETS_FIRST_USE'
 #: Read-only asset directories (os.pathsep list) searched after the run's own cache: a box image stages packs there.
@@ -137,9 +139,26 @@ def _download(name, row, source, origin, destination):
             with (Path(source) / name).open('rb') as src:
                 shutil.copyfileobj(src, dst, 1 << 20)
         else:
-            with urllib.request.urlopen(origin['url'], timeout=20) as src:
-                shutil.copyfileobj(src, dst, 1 << 20)
+            # THE BREAKAGE (hex 0.5.0 gate, 2026-11-09): one transient HTTP 504 from the release host on the kernel-pack
+            # fetch refused a fresh install's first run. A host answering 408/425/429/5xx is retried.
+            for number in range(_FETCH_ATTEMPTS):
+                try:
+                    dst.seek(0); dst.truncate()
+                    with urllib.request.urlopen(origin['url'], timeout=20) as src:
+                        shutil.copyfileobj(src, dst, 1 << 20)
+                    break
+                except urllib.error.HTTPError as error:
+                    # Only a host that ANSWERED with a transient status is retried; an unreachable host (offline,
+                    # refused) still costs one attempt, so an offline install is not slowed.
+                    if not (error.code in (408, 425, 429) or error.code >= 500) or number + 1 == _FETCH_ATTEMPTS:
+                        raise
+                    time.sleep(min(2 ** number, 15))
     verify(destination, row)
+
+
+def fetch_size(count):
+    """A download's size as a user reads it: whole MB from 1 MB up (decimal, as the pages give sizes)."""
+    return f'{count / 1e6:,.0f} MB' if count >= 1e6 else f'{max(1, round(count / 1e3)):,} kB'
 
 
 def fetch_one(name, pins, *, cache=None, from_directory=None, _staged=None):
@@ -165,6 +184,12 @@ def fetch_one(name, pins, *, cache=None, from_directory=None, _staged=None):
         if needed:
             if prepared is None:
                 prepared = Path(staging) / name
+                if source is None:
+                    # THE BREAKAGE THIS PREVENTS (0.6.0, a fresh install from the published files): a first forecast
+                    # fetched its 221 MB kernel pack for 20 s with nothing in the terminal, while the physics
+                    # tables beside it announced theirs. One line, before the bytes move.
+                    print(f'woof hex: fetching {name} ({fetch_size(row["bytes"])}, once) from {origin["url"]}',
+                          file=sys.stderr, flush=True)
                 _download(name, row, source, origin, prepared)
             verify(prepared, row)
         with _lock(target.parent / '.fetch.lock'):
@@ -479,7 +504,7 @@ def main(argv=None):
     generator = commands.add_parser('pin', help='regenerate pins from the exact release-asset bytes')
     generator.add_argument('--from', dest='from_directory', required=True, type=Path)
     generator.add_argument('--output', type=Path, default=PINS)
-    generator.add_argument('--repository', default='FahrenheitResearch/gpuwm-hex')
+    generator.add_argument('--repository', default='recastsystems/gpuwm-hex')
     generator.add_argument('--tag', default='kernel-packs-v0.4.9')
     generator.set_defaults(handler=pin)
     args = parser.parse_args(argv)

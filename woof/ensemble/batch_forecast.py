@@ -121,7 +121,11 @@ class PreparedRealEnsemble:
                           'final_stability':self.final_stability},
                 'pool_live_bytes':cp.get_default_memory_pool().used_bytes(),
                 'pool_reserved_bytes':cp.get_default_memory_pool().total_bytes(),
-                'scalar_forecast_members_advanced':0}
+                'scalar_forecast_members_advanced':0,
+                # As one run's record states them (lateral_bc.
+                # ensemble_hydrometeor_ring_receipt); None for vapour only.
+                'lateral_boundary_hydrometeors':self.tables.hydrometeor_receipt(
+                    tuple(range(self.batch.members)),through_seconds=float(self.clock.elapsed_seconds))}
 
     def consume_output_diagnostics(self):
         """Complete the original one-frame reflectivity handoff on output."""

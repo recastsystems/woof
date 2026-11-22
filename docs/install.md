@@ -85,7 +85,7 @@ coastlines or borders and reports success. A run that finds none says so
 in a `render_basemap_missing` warning event. Both scripts are idempotent: re-running reuses the existing
 `.venv` and the incremental cargo build. Run them from the checkout
 root, or standalone (piped from the raw URL), in which case they clone
-https://github.com/recastsystems/woof into `./gpuwm`
+https://github.com/recastsystems/arwen into `./gpuwm`
 (`WOOF_REPO_URL` overrides the clone source).
 
 **Interpreter.** A new `.venv` is made on free-threaded CPython 3.14t:
@@ -129,7 +129,7 @@ absent.
 POSIX:
 
 ```bash
-git clone https://github.com/recastsystems/woof woof && cd woof
+git clone https://github.com/recastsystems/arwen woof && cd woof
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -145,7 +145,7 @@ woof doctor
 Windows (PowerShell):
 
 ```powershell
-git clone https://github.com/recastsystems/woof woof; cd woof
+git clone https://github.com/recastsystems/arwen woof; cd woof
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip

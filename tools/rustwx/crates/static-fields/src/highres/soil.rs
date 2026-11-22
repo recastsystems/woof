@@ -36,11 +36,22 @@ pub fn from_baseline(baseline: &FieldSet, landmask: &Grid2)
         }).collect();
         let repair_count = repair.iter().filter(|flag| **flag).count();
         let mut fractions: Stack3 = source.clone();
-        if repair_count > 0 {
-            if !donors.iter().any(|flag| *flag) {
+        // Soil the selected geography calls water on every cell is a grid
+        // over open sea: its new land (an islet the land cover finds) has
+        // no soil to take, and the merge keeps it water, because the
+        // baseline has no land to donate its climatology either.  Left
+        // here as the geography has it.  Water soil beside land soil the
+        // mask calls water is a geography that disagrees with itself, and
+        // that is still refused.
+        let all_water_soil = dominant.data.iter().all(|category| *category == 14.0);
+        let mut without_donor = 0;
+        if repair_count > 0 && !donors.iter().any(|flag| *flag) {
+            if !all_water_soil {
                 return Err(StaticError::Invalid(format!(
                     "{fraction_name} selected WPS soil has {repair_count} land cells with water or missing soil and no land-soil donor")));
             }
+            without_donor = repair_count;
+        } else if repair_count > 0 {
             let (donor_y, donor_x) = super::nearest_donors(&donors, ny, nx)?;
             for cell in 0..n {
                 if repair[cell] {
@@ -66,7 +77,8 @@ pub fn from_baseline(baseline: &FieldSet, landmask: &Grid2)
         audit.insert(layer.into(), serde_json::json!({
             "source": "selected WPS geography",
             "retained_land_cells": donors.iter().filter(|flag| **flag).count(),
-            "water_soil_land_cells_from_nearest_land": repair_count,
+            "water_soil_land_cells_from_nearest_land": repair_count - without_donor,
+            "water_soil_land_cells_without_donor": without_donor,
             "water_cells": water_count,
         }));
     }
@@ -101,11 +113,38 @@ mod tests {
 
     #[test]
     fn refuses_water_soil_on_land_without_donors() {
+        // Land soil exists, but only where the mask says water: the
+        // geography disagrees with itself.
         let mut baseline = FieldSet::default();
-        let mut source = Stack3 { planes: 16, ny: 1, nx: 1, data: vec![0.; 16] };
-        source.data[13] = 1.;
+        let mut source = Stack3 { planes: 16, ny: 1, nx: 2, data: vec![0.; 32] };
+        source.data[13 * 2] = 1.;
+        source.data[2 * 2 + 1] = 1.;
         baseline.fields.insert("SOILCTOP".into(), Field::Stack(source));
-        let mask = Grid2 { ny: 1, nx: 1, data: vec![1.] };
+        let mask = Grid2 { ny: 1, nx: 2, data: vec![1., 0.] };
         assert!(from_baseline(&baseline, &mask).unwrap_err().to_string().contains("no land-soil donor"));
+    }
+
+    #[test]
+    fn open_sea_soil_leaves_new_land_without_a_donor_to_the_merge() {
+        // A grid over open sea: water soil on every cell, and the land
+        // cover finds one islet.  Nothing to donate; no donor search.
+        let mut baseline = FieldSet::default();
+        let mut source = Stack3 { planes: 16, ny: 2, nx: 2, data: vec![0.; 64] };
+        for cell in 0..4 {
+            source.data[13 * 4 + cell] = 1.;
+        }
+        for name in ["SOILCTOP", "SOILCBOT"] {
+            baseline.fields.insert(name.into(), Field::Stack(source.clone()));
+        }
+        let mask = Grid2 { ny: 2, nx: 2, data: vec![0., 1., 0., 0.] };
+        let (fields, audit) = from_baseline(&baseline, &mask).unwrap();
+        let Field::Plane(dominant) = &fields.fields["SCT_DOM"] else { panic!() };
+        assert!(dominant.data.iter().all(|category| *category == 14.));
+        assert_eq!(audit["top_0_30cm"]["water_soil_land_cells_without_donor"], 1);
+        assert_eq!(audit["top_0_30cm"]["water_soil_land_cells_from_nearest_land"], 0);
+        // And a grid with no land at all needs no donor either.
+        let sea = Grid2 { ny: 2, nx: 2, data: vec![0.; 4] };
+        let (_, audit) = from_baseline(&baseline, &sea).unwrap();
+        assert_eq!(audit["top_0_30cm"]["water_soil_land_cells_without_donor"], 0);
     }
 }

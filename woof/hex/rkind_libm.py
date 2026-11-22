@@ -21,7 +21,7 @@ field per snapshot (the sites where libimf itself is off correct rounding).
 
 For the byte-identity authority proof the hooks below can be rebound to a
 ctypes bridge over the exact libimf the reference executable linked
-(the proving RTX 5090), driving the residue to zero without changing the shipped
+(an RTX 5090), driving the residue to zero without changing the shipped
 default.
 """
 
@@ -82,7 +82,7 @@ def _sinf_correctly_rounded(phase: FloatArray) -> FloatArray:
 
 
 #: Rebindable hooks.  Default: correctly rounded via float64 (the pinned
-#: defined behaviour).  The proving RTX 5090 authority ladder may rebind these to the
+#: defined behaviour).  The RTX 5090 authority ladder may rebind these to the
 #: reference executable's own libimf via ctypes to prove full byte identity.
 powf_rkind: Callable[[FloatArray, float], FloatArray] = _powf_correctly_rounded
 sinf_rkind: Callable[[FloatArray], FloatArray] = _sinf_correctly_rounded
@@ -98,14 +98,14 @@ __all__ = [
 def wsm6_device_math_header() -> str:
     """Return the WSM6 composition of existing shared device operators.
 
-    Retained p2-wsm6 qualification
+    The retained WSM6 qualification
     records whole WSM6 and forecast results separately from broad math ABI
     differences; this composition is not a universal glibc identity claim.
     Build with direct NVRTC and --fmad=false --ftz=false.
     """
     return r"""// ======================================================================
 // THIRD-PARTY NOTICE.  Parts of this file are hand transcriptions of
-// third-party work.  WOOF distributes the file under the Apache License
+// third-party work.  WOOF-ArWen distributes the file under the Apache License
 // 2.0; the notices below belong to the transcribed parts and are kept
 // here because their own licences require it.  Full texts are in the
 // repository NOTICE and in the licenses/ directory.
@@ -130,7 +130,7 @@ def wsm6_device_math_header() -> str:
 //
 //   NO FDLIBM CODE REMAINS IN THIS FILE.  It carried transcriptions of
 //   FDLIBM's expm1f (s_expm1f.c) and lgammaf reduction (e_lgammaf_r.c)
-//   through WOOF 2.6.5; both were deleted at 2.6.6 with the gamma block
+//   through WOOF-ArWen 2.6.5; both were deleted at 2.6.6 with the gamma block
 //   that was their only caller, so the Sun notice that had to travel with
 //   them travels no longer -- there is nothing here for it to attach to.
 //   The notice is unchanged and still reproduced, for the twelve files
@@ -140,8 +140,8 @@ def wsm6_device_math_header() -> str:
 //   gpuwm/core/kernels/LICENSE-third-party.txt.
 //
 //   Nothing else in this file is a transcription of anything.  gfk_d2f_rn
-//   is WOOF's own subnormal-rounding countermeasure and gfk_tgamma is
-//   WOOF's own correctly rounded gamma (see its block below and
+//   is WOOF-ArWen's own subnormal-rounding countermeasure and gfk_tgamma is
+//   WOOF-ArWen's own correctly rounded gamma (see its block below and
 //   docs/gf_gamma_known_delta.md); both are Apache-2.0 original work.
 // ======================================================================
 // glibc 2.39 float32 transcendentals, shared device code.
@@ -340,7 +340,7 @@ __device__ float gfk_exp(float x)
 // caller anywhere in this tree was the earlier gamma this file used to end
 // with, which used all three on its way to Gamma; with nothing else calling
 // them they had no reason to stay.  That earlier gamma is
-// gone, and WOOF's own gamma that replaced it evaluates no logarithm, no
+// gone, and WOOF-ArWen's own gamma that replaced it evaluates no logarithm, no
 // exponential and no exp2 at all, so all three functions became dead to the
 // physics and survived only as slots of the gf_libm_unary_probe TEST
 // kernel.  Dead
@@ -443,10 +443,10 @@ __device__ float gfk_pow(float x, float y)
 }
 
 // ==========================================================================
-// gfk_tgamma -- WOOF's own float32 gamma.  ORIGINAL WORK, Apache-2.0.
+// gfk_tgamma -- WOOF-ArWen's own float32 gamma.  ORIGINAL WORK, Apache-2.0.
 // ==========================================================================
 //
-// WHAT THIS REPLACED.  Until 2.6.5 this file ended with WOOF's earlier
+// WHAT THIS REPLACED.  Until 2.6.5 this file ended with WOOF-ArWen's earlier
 // gamma, gfk_gamma_product / gfk_gammaf_positive / gfk_tgamma, which
 // returned the same float32 words as glibc 2.39's tgammaf and so carried
 // that function's rounding errors.  Like the code below, it was this
@@ -504,7 +504,7 @@ __device__ float gfk_pow(float x, float y)
 // float32 costs up to 4 ULP on its own -- so xmb is not determined to better
 // than tens of per cent by ANY float32 build of this scheme, WRF's included.
 //
-// The divergence is NOT new to WOOF and it is NOT unbounded.  MEASURED, this
+// The divergence is NOT new to WOOF-ArWen and it is NOT unbounded.  MEASURED, this
 // code returns the same word as gpuwm/verify/gf_deep_ref.py::_tgammaf -- the
 // float32 CPU authority's own gamma model -- on ALL 59,768,833 arguments of
 // [0.25, 36], so the CPU and CUDA paths now agree bitwise where before they
@@ -4086,7 +4086,7 @@ __device__ __forceinline__ double thompson_aa_atan2(double y, double x)
 
 // ======================================================================
 // THIRD-PARTY NOTICE. Parts of this file are hand transcriptions of
-// third-party work. WOOF distributes the file under the Apache License
+// third-party work. WOOF-ArWen distributes the file under the Apache License
 // 2.0; the notices below belong to the transcribed parts and are kept
 // here because their own licences require it. Full texts are in the
 // repository NOTICE, licenses/, and beside the code in

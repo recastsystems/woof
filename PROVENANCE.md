@@ -72,7 +72,7 @@ not an arbitrary executable produced from the WRF v4.6.1 tree:
 
 - **Source/build recipe**: the source tree above, copied read-only into the
   disposable WSL build tree and built by
-  `.superpowers/sdd/codex/wrf-build-spike-report.md`.  The environment is
+  `docs/internal/sdd/codex/wrf-build-spike-report.md`.  The environment is
   WSL `Ubuntu-24.04` (recorded as Ubuntu 24.04.4 LTS), GNU Fortran/GCC
   13.3.0, netCDF-Fortran 4.5.4 (netCDF-C 4.9.2), WRF's serial/STUBMPI
   execution (no MPI processes), no OpenMP (the generated OMP flags are
@@ -192,39 +192,37 @@ bytes are outside the numerical oracle.
   `-ftz=true` to whatever the caller passed, at
   `cupy.cuda.compiler` line 585 (`options += ('-ftz=true',)`), after the
   caller's options, and NVRTC honours the last occurrence.
-  The inventory records 14 distinct caller-supplied option tuples across the
-  255 compile sites in the shipped package, each listed here with a site
+  The inventory records 13 distinct caller-supplied option tuples across the
+  268 compile sites in the shipped package, each listed here with a site
   that supplies it:
   - no caller options -- `woof/backend/__init__.py:28` (self.xp.RawModule),
-    and 192 other site(s)
+    and 207 other site(s)
   - `--std=c++17` -- `woof/ensemble/batch_perturbation.py:51`
     (xp.RawModule), and 18 other site(s)
   - `-std=c++17` -- `woof/core/acoustic_fusion.py:405` (cp.RawModule), and
-    15 other site(s)
+    14 other site(s)
   - `--std=c++11` -- `woof/hex/cuda_courant_fullstep_lts.py:52`
     (cp.RawKernel), and 5 other site(s)
   - `-std=c++17` `--ftz=false` -- `woof/core/chem_plumerise_cache.py:37`
     (compiler.compile_using_nvrtc), and 5 other site(s)
   - `-fmad=false` -- `woof/core/dycore.py:308` (cp.ElementwiseKernel), and 2
     other site(s)
-  - `--fmad=false` -- `woof/hex/moving_vertical_cuda.py:21` (cp.RawKernel),
+  - `--fmad=false` -- `woof/hex/moving_vertical_cuda.py:25` (cp.RawKernel),
     and 1 other site(s)
   - `--std=c++17` `--use_fast_math` -- `woof/hex/waves.py:486`
     (cp.RawModule), and 1 other site(s)
-  - `-std=c++17` `--fmad=false` -- `woof/core/kernels/__init__.py:1230`
+  - `-std=c++17` `--fmad=false` -- `woof/core/kernels/__init__.py:1249`
     (cp.RawModule), and 1 other site(s)
   - `-std=c++17` `--fmad=false` `--ftz=false` --
     `woof/core/thompson_fork.py:109` (compiler.compile_using_nvrtc), and 1
     other site(s)
-  - `--fmad=false` `-std=c++14` -- `woof/da/letkf_device.py:363`
-    (cp.RawModule)
   - `--std=c++17` a target flag built from the device architecture at run
     time -- `woof/ocean/waves/model.py:73` (cp.RawModule)
   - `-std=c++17` `--maxrregcount=112` --
-    `woof/core/kernels/__init__.py:1202` (cp.RawModule)
+    `woof/core/kernels/__init__.py:1221` (cp.RawModule)
   - a target flag built from the device architecture at run time a target
     flag built from the device architecture at run time --
-    `woof/hex/mpasphys/surface_update_v842.py:150`
+    `woof/hex/mpasphys/surface_update_v842.py:152`
     (compiler.compile_using_nvrtc)
   `R5` and `R1` are kernels inside ONE compiled object -- same device, same
   flags, one compile -- and they did not measure alike, so on this device
@@ -846,7 +844,7 @@ the 2.8.7 release carries the file; later releases point at it there.
 - **The one call that breaks it.** tau33 = 2 K dw/dz is the
   vertical-vertical stress; `vertical_diffusion_w_2`, the divergence of
   it, is handed `xkmh` (`:4145-4155`).
-- **Registered runtime deviation**: WOOF hands that operator `xkmv`.
+- **Registered runtime deviation**: WOOF-ArWen hands that operator `xkmv`.
 - **Why, in one inequality.**  The operator is explicit, so it needs
   `2*K*dt/dz^2 <= 1/2`.  `smag_km` caps the two coefficients on different
   length scales (`:1890-1908`): `xkmv <= mix_upper_bound*mlen_v^2/dt` with
@@ -870,7 +868,7 @@ the 2.8.7 release carries the file; later releases point at it there.
 - **Precedent in the same routine**: WRF corrected the identical class of
   coefficient-selection error for the prognostic-TKE self-diffusion --
   `vertical_diffusion_s` for tke took `xkhv` until wrf-model/WRF issue
-  #2026, and v4.6.1 passes `xkmv` (`:4333-4341`), which WOOF follows.
+  #2026, and v4.6.1 passes `xkmv` (`:4333-4341`), which WOOF-ArWen follows.
 - **Vanishes when**: WRF passes `xkmv` to `vertical_diffusion_w_2`.  Until
   then this entry is the divergence, and
   `tests/test_smag3d.py::test_mix_upper_bound_makes_the_vertical_w_operator_stable_only_with_kmv`
@@ -1336,7 +1334,7 @@ oversight, and each says what would close it.
   potential-temperature perturbations of the child's rolling
   nest-boundary VALUE tables, relax-zone rows only, refreshed on the
   FORCE cadence at `NestCoupler.force`.  Every constant is pinned in
-  `docs/superpowers/receipts/les/INFLOW-GENERATOR-ACCEPTANCE-V2.md`,
+  `docs/internal/receipts/les/INFLOW-GENERATOR-ACCEPTANCE-V2.md`,
   registered before any perturbed integration existed; the measured
   need is the D90 receipt beside it (fetch > 55 z_i, contamination
   verdict CONTAMINATED on the shipped 250 m child).
@@ -1366,12 +1364,12 @@ oversight, and each says what would close it.
   snow compaction) depends on grid traversal order.  That is not a physics
   choice WRF made; it is an undefined read, and Fortran gives it whatever
   the stack holds.
-- **What WOOF does instead**: every column is passed the DEFINED value
+- **What WOOF-ArWen does instead**: every column is passed the DEFINED value
   `ilnb = 1` with `ilnb_chain = False` (`woof/core/ruc_runtime.py:109-126`
   `DEFINED_ILNB`, runner binding `:774`, receipt `:559-560`, published
   statement `:336-341`).  One is the defined answer rather than merely the
   safe one: a column with `0 < snhei < snth` has exactly one snow layer.
-- **Why this is a deviation and stays one**: where WRF is undefined, WOOF
+- **Why this is a deviation and stays one**: where WRF is undefined, WOOF-ArWen
   implements the defined behaviour and documents the divergence, a standing
   rule, and the reason there is no forecast-mode switch back.  The bug chain
   exists only as an oracle-fixture affordance for reproducing one specific
@@ -1529,9 +1527,9 @@ oversight, and each says what would close it.
 ## Divergence ledger v1 (the observation-battery promotion register)
 
 Registered 2026-08-03 with the observation-verification battery
-(`docs/superpowers/specs/2026-08-03-obs-verification-battery.md` section 5.2).
-The D-entries above are deviations WOOF already ships.  THIS register is the
-other half: the places WOOF may deliberately diverge, each with the state of
+(`docs/internal/specs/2026-08-03-obs-verification-battery.md` section 5.2).
+The D-entries above are deviations WOOF-ArWen already ships.  THIS register is the
+other half: the places WOOF-ArWen may deliberately diverge, each with the state of
 its evidence, so that a candidate cannot become a default by accumulating
 confidence instead of receipts.
 
@@ -1542,7 +1540,7 @@ entry set, the frozen patch-set membership, and the gates.
 
 **Rewrite, don't append.**  An entry's verdict is EDITED here when its
 receipts land; a superseded claim is replaced and said to be replaced, never
-left standing beside its successor.  A promoted patch changes the WOOF
+left standing beside its successor.  A promoted patch changes the WOOF-ArWen
 default and its entry becomes a numbered D-entry above.
 
 **No observation-battery verdict is recorded here.** This ledger began
@@ -1565,7 +1563,7 @@ reported separately in `docs/public/VERIFICATION.md`.
 | entry | key (mechanism-named) | faithful -> patched | evidence today | promotion |
 |---|---|---|---|---|
 | **L3** gray-zone PBL | `bl_pbl_physics` (existing selector; no new key) | 1 (YSU) -> 11 (Shin-Hong 2015 scale-aware) | 1.5.2 headline; CPU authority max-ULP-0 against the byte-frozen `module_bl_shinhong.F`; partition ladder inside registered Honnert-envelope bands (`docs/public/receipts/grayzone/PHASE1-SHINHONG-20260803.md`); maturity implemented-unverified.  At dx 3000 m the scheme sits above its gated ladder, which is stated in the arm's registration and is exactly what an obs referee is for.  **Route:** the composition an L3 arm resolves to is registered as `thompson-mp8-shinhong-mm5-noah-rrtmg-legacy-v1` (wrf-matched-run-candidate, template_only, HRRR-only), which is what makes the arm runnable: its three refusing gates (emission physics, root-preparation profile, certified hierarchy slice) now admit it, each by an enumerated admission keyed to that registration rather than a widened rail. | UNDECIDED |
-| **L4** 6th-order filter off the moist scalars | `moist_mix6_off` (WRF's own spelling) | `.false.` -> `.true.` | WRF v4.6.1 `Registry/Registry.EM_COMMON:2889` declares it verbatim: `rconfig   logical  moist_mix6_off   namelist,dynamics  max_domains  .false. rh  "moist_mix6_off"  "de-activate 6th-order horizontal filter for moisture"`.  It gates one call (`sixth_order_diffusion` on the moist array, `dyn_em/module_em.F:1421`, reached from `dyn_em/solve_em.F:2230`) so theta and the WRF `scalar`-package tracers keep their own filters.  This is therefore a **configuration-policy patch**: the WRF arm could be configured to match, and the battery tests it as an WOOF-DEFAULT candidate rather than as a capability.  Precedent: D-L4 ratified diff6 default-OFF in LES configs (`docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED.md:35-39`).  The roadmap's "Sc-deck scales" framing has **no receipt in this tree** (verified: `diff_6th` and stratocumulus never co-occur; the Sc-deck finding is a SASE result, `woof/verify/sase_ref.py:1280-1292`), so the entry is registered on WRF-community evidence plus D-L4 and is measured at 3 km. | UNDECIDED |
+| **L4** 6th-order filter off the moist scalars | `moist_mix6_off` (WRF's own spelling) | `.false.` -> `.true.` | WRF v4.6.1 `Registry/Registry.EM_COMMON:2889` declares it verbatim: `rconfig   logical  moist_mix6_off   namelist,dynamics  max_domains  .false. rh  "moist_mix6_off"  "de-activate 6th-order horizontal filter for moisture"`.  It gates one call (`sixth_order_diffusion` on the moist array, `dyn_em/module_em.F:1421`, reached from `dyn_em/solve_em.F:2230`) so theta and the WRF `scalar`-package tracers keep their own filters.  This is therefore a **configuration-policy patch**: the WRF arm could be configured to match, and the battery tests it as an WOOF-DEFAULT candidate rather than as a capability.  Precedent: D-L4 ratified diff6 default-OFF in LES configs (`docs/internal/specs/P6-LES-DECISIONS-RATIFIED.md:35-39`).  The roadmap's "Sc-deck scales" framing has **no receipt in this tree** (verified: `diff_6th` and stratocumulus never co-occur; the Sc-deck finding is a SASE result, `woof/verify/sase_ref.py:1280-1292`), so the entry is registered on WRF-community evidence plus D-L4 and is measured at 3 km. | UNDECIDED |
 | **L5** SASE closure | `bl_pbl_physics` -> 900 plus six mandatory companions (`docs/public/PHYSICS.md:718-723`) | 1 (YSU + `km_opt` 4) -> 900 | implemented-unverified on the WRF-conformance ladder (no WRF counterpart; this does not rule out code verification against its own reference implementation or validation against observations); met 2 of 7 frozen bars on its reference case; its first real-data forecast failed the health gate at 1 h. | **DID NOT QUALIFY.**  Registered entry gate: SASE earns battery arms only after one full 24 h battery-shape integration completes with `status: PASS`.  Until then it is scored on zero cases and reported as "did not qualify" -- accurate, and cheaper than crashed arms.  It is also not a bit-flip, so it enters as its own overlay and is deliberately not a member of patch-set v1. |
 
 ### Class C. Knob exists, dormant (not in the battery suite)
@@ -1779,35 +1777,3 @@ PNG it writes carries an `experimental` stamp.
   `DONE,complete` triggers a frame-inventory check of every admitted
   member against the manifest before anything renders, and stamps the
   override on every panel.
-
-## Attribution defects in this repository's own history (2026-07-26)
-
-This register exists so a provenance claim is never re-derived from memory.
-Attribution is a provenance claim, so known defects in it are recorded here
-rather than only in a lane's tracking document, which may be retired.
-
-Every commit produced under agent delegation on this project must end with the
-trailer
-`Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
-One commit does not:
-
-| Commit | Subject | Defect |
-|---|---|---|
-| `ab60dc8` | `feat(noahmp): route sf_surface_physics=4 to a real runner and admit it` | no trailer at all; `git log -1 --format='%(trailers:only=true)' ab60dc8` prints empty |
-
-**Not repaired, deliberately.**  The omission was found after the branch
-(`codex/mynn-noahmp-ruc-cuda`) had advanced past that commit and other lanes
-had built on it, so `git commit --amend`/rebase would have rewritten history
-shared with concurrent work.  The lane flagged it instead of rewriting shared
-history.  Recording it here is the repair: the commit's authorship is not in
-doubt, the trailer is simply absent, and this row is what prevents a later
-reader from treating the absence as evidence of an unattributed change.
-
-Verification, on any checkout of the branch:
-
-    git log --format='%h %s%n  trailers:[%(trailers:only=true,valueonly=true)]' -12
-
-The narrative context of that commit -- Noah-MP's runtime admission -- is in
-`docs/wrf_noahmp_runtime_admission.md`, and the same fact is duplicated in
-`docs/mynn_noahmp_ruc_completion_plan.md` under "Provenance and process
-record".

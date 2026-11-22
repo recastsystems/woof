@@ -65,7 +65,7 @@ _DECL_ANCHOR = """      REAL:: rgvm, delta_tp, orho, lfus2
 
 _DECLS = """      REAL:: rgvm, delta_tp, orho, lfus2
 
-!..WOOF mp=28 provenance instrumentation: diagnostic-only locals.
+!..WOOF-ArWen mp=28 provenance instrumentation: diagnostic-only locals.
       INTEGER:: aa_unit, aa_k
       LOGICAL:: aa_exists
       REAL:: aa_orho
@@ -75,7 +75,7 @@ _DECLS = """      REAL:: rgvm, delta_tp, orho, lfus2
 """
 
 _PROBE = """!+---+-----------------------------------------------------------------+
-!..WOOF mp=28 provenance instrumentation.  WRITE STATEMENTS ONLY.
+!..WOOF-ArWen mp=28 provenance instrumentation.  WRITE STATEMENTS ONLY.
 !.. Emitted where the cold network has finished -- after the tendency loop
 !.. closes and before the TAU+1 refresh -- which is the point
 !.. tests/test_thompson_aerosol_cold_gpu.py's _WRF_COLD_REFERENCE describes.
@@ -128,7 +128,7 @@ _SED_PRE_ANCHOR = """      if (ANY(L_qc .eqv. .true.)) then
          sed_c(k) = vtck(k)*rc(k)
 """
 
-_SED_PRE = """!..WOOF mp=28 provenance instrumentation: pre-fallout cloud state.
+_SED_PRE = """!..WOOF-ArWen mp=28 provenance instrumentation: pre-fallout cloud state.
       do aa_k = kts, kte
          aa_qcten_pre(aa_k) = qcten(aa_k)
          aa_ncten_pre(aa_k) = ncten(aa_k)
@@ -143,7 +143,7 @@ _SED_POST_ANCHOR = """         nc(k) = MAX(10., nc(k) + (sed_n(k+1)-sed_n(k)) *o
 """
 
 _SED_POST = """
-!..WOOF mp=28 provenance instrumentation: post-fallout cloud state.
+!..WOOF-ArWen mp=28 provenance instrumentation: post-fallout cloud state.
       inquire(file='cloud-sed-intermediates.csv', exist=aa_exists)
       open(newunit=aa_unit, file='cloud-sed-intermediates.csv',         &
            status='unknown', position='append', action='write')
@@ -172,7 +172,7 @@ _CLEAN_PRE_ANCHOR = """!.. Instantly melt any cloud ice into cloud water if abov
       if (.not. iiwarm) then
 """
 
-_CLEAN_PRE = """!..WOOF mp=28 provenance instrumentation: pre-cleanup tendencies.
+_CLEAN_PRE = """!..WOOF-ArWen mp=28 provenance instrumentation: pre-cleanup tendencies.
       do aa_k = kts, kte
          aa_qcten_pre(aa_k) = qcten(aa_k)
          aa_ncten_pre(aa_k) = ncten(aa_k)
@@ -188,7 +188,7 @@ _CLEAN_POST_ANCHOR = """!+---+--------------------------------------------------
 !+---+-----------------------------------------------------------------+
 """
 
-_CLEAN_POST = """!..WOOF mp=28 provenance instrumentation: post-cleanup tendencies.
+_CLEAN_POST = """!..WOOF-ArWen mp=28 provenance instrumentation: post-cleanup tendencies.
       inquire(file='phase-cleanup-intermediates.csv', exist=aa_exists)
       open(newunit=aa_unit, file='phase-cleanup-intermediates.csv',     &
            status='unknown', position='append', action='write')

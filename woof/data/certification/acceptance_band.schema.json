@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "gpuwm.acceptance-band/v1",
-  "title": "WOOF acceptance band",
+  "title": "WOOF-ArWen acceptance band",
   "description": "One acceptance band, addressed by the SHA-256 of the configuration it certifies. Every comparator metric column is classified exactly once, so a column added to the comparator later cannot be silently ignored; every banded column carries a closed interval per (domain, lead) or an explicit nan-expected marker. The band is data: the derivation rule that produced it is named and hashed here, and re-running that rule on the same inputs reproduces this file byte for byte.",
   "type": "object",
   "additionalProperties": false,

@@ -9,7 +9,7 @@ woof hex forecast --mesh MESH --grid grid.nc --static static.nc --init init.nc \
   --hours 1 --out forecast --scratch scratch --output-format icechunk
 ```
 
-`forecast` (including regional and point-mesh routes), `global`, `ensemble`, `moving run`, `moving fixed`, `moving-ensemble`, `pair`, `regional`, `country`, `mesh-plan --run`, `global-cycle`, `s2s` and `add-nest` accept `--output-format`, `--icechunk-store` and `--output-config`. Output selection follows the forecast into child processes. Use a base such as `--icechunk-store s3://bucket/forecast` for S3, or a local path. Ensemble members and moving segments have independent repositories. The per-forecast `output-formats/receipt.json` lists exact store URLs and snapshots. An `add-nest` child writes its WOOF domain repository.
+`forecast` (including regional and point-mesh routes), `global`, `ensemble`, `moving run`, `moving fixed`, `moving-ensemble`, `pair`, `regional`, `country`, `mesh-plan --run`, `global-cycle`, `s2s` and `add-nest` accept `--output-format`, `--icechunk-store` and `--output-config`. Output selection follows the forecast into child processes. Use a base such as `--icechunk-store s3://bucket/forecast` for S3, or a local path. Ensemble members and moving segments have independent repositories. The per-forecast `output-formats/receipt.json` lists exact store URLs and snapshots. An `add-nest` child writes its WOOF-ArWen domain repository.
 
 A common configuration file works on both engines:
 

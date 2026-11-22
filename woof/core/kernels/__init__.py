@@ -99,6 +99,9 @@ _EXTRA_HEADERS: dict[str, tuple[str, ...]] = {
     "trajectory": ("glibc_flt32.cuh", "glibc_flt32_extra.cuh", "glibc_trig_flt32.cuh"),
     "tracer_pblmix": ("mynn_scalar_mix.cu",),
     "wind_mav": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh", "portable_libm64.cuh", "glibc_flt64.cuh"),
+    # WRF v4.8.0 original Fitch + THRUST (windfarm_induction=0, wind_fitch_480.cu);
+    # the same glibc asinf words wind_mav.cu's rotor-area integral uses.
+    "wind_fitch_480": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
     "wind_legacy": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
     "gsd_helicity": ("gsd_helicity_helpers.cuh",),
     "gsd_diagnostics": ("glibc_flt32.cuh", "glibc_flt32_extra.cuh", "glibc_flt64.cuh", "gsd_hail_bins.cuh"),
@@ -281,6 +284,13 @@ _EXTRA_HEADERS: dict[str, tuple[str, ...]] = {
     # Shin-Hong takes glibc's powf/expf (gfk_pow/gfk_exp) since
     # lane/parity-pbl-libm, graded by tests/test_shinhong_wrf461_parity.py.
     "shinhong": ("glibc_flt32.cuh",),
+    # The WRF 4.8.0 Shin-Hong generation (physics_mmm bl_shinhong.F90),
+    # graded word for word against the native WRF 4.8.0 strict objects by
+    # tools/shinhong480_oracle.  It is composed on shinhong.cu, whose
+    # partition functions, solver, mixlen, vdifq and tanhf 4.8.0 left
+    # unchanged; a new module, so the 4.6.1 unit's assembled source and
+    # cubin do not move.
+    "shinhong_480": ("glibc_flt32.cuh", "shinhong.cu"),
     # Corrected generation reuses WOOF's own float32 math and the qualified
     # YSU driver arithmetic. The legacy module retains its original source.
     "ysu_480": ("glibc_flt32.cuh", "ysu_480_topo.cuh"),
@@ -411,6 +421,8 @@ _EXTRA_HEADERS: dict[str, tuple[str, ...]] = {
     "mynn_surface": ("mynn_libm.cuh", "surface_subnormal.cuh"),
     "sfclay": ("glibc_flt32.cuh", "sfclay_classic.cuh"),
     "sfclay_dx2d": ("glibc_flt32.cuh", "sfclay_classic.cuh", "sfclay_dx2d.cuh", "sfclay.cu"),
+    # WRF v4.8.0 kim_tofd: sfclay.cu with GPUWM_SFCLAY_TOFD (and the dx plane).
+    "sfclay_tofd": ("glibc_flt32.cuh", "sfclay_classic.cuh", "sfclay_tofd.cuh", "sfclay.cu"),
     # WSM6 (mp_physics = 6), graded word for word against its gfortran
     # column oracle by tests/test_wsm6_wrf461_column_exact.py: EXP, LOG and
     # REAL**REAL of mp_wsm6.F90 and mp_wsm6_effectRad.F90 are WOOF's own
@@ -663,6 +675,8 @@ def _extra_header_text(name: str, kernel_dir: Path = _KDIR) -> str:
             text += "\n#undef wrf_atan_f32\n#define wrf_atan_f32 glibc_atanf\n"
     if ENABLED and name == "cu_osas":
         text = "#define GPUWM_COLUMN_R8_STRICT 1\n" + text
+    if not ENABLED and name == "wind_fitch_480":
+        text += "#define GPUWM_WIND480_FAST 1\n#define glibc_sinf sinf\n#define glibc_cosf cosf\n#define glibc_asinf asinf\n"
     if not ENABLED and name in ("wind_mav", "wind_legacy"):
         text += "#define GPUWM_WIND_FAST 1\n#define glibc_sinf sinf\n#define glibc_cosf cosf\n#define glibc_asinf asinf\n#define glibc_acosf acosf\n#define gfk_exp expf\n#define plm_exp exp\n#define uw_acos acos\n"
     if not ENABLED and name == "kfcup":
@@ -754,6 +768,11 @@ def _unit_text(name: str, kernel_dir: Path = _KDIR) -> str:
     """Read a CUDA unit and apply only the active set's registered literals."""
     from woof.physics_params import edit_kernel_source
     from woof.wrf_exact import ENABLED
+    if name == "mynn_pbl_v61":
+        # RunConfig.mynn_fixes_v61: the frozen unit, with its registered
+        # literals, plus the marked MYNN-V61 edits (woof/core/mynn_pbl_v61.py).
+        from woof.core.mynn_pbl_v61 import mynn_v61_source
+        return mynn_v61_source(_unit_text("mynn_pbl", kernel_dir))
     source_name = "mynn_pbl" if name == "mynn_dmp_sibling" else name
     unit_path = Path(kernel_dir) / f"{source_name}.cu"
     if name == "gsfcsw":
@@ -860,7 +879,7 @@ def module_source(name: str, *, kernel_dir: Path = _KDIR) -> str:
 #: (tests/test_noah_wrf461_parity.py, tests/test_urban_noah_hook_wrf471_parity.py).
 #: climate_diagnostics: all 48 climate fields match the pinned gfortran
 #: oracle only with separate rounding in strict mode; fast strips this option.
-_NO_FMAD_MODULES = frozenset({"deng", "thompson_collision", "soil_points", "gsfcsw", "gsfcgce", "gsfcgce_refl", "climate_diagnostics", "hail", "lake", "g3", "ysu", "shinhong", "mynn_pbl",
+_NO_FMAD_MODULES = frozenset({"deng", "thompson_collision", "soil_points", "gsfcsw", "gsfcgce", "gsfcgce_refl", "climate_diagnostics", "hail", "lake", "g3", "ysu", "shinhong", "shinhong_480", "mynn_pbl", "mynn_pbl_v61",
                               "mynn_dmp_sibling", "wsm6", "kessler", "myjpbl",
                               "milbrandt2", "milbrandt2_zet", "wdm6",
                               "wdm6_refl", "wsm3", "wsm6r", "noah", "pxlsm", "mskf", "mskf_aerosol_replay", "cumulus_feedback", "cumulus_aerosol"})
@@ -885,8 +904,8 @@ _URBAN_NO_FTZ_MODULES = frozenset({"urban_ucm", "urban_ucm480", "urban_bep",
                                    "urban_bep_couple"})
 # aer_opt2: WRF keeps the aerosol optics' subnormal operands (port289-final 550349628).
 # oml: graded word for word against WRF 4.6.1 OML1D (tools/oml_wrf461_oracle).
-_NO_FTZ_MODULES = frozenset({"deng", "grims", "shcu_nscv", "wind_mav", "wind_legacy", "gfs_pbl", "sf_gfs", "bmj", "gsfcsw", "wdm5", "wdm7", "wdm7_refl", "sbu_ylin", "sbu_ylin_edge", "kfcup", "gsfcgce", "gsfcgce_refl", "g3", "gd", "nsas", "sfclay", "myjsfc", "mynn_surface", "mynn_pbl",
-                             "thompson_column", "rcon", "udm", "ysu_480", "wsm6r",
+_NO_FTZ_MODULES = frozenset({"deng", "grims", "shcu_nscv", "wind_mav", "wind_legacy", "wind_fitch_480", "gfs_pbl", "sf_gfs", "bmj", "gsfcsw", "wdm5", "wdm7", "wdm7_refl", "sbu_ylin", "sbu_ylin_edge", "kfcup", "gsfcgce", "gsfcgce_refl", "g3", "gd", "nsas", "sfclay", "sfclay_tofd", "myjsfc", "mynn_surface", "mynn_pbl",
+                             "thompson_column", "rcon", "udm", "ysu_480", "shinhong_480", "wsm6r", "mynn_pbl_v61",
                              "aer_opt2", "oml", "kf_old", "clwrf", "fogdes"}) | _SOLAR_NO_FTZ_MODULES
 
 # The exact chain's strict intake contracts (GPUWM_WRF_EXACT=1): these units
@@ -1014,7 +1033,7 @@ def module_options(name: str) -> tuple[str, ...]:
         from woof.wrf_exact import ENABLED
         if ENABLED:
             return ("-std=c++17", "--ftz=false", "--fmad=false")
-    if name in ("wind_mav", "wind_legacy"):
+    if name in ("wind_mav", "wind_legacy", "wind_fitch_480"):
         from woof.wrf_exact import ENABLED
         return (("-std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true")
                 if ENABLED else ("-std=c++17", "--ftz=false"))
@@ -1026,7 +1045,7 @@ def module_options(name: str) -> tuple[str, ...]:
         return ("-std=c++17", "--ftz=false")
     if name in _SOLAR_NO_FTZ_MODULES:
         return ("-std=c++17", "--ftz=false")
-    if name in ("lightning", "native_surface_diagnostics"):
+    if name in ("lightning", "dyn_lightning", "native_surface_diagnostics"):
         from woof.wrf_exact import ENABLED
         return (("-std=c++17", "--ftz=false", "--fmad=false") if ENABLED
                 else ("-std=c++17", "--ftz=false"))
@@ -1410,7 +1429,7 @@ def load_module(name: str):
         return compile_cam_module_no_ftz(name, src, options)
     if name in _NO_FTZ_MODULES:
         return _load_module_preserving_subnormals(name, src, options)
-    if name in ("lightning", "native_surface_diagnostics") or (name == "trajectory" and ENABLED):
+    if name in ("lightning", "dyn_lightning", "native_surface_diagnostics") or (name == "trajectory" and ENABLED):
         from woof import nvrtc_ptx_cache as compiler
         from woof.kernel_compile_notice import observe_module_compile
         from woof.certify.kernel_manifest import record_module

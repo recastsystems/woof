@@ -203,7 +203,7 @@ class FrameworkPhysics:
         For words the caller hands over and never touches again: the physics session's hydration passes each
         field's freshly read payload buffer (pool_v842.NativePoolHydration.populate).  Level 1 holds those words
         and every other level a copy of them, the words ``put_field`` stores at each level.  THE COST THIS
-        REMOVES (RRFS hrrrv5 mv3km, V6000, 2026-10-28): hydration allocated a zeroed copy of every buffer it had
+        REMOVES (RRFS hrrrv5 mv3km, RTX PRO 6000, 2026-10-28): hydration allocated a zeroed copy of every buffer it had
         just read and copied the words in on one core, ~4 s for 206,726 cells and about 11x that on conus3km.
         Anything ``put_field`` would treat differently (a field already held, a non-Fortran or read-only buffer)
         goes through ``put_field``.

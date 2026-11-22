@@ -4,7 +4,7 @@
 amplification bounds relative to the WRF-against-itself control measured on
 the same run set, with fixed margins M (median) and P (p95).  Those margins
 must be justified by measurement noise and by nothing else -- in
-particular, by no number WOOF ever produced.  This script is that
+particular, by no number WOOF-ArWen ever produced.  This script is that
 justification, runnable by anyone:
 
 * it reads ONLY the control arm (``G1_control``) of the committed

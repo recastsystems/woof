@@ -100,6 +100,17 @@ def _library():
     packaged = Path(__file__).with_name("libexec") / packaged_name(key)
     root = Path(os.environ.get("WOOF_HEX_NATIVE_CPU_CACHE", str(Path.home()/".cache"/"woof"/"dycore"))) / key
     target = packaged if packaged.is_file() else root / "libm_batch.so"
+    # (WOOF 1.1.7) A PyPI wheel of recast-woof carries the hex helpers' pins, not the helpers: this bridge comes in the
+    # release's woof-hex-helpers archive, staged on first use like every other hex helper (woof.hex.helpers).
+    # THE BREAKAGE: a clean install looked only in woof/hex/libexec and the CPU cache, found neither, had no rustc,
+    # and every batch took one ctypes call per element (sin of 1e6 float32: 0.28 s, against 0.01 s with the staged
+    # copy).  Only a bridge this install pins is fetched; a source checkout has no pins.
+    if not packaged.is_file():
+        from woof.hex import helpers
+        if helpers.on_demand(packaged_name(key)):
+            staged = helpers.path(packaged_name(key))
+            if staged.is_file():
+                target = staged
     with _BUILD_LOCK:
         if not target.is_file():
             compiler = shutil.which("rustc")

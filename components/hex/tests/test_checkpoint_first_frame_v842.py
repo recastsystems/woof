@@ -11,6 +11,7 @@ checkpointed, and resumed from that checkpoint.  Every word of every frame the c
 write must equal the straight run's frame at the same valid time.
 
 Inputs: WOOF_HEX_CKPT_INIT and WOOF_HEX_CKPT_GRID name an x1.2562 init and grid from `woof hex init`
+(x1.2562, 2023-03-31 12Z, MODIS 20-class land use).  About 1.6 GB of device
 memory and 90 s per run on an RTX 5090.
 """
 from __future__ import annotations

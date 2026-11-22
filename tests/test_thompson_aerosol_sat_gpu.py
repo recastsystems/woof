@@ -9,7 +9,7 @@ What is under test
   evaporation branch through ``tnc_wev``, WRF's 99%-of-liquid mass floor, and
   the one-for-one CCN return.
 * ``thompson_aa_rain_evaporation`` -- :3236-3255 + :3384-3388 + :3500-3574.
-  A direct port, including the mean-volume-diameter clamp WOOF's mp=8 kernel
+  A direct port, including the mean-volume-diameter clamp WOOF-ArWen's mp=8 kernel
   does not carry, plus ``nwfaten += pnr_rev`` (:3565) and the :3502 gate.
 
 THE PRIMARY GATE IS BITWISE AGAINST AN INSTRUMENTED WRF
@@ -483,7 +483,7 @@ def test_ccn_sweep_settles_the_vertical_velocity_source(tnccn_act, tnc_wev):
     """BLOCKING UNKNOWN #3, settled here against the oracle.
 
     The spec directed passing ``state.w[:-1]`` -- the lower full-level slice
-    WOOF already gives cloud sedimentation -- on the precedent that
+    WOOF-ArWen already gives cloud sedimentation -- on the precedent that
     ``mp_gt_driver`` copies ``w1d(k) = w(i,k,j)`` once at :1224 with no
     averaging.  ``activ_ncloud`` is far more sensitive to w than sedimentation
     is, because w enters a bracket search over a four-decade logarithmic axis,
@@ -1185,7 +1185,7 @@ def test_rain_evaporation_returns_exactly_one_ccn_per_evaporated_drop():
     """module_mp_thompson.F:3564-3565.
 
     ``nrten -= pnr_rev`` and ``nwfaten += pnr_rev`` are the same rate with
-    opposite signs, so the CCN gained is exactly the rain number lost.  WOOF
+    opposite signs, so the CCN gained is exactly the rain number lost.  WOOF-ArWen
     already computed ``pnr_rev`` at thompson.cu:2271-2273 for mp=8 and simply
     discarded it.
     """
@@ -1419,7 +1419,7 @@ def test_three_dimensional_launch_matches_the_flat_launch(
 
     Run the same 24 states as a (24,) vector and as a (2,3,4) volume and
     require bit equality, so a future adapter can pass whatever
-    ``(nz, ny, nx)`` shape WOOF's state carries.
+    ``(nz, ny, nx)`` shape WOOF-ArWen's state carries.
     """
     import cupy as cp
 
@@ -2042,7 +2042,7 @@ def test_rain_evaporation_matches_the_instrumented_wrf_oracle():
     THREE CLAIMS:
 
     1. ``nr_bound``, the working rain number after the mean-volume-diameter
-       clamp at :3247-3255, is BITWISE at all 15.  WOOF's mp=8 kernel has no
+       clamp at :3247-3255, is BITWISE at all 15.  WOOF-ArWen's mp=8 kernel has no
        such clamp and this port used to carry its absence as a documented
        carry-over.  The table exercises both ends: the 2.5 mm upper bound at
        aero-cold-overlap levels 4 and 5, the ``D0r*0.75`` lower bound at

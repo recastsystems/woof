@@ -218,7 +218,7 @@ def test_check_names_a_relative_readme_link_the_pypi_page_cannot_resolve(tmp_pat
     lead = module.declared(root)[0][1]
     readme = root / "README.md"
     readme.write_text("See the [source table](docs/public/SOURCES.md) and "
-                      "[setup](https://github.com/FahrenheitResearch/arwen/blob/v%s/docs/public/SETUP.md).\n"
+                      "[setup](https://github.com/recastsystems/arwen/blob/v%s/docs/public/SETUP.md).\n"
                       '<img src="docs/img/a.png"> [top](#install)\n' % lead, encoding="utf-8")
     wrong = [line for line in module.disagreements(root) if line.startswith("README.md:")]
     assert len(wrong) == 2, wrong
@@ -232,6 +232,57 @@ def test_wheel_doc_links_name_the_installed_release():
     from woof.docs_links import release_ref, tree_url
 
     assert release_ref("2.9.1") == "v2.9.1"
-    assert tree_url("blob", "2.9.1") == "https://github.com/FahrenheitResearch/arwen/blob/v2.9.1/"
+    # (WOOF 1.1.7) WOOF's links name WOOF's repository (post_rename: woof/docs_links.py REPOSITORY_URL)
+    assert tree_url("blob", "2.9.1") == "https://github.com/recastsystems/woof/blob/v2.9.1/"
     for untagged in ("0+unknown", "2.9.1.dev0", "2.9.1rc1"):
         assert release_ref(untagged) == "main"
+
+
+def test_install_lines_name_the_release_being_cut(tmp_path):
+    """The sealed 3.0.3 candidate's README told a user to install ``gpuwm==3.0.2``.
+
+    The public index did not have 3.0.2, so the README's install failed as
+    written ("No matching distribution found"); the 3.0.2 candidate had said
+    ``==3.0.1`` until the cut battery's front page caught it, and the setup
+    guide still said ``==2.9.2``. ``--check`` names every ``pip install`` pin
+    of woof, the release notes link and the integration kit link that do not
+    name ``pyproject.toml``'s version, and the bump moves them. The other
+    packages' pins and the desktop downloads keep their own versions.
+    """
+    module = _load()
+    assert [pin for pin in module.release_pins(REPO_ROOT)
+            if pin[2] != module.declared(REPO_ROOT)[0][1]] == []
+    root = _copy_tree(tmp_path)
+    lead = module.declared(root)[0][1]
+    (root / "docs" / "public").mkdir(parents=True, exist_ok=True)
+    (root / "README.md").write_text(
+        "| [Windows desktop](https://github.com/recastsystems/arwen/releases/download/v2.9.0/"
+        "WOOF-ArWen-Desktop-1.0.10-Windows-x64.zip) |\n"
+        "| [Integration kit](https://github.com/recastsystems/arwen/releases/download/v1.0.0/"
+        "WOOF-ArWen-1.0.0-Integration-Kit.zip) |\n"
+        "[release notes](https://github.com/recastsystems/arwen/releases/tag/v1.0.0)\n"
+        "python -m pip install 'recast-woof[all-cu12]==1.0.0'\n", encoding="utf-8")
+    (root / "docs" / "amd-backend.md").write_text(
+        "python -m pip install 'recast-woof==1.0.0' 'woof hex==0.5.0' 'recast-woof-data==7.7.7'\n", encoding="utf-8")
+    (root / "docs" / "public" / "SETUP.md").write_text(
+        "`recast-woof[render]==1.0.0` and\n'recast-woof[all-cu12]==%s'\n" % lead, encoding="utf-8")
+    wrong = [line for line in module.disagreements(root) if "names 1.0.0" in line]
+    assert wrong == [
+        f"README.md:4: a pip install of woof names 1.0.0, pyproject.toml says {lead}",
+        f"docs/amd-backend.md:1: a pip install of woof names 1.0.0, pyproject.toml says {lead}",
+        f"docs/public/SETUP.md:1: a pip install of woof names 1.0.0, pyproject.toml says {lead}",
+        f"README.md:3: the release notes link names 1.0.0, pyproject.toml says {lead}",
+        f"README.md:2: the integration kit link names 1.0.0, pyproject.toml says {lead}",
+    ]
+    assert module.main(["--check", "--root", str(root)]) == 1
+    to = "99.0.7"
+    touched = module.bump(root, to)
+    assert {"README.md", "docs/amd-backend.md", "docs/public/SETUP.md"} <= set(touched)
+    assert module.disagreements(root) == []
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    assert f"download/v{to}/ArWen-{to}-Integration-Kit.zip" in readme
+    assert f"releases/tag/v{to})" in readme and f"'recast-woof[all-cu12]=={to}'" in readme
+    assert "download/v2.9.0/ArWen-Desktop-1.0.10-Windows-x64.zip" in readme
+    amd = (root / "docs" / "amd-backend.md").read_text(encoding="utf-8")
+    assert amd == f"python -m pip install 'recast-woof=={to}' 'woof hex==0.5.0' 'recast-woof-data==7.7.7'\n"
+    assert module.main(["--check", "--root", str(root)]) == 0

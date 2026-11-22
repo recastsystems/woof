@@ -103,3 +103,69 @@ def test_live_coupler_routes_selected_surface_feedback(feedback):
     coupler.feedback_commit(child)
     assert float(parent.state.physics.fields['tvxy'][4,4]) == (281 if feedback else 280)
     assert float(parent.state.physics.fields['tvxy'][0,0]) == 280
+
+
+@requires_gpu
+@pytest.mark.parametrize("stored", [False, True])
+def test_wetland_feedback_copies_store_words_and_keeps_domain_static_maps(stored):
+    import cupy as cp
+    from woof.core.noahmp_nest import feedback_fields, feedback_selected_noahmp
+    from woof.core.nest_interp import register_nest, copy_fcnm
+    from woof.core.nest_operands import NestWindowSource
+
+    cfg = SimpleNamespace(sf_surface_physics=4, noahmp_wetland=1)
+    reg = register_nest(nri=3, nrj=3, i_parent_start=3, j_parent_start=3,
+                        child_nx=18, child_ny=18, parent_nx=14, parent_ny=14,
+                        stagger="", wrapper="bdy")
+    carried = ("wetstorexy", "wetfsatxy", "wetlhxy")
+    static = ("wetfsatmx", "wetcap")
+    nodes = []
+    for width, initial in ((14, -17), (18, 23)):
+        fields = {name: cp.full((width, width), initial,
+                               cp.int32 if name == "isnowxy" else cp.float32)
+                  for name in (*feedback_fields(), *carried, *static)}
+        state = SimpleNamespace(physics=SimpleNamespace(fields=fields))
+        nodes.append(SimpleNamespace(cfg=SimpleNamespace(run=cfg), state=state))
+    parent, child = nodes
+    child.parent = parent
+    expected = {}
+    for name in carried:
+        donor = child.state.physics.fields[name]
+        donor.view(cp.uint32).reshape(-1)[::7] = np.uint32(0x80000000)
+        donor.view(cp.uint32).reshape(-1)[::13] = np.uint32(0x7fc00123)
+        want = parent.state.physics.fields[name].copy()
+        copy_fcnm(want, donor, reg, spec_zone=1)
+        expected[name] = want.get().tobytes()
+    if stored:
+        for node in nodes:
+            fields = node.state.physics.fields
+            node.state._streamed_domain = SimpleNamespace(
+                store={f"fields/{name}": value.get() for name, value in fields.items()},
+                _geography={}, template_state=node.state)
+            for value in fields.values():
+                value.fill(-999)
+    before = {name: cp.asnumpy(NestWindowSource(parent.state).array(f"fields/{name}")).tobytes()
+              for name in static}
+    receipt = feedback_selected_noahmp(child, reg, spec_zone=1, chunk_shape=(8, 9))
+    for name, want in {**expected, **before}.items():
+        actual = NestWindowSource(parent.state).array(f"fields/{name}")
+        assert cp.asnumpy(actual).tobytes() == want, name
+    assert set(carried) <= set(receipt["fields"])
+    assert set(static).isdisjoint(receipt["fields"])
+    assert bool(receipt["sync_bytes"]) == stored
+
+
+@requires_gpu
+@pytest.mark.parametrize("parent_mode,child_mode", [(1, 0), (0, 1)])
+def test_mixed_wetland_feedback_refuses_before_any_carrier_write(parent_mode, child_mode):
+    from woof.core.noahmp_nest import feedback_selected_noahmp
+
+    def node(mode):
+        return SimpleNamespace(
+            cfg=SimpleNamespace(run=SimpleNamespace(sf_surface_physics=4, noahmp_wetland=mode)),
+            state=SimpleNamespace(physics=SimpleNamespace(fields={})))
+
+    child = node(child_mode)
+    child.parent = node(parent_mode)
+    with pytest.raises(ValueError, match="noahmp_wetland must match"):
+        feedback_selected_noahmp(child, None, spec_zone=1, chunk_shape=(8, 9))

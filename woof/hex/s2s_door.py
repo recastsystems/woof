@@ -55,6 +55,19 @@ def cores() -> int:
     return min(available, budget)
 
 
+def surface_forecast_row(source: str) -> bool:
+    """True when the source's table row carries a dated surface forecast block (surface_series.forecast).
+
+    THE BREAKAGE THIS PREVENTS (hex 0.4.15 fit16-rows, 2026-11-07): the door named "cfs" literally, so any
+    other row with a surface forecast block (GFS since 0.4.15) was asked for analyses at every valid time,
+    which do not exist past the latest cycle; an S2S run's forcing must come from a forecast posted before
+    the init. Table work, not a code path (the arbitrary acceptance test).
+    """
+    from .init_sources import load_table
+    row = next((r for r in load_table()["sources"] if r["id"] == source), None)
+    return bool(row and (row.get("surface_series") or {}).get("forecast"))
+
+
 def lag_hours(text: str | None, count: int, source: str) -> list[int]:
     from .init_sources import load_table, resolve_source
     row = resolve_source(load_table(), source)
@@ -172,7 +185,8 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     surface = {"owner": "surface-series", "consumer": "surface-update",
                "path": str(args.surface_series or surface_path),
                "start": surface_start, "end": (start + timedelta(days=args.days)).strftime("%Y-%m-%d_%H:%M:%S"),
-               "source": args.surface_source, "forecast_cycle": surface_cycle if args.surface_source == "cfs" else None}
+               "source": args.surface_source,
+               "forecast_cycle": surface_cycle if surface_forecast_row(args.surface_source) else None}
     surface["ocean_mode"] = args.ocean_mode
     from .ocean_mixed_layer import configuration
     surface["ocean_options"] = configuration(json.loads(args.ocean_options))
@@ -181,7 +195,8 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
             raise S2SError("--surface-series requires --ocean-mode prescribed")
         surface.update(owner="prognostic-ocean", source="member initialization SST/ice", path=None, forecast_cycle=None)
     value["commands"]["forecast"] = [*value["commands"]["forecast"],
-                                     *mpas_route_surface(value, surface, json.loads(args.ocean_options))]
+                                     *mpas_route_surface(value, surface, json.loads(args.ocean_options)),
+                                     *mpas_route_history(value)]
     tc_option = {}
     if getattr(args, "tc_climate", None) is not None:
         from dataclasses import asdict
@@ -346,10 +361,10 @@ def _inits(value: dict, args, env: dict, status) -> dict:
 
 
 def mpas_route_surface(value: dict, surface: dict, supplied_ocean: dict) -> list[str]:
-    """The forecast flags that give an MPAS-physics-route member its ocean; none on the WOOF route.
+    """The forecast flags that give an MPAS-physics-route member its ocean; none on the WOOF-ArWen route.
 
     THE BREAKAGE THIS PREVENTS (U-H1, best-180 smoke j1 and sst-boundary hxc tr28, 2026-10-26/27): the door's
-    ocean reached the forecast only as WOOF_HEX_SURFACE_SERIES / WOOF_HEX_OCEAN_MODE, which only the WOOF
+    ocean reached the forecast only as WOOF_HEX_SURFACE_SERIES / WOOF_HEX_OCEAN_MODE, which only the WOOF-ArWen
     route reads (woof.hex.arwen_surface_update).  On the MPAS route, the hex default, config_sst_update stayed
     false and SST and sea ice were bit-identical from day 0 to day 7 with --ocean-mode prescribed
     --surface-series, and with the prognostic default.  So on that route:
@@ -378,7 +393,7 @@ def mpas_route_surface(value: dict, surface: dict, supplied_ocean: dict) -> list
         return flags + ([] if bound else ["--stream-input", f"surface={series}"])
     unread = sorted(set(supplied_ocean) - {"depth_m", "stratification_k_m"})
     if unread:
-        raise S2SError("--ocean-options " + ", ".join(unread) + " set the WOOF-route ocean's sea ice and radiation; "
+        raise S2SError("--ocean-options " + ", ".join(unread) + " set the WOOF-ArWen-route ocean's sea ice and radiation; "
                        "the MPAS physics route's ocean (MPAS OML1D) has no such parameter, so they would be accepted "
                        "and never read.  Use --physics-row arwen for them")
     options = surface["ocean_options"]
@@ -386,6 +401,21 @@ def mpas_route_surface(value: dict, surface: dict, supplied_ocean: dict) -> list
                    sea_ice="held at its initial state (OML1D carries no ice model)")
     return ["--physics", "config_oml1d=.true.", "--physics", f"config_oml_hml0={float(options['depth_m'])!r}",
             "--physics", f"config_oml_gamma={float(options['stratification_k_m'])!r}"]
+
+
+def mpas_route_history(value: dict) -> list[str]:
+    """History fields the S2S products read that MPAS-A's default output stream does not carry.
+
+    THE BREAKAGE THIS PREVENTS (hex 0.4.15 fit16-rows, verification host, 2026-11-07): a 7-day 60 km S2S run on the
+    MPAS-physics route (the hex default) finished its forecast and export, then the energy products stopped with
+    'missing field ["swdown", "swdnb", "SWDOWN"]': the solar-irradiance row reads all-sky downward surface
+    shortwave, which the WOOF-ArWen route's history writes as swdown and MPAS-A's default output list leaves out.
+    """
+    from .physics_suites import mpas_suite_names
+    physics = value.get("physics") or {}
+    if physics.get("suite") not in mpas_suite_names() or physics.get("namelist"):
+        return []
+    return ["--history-field", "swdnb"]
 
 
 def surface_stage(value: dict, args, env: dict) -> dict:
@@ -698,7 +728,8 @@ def add_s2s_parser(commands) -> None:
     parser.add_argument("--surface-series", type=Path, help="existing dated native case-8 series for --ocean-mode prescribed; otherwise build it")
     parser.add_argument("--surface-source", default="cfs",
                         help="surface forcing source; default CFS forecasts cover the whole future window")
-    parser.add_argument("--surface-cycle", help="CFS forecast cycle; default 48 hours before the earliest member init")
+    parser.add_argument("--surface-cycle", help="surface forecast cycle for a source whose row carries a surface forecast "
+                        "block (CFS, GFS); default 48 hours before the earliest member init")
     parser.add_argument("--climatology", type=Path, help="ERA5 window climatology on the product grid")
     parser.add_argument("--product-region", action="append", default=[], metavar="NAME:SOUTH,NORTH,WEST,EAST",
                         help="additional regional S2S maps; repeatable; west>east crosses the date line")

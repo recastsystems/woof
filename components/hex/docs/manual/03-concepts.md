@@ -77,16 +77,16 @@ writes. Correct mode, the default on those suites, fixes five native defects,
 each checked against its own native referee build; `--physics-mode exact` is
 the matched arithmetic. See [the MPAS physics seam](mpas-physics-seam.md).
 
-**WOOF's physics is not MPAS's, so agreement with MPAS is not its standard.**
-On the WOOF route (`--physics-suite arwen_mpas_column`; MPAS physics is the
-default since 0.4.6) woof hex runs the WOOF engine's physics suite through a
+**WOOF-ArWen's physics is not MPAS's, so agreement with MPAS is not its standard.**
+On the WOOF-ArWen route (`--physics-suite arwen_mpas_column`; MPAS physics is the
+default since 0.4.6) woof hex runs the WOOF-ArWen engine's physics suite through a
 pinned seam, and that physics is judged by **skill against observations**
 (MRMS precipitation and radar products, ASOS surface stations). Matching
 another model's choices was never evidence of being right; matching the
 atmosphere is.
 
 **A declared divergence** is the stated-in-full form of a known difference
-between the WOOF route and native MPAS: measured magnitude, named mechanism,
+between the WOOF-ArWen route and native MPAS: measured magnitude, named mechanism,
 named observational referee. There are three
 ([`docs/declared-divergences.md`](../declared-divergences.md) is the
 register; the README quantifies them).

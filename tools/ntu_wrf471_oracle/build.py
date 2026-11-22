@@ -14,7 +14,14 @@ from pathlib import Path
 import subprocess
 
 HERE = Path(__file__).resolve().parent
-MANIFEST = json.loads((HERE / "source.json").read_text())
+#: The licence-checked native pins, by WRF release.  ``source.json`` is the
+#: v4.7.1 module the shipping transcription came from; v4.8.0 moves one
+#: statement (``source-v4.8.0.json``).
+MANIFESTS = {
+    "4.7.1": json.loads((HERE / "source.json").read_text()),
+    "4.8.0": json.loads((HERE / "source-v4.8.0.json").read_text()),
+}
+MANIFEST = MANIFESTS["4.7.1"]
 FLAGS = (
     "-O2", "-fno-fast-math", "-ffp-contract=off", "-fno-tree-vectorize",
     "-ffree-form", "-ffree-line-length-none", "-g", "-fcheck=bounds",
@@ -26,10 +33,11 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def verify(source: Path, licence: Path) -> None:
+def verify(source: Path, licence: Path, wrf: str = "4.7.1") -> None:
     # Check the licence before processing or compiling the source.
-    for path, spec in ((licence, MANIFEST["licence"]),
-                       (source, MANIFEST["module"])):
+    manifest = MANIFESTS[wrf]
+    for path, spec in ((licence, manifest["licence"]),
+                       (source, manifest["module"])):
         actual = digest(path)
         if actual != spec["sha256"]:
             raise ValueError(f"{path}: expected {spec['sha256']}, got {actual}")

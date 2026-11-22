@@ -228,7 +228,7 @@ class EclipseRadiation:
         from woof.core.swint import calendar_scalars
         from woof.config import effective_radt_minutes
         F=np.float32
-        _,xtime,gmt=calendar_scalars(self.start_time,state.elapsed_seconds)
+        _,xtime,gmt=calendar_scalars(self.start_time,state.elapsed_seconds,generation=getattr(cfg,'solar_generation','wrf_480'))
         hour=F(gmt+F(F(np.fmod(F(xtime+F(effective_radt_minutes(cfg))),F(1440)))/F(60)))
         if hour>=F(24): hour=F(hour-F(24))
         result = self.geometry.at(self.start_time+timedelta(

@@ -123,10 +123,11 @@ pub(super) fn compute(
     // The groups below read the file and nothing another group wrote, so they
     // run at once, each into its own part, and the parts join in the order the
     // groups ran one after another: the hour holds the same fields in the same
-    // order. They run after the isobaric volumes released wrf-core's cache, so
-    // each rebuilds the 3-D fields it reads; one after another that was 1.4 s
-    // of a 2.25 km / 750 m HRRR nest frame's 5.3 s render at one core
-    // (2026-10-24).
+    // order. They run before the isobaric volumes release wrf-core's cache, so
+    // they read the 3-D fields the import's groups left memoized; run after the
+    // release, each rebuilt its fields (7.5 s of a 1400x981x59 hex window
+    // frame's import, 2026-11-15; one after another it had been 1.4 s of a
+    // 2.25 km / 750 m HRRR nest frame's 5.3 s render at one core, 2026-10-24).
     let part = || WrfHourFields {
         grid: out.grid.clone(),
         projection: out.projection.clone(),

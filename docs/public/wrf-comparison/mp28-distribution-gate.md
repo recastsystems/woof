@@ -17,12 +17,12 @@ prescribed. The record it stands on:
 
 * `mp28-matched-trajectory.md`: **HOLD, V3 failed**, a closed record.
   Its per-row 3.0× amplification bound, chosen blind, was failed by
-  WOOF at 7 of 197 rows and then failed by WRF against its own
+  WOOF-ArWen at 7 of 197 rows and then failed by WRF against its own
   single-flag recompilation at 17 of 195 rows, worst ratio 808:
   non-diagnostic on the long run, proven by its own control.
 * `mp28-shortwindow-gate.md`: **INCONCLUSIVE, by its own §5 rule**, a
   closed record. On the pre-decorrelation window the same per-row 3.0×
-  was passed by WOOF at 0 of 140 rows, worst 2.195, and failed by the
+  was passed by WOOF-ArWen at 0 of 140 rows, worst 2.195, and failed by the
   identical control at 8 of 140 rows, worst 4.966. The condition voided
   itself a second time, at a second amplitude.
 * Its closing section: *"State the amplification condition on the
@@ -48,7 +48,7 @@ unchanged and consumed by reference:
   `configure-vec.txt` / `configure-novec.txt`);
 * the same runs: WRF builds A ("vec") and B ("novec", the control),
   each at mp=8 and mp=28, continuous 0 → 2400 s with history every 60 s
-  from 1800 s; WOOF initialised from build A's t = 1800 s history frame
+  from 1800 s; WOOF-ArWen initialised from build A's t = 1800 s history frame
   via `run_arwen.py --restart-from`, 50 steps × 12 s, each configuration
   run twice into separate directories;
 * the same statistic per cell, M8: `d(F, s) = ||A − W||₂ / ||W||₂`;
@@ -73,7 +73,7 @@ Per arm, the ratio rows of the prior gates' G1 convention, unchanged:
 
 * rows are `r(F, s) = d_mp28(F, s) / d_mp08(F, s)` over the 14 gate
   fields and steps `s ∈ 1..10`, nominally **140 rows per arm**;
-* the **tested arm** compares WOOF to build A in both schemes; the
+* the **tested arm** compares WOOF-ArWen to build A in both schemes; the
   **control arm** compares build B to build A in both schemes: the
   same four WRF runs feed both arms' denominators;
 * a row with `d_mp08 = 0` and `d_mp28 = 0` carries no information and
@@ -102,7 +102,7 @@ transcribes it.
 
 **Where 1.7 and 2.1 come from, and where they do not.** Both margins
 are derived from the CONTROL arm of the second gate's committed receipt
-(WRF against its own recompilation, public, and containing no WOOF
+(WRF against its own recompilation, public, and containing no WOOF-ArWen
 number) by `tools/mp28_matched/derive_distribution_margins.py` at its
 pinned seed (20260802, 20 000 replicates): field-block bootstrap the
 control's 140 rows (resampling whole fields, because the 10 steps
@@ -117,7 +117,7 @@ looser.
 
 **Why the relative form survives the objection that every prior number
 is public.** It is public: anyone choosing an absolute bound today
-knows WOOF's worst short-window ratio was 2.195 and the control's was
+knows WOOF-ArWen's worst short-window ratio was 2.195 and the control's was
 4.966, and no absolute constant chosen with those numbers in hand can
 be called blind. The relative form does not use them. Its bound is
 `M × median_control` and `P × p95_control` measured on the **new** run
@@ -149,12 +149,12 @@ denominator, so the gate says now what makes it meaningless:
 **n = 1 fresh trajectory set per arm decides the verdict.** Both codes
 are deterministic per build (the second pass measured bit-identical
 executables and bit-identical Thompson tables per flag set, and
-byte-identical WOOF duplicates) so repeated runs of the same bytes
+byte-identical WOOF-ArWen duplicates) so repeated runs of the same bytes
 are not realizations and add no information. Variation across builds
 and machines is measured instead of simulated, by two declared
 replications that are screens, not extra draws:
 
-* the **WOOF dual-run** (G2): each configuration twice, byte-compared,
+* the **WOOF-ArWen dual-run** (G2): each configuration twice, byte-compared,
   the corruption detector on a card with no ECC;
 * the **WRF cross-node replication**: the full WRF quartet is built and
   run independently on both weather nodes from the banked recipes. The
@@ -186,7 +186,7 @@ Wall measured by the second pass: vec 597 + 216 s, novec 823 + 373 s,
 plus ICs, under 40 minutes a node, ~2.2 GB a node, both nodes in
 parallel. Provenance per §6 before anything moves off-node.
 
-**local RTX 5090 (WOOF + the gate).** test host 1's `runs/` tree is
+**local RTX 5090 (WOOF-ArWen + the gate).** test host 1's `runs/` tree is
 transferred with hashes verified at both ends, then:
 
     bash run-sw-arwen.sh   # 4 runs: mp{8,28} × duplicates, ~2 min GPU total
@@ -211,7 +211,7 @@ Section 6 of `mp28-shortwindow-gate.md` applies unchanged and by
 reference: the tarball, `module_mp_thompson.F` / `module_mp_radar.F`
 and `CCN_ACTIVATE.BIN` pins; both builds' executable hashes; each
 build's generated Thompson table hashes; both `wrfinput_d01` hashes;
-compiler, glibc and netCDF versions; WOOF source snapshot commit, CuPy
+compiler, glibc and netCDF versions; WOOF-ArWen source snapshot commit, CuPy
 version, driver and device; the FP32-subnormal (FTZ) disclosure for
 sm_120. Added for this gate: both weather nodes' identities and
 toolchains, recorded separately, and the hash-verified transfer
@@ -254,7 +254,7 @@ number exists. The git history of this file is the receipt.
 What CERTIFY does **not** move: mp=8's tier; the first document's HOLD;
 the second's INCONCLUSIVE; the `wrf-matched-run` requirements (real
 case, decay tables, aerosol LBC), all unchanged. A certification here
-is the statement "on the declared window, WOOF's mp28-vs-mp8 behaviour
+is the statement "on the declared window, WOOF-ArWen's mp28-vs-mp8 behaviour
 is statistically no worse than WRF's own benign recompile", made by a
 rule fixed before the runs, and it is not a statement about anything
 else.
@@ -305,8 +305,8 @@ building and running nodes**, so the control arm's statistics agree
 across nodes to exactly 0.0 relative and the §4 screen passed with all
 of its 2 % slack unused.
 
-**Local node (WOOF + evaluation).** The RTX 5090 (sm_120, no ECC),
-driver 610.74 / cc 12.0, CuPy 14.0.1, numpy 2.2.6, Python 3.13.7, WOOF
+**Local node (WOOF-ArWen + evaluation).** The RTX 5090 (sm_120, no ECC),
+driver 610.74 / cc 12.0, CuPy 14.0.1, numpy 2.2.6, Python 3.13.7, WOOF-ArWen
 source = this lane at `d66ae147`, tracked tree clean; the pinned table
 set under its committed hashes; the canonical derived-constant asset
 verified against both of its pins at import, with this host's recorded
@@ -329,7 +329,7 @@ manifest before use. Node walls: builds 479+190 s (test host 1) /
 
 ## 11. The two arms, and the verdict
 
-| statistic | tested (WOOF) | control (WRF novec) | bound | condition |
+| statistic | tested (WOOF-ArWen) | control (WRF novec) | bound | condition |
 |---|---|---|---|---|
 | median ratio | **0.9346** | 0.4833 | ≤ 1.7 × 0.4833 = **0.8216** | **D1 FAILS** |
 | p95 ratio | **1.1433** | 1.7462 | ≤ 2.1 × 1.7462 = 3.6670 | D2 passes |
@@ -345,7 +345,7 @@ short-window support: recorded there in a dated addendum.
 
 **What is measured regardless, with the verdict letter unchanged.**
 The tested arm's median is **0.93**, below 1: on the identical
-statistic, WOOF's mp=28 again sits *closer* to WRF's mp=8-to-mp=28
+statistic, WOOF-ArWen's mp=28 again sits *closer* to WRF's mp=8-to-mp=28
 behaviour than to any amplification, its worst row is again `QNRAIN`
 shaped, and it clears the retired per-row 3.0× at 0 of 140 rows while
 the control breaks that condition a third time (4 rows, worst 5.992,
@@ -353,7 +353,7 @@ the distribution form did exactly what it was declared to do: it
 survived a control that voids per-row gates, and returned a decisive
 verdict). What moved is the yardstick's centre: the control's median
 halved against its public prior (0.4833 here vs 1.0135 on
-gfortran 13.3) while WOOF's held (0.9346 vs 0.9492). The margin M was
+gfortran 13.3) while WOOF-ArWen's held (0.9346 vs 0.9492). The margin M was
 derived from the old control's *sampling noise* around a centre that
 this toolchain then shifted by 2×: a sensitivity of the
 relative-to-control construction to the control's own toolchain, which

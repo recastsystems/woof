@@ -21,7 +21,7 @@ correctness argument.
   ``normalize_basetime`` -- so ``last_dtInterval * num / den`` carries no
   floating-point error at all.  :class:`fractions.Fraction` reproduces it
   exactly, which is also what ``woof.core.clock`` already uses at
-  config-resolution time.  So a varying dt does NOT push WOOF's clock
+  config-resolution time.  So a varying dt does NOT push WOOF-ArWen's clock
   into floating point; it only requires ``tick_den`` to carry a factor of
   ``precision``.
 

@@ -196,7 +196,7 @@ def test_wps_layer_depth_identity_uses_named_bounds_and_shared_midpoints():
         variable_units={'ST':'K','SM':'fraction','SOIL_LAYERS':''})
     contract,t,m=metgrid_soil_columns(case)
     remapped,_=_remap_declared_soil(t,m,contract,tsk=np.array([[280.]]),deep=np.array([[289.]]))
-    np.testing.assert_allclose(remapped[:,0,0],280+3*NOAH_LAYER_MIDPOINTS_M,rtol=0,atol=1e-12)
+    np.testing.assert_allclose(remapped[:,0,0],280+3*NOAH_LAYER_MIDPOINTS_M,rtol=2.5e-7,atol=0)  # REAL arithmetic, as real.exe
     soil['ST000007']=soil['ST000007']+1
     with pytest.raises(ValueError,match='differs from the soil stack'):
         metgrid_soil_columns(case)
@@ -305,3 +305,16 @@ def test_moist_theta_is_no_longer_a_declared_divergence():
                          wrf_name="moist theta", gpuwm_key="use_theta_m",
                          gpuwm_value=0, gpuwm_name="dry theta",
                          reason="The engine integrates dry theta."),)))
+
+
+def test_lai12m_is_read_only_by_noah_or_ruc_with_rdlai2d():
+    """Breakage it prevents: 3.0.2 refused WPS output without LAI12M (the WRF
+    tutorial's January 2000 met_em, metgrid V3.5.1, Noah, rdlai2d unset) that
+    native WRF 4.7.1 runs; real.exe writes LAI = 0 and Noah takes leaf area
+    from VEGPARM.TBL.  Only a land model that reads LAI12M may refuse."""
+    from types import SimpleNamespace
+    from woof.metem_forecast import metgrid_run_reads_lai12m
+    for lsm in (1, 2, 3, 4, 7):
+        assert not metgrid_run_reads_lai12m(SimpleNamespace(sf_surface_physics=lsm, rdlai2d=False))
+    assert metgrid_run_reads_lai12m(SimpleNamespace(sf_surface_physics=2, rdlai2d=True))
+    assert metgrid_run_reads_lai12m(SimpleNamespace(sf_surface_physics=3, rdlai2d=True))

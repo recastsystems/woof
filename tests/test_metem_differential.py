@@ -254,6 +254,37 @@ def test_read_metem_refuses_a_file_without_the_surface_in_level_one(tmp_path):
         MD.read_metem(broken)
 
 
+def test_read_metem_keeps_the_3d_pressure_of_a_model_level_rh_file(tmp_path):
+    """RH on levels that are not isobaric is not read on a flat ladder.
+
+    Before, the oracle took levels_hpa from column (0, 0) and put the file
+    on the RH lane, which flattens PRES: a model-level RH file (an Arwen
+    Global set) was scored against a state built on the wrong pressure.
+    """
+    pytest.importorskip("netCDF4")
+    from test_metem_ingest import write_case
+
+    def tilt(ds):
+        pres = np.asarray(ds["PRES"][0], np.float64)
+        pres[1:] += np.linspace(-1000.0, 1000.0, pres.shape[2])[None, None, :]
+        ds["PRES"][0] = pres
+    path = write_case(tmp_path / "met_em.d01.2021-06-01_00_00_00.nc",
+                      rh=63.0, mutate=tilt)
+    case = MD.read_metem(path)
+    assert case.lane == "relative-humidity-3d-pressure"
+    assert "RH" not in case.fields and {"PRES", "SPFH", "Q2"} <= set(case.fields)
+    assert float(np.ptp(case.fields["PRES"][0])) > 1000.0
+    # The oracle's own transcription agrees with the reader's derivation.
+    from woof.ingest.metem import read_met_em
+    door = read_met_em(path).snapshot.fields
+    np.testing.assert_allclose(case.fields["SPFH"], door["SPFH"], rtol=2e-7, atol=0)
+    np.testing.assert_allclose(case.fields["Q2"], door["Q2"], rtol=2e-7, atol=0)
+    flat_dir = tmp_path / "flat"
+    flat_dir.mkdir()
+    flat = MD.read_metem(write_case(flat_dir / "met_em.d01.2021-06-01_00_00_00.nc"))
+    assert flat.lane == "relative-humidity" and "RH" in flat.fields
+
+
 @_pairs
 def test_a_mismatched_pair_is_refused_on_shape():
     """NEGATIVE CONTROL: a forcing file from another case cannot be scored."""

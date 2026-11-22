@@ -252,7 +252,10 @@ def mynn_pbl_step(
     # mixscalars=0 path is by construction.  The per-chunk level-major
     # copies below are plain pool allocations, accepted behind the key
     # (the priced-scratch discipline covers the always-on path only).
-    wrf471 = options.get("bl_mynn_version") == "wrf_471"
+    # wrf_471 and wrf_480 are the two whole-column generated solvers; they
+    # share the wrapper staging below. wrf480 marks 4.8.0's driver changes.
+    wrf480 = options.get("bl_mynn_version") == "wrf_480"
+    wrf471 = options.get("bl_mynn_version") == "wrf_471" or wrf480
     mixscalars_on = int(options.get("bl_mynn_mixscalars", 0)) == 1
     scalar_diffusion_on = scalar_pblmix == 1
     qn_source: dict[str, cp.ndarray] = {}
@@ -319,8 +322,16 @@ def mynn_pbl_step(
         hi = min(lo + piece, ncol)
         n = hi - lo
         stage = work.group(SLOT_STAGE_LAYER, MYNN_PBL_STAGE_LAYERS, (n, nz))
-        for name in source:
+        # The generated routes' pack reads any strided input, so only the
+        # mixing ratios the specific-content conversion and post_run use are
+        # staged; every other input is packed straight from its state
+        # field (the same words the staging copy would have carried).
+        direct = wrf471 and not scalar_diffusion_on
+        for name in (("qv", "qc", "qi", "qs") if direct else source):
             stage[name].T[...] = source[name][:, lo:hi]
+
+        def staged(name):
+            return source[name][:, lo:hi].T if direct and name not in ("qv", "qc", "qi", "qs") else stage[name]
 
         # --- module_bl_mynn_wrapper.F:453-475 mixing ratio -> specific -----
         count = n * nz
@@ -335,15 +346,15 @@ def mynn_pbl_step(
         spacing = work.one(SLOT_STAGE_DX, (n,))
         spacing[...] = DTYPE(dx)
         zeros_column = work.one(SLOT_ZERO_COLUMN, (n,))
-        values = {name: stage[name] for name in
-                  ("dz", "u", "v", "w", "th", "sqv", "sqc", "sqi", "sqs",
-                   "p", "exner", "rho", "tk")}
+        values = {name: stage[name] for name in ("sqv", "sqc", "sqi", "sqs")}
+        values.update({name: staged(name) for name in
+                       ("dz", "u", "v", "w", "th", "p", "exner", "rho", "tk")})
         if options.get("bl_mynn_version", "wrf_461") == "gsd_41":
             values.update({name: stage[name] for name in ("qv", "qc", "qi")})
         for solver_name in _STATE_FIELD:
-            values[solver_name] = stage[solver_name]
+            values[solver_name] = staged(solver_name)
         if options.get("bl_mynn_tkeadvect", False):
-            values["qke_adv"] = stage["qke"]
+            values["qke_adv"] = staged("qke")
         values["dx"] = spacing
         # woof has no ocean-current coupling; WRF's uncoupled path passes
         # the zero-initialised UOCE/VOCE arrays (Registry default 0.0).
@@ -375,7 +386,10 @@ def mynn_pbl_step(
         # --- module_bl_mynn_wrapper.F:587-607 specific -> mixing ratio -----
         # gsd_41 already returns mixing-ratio tendencies from the updated
         # vapour and keeps its in-cloud QC_BL as written.
-        if wrf471:
+        if wrf480:
+            from woof.core.mynn480_gpu import post_run
+            post_run(stage, out, delt)
+        elif wrf471:
             from woof.core.mynn471_gpu import post_run
             post_run(stage, out, delt, icloud=options.get("icloud_bl",1))
         else:
@@ -386,25 +400,44 @@ def mynn_pbl_step(
              out["rqiblten"], out["qc_bl"], out["qi_bl"], np.int32(count)),
         )
 
+        # The generated routes return slab views; their ~40 write-backs go
+        # out as one batched copy (woof.core.mynn471_gpu.copy_many), the
+        # same words. The default route keeps its plain assignments.
+        copies = [] if wrf471 else None
+
+        def put(target, value):
+            if copies is None:
+                target[...] = value
+            else:
+                copies.append((target, value))
         for name, target in out_state.items():
-            if wrf471 and options.get("icloud_bl",1)==0 and name in ("qc_bl","qi_bl","cldfra_bl"):
+            if wrf471 and not wrf480 and options.get("icloud_bl",1)==0 and name in ("qc_bl","qi_bl","cldfra_bl"):
                 continue
-            target[:, lo:hi] = out[name].T
+            put(target[:, lo:hi], out[name].T)
         if wrf471:
             from woof.core.mynn471_gpu import BUDGET, PLUMES
             for name in (*BUDGET,*PLUMES):
                 if name in out and name in fields:
-                    fields[name][:nz].reshape(nz,ncol)[:,lo:hi] = out[name].T
+                    put(fields[name][:nz].reshape(nz,ncol)[:,lo:hi], out[name].T)
+        if wrf480:
+            # WRF 4.8.0 driver :633-642: written only when EDMF is on.
+            from woof.core.mynn480_gpu import EDMF_2D_NEW
+            for name in EDMF_2D_NEW:
+                if name in fields and options.get("bl_mynn_edmf", 1) > 0:
+                    put(fields[name].reshape(ncol)[lo:hi], out[name])
         if options.get("bl_mynn_tkeadvect", False):
-            fields["qke_adv"].reshape(nz, ncol)[:, lo:hi] = out["qke_adv"].T
+            put(fields["qke_adv"].reshape(nz, ncol)[:, lo:hi], out["qke_adv"].T)
         for name in ("pblh", "rmol", "kpbl"):
-            fields[name].reshape(ncol)[lo:hi] = out[name]
+            put(fields[name].reshape(ncol)[lo:hi], out[name])
         for name in (*MYNN_PBL_DIAGNOSTICS_2D, *MYNN_PBL_DIAGNOSTICS_INT_2D):
             if wrf471 and (options.get("bl_mynn_edmf",1)==0 or name=="ktop_plume"):
                 continue
-            fields[name].reshape(ncol)[lo:hi] = out[name]
+            put(fields[name].reshape(ncol)[lo:hi], out[name])
         for solver_name, tendency_name in _TENDENCY_OUT:
-            flat_tendencies[tendency_name][:, lo:hi] = out[solver_name].T
+            put(flat_tendencies[tendency_name][:, lo:hi], out[solver_name].T)
+        if copies:
+            from woof.core.mynn471_gpu import copy_many
+            copy_many(copies)
         if mixscalars_on:
             for solver_name, _, out_name in MYNN_MIXSCALARS_QN:
                 qn_out[out_name].reshape(nz, ncol)[:, lo:hi] = (

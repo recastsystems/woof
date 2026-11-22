@@ -271,7 +271,7 @@ Also fixed:
 
 - Hex maps reduce sea-level pressure the way the GFS analysis does. The WRF
   method used before read up to 58 hPa low over Antarctica, Greenland and high
-  terrain; globe RMS against GFS went from 4.04 to 0.71 hPa. WOOF's own WRF
+  terrain; globe RMS against GFS went from 4.04 to 0.71 hPa. WOOF-ArWen's own WRF
   maps do not change.
 - Noah sea ice now evolves through WRF's own sea-ice step; its skin
   temperature used to stay at its starting value. Proven against WRF's code on
@@ -279,7 +279,7 @@ Also fixed:
 
 - An imported WRF namelist that leaves out `top_lid` now gets WRF's open top,
   as wrf.exe does, instead of a rigid lid. Proven by a 12 h one-domain CONUS
-  12 km run with each lid; configurations WOOF writes are unchanged.
+  12 km run with each lid; configurations WOOF-ArWen writes are unchanged.
 
 ## Not in 2.9.0, with the reason
 

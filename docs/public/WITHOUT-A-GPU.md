@@ -46,7 +46,7 @@ closes by saying it did **not** stage the WPS_GEOG static geography,
 which the next step needs:
 
 ```bash
-woof fetch-geog          # ~1.3 GB down, ~16 GB unpacked, resumable
+woof fetch-geog          # ~2.7 GB down, ~31 GiB unpacked, resumable
 ```
 
 If a WPS_GEOG tree already exists on the machine, skip this and pass

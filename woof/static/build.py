@@ -267,6 +267,9 @@ class GeogSelection:
     orographic: tuple[str, ...] = ()
     #: The optional WPS depth dataset selected by the lake physics settings.
     lake_depth: bool = False
+    #: WRF v4.8.0's gwd_opt = 1 (gwdo_version "wrf_480"): ELVMAX and the VAR/CON/OA/OL statistics as WPS v4.8's
+    #: util/compute_gwdo.py writes them (WPS PR #281; :func:`woof.static.orographic.build_gwdo_480_fields`).
+    gwdo_480: bool = False
     #: A published static file the configuration takes its geography from
     #: (:mod:`woof.static.external_source`), or ``None`` -- every
     #: configuration that names no ``[static] source`` -- which builds
@@ -1627,9 +1630,18 @@ def monthly_interp_to_date(monthly, valid_time):
                 month1, month2 = 12, 1
             else:
                 month1, month2 = anchor, anchor + 1
-            return ((monthly[month2 - 1] * float(target - middle[anchor])
-                     + monthly[month1 - 1] * float(middle[anchor + 1] - target))
-                    / float(middle[anchor + 1] - middle[anchor]))
+            # real.exe holds the field in REAL and rounds each multiply, the
+            # sum and the division to float32 (no fused multiply-add in the
+            # reference build).  Blending in float64 and rounding once made
+            # 843 of 4,380 start VEGFRA words differ from native WRF on the
+            # January 2000 tutorial case; this order makes 0.
+            f32 = np.float32
+            later = monthly[month2 - 1].astype(f32, copy=False)
+            earlier = monthly[month1 - 1].astype(f32, copy=False)
+            blended = (later * f32(target - middle[anchor])
+                       + earlier * f32(middle[anchor + 1] - target))
+            return (blended
+                    / f32(middle[anchor + 1] - middle[anchor])).astype(f32)
     raise ValueError(f"no mid-month interval brackets {valid_time!r}")
 
 
@@ -1684,6 +1696,7 @@ def build_static(
                     source_coverage_report)
                 source = None
         complete_source = source is not None and _BASE_STATIC_FIELDS <= served
+        selection = _seam_repaired_selection(selection, geog_root, grid=grid)
         fields = ({} if complete_source else _build_static_routed(
             grid, geog_root, halo, selection=selection,
             source_coverage_report=source_coverage_report))
@@ -1697,6 +1710,11 @@ def build_static(
                 landuse_path=selection.path("landuse"),
                 tokens=selection.resolution_tokens, halo=halo,
                 coverage_report=source_coverage_report))
+        if selection is not None and selection.gwdo_480 and "ELVMAX" not in served:
+            # After the GEOGRID-table statistics: WPS v4.8 runs compute_gwdo.py on the finished geo_em, which
+            # writes ELVMAX and rewrites VAR, CON, OA1-4 and OL1-4 from the 30" terrain.
+            from .orographic import build_gwdo_480_fields
+            fields.update(build_gwdo_480_fields(grid, geog_root))
         lake = selection is not None and selection.lake_depth
         if lake and "LAKE_DEPTH" not in served:
             from .lake import build_lake_fields
@@ -1765,6 +1783,88 @@ def _with_off_grid_recipe(selection: GeogSelection, tokens: str | None, grid,
           + ", ".join(f"{field}={directory}" for field, directory
                       in sorted(changed.items())) + ")", flush=True)
     return resolved
+
+
+#: A domain whose edge comes within this many degrees of 180 is told what
+#: the repair changed there (the soil void is half a degree wide; the rest
+#: is the sampling halo of a coarse grid).
+_SEAM_NOTE_REACH_DEG = 2.0
+
+
+def _grid_reaches_180(grid) -> bool:
+    """Does ``grid`` come within :data:`_SEAM_NOTE_REACH_DEG` of 180 degrees?
+
+    Read on the grid's own edge: a domain that holds the line in its
+    interior is crossed by it at the edge too (a domain over a pole
+    included, where neighbouring edge points jump by more than half a
+    turn).  A grid this cannot be read from is treated as reaching it, so
+    the lines print.
+    """
+    import numpy as np
+
+    try:
+        nx, ny = int(grid.e_we), int(grid.e_sn)
+        x = np.arange(1, nx + 1, dtype=np.float64)
+        y = np.arange(1, ny + 1, dtype=np.float64)
+        ring_x = np.concatenate([x, np.full(ny, float(nx)), x[::-1], np.ones(ny)])
+        ring_y = np.concatenate([np.ones(nx), y, np.full(nx, float(ny)), y[::-1]])
+        _, lon = grid.ij_to_latlon(ring_x, ring_y)
+        lon = ((np.asarray(lon, dtype=np.float64) + 180.0) % 360.0) - 180.0
+    except Exception:  # noqa: BLE001 - an unreadable grid keeps the lines
+        return True
+    if not np.all(np.isfinite(lon)):
+        return True
+    if np.any(np.abs(lon) >= 180.0 - _SEAM_NOTE_REACH_DEG):
+        return True
+    return bool(np.any(np.abs(np.diff(np.append(lon, lon[0]))) > 180.0))
+
+
+def _seam_repaired_selection(selection: GeogSelection | None, geog_root,
+                             *, grid=None) -> GeogSelection | None:
+    """``selection`` reading its land use from the copy whose columns at
+    180 degrees are repaired (:func:`woof.static.geog.seam_repaired_dataset`)
+    and its soil sets from the copy whose void beside 180 degrees is filled
+    (:func:`woof.static.geog.soil_void_repaired_dataset`), or unchanged
+    where no dataset needs a repair or none is staged.
+
+    Every build of a domain's statics passes here (the Rust route and the
+    numpy reference, a corridor crop and a direct build alike), so the
+    land use, land mask, lake and orographic fields all read one set of
+    bytes.  THE BREAKAGE IT PREVENTS: a strip of water and ice down Taveuni
+    along 180 degrees in a 1 km domain's land mask, from water, lake and
+    ice classes the WPS_GEOG MODIS tiles carry in their edge columns.
+    """
+    from dataclasses import replace
+
+    from contextlib import nullcontext
+
+    from .geog import (quiet_seam_notes, seam_repaired_dataset,
+                       soil_void_repaired_dataset)
+
+    base = GeogSelection.fallback(geog_root) if selection is None else selection
+    # The lines saying what was repaired are for a domain that reaches 180
+    # degrees; every other domain reads the same copy and is told nothing
+    # about pixels it never samples.  With no grid named, they print.
+    # A fresh context per dataset: quiet_seam_notes() can be entered once.
+    notes = (nullcontext if grid is None or _grid_reaches_180(grid)
+             else quiet_seam_notes)
+    # The soil sets' void beside 180 (soil_void_repaired_dataset): before,
+    # every land cell in the 0.5 degrees west of the line took silty clay
+    # loam for SoilGrids' water soil there.
+    changes = {}
+    for role, repair in (("landuse", seam_repaired_dataset),
+                         ("soil_top", soil_void_repaired_dataset),
+                         ("soil_bottom", soil_void_repaired_dataset)):
+        source = base.path(role)
+        if not (source / "index").is_file():
+            continue
+        with notes():
+            repaired = repair(source)
+        if repaired != source:
+            changes[role] = str(repaired)
+    if not changes:
+        return selection
+    return replace(base, **changes)
 
 
 def _build_static_routed(

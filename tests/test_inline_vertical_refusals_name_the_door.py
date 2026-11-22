@@ -49,12 +49,6 @@ def test_a_domain_table_with_no_vertical_key_is_admitted():
     _reject_domain_vertical_keys({"grid_id": 2, "nx": 100}, 2, "child.toml")
 
 
-def test_the_da_nested_refusal_names_the_offline_door():
-    from woof.da.nested_forecast import _OFFLINE_LADDER_DOOR
-
-    assert _names_the_door(_OFFLINE_LADDER_DOOR)
-
-
 def test_the_real_child_init_refusal_names_the_offline_door():
     from woof.experiment import VerticalConfig
     from woof.ingest.nest_init import _shared_vertical_coord

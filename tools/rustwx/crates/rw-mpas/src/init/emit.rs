@@ -139,6 +139,30 @@ pub fn write_init(
     provenance: &str,
     lineage: &crate::init::Lineage,
 ) -> MpasResult<EmitLedger> {
+    write_init_declaring(out_path, capsule_path, computed, &[], file_id, parent_chain, provenance, lineage)
+}
+
+/// [`write_init`] for a caller that DECLARES transported species: each name in
+/// `declared_species` that has a computed value and no capsule variable gets a
+/// `(Time, nCells, nVertLevels)` float32 variable, as the fixed suite species do.
+///
+/// THE BREAKAGE THIS PREVENTS (2026-11-09, an ERA5 1957-12-18T12 zoom globe on the ArWen suite
+/// with NSSL two-moment picked): the fixed list below knew the species of the suites of
+/// 2026-10-12 only, so the door's own `--scalar-names` for a microphysics chosen later (NSSL's
+/// qh qndrop qng qnh qni qnn qnr qns qvolg qvolh, P3's qib qir) met the "no variable for"
+/// refusal and no forecast with that scheme could start.  The refusal itself stays for every
+/// name nobody declared: a computed value with no variable is still never dropped.
+#[allow(clippy::too_many_arguments)]
+pub fn write_init_declaring(
+    out_path: &Path,
+    capsule_path: &Path,
+    computed: BTreeMap<String, Computed>,
+    declared_species: &[String],
+    file_id: &str,
+    parent_chain: &[String],
+    provenance: &str,
+    lineage: &crate::init::Lineage,
+) -> MpasResult<EmitLedger> {
     let capsule = netcrust::File::open(capsule_path)?;
     // The capsule's own classic layout and a plain handle on it: a carried variable is copied as
     // the bytes the capsule stores (NcSlab::Copy), not decoded and re-encoded.  A capsule that is
@@ -297,8 +321,21 @@ pub fn write_init(
     // meets the "no variable for" refusal below, which the door keys on.
     let admitted = ["qi","qs","qg","ni","nr","nc","nwfa","nifa","ng","volg"];
     let extra: Vec<String> = computed.keys()
-        .filter(|name| !present.contains(*name) && !added_aerosols.contains(&name.as_str()) && admitted.contains(&name.as_str())).cloned().collect();
+        .filter(|name| !present.contains(*name) && !added_aerosols.contains(&name.as_str())
+            && (admitted.contains(&name.as_str()) || declared_species.contains(*name))).cloned().collect();
     for name in &extra {
+        // A declared species lands as a level field or not at all: the wrong size would be
+        // written as a file that opens cleanly and reads another field's numbers.
+        if declared_species.contains(name) {
+            let expected: usize = ["nCells", "nVertLevels"].iter()
+                .map(|d| dimid_of.get(*d).map(|&i| dims[i].len as usize).unwrap_or(0)).product();
+            match computed.get(name) {
+                Some(Computed::Floats(values)) if values.len() == expected => {}
+                Some(Computed::Floats(values)) => return Err(MpasError::Refusal(format!(
+                    "declared species {name} has {} words, expected {expected} (nCells x nVertLevels)", values.len()))),
+                _ => return Err(MpasError::Refusal(format!("declared species {name} must be binary32"))),
+            }
+        }
         let mut ids = vec![];
         if let Some(&id) = dimid_of.get("Time") { ids.push(id); }
         for dim in ["nCells", "nVertLevels"] {

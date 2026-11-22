@@ -1,7 +1,7 @@
 """The RFMIP clear-sky files, fetched from upstream rather than shipped.
 
 The five RFMIP NetCDFs the RRTMGP acceptance gates read are not part of
-any WOOF artifact or of the public tree:
+any WOOF-ArWen artifact or of the public tree:
 
 * the four reference-result files are CC-BY-NC-SA-4.0, and carrying them
   would attach a non-commercial restriction to whatever carries them;

@@ -25,6 +25,7 @@ in-process A/B of old and new slot on real hrrrv5 inputs (SPEED-2/glue.md). Arra
 from __future__ import annotations
 
 from ...native_powf import CUDA_NATIVE_POWF
+from . import closures as _closures
 from . import bl_mynnedmf_c942418 as mynn
 from . import driver_rrfs as driver
 from .glue_plan import CopyPlan
@@ -50,6 +51,7 @@ def resident_slot(provider, call, module=None):
     """The persistent slot for the resident facade route, or None (native library route, or unsupported options)."""
     from .resident_rrfs import ResidentFrameworkFacade
     if not FUSED or not isinstance(getattr(provider, 'native', None), ResidentFrameworkFacade):
+        _closures.require_resident('pbl', provider)
         return None
     module = mynn if module is None else module
     slot = getattr(provider, '_rrfs_mynnedmf_resident', None)
@@ -59,6 +61,8 @@ def resident_slot(provider, call, module=None):
         except _Unsupported:
             slot = False
         provider._rrfs_mynnedmf_resident = slot
+    if not slot:
+        _closures.require_resident('pbl', provider)
     return slot or None
 
 
@@ -74,12 +78,15 @@ class ResidentMynnEdmfSlot:
         # Rank-0 module scalars: tile bounds, species flags and manager intervals the host framework set at
         # physics_init (bind_native_pools reads the same words each call; none changes after initialization).
         metadata = {}
-        for name in self.module.ARGUMENTS:
-            if name.startswith('f_') or name in _DIMS:
-                value = facade.get_variable(name)
-                if value is None:
-                    raise RuntimeError('Native MYNN scalar is absent: ' + name)
-                metadata[name] = value[0].item()
+        # A module whose driver arguments are not the host's names (bl_mynnedmf_v611: f_qnc for the host's f_nc)
+        # lists the host scalars it reads (HOST_SCALARS); the pinned modules' argument names are the host's.
+        host_scalars = getattr(self.module, 'HOST_SCALARS', None) or [
+            name for name in self.module.ARGUMENTS if name.startswith('f_') or name in _DIMS]
+        for name in host_scalars:
+            value = facade.get_variable(name)
+            if value is None:
+                raise RuntimeError('Native MYNN scalar is absent: ' + name)
+            metadata[name] = value[0].item()
         for name in ('dt_pbl', 'do_chemistry', 'num_chem'):
             value = facade.get_variable(name)
             if value is None:
@@ -96,9 +103,14 @@ class ResidentMynnEdmfSlot:
         self.metadata = metadata
         if not hasattr(provider, '_rrfs_mynnedmf_backend'):
             image = getattr(provider, '_rrfs_mynnedmf_image', None)
-            if image is None:
+            # Correct mode (fork_corrections): the module compiles its corrected source itself.
+            corrections = tuple(set(getattr(call, 'corrections', ()))
+                                & set(getattr(self.module, 'CORRECTIONS', ())))
+            if image is None and not corrections:
                 raise RuntimeError('MYNN native callback requires its strict precompiled CUDA resource')
-            provider._rrfs_mynnedmf_backend = self.module.MynnEdmfCuda(compiled_image=image)
+            # A version module (MYNN-EDMF v6.1.1) declares no CORRECTIONS: its own text carries MY1 and MY2.
+            provider._rrfs_mynnedmf_backend = self.module.MynnEdmfCuda(
+                compiled_image=image, **({'corrections': corrections} if corrections else {}))
             provider._rrfs_mynnedmf_common_kernels = driver.StrictPhysicsKernelCache()
         self.backend = provider._rrfs_mynnedmf_backend
         kernels = provider._rrfs_mynnedmf_common_kernels
@@ -330,6 +342,16 @@ class ResidentMynnEdmfSlot:
 
     # ------------------------------------------------------------------ one call
     def run(self, call):
+        closure = _closures.ACTIVE
+        if closure is None or 'pbl' not in closure.slots:
+            return self._run(call)
+        # The run's boundary-layer closure (rrfs/closures): its column-conserving redistribution added to MYNN's
+        # tendencies after they are written back.
+        result = self._run(call)
+        closure.after_pbl_step(self, call)
+        return result
+
+    def _run(self, call):
         import numpy as np
         cp = self.cp
         options = self._options(call)

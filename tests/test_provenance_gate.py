@@ -571,6 +571,10 @@ def test_the_plot_label_carries_the_executing_version():
 
     label = default_source_label()
     assert label.startswith(f"{DEFAULT_SOURCE_LABEL} ")
+    # (WOOF 1.1.7) the WRF engine's maps name it; the MPAS engine's name theirs the same way
+    assert DEFAULT_SOURCE_LABEL == "WOOF-ArWen"
+    from woof.hex.render_door import default_source_label as hex_source_label
+    assert hex_source_label() == f"WOOF-HEX-A {provenance_gate.executing_version()}"
     assert label.endswith(provenance_gate.executing_version())
     # The ensemble product door builds the same stamp without importing
     # woof.render (the RW-WPS wheel ships rustwx.py, not render.py).

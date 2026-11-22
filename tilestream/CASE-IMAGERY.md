@@ -1,4 +1,4 @@
-# A real forecast of a real outbreak, streamed out of core, rendered by WOOF
+# A real forecast of a real outbreak, streamed out of core, rendered by WOOF-ArWen
 
 **Case.** 2019-05-28, the central/eastern Kansas dryline outbreak. A dryline
 across central Kansas fired discrete supercells through the afternoon; the

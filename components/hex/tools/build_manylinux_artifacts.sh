@@ -42,6 +42,8 @@ export PATH="\$HOME/.cargo/bin:\$PATH"
 cp -a /src/tree /build-tree
 cd /build-tree
 "\$PY" -m pip install -q --upgrade pip build
+"\$PY" -m pip install -q --target /opt/hexad-nvcc nvidia-cuda-nvcc==13.5.37 nvidia-cuda-crt==13.5.37 nvidia-cuda-runtime==13.5.37 nvidia-nvvm==13.5.37
+export NVCC=/opt/hexad-nvcc/nvidia/cu13/bin/nvcc GPUWM_HEX_REQUIRE_AD_FATBINS=1
 GPUWM_HEX_ENGINE_SOURCE=/engine "\$PY" -m build --outdir /out/raw
 cd /out
 rm -rf dist && mkdir dist

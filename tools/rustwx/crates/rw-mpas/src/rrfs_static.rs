@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use rayon::prelude::*;
@@ -1604,7 +1604,7 @@ pub struct TileMapCacheReceipt {
 
 #[derive(Default)]
 struct TileMapCacheInner {
-    maps: HashMap<TileMapKey, CachedTileMap>,
+    maps: HashMap<TileMapKey, Arc<CachedTileMap>>,
     bytes: u64,
     hits: u64,
     misses: u64,
@@ -1644,18 +1644,27 @@ impl TileMapCache {
 
     /// RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_static.F:110-1422 at 1d6e370e (whole module driver boundary).
     fn get(&self, key: &TileMapKey, len: usize) -> MpasResult<Option<Vec<i32>>> {
-        let mut inner = self.lock()?;
-        match inner.maps.get(key) {
-            Some(entry) => {
-                let decoded = entry.decode(len)?;
-                inner.hits += 1;
-                Ok(Some(decoded))
+        // Decode OUTSIDE the lock. THE BREAKAGE THIS ENDS: the decode (a
+        // 1.44 M-word fill per 30-second tile) ran while holding the cache
+        // mutex, so every dataset reusing a shared geometry's maps (soilcl1-4,
+        // soilcomp, snoalb) decoded its 648 tiles one at a time while the tile
+        // pool waited: about 0.45 s per dataset at ~2 cores on the 17,928-cell
+        // L8-L9 halo static (2026-11-09). The entry is shared by `Arc`; the
+        // lock guards only the lookup and the counters; the bytes are the same.
+        let entry = {
+            let mut inner = self.lock()?;
+            match inner.maps.get(key).cloned() {
+                Some(entry) => {
+                    inner.hits += 1;
+                    entry
+                }
+                None => {
+                    inner.misses += 1;
+                    return Ok(None);
+                }
             }
-            None => {
-                inner.misses += 1;
-                Ok(None)
-            }
-        }
+        };
+        Ok(Some(entry.decode(len)?))
     }
 
     /// RRFSx/MPAS-Model src/core_init_atmosphere/mpas_init_atm_static.F:110-1422 at 1d6e370e (whole module driver boundary).
@@ -1674,7 +1683,7 @@ impl TileMapCache {
             return Ok(());
         }
         inner.bytes += bytes;
-        inner.maps.insert(key, encoded);
+        inner.maps.insert(key, Arc::new(encoded));
         Ok(())
     }
 

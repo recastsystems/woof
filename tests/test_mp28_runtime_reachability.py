@@ -826,8 +826,10 @@ def test_every_door_that_commits_to_a_forecast_asks_the_precondition():
     # `woof check` reports it without changing a verdict: it can be asked
     # about a machine that is not this one, where "the dataset is not
     # here" says nothing about whether the run fits there.
+    # (check_main prices a declared card's MYNN width around _check_main,
+    # which holds the body since door item 3.)
     assert "_warn_unmet_run_preparation" in inspect.getsource(
-        preflight.check_main)
+        preflight._check_main)
 
     # And the floor stays where it was, so a RunConfig that reached
     # initialization without passing any door is still refused.

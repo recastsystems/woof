@@ -603,7 +603,7 @@ def test_the_w_rows_take_the_vertical_momentum_coefficient():
     ``vertical_diffusion_u_2``/``_v_2`` give those two stresses
     (:4128-4147).  ``vertical_diffusion_w_2`` is the divergence of tau33 =
     2 K dw/dz, a vertical-vertical stress, and WRF hands it ``xkmh``
-    (:4145-4155) -- the one place the pairing breaks.  WOOF gives BOTH w
+    (:4145-4155) -- the one place the pairing breaks.  WOOF-ArWen gives BOTH w
     rows ``xkmv``: the horizontal one to match WRF, the vertical one as a
     documented divergence (see the next test for why).
 

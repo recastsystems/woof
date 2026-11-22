@@ -1,7 +1,7 @@
 """MPAS-suite moving segments ride the LTS class executor.
 
 THE BREAKAGES THESE PREVENT (MPAS-ROUTE-SPEED-2026-10-24):
-- moving segments on the MPAS suite route ran the fixed step (2.4x the WOOF route's LTS moving segments on the
+- moving segments on the MPAS suite route ran the fixed step (2.4x the WOOF-ArWen route's LTS moving segments on the
   same storm-following mesh and card); a resumed segment is a carrier restart and must not be refused as a
   native-file restart by the class executor;
 """

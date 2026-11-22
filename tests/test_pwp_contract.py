@@ -134,10 +134,10 @@ def test_history_masks_ocean_diagnostics_without_changing_live_state(monkeypatch
 
 
 @pytest.mark.parametrize('duration,selection,expected', [
-    (172800, None, 2), (259200, None, 2), (172740, None, 0),
+    (172800, None, 0), (259200, None, 0), (172740, None, 0),
     (259200, 0, 0), (259200, 1, 1), (259200, 2, 2),
 ])
-def test_experiment_multiday_ocean_default_and_explicit_optout(tmp_path, duration, selection, expected):
+def test_experiment_ocean_selection_ignores_run_length(tmp_path, duration, selection, expected):
     from test_experiment import _write
     from woof.experiment import load_experiment
     shared = 'sf_sfclay_physics = 91\nsf_surface_physics = 2'
@@ -149,7 +149,7 @@ def test_experiment_multiday_ocean_default_and_explicit_optout(tmp_path, duratio
     assert all(dc.run.sf_ocean_physics == expected for dc in exp.domains)
 
 
-def test_namelist_preserves_explicit_off_for_multiday_default(tmp_path):
+def test_namelist_preserves_explicit_off(tmp_path):
     from test_namelist_import import WPS_TEXT, INPUT_TEXT
     from woof.namelist_import import import_namelists
     path = tmp_path/'namelist.input'; wps = tmp_path/'namelist.wps'

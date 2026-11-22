@@ -31,8 +31,18 @@ fn ranged(url:&str,path:&Path,out:&Path,size:u64,chunk:u64)->Result<()> {
     let parts:Vec<PathBuf>=ranges.par_iter().map(|&(a,b)|->Result<PathBuf>{
         let part=path.with_extension(format!("part-{a}-{b}"));
         let range=format!("{a}-{b}");let query=if url.contains('?'){"&"}else{"?"};
-        curl(&format!("{url}{query}arwen_range={range}"),&part,Some(&range))?;
-        if fs::metadata(&part)?.len()!=b-a+1{return Err(format!("range {range} returned wrong byte count").into());}Ok(part)
+        // A server may end a range early with success (NCEI's ETOPO 2022, 3.0.1 proof run: one 8 MiB range of 59
+        // came back short and `woof go --waves on` stopped at "bathymetry acquisition incomplete"); curl's own
+        // --retry does not see a short body, so each range is fetched again, up to four times, before it fails.
+        let mut last=String::new();
+        for attempt in 0..4u32 {
+            if attempt>0 {std::thread::sleep(std::time::Duration::from_secs(2u64<<attempt));}
+            match curl(&format!("{url}{query}arwen_range={range}"),&part,Some(&range)) {
+                Err(e)=>last=e.to_string(),
+                Ok(())=>{let got=fs::metadata(&part)?.len(); if got==b-a+1 {return Ok(part);} last=format!("{got} bytes");}
+            }
+        }
+        Err(format!("range {range} returned wrong byte count after 4 attempts ({last})").into())
     }).collect::<Result<_>>()?;
     let mut target=fs::File::create(path)?;for p in parts{std::io::copy(&mut fs::File::open(&p)?,&mut target)?;remove_owned(&p,out)?;}target.flush()?;Ok(())
 }

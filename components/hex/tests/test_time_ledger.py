@@ -12,7 +12,8 @@ from woof.hex import time_ledger
 def isolated(monkeypatch):
     monkeypatch.delenv("WOOF_TIME_LEDGER", raising=False)
     monkeypatch.delenv("WOOF_CARD", raising=False)
-    monkeypatch.delenv("GPU_MUTEX_CARDS", raising=False)
+    monkeypatch.delenv("CARD_QUEUE_CARDS", raising=False)
+    monkeypatch.setenv("WOOF_CARD_QUEUE_PREFIX", "")
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "4")
     time_ledger.configure(None)
 
@@ -147,5 +148,5 @@ def test_emitted_original_clocks_reach_the_real_timeline_cli(tmp_path, monkeypat
 def test_uuid_visibility_uses_the_mutex_physical_card_index(monkeypatch):
     monkeypatch.delenv("WOOF_CARD", raising=False)
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-opaque-assignment")
-    monkeypatch.setenv("GPU_MUTEX_CARDS", "1")
+    monkeypatch.setenv("CARD_QUEUE_CARDS", "1")
     assert time_ledger.card_index() == 1

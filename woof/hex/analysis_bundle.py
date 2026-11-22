@@ -134,6 +134,7 @@ _REQUIRED_TOP = _TOP_KEYS - {"iau", "notes", "forecast"}
 FORECAST_FLAGS: dict[str, int] = {
     "--dt": 1, "--fullstep-local-timestep": 0, "--fullstep-lts-mode": 1, "--fullstep-lts-max-rate": 1,
     "--physics-suite": 1, "--physics": 1, "--physics-mode": 1, "--physics-correct-skip": 1,
+    "--physics-pin-set": 1, "--physics-profile": 1, "--physics-default-backend": 1, "--stochastic": 1,
     "--convection": 1, "--pbl-cadence": 1, "--preset": 1,
 }
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -368,7 +369,12 @@ def validate_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def parse_forecast_args(args: Any) -> list[tuple[str, str | None]]:
-    """``forecast.args`` as (flag, value) pairs, each flag one of :data:`FORECAST_FLAGS`."""
+    """Validate carried controls without rewriting their values or supplying defaults.
+
+    Route combinations are resolved by the forecast door after explicit run overrides. The
+    bundle checks individual controls here so a malformed stochastic member configuration
+    cannot be published, or silently replaced by the forecast's defaults.
+    """
 
     if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
         raise _refuse("forecast.args must be a list of strings (door flags and their values)")
@@ -382,9 +388,33 @@ def parse_forecast_args(args: Any) -> list[tuple[str, str | None]]:
         arity = FORECAST_FLAGS[flag]
         if arity and (index + 1 >= len(args) or args[index + 1].startswith("--")):
             raise _refuse(f"forecast.args: {flag} takes a value")
-        pairs.append((flag, args[index + 1] if arity else None))
+        value = args[index + 1] if arity else None
+        _validate_forecast_control(flag, value)
+        pairs.append((flag, value))
         index += 1 + arity
     return pairs
+
+
+def _validate_forecast_control(flag: str, value: str | None) -> None:
+    if flag in ("--physics-pin-set", "--physics-profile"):
+        from .physics_suites import load_table
+
+        table = load_table()
+        choices = (set(table.get("experimental_profiles", {})) if flag == "--physics-profile" else
+                   {row["pin_set"] for row in table.values()
+                    if isinstance(row, Mapping) and row.get("suite_routes") and row.get("pin_set")})
+        if value not in choices:
+            raise _refuse(f"forecast.args: {flag} names {value!r}; choices: {', '.join(sorted(choices))}")
+    elif flag == "--physics-default-backend":
+        if value not in ("hex-cuda", "native-cpu"):
+            raise _refuse(f"forecast.args: {flag} must be hex-cuda or native-cpu")
+    elif flag == "--stochastic":
+        from .stochastic import StochasticConfig
+
+        try:
+            StochasticConfig.parse(value)
+        except (ValueError, TypeError, OverflowError) as error:
+            raise _refuse(f"forecast.args: {flag}: {error}") from None
 
 
 def _validate_carried_mesh(top: Mapping[str, Any], files: Mapping[str, Any]) -> None:

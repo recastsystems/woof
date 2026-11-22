@@ -18,7 +18,7 @@ every number the registered interface screens consume:
 * **Rim/interior w-variance ratio** on the child (ringing detector).
 * **Spectral overlay statistic** -- the Parseval-normalised radial
   spectrum transplanted from the shipped nested-LES instrument
-  (docs/superpowers/receipts/les/score_nest.py, the two-correction
+  (docs/internal/receipts/les/score_nest.py, the two-correction
   version), reduced to the mean |log10(child/parent)| over the shared
   large-scale bins (wavelength >= ``--converge-above-km``).
 * **Far-field child statistics** -- mid-CBL var(w), var ratio against
@@ -54,7 +54,7 @@ from woof.verify.sase_ref import bulk_richardson_zi  # noqa: E402
 def _radial_spectrum(field, dx_km):
     """1-D isotropic spectrum whose SUM over bins IS the field variance.
 
-    Transplanted from docs/superpowers/receipts/les/score_nest.py, the
+    Transplanted from docs/internal/receipts/les/score_nest.py, the
     instrument proven on the shipped nested case AFTER its two recorded
     normalisation corrections (the N**2 scale and the exact-closure
     rescale that replaced the Hann mean-square approximation; measured

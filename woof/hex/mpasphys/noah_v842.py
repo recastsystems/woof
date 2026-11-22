@@ -3,7 +3,7 @@
 Authority: MPAS f34984b, whole module_sf_noahlsm.F and
 module_sf_noahlsm_glacial_only.F. Packed replay interface follows their
 argument order; numerical state stays on the device. Driver registration
-belongs to the MPAS physics seam. WOOF's default backend is untouched.
+belongs to the MPAS physics seam. WOOF-ArWen's default backend is untouched.
 """
 from __future__ import annotations
 

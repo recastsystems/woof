@@ -11,19 +11,19 @@ workspace whose size comes from three constants, not from the mesh:
     woof/core/rrtmg_lw.py     LW_BATCH_COLUMN_CHUNK    = 4096
     woof/core/rrtmg_mcica.py  MCICA_DEVICE_COLUMN_CHUNK = 16384
 
-They cost the same on a 40,962-cell mesh as on a 163,842-cell one.  WOOF
+They cost the same on a 40,962-cell mesh as on a 163,842-cell one.  WOOF-ArWen
 already treats the width as a budget knob -- ``RRTMGLegacyRadiation`` takes a
 ``column_chunk``, and ``legacy_radiation_vram_bytes(..., column_chunk=...)``
-prices it -- but WOOF's own runtime passes it on the RTE+RRTMGP branch and NOT
+prices it -- but WOOF-ArWen's own runtime passes it on the RTE+RRTMGP branch and NOT
 on the legacy branch the MPAS port runs, so the port gets the class default.
 
 WHAT THIS IS
 ------------
-An INSTRUMENT, not a shipped route.  The WOOF checkout is frozen and
+An INSTRUMENT, not a shipped route.  The WOOF-ArWen checkout is frozen and
 hash-verified by the port; this tool sets the three module attributes at
 runtime, which the byte-level source guard cannot see.  It exists to put a
 measured number and a measured bit-verdict against the upstream change, so the
-one-line WOOF fix can be argued from evidence.  Nothing here is a front door
+one-line WOOF-ArWen fix can be argued from evidence.  Nothing here is a front door
 and nothing here should become one.
 
 The comparator is the forecast tool's own ``payload_sha256``.  Chunk width

@@ -560,6 +560,15 @@ VERIFY_ORACLE_TREES: tuple[str, ...] = (
     "lake/oracle",
     "mrf/oracle",
     "mynn/oracle",
+    # 3.0.0: not oracles.  The prebuilt cubins of the opt-in MYNN 4.7.1 and
+    # 4.8.0 routes (woof.core.mynn471_gpu / mynn480_gpu), which those routes
+    # read through verify_oracle_path.  The 4.8.0 set (two cards, nz 49 and
+    # 50, fast and strict) is 8,605,899 compressed bytes: with it the woof
+    # manylinux wheel measured 108,670,498 bytes against the 100,000,000-byte
+    # per-file limit, and the cut's wheels stage refused it.  Without the
+    # 4.8.0 set alone it would still be 100,064,599.
+    "mynn471/images",
+    "mynn480/images",
     "noah/oracle",
     "noah/seaice_oracle",
     "noah/ua_oracle",

@@ -1,6 +1,6 @@
 """Full-step local time stepping on the MPAS-physics route, pure hex, one card or several cards of one host.
 
-The WOOF route's active LTS (``woof.hex.drivers.fullstep_lts_forecast_v841``) steps every rate class of a
+The WOOF-ArWen route's active LTS (``woof.hex.drivers.fullstep_lts_forecast_v841``) steps every rate class of a
 variable mesh at its own whole step: one resident dycore per class on the class's local mesh (its own cells,
 the scratch zone it carries and four halo rings), coordinated fine-first by
 :class:`woof.hex.cuda_fullstep_lts_active.FullStepLtsActive` (accepted-state mailboxes, matched interface flux
@@ -16,9 +16,9 @@ coordinator with the MPAS suite as each class's physics: every class runs the or
   device, in the coordinator's fine-first order; every hand-off synchronizes the device, so no class reads
   another's words before they land.
 * The class's MPAS physics runs on every local column (the class pools are projected with every local entity
-  solved), as the WOOF route's class backends do: the halo columns' physics is never published, and the
+  solved), as the WOOF-ArWen route's class backends do: the halo columns' physics is never published, and the
   scratch zone's is this class's own.  Before the microphysics the halo of the unpublished endpoint takes the
-  owners' accepted end state (round P), as on the WOOF route.
+  owners' accepted end state (round P), as on the WOOF-ArWen route.
 * Output is written at frame times only, which the class clock check makes macro boundaries (every class
   stands there).  At a macro boundary each class waits for the coordinator to finish the macro (reflux
   included) before it synchronizes its pools, deposits the words it OWNS, and class 0 assembles the global
@@ -26,7 +26,7 @@ coordinator with the MPAS suite as each class's physics: every class runs the or
   a one-card fixed-step run writes.
 
 Several cards (``--samehost-devices``): every rate class is cut into BLOCKS, one per card it uses
-(``woof.hex.fullstep_lts_blocks``, the WOOF route's multi-card plan), and the WOOF route's multi-card
+(``woof.hex.fullstep_lts_blocks``, the WOOF-ArWen route's multi-card plan), and the WOOF-ArWen route's multi-card
 coordinator (:class:`woof.hex.cuda_fullstep_lts_multi.FullStepLtsMulti`: same-class peer exchange at every round,
 mailbox and register copies between cards) drives one MPAS-suite block per thread on its own card.  The blocks of
 a class integrate concurrently, one per card; the classes still step one after another, fine first.  Each block's
@@ -35,19 +35,19 @@ physics runs on every local column, as a class's does on one card, so the frames
 Not identical to the fixed step, by design (a different time scheme); the dycore of each class is the pinned
 MPAS numerics at its own step.  Refused by name, each with its breakage (``admission_refusal``):
 DA cycling / IAU / chemistry, the balance series and nest triggers, timed surface updating, a
-limited-area mesh, a non-v8.4.2 dycore row, and stochastic forcing on several cards (as on the WOOF route).  A
-moving segment runs on the classes (``ClassMoving``: the move hooks at macro boundaries, as on the WOOF route's
+limited-area mesh, a non-v8.4.2 dycore row, and stochastic forcing on several cards (as on the WOOF-ArWen route).  A
+moving segment runs on the classes (``ClassMoving``: the move hooks at macro boundaries, as on the WOOF-ArWen route's
 class executor).
 
 Checkpoints (``--checkpoint-hours``) and resumes (``--restart-from``) on one card run on the classes too.  A
 checkpoint seals, beside the global carrier the fixed step reads (``checkpoint.<label>.pkl``), every class's own
 carrier on all its local columns (``<carrier>.lts/class<i>.pkl``: state, pools, alarm phase and the one-card
 continuation) and the coordinator's interface (``interface.pkl``: mailboxes, scalar reserves, class clock), as the
-WOOF route's class checkpoint does (``drivers.fullstep_lts_restart_v841``).  A correct-mode resume of it is the
+WOOF-ArWen route's class checkpoint does (``drivers.fullstep_lts_restart_v841``).  A correct-mode resume of it is the
 straight LTS run; a checkpoint without the class state (a fixed-step run's) resumes from the global carrier
 projected onto the classes, which is another run.
 
-Stochastic forcing (SPPT / SKEB) on one card runs the WOOF route's class-aware generator,
+Stochastic forcing (SPPT / SKEB) on one card runs the WOOF-ArWen route's class-aware generator,
 :class:`woof.hex.stochastic.LtsStochasticPhysics`: one spectral process on the global mesh, drawn once at each
 macro start by the coordinator (``begin_macro``), each class forcing its own local sources through
 ``LtsClassStochastic`` inside its step, and the SKEB budget closed at the macro end (``end_macro``).
@@ -362,7 +362,7 @@ class LtsClassExecution:
         """The resolved-advection forcing GF / New Tiedtke read (tend_physics rthdynten, rqvdynten), or None.
 
         A block of a class cut across cards runs its physics on every local column, so these words cross to the
-        peers at round A (``cuda_fullstep_lts_multi._BlockExchanger.round_step_boundary``), as on the WOOF route.
+        peers at round A (``cuda_fullstep_lts_multi._BlockExchanger.round_step_boundary``), as on the WOOF-ArWen route.
         """
         session = getattr(getattr(self, 'coupling', None), 'session', None)
         if session is None:
@@ -532,9 +532,13 @@ class LtsClassExecution:
                     board.lock.notify_all()
                 return frame
 
+            def _identity_step(self, step):
+                # The native request counts fine steps; the writer counts this class's steps.
+                return int(step) * execution.rate
+
             def _encode(self, jobs, snapshot, when, step, *extra, **options):
                 extras = extra[0] if extra else options.pop('extras', None)
-                if extras and any(stream.name in ('output', 'history') for stream, _, _ in jobs):
+                if extras and any(stream.name in ('output', 'history', 'diagnostics') for stream, _, _ in jobs):
                     # Every class deposits its own words of the extra history fields; class 0 writes them global.
                     extras = gather_extra_history(execution, (str(when), 'extra-history'), extras)
                 if execution.index != 0:
@@ -705,7 +709,7 @@ def seal_interface(path, active, *, identity, model_seconds, valid_time):
 
     The accepted-state mailboxes (a finer class's committed endpoint before its own reflux, which the next macro's
     coarser steps read as their start states), the scalar interface's mailbox, hold and per-class reserves, and the
-    class clock, in the WOOF route's class-checkpoint layout (``fullstep_lts_restart_v841.restore_interface`` reads
+    class clock, in the WOOF-ArWen route's class-checkpoint layout (``fullstep_lts_restart_v841.restore_interface`` reads
     it).  The registers are empty at a macro boundary; nothing is half applied.
     """
     from ..drivers.fullstep_lts_restart_v841 import _ACTIVE_ARRAYS, _CLASS_SCALAR_ARRAYS, _host
@@ -804,7 +808,7 @@ class ClassMoving:
 
     Classes stand together only at a macro boundary, so every collective is taken there and nowhere else:
     the post-move shock series is one row per macro step (the surface-pressure tendency over the macro), as on
-    the WOOF route's class executor (``drivers.fullstep_lts_forecast_v841._pressure_shock_row``).  Between
+    the WOOF-ArWen route's class executor (``drivers.fullstep_lts_forecast_v841._pressure_shock_row``).  Between
     frames a shock row gathers only the surface pressure and each class's largest |w|, not the pools.
     """
 
@@ -1122,12 +1126,12 @@ def shadow_requested(arguments) -> bool:
 
 
 def attach_shadow(arguments, dycore, out):
-    """The WOOF route's full-step shadow on this route's dycore (the same driver class), or None.
+    """The WOOF-ArWen route's full-step shadow on this route's dycore (the same driver class), or None.
 
     The shadow is the measuring instrument of ``--fullstep-local-timestep`` without ``--fullstep-lts-mode
     active``: the fixed step runs unchanged and an observer of its scalar transport records the rate census
     (``woof.hex.cuda_fullstep_lts_shadow``).  Rows go to ``fullstep-lts-stages.jsonl``, the summary to the
-    receipt, as on the WOOF route (drivers/run_cuda_v841_forecast).  A mesh whose geometry gives one class
+    receipt, as on the WOOF-ArWen route (drivers/run_cuda_v841_forecast).  A mesh whose geometry gives one class
     attaches nothing, as there.
     """
     from netCDF4 import Dataset

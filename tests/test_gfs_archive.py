@@ -49,8 +49,11 @@ def test_whole_window_checks_interior_boundaries():
     document, code = readiness.readiness(
         "gfs", cycle=datetime(2017, 9, 18, 12), hours=12, cadence=3,
         transport="gdex", as_posted=False, probe=probe)
-    assert code == readiness.NOT_YET_EXIT
-    assert document["state"] != "ready"
+    # An archive hole years past its late time is refused, not waited on
+    # (door item 11: it answered exit 75, retry in 30 s, before).
+    assert code == readiness.REFUSED_EXIT
+    assert document["state"] == "refused"
+    assert "lead 6" in document["refusal"] and ".f006." in document["refusal"]
     assert {row["lead"] for row in document["start_needs"]} == {0, 3, 6, 9, 12}
     assert len(calls) == 5
 
@@ -62,9 +65,9 @@ def test_go_dry_run_refuses_missing_archive_boundary_before_planning(tmp_path, m
                       'hours=12\ncadence=3\ntransport="gdex"\n')
     monkeypatch.setattr(fetch, "_head_answer", lambda url: ".f006." not in url)
     args = cli.build_parser().parse_args(["go", str(config), "--dry-run"])
-    assert go_cli.go_main(args) == 75
+    assert go_cli.go_main(args) == readiness.REFUSED_EXIT
     document = json.loads(capsys.readouterr().out)
-    assert document["state"] != "ready"
+    assert document["state"] == "refused"
     assert len(document["leads"]) == 5
 
 

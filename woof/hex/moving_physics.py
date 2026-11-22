@@ -205,7 +205,7 @@ def prefetch_owner_fields(payload, weights, keys, cache, *, target_mesh=None):
     Each field is the same ``mapped_owner_field`` work on its own inputs, written into the shared
     cache only by this thread, so every mapped word is the one the sequential loop produced.
     THE COST THIS REMOVES: the first class's loop mapped ~100 persistent physics fields one after
-    another on one core, 6.2 s of a resumed WOOF storm-following segment (box-aws2x 2026-10-24).
+    another on one core, 6.2 s of a resumed WOOF-ArWen storm-following segment (a two-card cloud machine, 2026-10-24).
     """
     from .host_parallel import run_tasks
     if cache is None:
@@ -312,7 +312,7 @@ def settle_ocean_roles(fields, wet, threshold, isice, iswater, xp=np):
     the land-ice class classifies as GLACIER (or ordinary land), so Noah-MP runs
     a glacier column on ocean state. MPAS's own conversion cannot repair it,
     because it fires only on a threshold crossing against the carried xicem.
-    Breakage it fixes: the storm hex storm-following, box M 2026-10-27, every move
+    Breakage it fixes: the storm hex storm-following, 2026-10-27, every move
     flipped polar columns water/sea ice/glacier, the history census refused, the
     Noah-MP glacier water budget failed and the next move's sea-ice remap
     refused. Returns the number of wet columns whose role changed.

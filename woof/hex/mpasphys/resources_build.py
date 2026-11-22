@@ -1459,7 +1459,12 @@ def rrfs_mynnedmf_images() -> tuple[tuple[str, str], ...]:
     found = {}
     for row in load_table().values():
         slots = row.get("slots") if isinstance(row, Mapping) else None
-        for slot in (slots or {}).values():
+        # A suite version (the row's mynn_versions) overlays the slot's entry and names its own image, so it is
+        # packed too. THE BREAKAGE THIS PREVENTS: config_mynn_version=mynn-v6.1 compiled its 0.84 MB MYNN-EDMF
+        # v6.1.1 unit through NVRTC on one host thread (about 11 min) before the first step of its first run.
+        versions = (row.get("mynn_versions") or {}).get("versions", {}) if isinstance(row, Mapping) else {}
+        overlays = [((version.get("cuda_entries") or {}).get("pbl") or {}) for version in versions.values()]
+        for slot in [*(slots or {}).values(), *({"cuda_entries": o} for o in overlays)]:
             entry = ((slot.get("cuda_entries") or {}).get("bl_mynnedmf") if isinstance(slot, Mapping) else None)
             module = entry.get("module") if isinstance(entry, Mapping) else None
             if module and module.startswith("rrfs."):
@@ -1475,7 +1480,8 @@ def _rrfs_module_present(module: str) -> bool:
 
 def build_mynnedmf_image(cache: Path, log: Callable[[str], None] = _log, *,
                         arch: str | None = None,
-                        module: str = "rrfs.bl_mynnedmf_c942418") -> dict[str, str]:
+                        module: str = "rrfs.bl_mynnedmf_c942418",
+                        corrections: tuple = ()) -> dict[str, str]:
     """The RRFS MYNN-EDMF CUDA image for this host's device, compiled once and cached.
 
     rrfs.bl_mynnedmf_c942418.load_cuda_packet accepts it only when its source,
@@ -1495,7 +1501,9 @@ def build_mynnedmf_image(cache: Path, log: Callable[[str], None] = _log, *,
     from ..mynn_glibc_math import mynn_glibc_source
     import importlib
     port = importlib.import_module("." + module, __package__)
-    source = CUDA_FTZ_HELPERS + mynn_glibc_source() + port.ARRAY_SUPPORT + port.MODULE_CUDA
+    # corrections: correct mode's fork ids (fork_corrections); the corrected source has its own cache entry.
+    body = port.module_cuda(tuple(corrections)) if corrections else port.MODULE_CUDA
+    source = CUDA_FTZ_HELPERS + mynn_glibc_source() + port.ARRAY_SUPPORT + body
     options = list(_hex_numerics.options(port.CUDA_OPTIONS)) + ["--gpu-architecture=" + arch]
     source_sha = hashlib.sha256(source.encode()).hexdigest()
     # The options (numerics mode) are part of the entry's name: without them a strict run and a fast run

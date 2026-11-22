@@ -1,0 +1,294 @@
+woof hex third-party notices, file by file
+==========================================
+
+NOTICE states each upstream, its terms and what derives from it. This file
+lists the derived files one by one, so that a reader can find the terms
+that govern any file without reading the code. The full licence texts are
+in licenses/. Paths are relative to the distribution root.
+
+Pins
+----
+  MPAS-Model     v8.4.2   f34984b2c89353cf31c235b08d3b4acd96b37bb3
+  MMM-physics    20250616-MPASv8.3   a4baf7f3243d1db0dbc5f63473f895bdbdc05c30
+  MMM-physics    20260319-WRFv4.8.0  63c806deef6a (bl_gwdo.F90 only, for kim_gwdo_2026.py)
+  MPAS-Data      v8.2     c57dbc7be629802c6e848770a9e44b9bc602be41 (not redistributed)
+  NOAA-GSL UGWP  MPAS_20241223   c1c893edcf171af5639af60e3a3a528816f6cc2b
+                 (Apache-2.0 LICENSE added upstream on 2026-11-04 at
+                 4108d491470c2576a7c1e97cc6a38bf454590193; the default
+                 route carries that release, MPAS_20261104, with
+                 alpha_fd an input defaulting to 12, the referee value)
+  RRFSx MPAS-Model fork  1d6e370e7b43a332074809f170532a216c2212fb (dynamical core and
+                 physics driver layer; MPAS terms)
+  rrfs-workflow  08eee4ceee301898d3cb837e03699a8da0d1cb32 (one configuration file)
+
+Licence key
+-----------
+  MPAS     BSD-3-Clause, LANS and UCAR    licenses/LICENSE-MPAS-BSD-3-Clause.txt
+  MMM      BSD-3-Clause, NCAR 2022        licenses/LICENSE-MMM-physics-BSD-3-Clause.txt
+  WRF      WRF public-domain notice       licenses/LICENSE-WRF-public-domain.txt
+  AER      BSD-3-Clause, AER 2020         licenses/LICENSE-AER-RRTMG-BSD-3-Clause.txt
+           and, as MPAS distributes it,   licenses/NOTICE-AER-RRTMG-as-distributed-with-MPAS.txt
+  R123     BSD-3-Clause, D. E. Shaw Research  licenses/LICENSE-Random123.txt
+  MT       BSD-3-Clause, Matsumoto and Nishimura   licenses/LICENSE-MT19937-BSD-3-Clause.txt
+  ARM      MIT, Arm Limited               LICENSE.arm-powf, licenses/LICENSE-Arm-optimized-routines-MIT.txt
+  CORE     MIT, CORE-MATH                 licenses/LICENSE-CORE-MATH-MIT.txt
+  SUN      FDLIBM notice, Sun Microsystems  licenses/LICENSE-FDLIBM-SunPro.txt
+  BLOSC    BSD-3-Clause, Francesc Alted / The Blosc Development Team
+                                         licenses/LICENSE-c-blosc-BSD-3-Clause.txt
+           (rust/s2s-zarr loads c-blosc at run time from the host or the
+           netCDF4 wheel to decode ERA5 Zarr chunks; it is not bundled)
+  UGWP     Apache-2.0, NOAA, UCAR/NCAR CU/CIRES 2026
+                                          licenses/LICENSE-UGWP-Apache-2.0.txt, NOTICE section 8
+  USGOV    a work of the US Government (NOAA GSL), treated as such
+           of 2026-10-14                  NOTICE section 9
+  NR       Numerical Recipes notice as MMM-physics preserves it (a stated
+           reliance, not a licence)   NOTICE section 2
+  NETCDF   BSD-3-Clause, Unidata 2018     NOTICE section 13, and
+           src/hexcore/data/licenses/netcdf-c-COPYRIGHT inside the package
+  HDF5     BSD-style, The HDF Group       NOTICE section 14, and
+           src/hexcore/data/licenses/hdf5-COPYING and
+           hdf5-COPYING_LBNL_HDF5 inside the package
+  ZLIB     zlib licence, Gailly and Adler NOTICE section 14, and
+           src/hexcore/data/licenses/zlib-LICENSE inside the package
+  METIS    Apache-2.0, Regents of the University of Minnesota 1995-2013
+                                          NOTICE section 15, licenses/LICENSE-METIS-Apache-2.0.txt,
+           and src/hexcore/data/licenses/metis-LICENSE inside the package
+  RUSTWX   MIT, rustwx contributors       NOTICE section 12, and
+           src/hexcore/data/licenses/rustwx-LICENSE-MIT inside the package
+  CRATES   each crate's own grant         licenses/THIRD-PARTY-LICENSES-helper-binaries.txt
+           (the third-party Rust crates   and NOTICE section 12
+           the helpers link)
+
+Every file not listed below is this project's own work under the Apache
+License 2.0 (LICENSE).
+
+1. MPAS physics ports (src/hexcore/mpasphys/)
+---------------------------------------------
+Each module ports the MPAS v8.4.2 driver layer it cites
+(src/core_atmosphere/physics/mpas_atmphys_*.F, MPAS) and the scheme files
+listed. Upstream paths are relative to src/core_atmosphere/physics/.
+
+  bl_mynn_v842.py        physics_mmm/bl_mynn.F90, bl_mynn_subroutines.F90,
+                         mynn_shared.F90 (MMM); physics_wrf/module_bl_mynn.F,
+                         bl_mynn_pre.F, bl_mynn_post.F (WRF)
+  cam_rad_v842.py        physics_wrf/module_ra_cam.F, module_ra_cam_support.F (WRF)
+  gf_mpas_v842.py        physics_wrf/module_cu_gf.mpas.F (WRF)
+  kain_fritsch_v842.py   physics_wrf/module_cu_kfeta.F (WRF)
+  kessler_v842.py        physics_wrf/module_mp_kessler.F (WRF)
+  noah_v842.py           physics_wrf/module_sf_noahdrv.F, module_sf_noahlsm.F,
+                         module_sf_noahlsm_glacial_only.F (WRF)
+  ntiedtke_v842.py       physics_mmm/cu_ntiedtke.F90 (MMM);
+                         physics_wrf/module_cu_ntiedtke.F, cu_ntiedtke_pre.F,
+                         cu_ntiedtke_post.F (WRF)
+  oml_v842.py            physics_wrf/module_sf_oml.F (WRF)
+  radshared_v842.py      physics_wrf/module_mp_thompson_cldfra3.F,
+                         module_ra_cam_support.F, module_ra_rrtmg_vinterp.F (WRF)
+  rrtmg_lw_v842.py       physics_wrf/module_ra_rrtmg_lw.F (AER; WRF and MPAS
+                         adaptations), module_ra_rrtmg_vinterp.F (WRF)
+  rrtmg_sw_v842.py       physics_wrf/module_ra_rrtmg_sw.F,
+                         module_ra_rrtmg_sw_aerosols.F (AER; WRF and MPAS
+                         adaptations), module_mp_thompson_aerosols.F,
+                         module_ra_rrtmg_vinterp.F (WRF); the MersenneTwister
+                         module of module_ra_rrtmg_lw.F (MT)
+  seaice_v842.py         physics_wrf/module_sf_noah_seaice.F,
+                         module_sf_noah_seaice_drv.F, module_sf_noahlsm.F (WRF)
+  sf_mynn_v842.py        physics_mmm/sf_mynn.F90 (MMM); physics_wrf/module_sf_mynn.F,
+                         sf_mynn_pre.F (WRF)
+  sfclay_mm5_v842.py     physics_mmm/sf_sfclayrev.F90 (MMM);
+                         physics_wrf/module_sf_sfclay.F, module_sf_sfclayrev.F,
+                         sf_sfclayrev_pre.F, module_sf_sfcdiags.F (WRF)
+  table_resources_v842.py  physics_wrf/module_mp_thompson.F (WRF)
+  thompson_v842.py       physics_wrf/module_mp_thompson.F (WRF);
+                         physics_mmm/mp_radar.F90 (MMM)
+  wsm6_v842.py           physics_mmm/mp_wsm6.F90, mp_wsm6_effectRad.F90,
+                         mp_radar.F90 (MMM; its GAMMLN also NR);
+                         physics_wrf/module_mp_wsm6.F (WRF)
+  ugwp_oro_v842.py       physics_noaa/UGWP/bl_ugwp.F (UGWP),
+                         physics_wrf/module_bl_ugwp_gwdo.F (WRF) -- NOTICE section 8
+  ugwp_ngw_v842.py       physics_noaa/UGWP/bl_ugwpv1_ngw.F, cires_ugwpv1_*.F,
+                         cires_tauamf_data.F (UGWP) -- NOTICE section 8
+  kim_gwdo_2026.py       physics_mmm/bl_gwdo.F90 at 63c806deef6a (MMM);
+                         physics_wrf/module_bl_gwdo.F with MPAS PR #1409 (WRF, MPAS)
+  ysu_gwdo_v842.py       physics_mmm/bl_gwdo.F90 (MMM); physics_wrf/module_bl_gwdo.F (WRF)
+  ysu_v842.py            physics_mmm/bl_ysu.F90 (MMM); physics_wrf/module_bl_ysu.F (WRF)
+  compile_v842.py, config_v842.py, device_pools_v842.py, diagnostics_v842.py,
+  driver_v842.py, forecast_v842.py, native_backend.py, pool_v842.py,
+  runtime_v842.py, session_v842.py, surface_update_v842.py, math_v842.py,
+  __init__.py            MPAS driver layer and this project's own glue (MPAS)
+
+  Withheld from the public distribution (tools/licence_holds.json):
+  noahmp_v842.py         physics_noahmp/ (UCAR Noah-MP terms) -- NOTICE section 4
+  urban_v842.py          composed with noahmp_v842.py -- NOTICE section 4
+
+2. Other ported or adapted source in src/hexcore/
+-------------------------------------------------
+  Dynamical core, init_atmosphere, IAU, limited-area, restart, streams and
+  diagnostics modules (the files citing src/core_atmosphere/ or
+  src/core_init_atmosphere/ and src/framework/)          MPAS
+  The RRFSx fork's dynamical core and physics driver layer (the *_rrfs.py
+  modules and src/hexcore/mpasphys/rrfs/)                MPAS (NOTICE section 9)
+  cuda_gwdo_v841.py      physics_mmm/bl_gwdo.F90 (MMM); physics_wrf/module_bl_gwdo.F (WRF)
+  mesh.py (grid_rotate convert_xl longitude formula)     MPAS-Tools, MPAS terms
+  native_powf.py         Arm optimized-routines v21.02 powf (ARM)
+  data/profiles/Vtable.GFS, data/vtables/Vtable.GFS, data/vtables/Vtable.GFS-rrfs
+                         WPS ungrib/Variable_Tables/Vtable.GFS (NOTICE section 3)
+
+3. Tests and tools that transcribe or patch upstream source
+-----------------------------------------------------------
+  tests/*_oracle/, tests/*_v842/, tests/*native*/ Fortran, C and Rust
+  wrappers, stubs and patches                  MPAS, and the scheme's own
+                                               upstream as in part 1
+  tests/oracles/rrtmg_lw_v842/, tests/mpas_rrtmg_sw_oracle/,
+  tests/radshared_v842/                        AER and MT as in part 1
+  tests/native_iau_v842/*.patch, tests/proposed_stream_driver_v842.patch,
+  tests/surface_update_integration_v842.patch  MPAS
+  tools/mpas_operator_oracle/, tools/mpas_step_oracle/,
+  tools/native_physics_reference/, tools/native_dry_reference/   MPAS
+  verification/mpas-v8.4.1-registry/, verification/mpas-v8.4.2-registry/
+  (cited MPAS Registry lines)                  MPAS
+  verification/source-namelists/               rrfs-workflow configuration
+                                               (NOTICE section 9)
+  tests/test_mpas_ugwp_oro_v842.py, tests/test_ugwp_ngw_v842.py,
+  tests/ugwp_ngw_native/, tests/ugwp_oro_oracle/   UGWP (NOTICE section 8)
+
+  Withheld from the public distribution (tools/licence_holds.json):
+  tests/noahmp_v842/, tests/urban_v842/            NOTICE section 4
+
+4. Read from the installed woof distribution at run time
+---------------------------------------------------------
+The MPAS physics ports compile with device maths headers read from woof's
+package (woof/core/kernels/): glibc_flt32.cuh, glibc_flt64.cuh,
+glibc_trig_flt32.cuh, flt32_expf_fma.cuh, mynn_libm.cuh and the CORE-MATH
+blocks of urban_bem.cuh, among others. They are woof's files under woof's
+NOTICE; compiled copies also occur in the kernel packs (section 16). When the physics-resources
+builder assembles them from sources inside this distribution, the ARM,
+CORE and SUN notices in licenses/ apply (NOTICE section 7).
+
+5. Not in this distribution
+---------------------------
+The Noah-MP v5 implementations, tests, native oracles and licence files
+named in tools/licence_holds.json are withheld from public exports (UCAR
+terms, NOTICE section 4). The UGWP ports ship (NOTICE section 8). Other RRFS
+physics ports in src/hexcore/mpasphys/rrfs/ carry the MPAS driver BSD notice
+and the NOAA GSL attribution and licence terms in NOTICE section 9.
+
+6. Compiled helpers in the wheel (woof/hex/libexec)
+--------------------------------------------------
+Linked, not derived: these programs link third-party libraries, and NOTICE
+section 12 lists each one with its terms.
+
+  hex_contract_hostprep    rust/host-prep        Rust standard library only
+  gpuwm-hex-netcdf-copy    rust/netcdf-copy      NETCDF (netCDF-C 4.9.3, static)
+  hex_obs_scorecard        rust/obs-scorecard    RUSTWX, CRATES
+  lookup_decode,           rust/physics-tables   Rust standard library only
+  table_decode,
+  rw_mpas_rrtmg_lw_tables,
+  rw_mpas_rrtmg_sw_tables
+  rw_mpas_physics_pool     rust/physics-pool     RUSTWX, NETCDF (classic,
+                                                 static), Rust crates (NOTICE
+                                                 section 12 names them)
+  rw_sfc_series            tools/rustwx          MPAS, CRATES, Apache-2.0
+  rw_wrfbatch              woof tools/rustwx    RUSTWX, CRATES, embedded fonts
+                                                 (OFL-1.1; NOTICE section 12)
+                                                 licenses/LICENSE-embedded-fonts-OFL-1.1.txt
+  libhex_geometry_math.so  data/mpasphys-maths    ARM, CORE (MIT), project Apache-2.0
+                                                 NOTICE section 7
+  librw_surface.so         woof tools/rustwx    RUSTWX, CRATES, NETCDF, HDF5, ZLIB
+  rw_mpas_static,
+  rw_mpas_mesh,
+  rw_mpas_geometry         woof tools/rustwx    RUSTWX, CRATES
+  rw_mpas_lbc              woof tools/rustwx    RUSTWX, CRATES
+  rw_igra2                 woof tools/rustwx    RUSTWX, CRATES
+  rw_mpas_rrfs_connectivity,
+  rw_mpas_rrfs_damping,
+  rw_mpas_rrfs_deformation woof tools/rustwx    RUSTWX (Rust standard library only)
+  rw_mpas_stream           woof tools/rustwx    RUSTWX, NETCDF (netCDF-4,
+                                                 static), HDF5, ZLIB, CRATES
+  hex_gpmetis              third_party/metis-5.1.0  METIS (derived: METIS 5.1.0's own
+                                                 gpmetis; every file Apache-2.0,
+                                                 gk_mksort.h rewritten; NOTICE 15)
+
+Stochastic random generator (src/hexcore/stochastic.cu)
+-----------------------------------------------------
+  The Philox4x32-10 function derives from Random123 through the engine
+  woof/core/kernels/ensemble_stochastic.cu port. R123 applies to that
+  function. The mesh harmonic transform and forcing adapter are project work.
+
+Generated kernel packs (release assets)
+---------------------------------------
+Compiled entries retain the source terms above: MPAS, MMM, WRF, AER,
+UGWP, USGOV, ARM, CORE, SUN, R123 and MT, plus project Apache-2.0 code.
+CuPy generated kernels and headers: MIT, licenses/LICENSE-CuPy-MIT.txt.
+CUB/Thrust/libcu++ headers: Apache-2.0 with LLVM exception and BSD notices,
+licenses/LICENSE-CCCL.txt. NOTICE section 16 covers these compiled copies.
+The generated asset-release-NOTICE.txt names each asset and carries the
+full texts beside the release assets.
+
+
+Echo land and radiation integration (modified ports, 2026-10-28):
+- src/hexcore/mpasphys/framework_init_v842.py aerosol emissions and
+  tests/fixtures/aerosol_emissions_oracle.f90 derive from MPAS-Model v8.4.2,
+  framework/mpas_atmphys_driver.F. BSD-3-Clause, see
+  licenses/LICENSE-MPAS-BSD-3-Clause.txt and NOTICE section 1.
+- src/hexcore/mpasphys/radshared_v842.py cloud merge and
+  tests/fixtures/cloud_merge_oracle.f90 derive from WRF v4.6.1,
+  phys/module_radiation_driver.F. WRF public domain, see
+  licenses/LICENSE-WRF-public-domain.txt.
+- src/hexcore/cycle/land_state.py uses Noah STAS capacity constants;
+  src/hexcore/cycle/NOAH-TABLE-NOTICE.txt retains their source and notice.
+- src/hexcore/data/soil-hydraulics.v1.json includes constants and derived
+  anchors from NCAR/ccpp-physics v5.0.0 physics/set_soilveg.f and sflx.f,
+  under Apache-2.0. Copyright 2017, NOAA, UCAR/NCAR CU/CIRES.
+  See src/hexcore/data/LICENSE.soil-hydraulics and
+  src/hexcore/data/SOIL-HYDRAULICS-NOTICE.txt for terms and modifications.
+
+RRFS rrfs-44c0849 addition (NOTICE section 9 and final pin addendum):
+  rrfs/bl_mynnedmf_c6d08709.py   NCAR/MYNN-EDMF c6d08709, USGOV
+  rrfs/sf_mynnsfc_v610.py        NCAR/MYNN-SFC v6.1.0 a038a9e, Apache-2.0
+                                 (licenses/LICENSE-MYNN-SFC-Apache-2.0.txt;
+                                 the config_mynn_version suite versions)
+  rrfs/bl_mynnedmf_v611.py       NCAR/MYNN-EDMF v6.1.1 2b2da61, Apache-2.0
+                                 (licenses/LICENSE-MYNN-EDMF-Apache-2.0.txt;
+                                 the mynn-v6.1 suite version)
+  data/mpasphys-framework-rrfs-44c0849 and
+  data/streams_rrfs_44c0849_registry.json   RRFSx/MPAS-Model 44c0849, MPAS
+
+RRFS NSSL native-free adapter
+----------------------------
+mpasphys/rrfs/nssl_rrfs.py and the existing mp_nssl2m.py derive from NOAA
+National Severe Storms Laboratory module_mp_nssl_2mom.F, RRFS fork
+1d6e370e7b43a332074809f170532a216c2212fb. The source is US government code.
+Its header identifies the National Severe Storms Laboratory and describes
+"Graupel & hail version of cloud microphysics" with "Two-moment with CCN".
+nssl_sunpro.cuh carries the Sun Microsystems freely distributable expm1/tanh
+notice in full. nssl_math.py reuses the existing Arm/CORE-MATH/Sun device math
+covered by the notices above.
+TC potential intensity CUDA adaptation
+src/hexcore/tc_climate/potential_intensity.cu adapts the tcpyPI algorithm
+(MIT, copyright 2020 Daniel Gilford). The complete notice accompanies the
+file at src/hexcore/tc_climate/LICENSE.tcpypi. The tracker is independently
+implemented from the papers and contains no TempestExtremes source.
+
+
+rapidgzip (https://github.com/mxmlnkn/rapidgzip) supplies the parallel gzip
+decoder for global mesh archives. Licensed under MIT OR Apache-2.0.
+Full texts: licenses/rapidgzip-LICENSE-MIT.txt and licenses/rapidgzip-LICENSE-APACHE.txt.
+
+psutil supplies process identity checks for owned run directories.
+Licensed under BSD-3-Clause. Full text: licenses/psutil-LICENSE.txt.
+
+The differentiable engine (ad/, rust/hexad/, src/hexcore/ad/; NOTICE section 18)
+------------------------------------------------------------------------
+Project code (Apache-2.0): the runner and libhexad-phys (ad/phys/binder/,
+ad/e2e/, ad/phys/p8/), the generators and proof harnesses (ad/phys/tempo/,
+ad/phys/mynn/, ad/phys/p4/, ad/phys/p7/, ad/phys/typesub/, ad/phys/p6/),
+ad/phys/bind/, ad/phys/window/ and ad/kset/int7f/*.py.
+Derivative kernels keep the terms of the forward kernel they differentiate:
+  ad/kset/int7f/src/ad1-*, overlay-a/, overlay-b/, ad/kset/g8/hex-ad/,
+  ad/phys/l4speed/              dynamical core and transport   MPAS
+  ad/kset/int7f/src/ad2-hrrrv5-glue/, ad/kset/g8/physics-ad/,
+  ad/phys/g3/cuda/, ad/phys/held/mpas_*      physics driver glue   MPAS
+  ad/phys/held/rlw_*, rsw_*, ad/phys/p7/     RRTMG                 AER, MPAS, WRF
+  ad/phys/held/tempo_*, ad/phys/tempo/       TEMPO                 NCAR TEMPO Apache-2.0
+  ad/phys/mynn/, ad/phys/p4/, ad/phys/held/oracle_*, ad/phys/p6/
+                                  MYNN-EDMF, MYNN-SFC, GSL drag, RUC   USGOV

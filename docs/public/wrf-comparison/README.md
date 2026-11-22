@@ -1,6 +1,6 @@
 # WRF comparison evidence
 
-These records compare WOOF with WRF component or forecast outputs. They are
+These records compare WOOF-ArWen with WRF component or forecast outputs. They are
 code-verification evidence, not validation against observations. Each record
 states its reference version, measured scope and failed or inconclusive gates.
 

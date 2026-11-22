@@ -1,0 +1,1 @@
+{"hexcore/mpasphys/rrfs/tempo_v303.py:4312": {"function": "tempo_warp_sizes", "image_sha256": "477158923b00908cd095c141ec83c76b4ff7aeec5dd55276ccca6d6c4ea4a64c", "expected_hex": "30fe00000000000078100000000000002076643a00000000", "evaluated": "image_kernel_value.py on RTX 5090 (sm_120) via ad-gpu-run, output poisoned 0xA5 before launch; values 65072, 4216, 979662368"}}

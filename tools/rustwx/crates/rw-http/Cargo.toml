@@ -1,0 +1,29 @@
+# One polite HTTP layer for every ureq-based front door (rw_asos, rw_mrms,
+# rw_nexrad, rw_goes and the rest of rw-obs / rw-sat).
+#
+# Defect it exists for: rw_asos gave up on the first HTTP 429, so Iowa
+# Mesonet's rate limiter cost a ports proof its ASOS rows on 4 of 5 frames
+# (the hex region scoring, 2026-11-09). Every
+# other ureq door had the same gap. This crate gives them:
+#   * bounded exponential backoff with jitter on 429/502/503/504 and on
+#     transport failures, honouring Retry-After;
+#   * a per-host minimum gap shared across processes (a reservation file
+#     under the temp dir), so N frames run as N processes still pace, and a
+#     429 seen by one process backs off every other process on that host;
+#   * an opt-in URL-keyed body cache, so a repeated request is not refetched.
+#
+# Model GRIB fetching (rw-fetch) already has all three through wx-core's
+# DownloadClient and does not use this crate.
+
+[package]
+name = "rw-http"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+sha2 = "0.10"
+ureq.workspace = true

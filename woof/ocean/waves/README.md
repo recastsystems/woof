@@ -114,3 +114,18 @@ The standalone adaptive driver synchronizes scalar growth limits each step; its
 measured host CPU usage was close to one core during the shared-card run. The
 asynchronous shared ocean ABI avoids those per-step host reads. Neither shared
 card utilization nor cumulative process CPU establishes a GPU-idle interval.
+
+Lakes (new in 3.0.1, opt-in with `--waves on`; checked on one case, a Lake
+Superior gale on 5 November 2026 at 12 km for 9 hours against three NDBC
+buoys; lake ice by a unit test only; not validated against a season of buoys): the forecast door passes the
+model's water mask, surface height and ice to the Rust preparation. A connected
+body of model water that the ocean wave source does not cover, that touches no
+ocean wet cell and that covers at least 5,000 km² becomes wave water with depth
+equal to the model's lake surface minus the ETOPO 2022 bed (cells shallower
+than 1 m or under ice stay dry). It starts calm, a domain edge across it is open
+and calm, and its waves grow from the coupled wind. Each lake found, made water
+or left out with its reason, is a `{"lake": ...}` line in the preparation log
+and a row of the prepared manifest's `lakes`.
+Known limits: lakes need 5,000 km² or more; nests carry no waves (only the
+outermost domain does); on wave grids of about 3 km, wave height in very shallow
+shore cells is not yet capped by depth-induced breaking.

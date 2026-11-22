@@ -156,7 +156,7 @@ def _read_store(store, label):
 
 
 def _model_reset(state, label, slot) -> None:
-    """The reset WOOF's own run loops call.  Nothing is faked here.
+    """The reset WOOF-ArWen's own run loops call.  Nothing is faked here.
 
     This is the whole point of the gate: the model calls these two functions
     and only these two, so whether a streamed domain's windows reset is a
@@ -211,7 +211,7 @@ def _physics_fires(scalars) -> dict:
 
 def resident_run(cfg, boundaries, *, nsteps=NSTEPS, seed=tj.SEED,
                  warmup=1) -> Result:
-    """The control: one resident domain, WOOF's own ``dycore.step``.
+    """The control: one resident domain, WOOF-ArWen's own ``dycore.step``.
 
     Same loop shape as :func:`streamed_run`, with the same reset calls at the
     same instants, so the only difference between the two runs is which

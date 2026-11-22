@@ -27,7 +27,7 @@ mpirun --oversubscribe -np 2 "$lane_root/native/main/real.exe" > "$lane_root/evi
 cp rsl.error.0000 "$lane_root/evidence/native-real.rsl.log"
 grep -q 'SUCCESS COMPLETE REAL' "$lane_root/evidence/native-real.rsl.log"
 sha256sum wrfinput_d01 wrfbdy_d01 > "$lane_root/evidence/native-input.sha256"
-WOOF_CAPTURE_DIR="$lane_root/native-capture" mpirun --oversubscribe -np 2 "$lane_root/native/main/wrf.exe" > "$lane_root/evidence/native-forecast.stdout.log" 2>&1
+GPUWM_CAPTURE_DIR="$lane_root/native-capture" mpirun --oversubscribe -np 2 "$lane_root/native/main/wrf.exe" > "$lane_root/evidence/native-forecast.stdout.log" 2>&1
 cp rsl.error.0000 "$lane_root/evidence/native-forecast.rsl.log"
 grep -q 'SUCCESS COMPLETE WRF' "$lane_root/evidence/native-forecast.rsl.log"
 sha256sum "$lane_root"/native-capture/*.bin > "$lane_root/evidence/native-capture.sha256"

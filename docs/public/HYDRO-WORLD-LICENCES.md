@@ -5,7 +5,7 @@ Every candidate global source for worldwide `woof hydro`, checked against its li
 with a SHA256 under `$HYDRO_WORLD_DATA/licences/<source>/` on the verifying node. That folder's
 `SOURCE.md` lists every file with its URL, fetch time and hash, and `SHA256SUMS` covers every file.
 
-The bar (the licence ruling, 2026-10-14): WOOF stays Apache-2.0, and no default path goes into data whose
+The bar (the licence ruling, 2026-10-14): WOOF-ArWen stays Apache-2.0, and no default path goes into data whose
 licence limits sale or use. A source passes only if its licence, read at the source, allows commercial use and
 redistribution of derived products. Anything NonCommercial, NoDerivatives, available only after registration, or
 unclear is excluded, and the excluded sentence is quoted.
@@ -36,9 +36,9 @@ unclear is excluded, and the excluded sentence is quoted.
 | Australian BOM Water Data Online | per data owner: 43 owners CC BY, 1 owner other | ALLOWED per owner with that owner's attribution; Snowy Hydro (w00205) EXCLUDED | yes |
 | Natural Earth | public domain | ALLOWED | yes (`naciscdn.org`, HTTP 200) |
 | OpenStreetMap waterways | ODbL 1.0 | ALLOWED, SHARE-ALIKE: a derived database we publish must also be ODbL | yes |
-| HydroSHEDS v1 (core DEM/DIR/ACC, HydroRIVERS, HydroBASINS) | WWF HydroSHEDS v1 License Agreement (custom) | RESEARCH-ONLY (coordinator ruling 2026-10-18T11:50Z): cross-check only, never a default input, never bundled, never fetched by default; four clauses below | yes (`data.hydrosheds.org`, HTTP 200) |
+| HydroSHEDS v1 (core DEM/DIR/ACC, HydroRIVERS, HydroBASINS) | WWF HydroSHEDS v1 License Agreement (custom) | RESEARCH-ONLY (project decision 2026-10-18T11:50Z): cross-check only, never a default input, never bundled, never fetched by default; four clauses below | yes (`data.hydrosheds.org`, HTTP 200) |
 | HydroSHEDS v2 | not released | NOT AVAILABLE: "Release of the data under a free license will begin in 2026." Re-check on release | no data yet |
-| ERA5-Land | CC BY 4.0 | ALLOWED (coordinator ruling 2026-10-18T09:05Z): fetched through the engine's existing CDS path and credential, no new account | through the engine's configured CDS credential (anonymous retrieve returns 401) |
+| ERA5-Land | CC BY 4.0 | ALLOWED (project decision 2026-10-18T09:05Z): fetched through the engine's existing CDS path and credential, no new account | through the engine's configured CDS credential (anonymous retrieve returns 401) |
 | GLDAS (NASA) | CC0 by NASA ESDIS default for NASA-led data | Licence ALLOWED; EXCLUDED pending approval because downloads need an Earthdata Login | no (GES DISC file returns 401 and redirects to `urs.earthdata.nasa.gov`) |
 | GloFAS data (CEMS) | CEMS-FLOODS datasets licence | Licence ALLOWED with attribution; EXCLUDED pending approval because downloads need an EWDS account | no (EWDS retrieve API returns 401) |
 | LISFLOOD code | EUPL-1.2 (copyleft) | EXCLUDED from any code we ship (copyleft; Apache-2.0 is not on EUPL's compatible list) | n/a |
@@ -255,7 +255,7 @@ Saved: `hydrosheds-v2/v2.html`.
 
 Check again when the data is released.
 
-### ERA5-Land (ALLOWED, coordinator ruling 2026-10-18T09:05Z)
+### ERA5-Land (ALLOWED, project decision 2026-10-18T09:05Z)
 Saved: `era5-land/licence.json` (CDS catalogue: `"license": "CC-BY-4.0"`, sha256 78e1afce...), `era5-land/cds.html`,
 `era5-land/ccby.txt` (CC BY 4.0 legal code). Access check: a POST to
 `cds.climate.copernicus.eu/api/retrieve/v1/processes/reanalysis-era5-land/execution` without a token returns HTTP 401.
@@ -291,7 +291,7 @@ Saved: `lisflood/code-license.txt` (sha256 275ae014..., ec-jrc/lisflood-code mas
 > providing access to its essential functionalities at the disposal of any other natural or legal person."
 
 Apache-2.0 is not on the EUPL list of compatible licences (GPL, AGPL, OSL, EPL, CeCILL, MPL, LGPL, CC BY-SA 3.0,
-EUPL, LiLiQ). No LISFLOOD code may be ported into WOOF, and it may not be offered as a service. GloFAS output
+EUPL, LiLiQ). No LISFLOOD code may be ported into WOOF-ArWen, and it may not be offered as a service. GloFAS output
 data falls under the CEMS licence above, not under EUPL.
 
 ### MERIT Hydro and MERIT DEM (EXCLUDED)

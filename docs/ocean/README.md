@@ -129,7 +129,7 @@ inspected. Hourly maxima were Hs 7.445 m and inundation 2.060 m. These are model
 outputs, not observed skill scores. This is an ERA5-driven coupling proof: winds
 are prescribed, and the coarse grid does not resolve local coastal flood risk.
 The online atmosphere roughness hooks have separate covering CUDA checks; an
-evolving WOOF forecast with ocean feedback is not claimed by this replay.
+evolving WOOF-ArWen forecast with ocean feedback is not claimed by this replay.
 
 Process telemetry records about one CPU core issuing device work through the
 90-second replay. Per-process GPU utilization was not sampled, so idle GPU time

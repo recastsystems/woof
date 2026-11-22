@@ -19,13 +19,26 @@ fn coarsen(g:&grid::Grid,f:usize,path:&Path)->Result<Value>{
         }}let norm=ca.hypot(sa);
         [(lat/w) as f32,(lon/w) as f32,(ca/norm) as f32,(sa/norm) as f32,((g.dx*g.dy*(f*f) as f64)/w).sqrt() as f32]
     }).collect();
+    // Atmosphere surface rows for lakes: area-weighted water fraction; surface
+    // height and ice fraction averaged over the block's water (all of it when dry).
+    let surface:Option<Vec<[f32;3]>>=match(&g.water,&g.height){(Some(water),Some(height))=>Some((0..nx*ny).into_par_iter().map(|k|{
+        let(x0,y0)=((k%nx)*f,(k/nx)*f);let(mut a,mut aw,mut h,mut hw,mut ice)=(0.,0.,0.,0.,0.);
+        for y in y0..(y0+f).min(g.ny){for x in x0..(x0+f).min(g.nx){let i=y*g.nx+x;let w=g.area[i] as f64;let wet=(water[i] as f64).clamp(0.,1.);
+            a+=w;aw+=w*wet;h+=w*height[i] as f64;hw+=w*wet*height[i] as f64;ice+=w*wet*g.ice.as_ref().map_or(0.,|v|v[i] as f64);
+        }}
+        [(aw/a) as f32,(if aw>0.{hw/aw}else{h/a}) as f32,(if aw>0.{ice/aw}else{0.}) as f32]
+    }).collect()),_=>None};
     let mut schema=Schema::new(NcFormat::Offset64);let y=schema.def_dim("y",ny,false)?;let x=schema.def_dim("x",nx,false)?;
     schema.put_global_attr("Conventions",AttrValue::Text("CF-1.10".into()))?;
     let mut vars=Vec::new();for name in ["latitude","longitude","cosalpha","sinalpha","map_factor"]{vars.push(schema.def_var(name,NcType::Float,&[y,x])?);}
+    let mut extra=Vec::new();if surface.is_some(){for name in ["water","surface_height","ice"]{extra.push(schema.def_var(name,NcType::Float,&[y,x])?);}}
     let mut writer=NcWriter::create(path,schema)?;
     for (j,id) in vars.into_iter().enumerate(){let plane:Vec<f32>=values.par_iter().map(|v|v[j]).collect();writer.write_var(id,VarData::F32(&plane))?;}
+    if let Some(rows)=&surface{for (j,id) in extra.into_iter().enumerate(){let plane:Vec<f32>=rows.par_iter().map(|v|v[j]).collect();writer.write_var(id,VarData::F32(&plane))?;}}
     writer.finish()?;
-    Ok(json!({"kind":"curvilinear","file":path,"latitude":"latitude","longitude":"longitude","cosalpha":"cosalpha","sinalpha":"sinalpha","map_factor":"map_factor","dx":g.dx*f as f64,"dy":g.dy*f as f64}))
+    let mut grid=json!({"kind":"curvilinear","file":path,"latitude":"latitude","longitude":"longitude","cosalpha":"cosalpha","sinalpha":"sinalpha","map_factor":"map_factor","dx":g.dx*f as f64,"dy":g.dy*f as f64});
+    if surface.is_some(){grid["water"]="water".into();grid["surface_height"]="surface_height".into();grid["ice"]="ice".into();}
+    Ok(grid)
 }
 
 fn static_input(r:&Value,catalog:&Value,role:&str,start:&str,inputs:&Path)->Result<PathBuf>{

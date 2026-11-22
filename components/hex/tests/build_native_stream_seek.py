@@ -21,7 +21,7 @@ def build(destination):
     """Compile the whole seek routine; MPAS mpas_io_streams.F:153-339."""
     destination=Path(destination).resolve()
     build_clock(destination)
-    reference=Path(os.environ.get('MPAS_REF') or Path(os.environ.get('MPAS_LANES', '.')) / 'ref/MPAS-Model-v8.4.2')
+    reference=Path(os.environ.get('MPAS_REF') or Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/MPAS-Model-v8.4.2')
     path='src/framework/mpas_io_streams.F'
     source=(reference/path).read_text()
     match=re.search(r'^\s*integer function MPAS_seekStream\(.*?^\s*end function MPAS_seekStream\b[^\n]*',

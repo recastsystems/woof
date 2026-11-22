@@ -117,7 +117,7 @@ REGIONAL_GARBAGE_POOL: Mapping[str, float] = {
 def _padded(array: Any, axis: int, value: float) -> np.ndarray:
     """``np.concatenate([array, np.full(.., value)], axis)`` as a C-ordered array, copied on host threads.
 
-    THE COST THIS REMOVES (mv3km 3 km limited area, V6000, 2026-10-28): padding every regional array with
+    THE COST THIS REMOVES (mv3km 3 km limited area, RTX PRO 6000, 2026-10-28): padding every regional array with
     the garbage element was a strided copy plus a concatenate on the main thread, about 1.8 s of the
     start-up (the dycore build and the first boundary admissions) while the card waited.  The copy is written in blocks of
     the leading non-padded axis on host threads (woof.hex.host_parallel); the words are the same.
@@ -617,7 +617,7 @@ def pad_regional_physics_host(
     n_cells_solve: int,
     donor_cell: int | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """Put the WOOF constructor and the GWDO statics on the padded extent.
+    """Put the WOOF-ArWen constructor and the GWDO statics on the padded extent.
 
     The global stack and the limited-area stack call the SAME three physics
     geometry constructors and the SAME sealed constructor; the only thing
@@ -973,7 +973,7 @@ class RegionalGarbageDiscipline:
 
         ``module_key`` names the translation unit that launched, and it is
         load-bearing.  One KernelCache serves the whole run -- the dycore AND
-        the WOOF physics seam -- so before 2026-08-26 this discipline
+        the ArWen physics seam -- so before 2026-08-26 this discipline
         rewrote the garbage column of every float32 argument of every physics
         launch too, and that is the wrong answer for exactly one reason: the
         physics seam MANAGES ITS OWN garbage column.
@@ -1302,7 +1302,7 @@ class PaddedRegionalDrivingState(DeviceRegionalDrivingState):
 
         def upload(name: str) -> Any:
             # The file slab (element, level) goes to the card as stored; the (level, element) transpose and
-            # the garbage column at 0.0 are written there.  THE COST THIS REMOVES (mv3km, V6000,
+            # the garbage column at 0.0 are written there.  THE COST THIS REMOVES (mv3km, RTX PRO 6000,
             # 2026-10-28): the strided host transpose plus padding of 17 slabs took about 1.3 s of one core
             # per boundary admission (2.6 s of the first step) while the card waited.  Same words.
             slab = cp.asarray(np.ascontiguousarray(admitted.fields[name], dtype=np.float32))
@@ -2680,7 +2680,7 @@ def open_regional_forecast_v841(
 ) -> Any:
     """Open one regional configuration on the card, recording its anchor.
 
-    RETIRED 2026-10-10 as a gate (owner ruling).  This used to refuse every regional configuration whose class
+    RETIRED 2026-10-10 as a gate.  This used to refuse every regional configuration whose class
     held no forecast mint, and the only way past it was a measurement
     instrument that swapped this function for the assembler.  It now asks
     the same question, records the answer on the driver

@@ -2,6 +2,7 @@
 
 CPU tier; the whole-run evidence (storm-following and zoom step times, bitwise streams) is in the release row.
 """
+import pytest
 import json
 from types import SimpleNamespace
 
@@ -82,3 +83,9 @@ def test_step_record_writer_every_step_when_interval_is_zero(tmp_path):
     writer.drain()
     assert json.loads(path.read_text()) == dict(step=4)
     writer.close()
+
+
+@pytest.fixture(autouse=True)
+def _speed_word_off(monkeypatch):
+    """These tests state the law with WOOF_HEX_PUBLISH_LEAN off (it is on by default since 19 Nov; speed_words)."""
+    monkeypatch.setenv("WOOF_HEX_PUBLISH_LEAN", "0")

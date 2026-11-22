@@ -2,13 +2,13 @@
 
 `shcu_physics=1` is the Registry's G3 shallow selector. WRF 4.7.1 has an
 empty `G3SHCUSCHEME` case in `phys/module_shallowcu_driver.F:514`.
-WOOF accepts the setting and performs the same empty stage. It must not
+WOOF-ArWen accepts the setting and performs the same empty stage. It must not
 be confused with the deep Grell 3-D scheme.
 
 `shcu_physics=3` selects GRIMS. It uses the current PBL depth and level,
 YSU/Shin-Hong convective velocity and entrainment depth, and the current
 deep-convection rain increment. Native WRF admits PBL 1, 5, 6 and 11;
-WOOF refuses other pairings instead of silently resetting the selector.
+WOOF-ArWen refuses other pairings instead of silently resetting the selector.
 
 `shcu_physics=4` selects NSCV (the NSAS shallow scheme). It returns heat,
 water, condensate and momentum tendencies and shallow rain. `sas_pgcon`

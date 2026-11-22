@@ -292,9 +292,11 @@ def test_auto_ordinary_dispatch_takes_one_admission_before_the_fetch(tmp_path, m
         # The [case_data] arm names no forcing source, so its tables
         # carry water vapour only.  It runs before any land cover exists,
         # so it hands the estimate no urban column reading (A176: only a
-        # prepared door has one).
+        # prepared door has one).  The machine's free VRAM prices the legacy
+        # RRTMG width the run takes on that card (D2, 2026-11-12).
         assert kwargs == {"column_chunk": exp.column_chunk, "profile": None,
-                          "boundary_species": (), "urban_columns": None}
+                          "boundary_species": (), "urban_columns": None,
+                          "card_free_bytes": 24 * GIB}
         priced.append(kwargs)
         events.append("price")
         return marker

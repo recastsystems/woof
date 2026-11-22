@@ -75,12 +75,12 @@ SGS TKE is not carried. The chosen km_opt=3 LES closure diagnoses mixing locally
 ```sh
 # One path per line; diagnose each source/run separately.
 woof storm-diagnostics --input-list frames.txt --out diagnostics \
-  --heights 500,1000,3000 --gravity 9.81 --jobs 8 --render --label 'WOOF LES'
+  --heights 500,1000,3000 --gravity 9.81 --jobs 8 --render --label 'WOOF-ArWen LES'
 # The hex export writes geopotential using 9.80665 instead:
 woof storm-diagnostics --input-list hex-frames.txt --out hex-diagnostics \
   --heights 500,1000,3000 --gravity 9.80665 --jobs 8 --render --label 'hex source'
 python chart_series.py --series 'hex=hex-diagnostics/series.json' \
-  --series 'WOOF=diagnostics/series.json' --out time-series.png
+  --series 'WOOF-ArWen=diagnostics/series.json' --out time-series.png
 ```
 
 All weather-array reads, vertical interpolation, wind rotation, spherical vertical curl, terrain-slope correction, reflectivity column maximum and statistics run in Rust. Vorticity is relative vertical vorticity in Earth coordinates, evaluated at constant geometric height using samples at the named AGL height. No Coriolis parameter is added. Statistics exclude a two-cell rim; updraft area uses the geographic grid Jacobian and w ≥ 5 m/s. The three time series are max w, max absolute vertical vorticity and updraft area at each named height. Their raw values and source paths are in `series.json`.
@@ -94,7 +94,7 @@ The delivery evidence contains exact commands, stage logs, passive five-second p
 | Stage / hardware | Result | Wall |
 |---|---|---:|
 | 60 km source → 3 km prep, eight workers | passed | 9.6 s |
-| 3 km WOOF, two model hours, PRO 6000 | 314 adaptive steps, 25 frames; 4,922 MiB sampled VRAM | 24.3 s model; 43.72 s command/render |
+| 3 km WOOF-ArWen, two model hours, PRO 6000 | 314 adaptive steps, 25 frames; 4,922 MiB sampled VRAM | 24.3 s model; 43.72 s command/render |
 | reduced 96-level tree prep, eight workers | passed | 26.3 s |
 | reduced tree, ten model minutes, PRO 6000 | 120/360/1080 fixed steps; 3,616 MiB sampled VRAM | 30.5 s model; 33.33 s command/render |
 | reduced tree, ten model minutes, an RTX 4090 | passed, 120/360/1080 fixed steps; one per-process sample 3,164 MiB; another GPU job present | 79.1 s model; 81.83 s command/render |
@@ -124,7 +124,7 @@ All 75 full-tree raw-file SHA256 values match between rental and the RTX 4090 ho
 
 The old source's 03:00 UTC Texas band provides a more useful weather example than the calm LES box. `commands/prep-band.sh` and `commands/run-band.sh` in the delivery contain the exact executed commands; `configs/band-3km.*` records the 300 × 240 × 49 target, 3 km spacing, center 32°N/98.5°W, Morrison/RRTMGP physics and adaptive 15–24 s stepping. This two-hour run starts at 2026-10-16 03Z with the 03/06Z source full columns. It is separate from the 96-level fixed-step LES benchmark.
 
-The same-time 1,000 m w pictures visibly retain the source's broad Texas updraft pattern after initialization. The source reflectivity band remains visible after WOOF's first five-minute physics diagnostic and develops into a roughly 50–60 dBZ line through 05Z. Initial WOOF reflectivity is zero before that diagnostic; it must not be interpreted as lost condensate. At 05Z, maxima at 500/1000/3000 m are w = 2.884/5.314/10.216 m/s, |vertical vorticity| = 0.002664/0.002250/0.002994 s⁻¹, and updraft area = 0/9.261/92.600 km². The charts compare two native source samples with 25 WOOF samples; connecting lines do not create measured intermediate source times. Footprints differ. This supports precipitation-system continuity and convective development, not a tracked rotating storm or a moving 1 km handoff.
+The same-time 1,000 m w pictures visibly retain the source's broad Texas updraft pattern after initialization. The source reflectivity band remains visible after WOOF-ArWen's first five-minute physics diagnostic and develops into a roughly 50–60 dBZ line through 05Z. Initial WOOF-ArWen reflectivity is zero before that diagnostic; it must not be interpreted as lost condensate. At 05Z, maxima at 500/1000/3000 m are w = 2.884/5.314/10.216 m/s, |vertical vorticity| = 0.002664/0.002250/0.002994 s⁻¹, and updraft area = 0/9.261/92.600 km². The charts compare two native source samples with 25 WOOF-ArWen samples; connecting lines do not create measured intermediate source times. Footprints differ. This supports precipitation-system continuity and convective development, not a tracked rotating storm or a moving 1 km handoff.
 
 All 25 band health samples were finite; maximum sampled CFL was 3.58169 and final CFL 1.46867 under this adaptive single-domain configuration. The report's hierarchy-independent total is 40.95 s, while its forecast execution is 39.08 s. Another process shared the card for 38.5 s; the measured 4,912 MiB belongs to this process. Its prepared setup and raw run are mirrored separately on the RTX 4090 host under `band-mirror`. The first proposed southern box failed source coverage, and the first simulation command omitted its required WPS namelist and refused before stepping; both attempts remain in evidence.
 

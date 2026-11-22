@@ -35,6 +35,8 @@ def generate(root, output):
             lowered=lowered.replace(original,'workspace.row_dx_first < 4.5e+3f')
         pieces.append(lowered)
         pins.append({'source':path,'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),
+                     # raw upstream file: the source minus the labelled one-line correction (MPAS driver only)
+                     'upstream_sha256':hashlib.sha256(citation_source.encode()).hexdigest(),
                      'gnu_tree_sha256':hashlib.sha256(tree.read_bytes()).hexdigest(),
                      'lowered_sha256':hashlib.sha256(lowered.encode()).hexdigest()})
     args=arguments('native/module_cu_gfl_mpas.F90')
@@ -91,7 +93,7 @@ extern "C" void gfl_columns_host(int ncol,int nz,const unsigned long long* ptrs,
 '''
     header='''"""Pinned RRFS GFL bf6a4b0: complete CUDA transcription and MPAS boundary.
 
-Authority RRFS-MPAS 1d6e370e + ierrm init (owner ruling 2026-10-14 07:45Z).
+Authority RRFS-MPAS 1d6e370e + ierrm init (2026-10-14 07:45Z).
 Separately labelled source-corrected strict GNU single precision. All 31
 procedure bodies retained. See receipts for measured identity scope.
 """
@@ -109,6 +111,7 @@ COMPILER_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=tr
 '''
     header+='ARGUMENTS = '+repr(args)+'\nFIELDS = '+repr(names)+'\nINTEGER_FIELDS = '+repr(tuple(sorted(INT_NAMES)))+'\nSCALAR_FIELDS = '+repr(tuple(sorted(SCALARS)))+'\nSURFACE_FIELDS = '+repr(tuple(sorted(SURFACES)))+'\nOUTPUT_FIELDS = '+repr(OUTPUTS)+'\n'
     header+='SOURCE_HASHES = '+repr({p['source']:p['source_sha256'] for p in pins})+'\n'
+    header+='UPSTREAM_SOURCE_HASHES = '+repr({p['source']:p['upstream_sha256'] for p in pins})+'\n'
     for name,text in (('_SUPPORT',Path(__file__).with_name('gfl_support.cuh').read_text()),('_SCHEME_SOURCE','\n'.join(pieces)),('_ENTRY',entry),('_DRIVER',Path(__file__).with_name('gfl_driver.cuh').read_text())):
         header+=name+" = r'''\n"+text+"\n'''\n\n"
     header+=Path(__file__).with_name('launcher.py').read_text()

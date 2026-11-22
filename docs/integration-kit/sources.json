@@ -630,7 +630,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source hrrr-ak: no fetch route.\n  why: the registry row is not runnable (adapter_mapping_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources hrrr-ak` for this row in full.",
+        "refusal": "--source hrrr-ak: no fetch route.\n  why: the registry row is not runnable (adapter_mapping_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources hrrr-ak` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -1070,7 +1070,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source hgefs: no fetch route.\n  why: the registry row is not runnable (member_selection_and_mapping_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources hgefs` for this row in full.",
+        "refusal": "--source hgefs: no fetch route.\n  why: the registry row is not runnable (member_selection_and_mapping_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources hgefs` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -1641,7 +1641,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source nam: no fetch route.\n  why: the registry row is not runnable (adapter_mapping_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources nam` for this row in full.",
+        "refusal": "--source nam: no fetch route.\n  why: the registry row is not runnable (adapter_mapping_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources nam` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -1695,7 +1695,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source hiresw: no fetch route.\n  why: the registry row is not runnable (member_selection_and_mapping_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources hiresw` for this row in full.",
+        "refusal": "--source hiresw: no fetch route.\n  why: the registry row is not runnable (member_selection_and_mapping_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources hiresw` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -1749,7 +1749,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source href: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources href` for this row in full.",
+        "refusal": "--source href: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources href` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -1801,7 +1801,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source sref: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources sref` for this row in full.",
+        "refusal": "--source sref: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources sref` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -1853,7 +1853,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source rtma: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources rtma` for this row in full.",
+        "refusal": "--source rtma: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources rtma` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -1905,7 +1905,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source urma: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources urma` for this row in full.",
+        "refusal": "--source urma: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources urma` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -1959,7 +1959,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source nbm: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources nbm` for this row in full.",
+        "refusal": "--source nbm: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources nbm` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -2201,7 +2201,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source rrfs-a: no fetch route.\n  why: the registry row is not runnable (adapter_mapping_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources rrfs-a` for this row in full.",
+        "refusal": "--source rrfs-a: no fetch route.\n  why: the registry row is not runnable (adapter_mapping_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources rrfs-a` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -2253,7 +2253,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source rrfs-public: no fetch route.\n  why: the registry row is not runnable (adapter_mapping_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources rrfs-public` for this row in full.",
+        "refusal": "--source rrfs-public: no fetch route.\n  why: the registry row is not runnable (adapter_mapping_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources rrfs-public` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -2307,7 +2307,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source refs: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources refs` for this row in full.",
+        "refusal": "--source refs: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources refs` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -2361,7 +2361,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source rrfs-firewx: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources rrfs-firewx` for this row in full.",
+        "refusal": "--source rrfs-firewx: no fetch route.\n  why: the registry row is not runnable (explicit_composition_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources rrfs-firewx` for this row in full.",
         "route_id": null
       },
       "file_family": "GRIB2",
@@ -2417,7 +2417,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source wrf: no fetch route.\n  why: the registry row is not runnable (wrf_archive_mapping_required); nothing in this WOOF could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources wrf` for this row in full.",
+        "refusal": "--source wrf: no fetch route.\n  why: the registry row is not runnable (wrf_archive_mapping_required); nothing in this WOOF-ArWen could read the bytes a download produced.\n  see: `woof sources` for what each registered source can do today, or `woof sources wrf` for this row in full.",
         "route_id": null
       },
       "file_family": "NetCDF",
@@ -2696,7 +2696,7 @@
       "fetch": {
         "kind": "none",
         "posting": null,
-        "refusal": "--source 20crv3-cf: no fetch route.\n  why: no acquisition route is registered for this source, so this WOOF has no way to download its bytes.  20crv3-cf IS runnable: bring the files yourself and the prepared route reads them.\n  remedy: bring the files yourself and name each one to `woof prep --source 20crv3-cf`; `woof sources 20crv3-cf` lists the products its preparation reads.\n  see: `woof sources` for what each registered source can do today, or `woof sources 20crv3-cf` for this row in full.",
+        "refusal": "--source 20crv3-cf: no fetch route.\n  why: no acquisition route is registered for this source, so this WOOF-ArWen has no way to download its bytes.  20crv3-cf IS runnable: bring the files yourself and the prepared route reads them.\n  remedy: bring the files yourself and name each one to `woof prep --source 20crv3-cf`; `woof sources 20crv3-cf` lists the products its preparation reads.\n  see: `woof sources` for what each registered source can do today, or `woof sources 20crv3-cf` for this row in full.",
         "route_id": null
       },
       "file_family": "NetCDF-CF",

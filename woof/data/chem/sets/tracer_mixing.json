@@ -5,5 +5,5 @@
   "wrf_chem_opt": null,
   "wrf_tracer_opt": null,
   "test_only": true,
-  "provenance": "WOOF test set; no WRF namelist maps to it."
+  "provenance": "WOOF-ArWen test set; no WRF namelist maps to it."
 }

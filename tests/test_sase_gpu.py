@@ -945,7 +945,7 @@ def test_sase_split_step_fp32_ledger_closure_characterized():
     max(|dKE|, |dE|, |dHeat|) must stay under the 1e-5 spec gate every
     step; the characterized bound (the max of the printed series,
     measured on the RTX 5090) is recorded in
-    .superpowers/sdd/task-s3-6e-report.md (1.305e-6 with the S3-6e
+    docs/internal/sdd/task-s3-6e-report.md (1.305e-6 with the S3-6e
     governed/tapered formulation, superseding S3-6d's 1.185e-6 and
     S3-6c's 1.022e-6).  The reductions are FP64 and deterministic, so
     the series is stable run-to-run."""
@@ -1986,7 +1986,7 @@ def test_split_e_update_ld_blend_endpoints_bitwise_device():
 # S3-11b: surface scalar-flux deposit -- device mirror of the S3-11a
 # authority seam (surface_scalar_flux_deposit; SFC_SCALAR_FLUX =
 # "explicit-deposit-v1"; root cause
-# .superpowers/sdd/lake-momentum-root-cause.md), fused into the bottom
+# docs/internal/sdd/lake-momentum-root-cause.md), fused into the bottom
 # rhs of the sase_thomas_scalar sweep and wired through
 # launch_implicit_vertical_diffusion (sfc_flux/sfc_rho1/sfc_fac).
 # ---------------------------------------------------------------------------
@@ -2504,7 +2504,7 @@ def test_gate2a_device_stats_schema_matches_legacy():
 # S4-2: SASE-M1 moist stability -- device mirror (sase_moist_n2 /
 # launch_moist_n2) + the launch_sase_step n2_moist seam, against the S4-1
 # authority (sase_ref.moist_n2 / sase_split_step n2_moist; report
-# .superpowers/sdd/task-s4-1-report.md).  Specimen columns:
+# docs/internal/sdd/task-s4-1-report.md).  Specimen columns:
 # tests/specimen_yolod_11z.py (yolo-d 11Z d02 amplifier + control).
 # ---------------------------------------------------------------------------
 

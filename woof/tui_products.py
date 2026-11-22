@@ -73,7 +73,7 @@ def lane_capabilities(path: Path | None = None) -> dict:
     except (OSError, ValueError) as error:
         raise ValueError(
             f"Cannot read packaged lane diagnostic capabilities at {path}: "
-            f"{error}. Restore the matching WOOF package data, then retry."
+            f"{error}. Restore the matching WOOF-ArWen package data, then retry."
         ) from error
     try:
         if not isinstance(document, dict):
@@ -96,7 +96,7 @@ def lane_capabilities(path: Path | None = None) -> dict:
     except (KeyError, TypeError, ValueError) as error:
         raise ValueError(
             f"Invalid research diagnostic capabilities at {path}: {error}. "
-            "Restore the matching WOOF package data, then retry.") from error
+            "Restore the matching WOOF-ArWen package data, then retry.") from error
     return {**document, "sha256": hashlib.sha256(payload).hexdigest()}
 
 

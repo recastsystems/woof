@@ -1,4 +1,4 @@
-"""Stage a WOOF frame dump as a wrfout-convention file for the t=0 digest.
+"""Stage a WOOF-ArWen frame dump as a wrfout-convention file for the t=0 digest.
 
 ``tools/matched_wrfout_t0_state_digest.py`` scores a candidate/reference
 pair of wrfout-convention netCDF frames.  The matched-trajectory lane's
@@ -16,7 +16,7 @@ container format.  This tool re-containers one frame, exactly:
   the caller's reason.  An exclusion the file itself does not disclose
   would be curation; this one is part of the record.
 
-The one expected exclusion is ``RAINNC``.  A WOOF run restarted from a
+The one expected exclusion is ``RAINNC``.  A WOOF-ArWen run restarted from a
 mature WRF history frame begins with a fresh accumulator (zero) while the
 frame carries the storm's accumulated rain to that hour; both gate
 documents pre-declare that comparison as two different quantities

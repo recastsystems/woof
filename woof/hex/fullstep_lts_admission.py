@@ -64,7 +64,7 @@ MOVING_LAUNCH_VARIABLES = (
 
 #: Every moving-route refusal starts with this sentence, so ``woof hex moving`` stops on it at once
 #: instead of retrying a command that refuses the same way every time.
-MOVING_ROUTE_REFUSAL = ("a moving region runs only on the active local-time-stepping WOOF route "
+MOVING_ROUTE_REFUSAL = ("a moving region runs only on the active local-time-stepping WOOF-ArWen route "
                         "(one card, or several cards of one host) or on the MPAS suite route (one card)")
 
 # Retired 2026-10-15 for the multi-card class blocks: the move hooks (stop request, carrier export,

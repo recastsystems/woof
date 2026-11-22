@@ -1,4 +1,4 @@
-"""Compile reviewed research recipes through WOOF's native domain planner.
+"""Compile reviewed research recipes through WOOF-ArWen's native domain planner.
 
 Creation writes a new configuration bundle only. It does not acquire forcing,
 prepare a state, integrate a forecast, or turn execution qualification into
@@ -89,10 +89,10 @@ def _read_json(path: Path, label: str) -> tuple[dict, str]:
         document = json.loads(payload.decode("utf-8"), object_pairs_hook=_unique_object)
     except (OSError, ValueError) as error:
         raise ValueError(f"Cannot read packaged {label} at {path}: {error}. "
-                         "Restore that file from the matching WOOF installation, then retry.") from error
+                         "Restore that file from the matching WOOF-ArWen installation, then retry.") from error
     if not isinstance(document, dict):
         raise ValueError(f"Packaged {label} at {path} must be a JSON object. "
-                         "Restore the matching WOOF package data, then retry.")
+                         "Restore the matching WOOF-ArWen package data, then retry.")
     return document, hashlib.sha256(payload).hexdigest()
 
 
@@ -124,7 +124,7 @@ def _hardware_document() -> tuple[dict, str]:
                 _number(profile["storm_context_minimum_km"], f"profile {name} storm_context_minimum_km")
     except (KeyError, TypeError, ValueError) as error:
         raise ValueError(f"Invalid research hardware profiles at {HARDWARE_PATH}: {error}. "
-                         "Restore the matching WOOF package data, then retry.") from error
+                         "Restore the matching WOOF-ArWen package data, then retry.") from error
     return document, digest
 
 
@@ -240,9 +240,9 @@ def validate_recipe(recipe: dict, *, known_products: set[str] | None = None,
     for product in recipe["diagnostics"]:
         reason = capabilities["unavailable"].get(product)
         if reason is not None:
-            raise ValueError(f"Research diagnostic {product} is not supported by the WOOF history renderer. {reason}")
+            raise ValueError(f"Research diagnostic {product} is not supported by the WOOF-ArWen history renderer. {reason}")
         if known_products is not None and product not in known_products:
-            raise ValueError(f"Research diagnostic {product} is not supported by the WOOF history renderer. The renderer's catalog carries no product of that name; woof render --list-products names every product this install can draw. Recipe diagnostics must name supported native renderer products")
+            raise ValueError(f"Research diagnostic {product} is not supported by the WOOF-ArWen history renderer. The renderer's catalog carries no product of that name; woof render --list-products names every product this install can draw. Recipe diagnostics must name supported native renderer products")
         recorded = capabilities["products"].get(product)
         if recorded is None:
             # No recorded row is not a breakage and not a refusal.  The
@@ -291,7 +291,7 @@ def _native_products() -> set[str]:
 def catalog_document() -> dict:
     document, catalog_digest = _read_json(CATALOG_PATH, "research catalog")
     if document.get("schema_version") != 1 or document.get("catalog_id") != "arwen-research-workspaces-v1":
-        raise ValueError(f"Unsupported research catalog schema at {CATALOG_PATH}; expected arwen-research-workspaces-v1 / schema_version 1. Restore the matching WOOF package data, then retry.")
+        raise ValueError(f"Unsupported research catalog schema at {CATALOG_PATH}; expected arwen-research-workspaces-v1 / schema_version 1. Restore the matching WOOF-ArWen package data, then retry.")
     capabilities = diagnostic_capabilities()
     try:
         collections = {}
@@ -327,7 +327,7 @@ def catalog_document() -> dict:
                 if any(config not in collections["configurations"] for config in row["recommended_config_ids"]):
                     raise ValueError(f"{row['id']} recommends an unknown configuration")
     except (KeyError, TypeError, ValueError) as error:
-        raise ValueError(f"Invalid research catalog at {CATALOG_PATH}: {error}. Restore the matching WOOF package data, then retry.") from error
+        raise ValueError(f"Invalid research catalog at {CATALOG_PATH}: {error}. Restore the matching WOOF-ArWen package data, then retry.") from error
     hardware, hardware_digest = _hardware_document()
     return {**document, "hardware_profiles": hardware["profiles"],
             "hardware_policy": hardware["policy"], "catalog_sha256": catalog_digest,

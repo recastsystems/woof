@@ -112,7 +112,6 @@ box = "g"
 priority = 1
 rate = "global-fine-8"
 checkpoint = { every = "24h" }
-da = { method = "jedi-3denvar", mode = "shadow", mesh = "x1.655362", every = "6h", backend = ["cpu"], b_from = "global-ens", obs = ["conventional", "gnssro", "radiance"], promote_when = { beats = "control", metrics = ["z500_rmse_24h", "wind250_rmse_24h", "t2m_rmse_24h"], cycles = 28 } }
 
 [[system]]
 id = "global-ens"

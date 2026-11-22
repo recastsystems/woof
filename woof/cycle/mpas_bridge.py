@@ -135,7 +135,7 @@ def verify_bridge_purity() -> dict[str, Any]:
     if offences:
         raise BridgeRefusal(
             "the bridge imports woof, which breaks the whole reason it "
-            "exists: the forecast process must let the port's pinned WOOF "
+            "exists: the forecast process must let the port's pinned WOOF-ArWen "
             "checkout be the first tree to claim the woof name",
             offences=offences, package=str(package),
             remedy="move whatever this needed into mpas_cycle_bridge, or "
@@ -226,7 +226,7 @@ def launch(*, phase: str, port_root: str | os.PathLike[str],
     if pin.get("obeyed") is not True:
         raise BridgeRefusal(
             "the forecast process did not load woof from the port's pinned "
-            "WOOF checkout, so its numbers are not the pinned physics",
+            "WOOF-ArWen checkout, so its numbers are not the pinned physics",
             phase=phase, arwen_pin=pin, log=str(log_path))
     if pin.get("spine_modules"):
         raise BridgeRefusal(
@@ -587,7 +587,7 @@ def stamp_for_segment(manifest: Mapping[str, Any], *,
             f"match the analysed state on disk ({rehydrated[:16]} != "
             f"{analysed[:16]}): the analysis did NOT re-enter the dycore")
     if (manifest.get("arwen_pin") or {}).get("obeyed") is not True:
-        gaps.append("woof did not come from the pinned WOOF checkout")
+        gaps.append("woof did not come from the pinned WOOF-ArWen checkout")
     return {
         "parent_kind": CLOSED_KIND if not gaps else FRAMES_KIND,
         "evidence_gaps": gaps,

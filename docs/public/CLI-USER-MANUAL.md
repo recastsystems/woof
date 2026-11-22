@@ -1,6 +1,6 @@
 # Command-line user manual (engine 2.7)
 
-WOOF's `woof` command creates configurations, acquires forcing, prepares model inputs, integrates forecasts, and renders saved history. You can run the complete workflow with `go` or use each stage independently.
+WOOF-ArWen's `woof` command creates configurations, acquires forcing, prepares model inputs, integrates forecasts, and renders saved history. You can run the complete workflow with `go` or use each stage independently.
 
 This manual describes the 2.7 interface. Check your executing version with `woof version`; the command makes no network request unless `--check-pypi` is given. For the keyboard-and-mouse interface, see the [terminal workspace user manual](TUI-USER-MANUAL.md).
 
@@ -45,7 +45,7 @@ The short help emphasizes common tasks; `--help-all` lists every command. Subcom
 | Prepare inputs | Compatible source files, configuration and namelists, static geography, CPU RAM and disk; supported CPU preparation does not require a GPU. |
 | Integrate locally | Compatible NVIDIA GPU, driver and CuPy, admitted GPU/host memory, complete model inputs. There is no CPU forecast fallback. |
 | Render | Actual saved history and the native renderer with its map assets; no new model integration is required. |
-| Use a node | Existing Linux WOOF installation and data, local OpenSSH, and working authentication/known-host configuration. |
+| Use a node | Existing Linux WOOF-ArWen installation and data, local OpenSSH, and working authentication/known-host configuration. |
 
 Configuration admission and a successful forecast do not establish forecast skill. Research recipes expose questions and comparisons to evaluate; they are not validated forecasts of the named phenomenon.
 
@@ -204,7 +204,7 @@ Use a request-specific directory. Existing complete matching files are reused. R
 
 ERA5 acquisitions (CDS and ARCO) include lake mixed-layer temperature, lake
 ice temperature and lake ice depth at the requested forcing times and source
-grid. When a lake has no usable SST analysis of its own, WOOF uses the
+grid. When a lake has no usable SST analysis of its own, WOOF-ArWen uses the
 explicit lake-model water field. This also covers small inland lakes that
 occupy no majority-water ERA5 grid cell. The provider is reported as
 `lake_model_ice_free_water`; it is a modelled lake state, not an observation
@@ -456,7 +456,7 @@ Unlike Go and Sim's default timestamped layout, direct `run` writes into the spe
 
 You need parent history covering the full intended window, the selected parent domain, authoritative parent physics evidence, a valid child placement, and any required child-grid surface warm start. The parent archive's cadence limits the lateral boundary information available to the child.
 
-For a WOOF parent with a restart and a real child-grid surface file, a point-derived review template is:
+For a WOOF-ArWen parent with a restart and a real child-grid surface file, a point-derived review template is:
 
 ```text
 woof downscale PARENT_HISTORY_DIR --parent-domain 1 --parent-restart PARENT_CHECKPOINT.npz --point "35.3,-97.5" --ratio 3 --auto-vram --hours 3 --max-boundary-interval-seconds 900 --child-surface-from CHILD_SURFACE.nc --out downscale-review --dry-run
@@ -507,7 +507,7 @@ Replace `runs/case` with the actual run directory. Review the selection before d
 | `--products t2,refl,wind10` | Common aliases for temperature, reflectivity, and 10 m wind. |
 | `--products all` | Request the native catalog's available products; output can be large. |
 | `--timeidx N` | Select an index within each file, or each timeline with `--series`; default is all. |
-| `--source-label "Stock WRF"` | Label files produced by a model other than WOOF correctly. |
+| `--source-label "Stock WRF"` | Label files produced by a model other than WOOF-ArWen correctly. |
 | `--size 1600x1200` | Change native PNG dimensions. |
 | `--barbs` / `--streamlines` | Choose a wind overlay style. |
 | `--heavy` | Compute additional heavy ECAPE diagnostics at import, with extra CPU cost; this does not supply every absent diagnostic. |
@@ -520,7 +520,7 @@ The default native engine needs its matching executable and map assets. If they 
 
 ### Interpret quantities and time windows correctly
 
-| Requested quantity | What the current WOOF history route provides |
+| Requested quantity | What the current WOOF-ArWen history route provides |
 |---|---|
 | 10 m wind and window maxima | Wind fields and documented snapshot/interval maxima. A snapshot maximum is not gust magnitude. |
 | One- or six-hour precipitation | Accumulation products when their required saved times and fields exist. A run-total field is not a fixed-duration accumulation. |
@@ -629,7 +629,7 @@ The first command shows the proposed manifest and redactions. The second writes 
 
 ## 14. Control durable jobs on Linux nodes
 
-The remote commands use an existing Linux installation and existing remote files. They do not install WOOF or upload inputs. All remote paths below are placeholders to replace; `NODE_ALIAS` is an existing SSH alias or `user@host`.
+The remote commands use an existing Linux installation and existing remote files. They do not install WOOF-ArWen or upload inputs. All remote paths below are placeholders to replace; `NODE_ALIAS` is an existing SSH alias or `user@host`.
 
 Probe the environment:
 

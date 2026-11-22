@@ -141,7 +141,7 @@ def test_every_launch_of_every_grid_stays_in_the_record_where_it_was_filed(
     def launch_file(wrfout: Path) -> list[Path]:
         written, failures, skipped = render_module.render_wrfouts_rust(
             [wrfout], products="all", timeidx=None,
-            outdir=out, size=(800, 600), source_label="WOOF test")
+            outdir=out, size=(800, 600), source_label="WOOF-ArWen test")
         assert failures == [] and skipped == []
         return written
 
@@ -186,7 +186,7 @@ def test_every_launch_of_every_grid_stays_in_the_record_where_it_was_filed(
     before = engine.passes
     written, failures, _ = render_module.render_wrfouts_rust(
         sorted(inputs.glob("wrfout_*")), products="all", timeidx=None,
-        outdir=out, size=(800, 600), source_label="WOOF test")
+        outdir=out, size=(800, 600), source_label="WOOF-ArWen test")
     assert failures == [] and len(written) == 12
     record = _record(out)
     assert set(record["panels"]) == _delivered(out)

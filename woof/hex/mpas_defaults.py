@@ -1,6 +1,6 @@
 """MPAS-A v8.4.2 Registry defaults, the defaults a bare hex run gets.
 
-Owner ruling 2026-10-10: a bare run uses MPAS's actual defaults.
+A bare run uses MPAS's actual defaults.
 A bare ``woof hex forecast`` integrates the dycore schedule, the physics
 cadences and the timestep MPAS-Atmosphere v8.4.2 itself defaults to.  Every
 value below cites the line of the upstream source it is read from

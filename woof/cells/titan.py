@@ -1,6 +1,6 @@
 """The ``titan`` binary: where it is, how it is run, what it wrote.
 
-titan is a separate program that WOOF does not ship or depend on,
+titan is a separate program that WOOF-ArWen does not ship or depend on,
 resolved the way every other built artifact in this project is
 (:mod:`woof.bridges`): an environment override first, then the bridge
 directories an install stages into.  It is not vendored here and nothing
@@ -123,7 +123,7 @@ def titan_refusal(what: str) -> str:
     ladder = "\n".join(f"  {path}" for path in titan_candidates())
     return (
         f"{what} is off on this install: it runs the titan storm-cell "
-        f"engine, a separate program WOOF does not ship, and none is "
+        f"engine, a separate program WOOF-ArWen does not ship, and none is "
         f"installed.  Without it there are no cell objects, tracks or "
         f"trends to catalog, and woof does not substitute a second "
         f"segmentation.  woof cells export works without it.  If you have "

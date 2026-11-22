@@ -87,12 +87,12 @@ measurements, not operational forecast speed or weather-skill results.
 Strict native-init dry hex on the MI300X matched all 90,662,766 float32
 words (12 state arrays) of its CUDA anchor after two dt2 outer steps.
 That result does not assert full-physics cross-vendor identity. The strict
-WOOF moist case differed in 35,160 of 158,104 words. An identical-input EOS
+WOOF-ArWen moist case differed in 35,160 of 158,104 words. An identical-input EOS
 probe isolated the first pressure differences to vendor `powf`; strict
 contraction and division controls do not make vendor transcendental math
-identical. Full WOOF cross-vendor strict identity remains unproved.
+identical. Full WOOF-ArWen cross-vendor strict identity remains unproved.
 
-An 18-step installed hex forecast using the WOOF suite completed on AMD
+An 18-step installed hex forecast using the WOOF-ArWen suite completed on AMD
 and NVIDIA. Its matching steps 2–6 measured 0.500902 s/step on MI300X and
 0.411100 s/step on RTX 5090. That window includes first-use work, differs
 from the resident synthetic benchmark, and is not a default MPAS or long

@@ -38,5 +38,5 @@ match that profile's actual authority bytes.
 `--stock-wrf-export off` skips the optional companion files for running unchanged
 WRF. Both the full tree and d01-only forecast can still use the prepared caches.
 An optional export refused because WRF cannot represent the chosen settings is
-reported in the preparation receipt; it does not disable WOOF's implemented
+reported in the preparation receipt; it does not disable WOOF-ArWen's implemented
 forecast settings.

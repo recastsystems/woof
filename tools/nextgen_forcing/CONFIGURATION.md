@@ -119,7 +119,7 @@ PET accepts the seven non-rain canonical forcing vectors in one common float32
 or float64 dtype. Parameters and `potential_et_m_s` output are float64; the
 method vector is int32. Setup broadcasts configured scalar rows on the GPU;
 CUDA owns parameter mutation and all per-step numerics. Do not add PET to the
-existing coupled WOOF Noah-MP exchange, which already supplies ET/runoff.
+existing coupled WOOF-ArWen Noah-MP exchange, which already supplies ET/runoff.
 
 ## Provenance and admission scope
 

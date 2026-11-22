@@ -20,7 +20,7 @@ Roster:
               "log": ".../forecast.log", "result": ".../result.json"}]}
 ```
 
-Cards come from `CUDA_VISIBLE_DEVICES`, paired with `GPU_MUTEX_CARDS` when a
+Cards come from `CUDA_VISIBLE_DEVICES`, paired with `CARD_QUEUE_CARDS` when a
 card queue grants them (physical indices); with neither set the batch runs on
 card 0.
 
@@ -34,9 +34,9 @@ card 0.
   `0` gives the plain first-free order.
 - **Idle cards handed back.** When every slot of a card has ended cleanly
   while another card still works, the batch runs the card queue's per-card
-  release command, `$GPU_MUTEX_RELEASE CARD`, so the card is free for other
+  release command, `$CARD_QUEUE_RELEASE CARD`, so the card is free for other
   work at once instead of when the batch exits. A card with a dead slot, and
-  the batch's last card, are left to the queue. Without `GPU_MUTEX_RELEASE`,
+  the batch's last card, are left to the queue. Without `CARD_QUEUE_RELEASE`,
   or with `"release_idle_cards": false`, nothing is released early, and the
   receipt says which.
 - **Memory.** A slot sends its next member only when the card has

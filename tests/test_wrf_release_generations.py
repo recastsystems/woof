@@ -2,7 +2,7 @@
 
 Origin: the nested-domain case (2026-10-28, run B).  A WRF 4.6 namelist
 imported with the line alone ("4") ran WRF 4.8's YSU entrainment cap and
-solar constants, the engine's newest, so WOOF strict differed from
+solar constants, the engine's newest, so WOOF-ArWen strict differed from
 wrf.exe 4.6.1 strict before the first radiation call.  The release now
 pins them, from ``--wrf-version 4.6.1`` or from the files' own TITLE on
 the WRF-file door.
@@ -24,7 +24,8 @@ from woof.namelist_import import (WRF_RELEASE_GENERATIONS,
 from woof.verify_exact.replay import WRF_461_REFERENCE_GENERATIONS
 
 WRF_461 = {"solar_generation": "wrf_461", "ysu_version": "wrf_461",
-           "urban_water_balance": "wrf_471", "noahmp_snow_age": "wrf_461"}
+           "urban_water_balance": "wrf_471", "noahmp_snow_age": "wrf_461",
+           "cu_gf_version": "wrf_461"}
 
 
 @pytest.mark.parametrize("version, expected", [

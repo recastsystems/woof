@@ -52,7 +52,7 @@ def whole_run_curve(rows: Sequence[Mapping[str, Any]], count: int, *,
 
     THE BREAKAGE THE SHAPE ARM PREVENTS (mesh-gen-fast, RTX 4090,
     2026-10-29): the hrrr-like-aerosol default has one one-card run (286,530
-    cells, 44,989 MiB) and device_admission's WOOF slope through it is ~49 KB
+    cells, 44,989 MiB) and device_admission's WOOF-ArWen slope through it is ~49 KB
     per cell, so it left a ~33 GiB intercept: 124,855 cells were priced at
     41,960.5 MiB required, 60,000 at 38,300 and 40,000 at 37,094, and no
     custom mesh worth running was admitted on a 24 GB card. The plain suite's
@@ -89,6 +89,17 @@ def whole_run_curve(rows: Sequence[Mapping[str, Any]], count: int, *,
         else:
             curve = ys[0] * x / xs[0]
             basis = "one measured whole run: cell-linear past its size"
+    elif x > xs[-1] and xs[-2] > 0.75 * xs[-1] and xs[0] <= 0.75 * xs[-1]:
+        # Past the largest run when its neighbour is close: the steepest of the last segment and the chords into the
+        # largest run from the runs with at most three quarters of its cells.  THE BREAKAGE IT PREVENTS (uniform
+        # MPAS-physics globes on one 96 GB card, 2026-11-15): two runs a few per cent apart (654,432 and 700,362
+        # cells, whose peaks differ by run-to-run spread as much as by size) make a last segment of 0.028 MiB a cell,
+        # a third of what the route holds between 60 and 29 km, and would admit a 22 km globe one card cannot fit.
+        # A curve whose last two runs are spread out keeps its last segment, as before.
+        slope = max([(ys[-1] - ys[-2]) / (xs[-1] - xs[-2]),
+                     *((ys[-1] - y) / (xs[-1] - xi) for xi, y in zip(xs, ys) if xi <= 0.75 * xs[-1])])
+        curve = ys[-1] + slope * (x - xs[-1])
+        basis = "the steepest chord into the largest run past it (its neighbour is close)"
     else:
         segment = next((i for i in range(1, len(xs)) if x <= xs[i]), len(xs) - 1)
         x0, x1, y0, y1 = xs[segment - 1], xs[segment], ys[segment - 1], ys[segment]
@@ -219,9 +230,9 @@ def route_floor(observations: Sequence[Mapping[str, Any]], columns: int, *, card
                 profile: str | None = None, capacity_mib: float | None = None) -> dict[str, Any] | None:
     """The whole-run floor of one card's peak, from the runs of this physics in this card regime, or None.
 
-    The WOOF route keeps its rule: this card's completed runs at this level count (its device_admission row is a
-    per-card WOOF measurement).  Every other route is priced only from its own runs, since device_admission's rows
-    are WOOF rows: this suite's (with ``other_suites``, the route's other suites' when this one has none), at this
+    The WOOF-ArWen route keeps its rule: this card's completed runs at this level count (its device_admission row is a
+    per-card WOOF-ArWen measurement).  Every other route is priced only from its own runs, since device_admission's rows
+    are WOOF-ArWen rows: this suite's (with ``other_suites``, the route's other suites' when this one has none), at this
     level count (else scaled by levels), on this card when it has two or more, else on every card; one card
     (``cards`` 1) and same-host ranks (``cards`` > 1, a rank's peak against its columns ``cells / cards``) are
     separate regimes, since a rank holds more than one card's loop at the same columns.  The curve is the completed

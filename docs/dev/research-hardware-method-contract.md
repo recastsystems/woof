@@ -78,7 +78,7 @@ Archived route (actual parent paths required):
 & $EnginePython -I -m woof.cli downscale $ParentHistory --parent-restart $ParentRestart --point=35.3,-97.5 --ratio 3 --child-size 252,204 --hours 3 --output-interval-seconds 300 --max-boundary-interval-seconds 900 --child-surface-from $ChildSurface --vram-gib 12 --preprocess-backend cpu --out .\new-child-run --dry-run
 ```
 
-Dry-run validates and writes a derived configuration/plan; it is not filesystem read-only. A WOOF parent needs its restart physics evidence. Stock WRF instead requires its namelist and an explicit standalone child RunConfig (`specified=true,nested=false`) with ratio and 1-based placement. Surface physics requires a child-grid land/soil warm start. Parent cadence acceptance must be explicit; a coarser archive cannot supply missing900s boundary evolution. Each sequential stage must produce the next stage's real history, restart identity and surface state before the next starts.
+Dry-run validates and writes a derived configuration/plan; it is not filesystem read-only. A WOOF-ArWen parent needs its restart physics evidence. Stock WRF instead requires its namelist and an explicit standalone child RunConfig (`specified=true,nested=false`) with ratio and 1-based placement. Surface physics requires a child-grid land/soil warm start. Parent cadence acceptance must be explicit; a coarser archive cannot supply missing900s boundary evolution. Each sequential stage must produce the next stage's real history, restart identity and surface state before the next starts.
 
 ## Hardware evidence and compiler integration
 

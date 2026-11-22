@@ -285,6 +285,10 @@ def test_the_sdist_carries_the_configs_too(
             if line.strip() and not line.lstrip().startswith("#"):
                 files.process_template_line(line)
     included = {name.replace(os.sep, "/") for name in files.files}
+    # setup.py drops every RELEASE-EXCLUDE'd file from the sdist after MANIFEST.in
+    # (is_release_excluded), which is how the private config receipts stay out:
+    # MANIFEST.in no longer names them (3.0.2 defect D, 7f1fc283c7).
+    included = {name for name in included if not matches(name, rules)}
     assert public <= included, (
         f"MANIFEST.in drops public configs from the sdist: {sorted(public - included)}")
     assert not (present - public) & included, (

@@ -934,3 +934,60 @@ def test_a_run_plan_report_names_its_commit_through_the_provenance_block(tmp_pat
     assert forecast["git_commit"] == "f" * 40 and forecast["dirty"] is False
     assert forecast["identity_source"] == "provenance-receipt-git" and "reason" not in forecast
     assert visuals._engine_line(forecast) == f"git {'f' * 40} (clean)"
+
+
+def _hourly_frames(root, start, hours):
+    root.mkdir(parents=True, exist_ok=True)
+    frames = []
+    for hour in range(hours):
+        when = start + visuals.timedelta(hours=hour)
+        path = root / f"wrfout_d01_{when:%Y-%m-%d_%H_%M_%S}"
+        path.write_bytes(b"synthetic history")
+        frames.append({"path": str(path), "sha256": "a" * 64})
+    return frames
+
+
+def _future_start():
+    now = visuals.datetime.now(visuals.UTC)
+    return (now + visuals.timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
+
+
+class _Worker:
+    pid = 54321
+
+    def poll(self):
+        return None
+
+
+def test_a_past_start_still_queues_the_worker_even_when_reported_frames_are_ahead(tmp_path, monkeypatch):
+    """A restarted run reports only its resumed frames; its earlier hours may be past."""
+    calls = []
+    monkeypatch.setattr(visuals.subprocess, "Popen", lambda *a, **kw: calls.append(a) or _Worker())
+    monkeypatch.setattr(visuals, "_process_identity", lambda pid: {"pid": pid, "birth": 2})
+    root = tmp_path / "run"
+    past = visuals._stamp(visuals.datetime.now(visuals.UTC) - visuals.timedelta(hours=6))
+    state = visuals.finish_run(root, sections={"run_shape": {"start_time": past},
+                                               "output": {"frames": _hourly_frames(root, _future_start(), 2)}})
+    assert len(calls) == 1 and state["phase"] == "queued" and state["pid"] == _Worker.pid
+    line = visuals.finish_line(state)
+    assert f"process {_Worker.pid}" in line and "--no-verify-visuals" in line
+
+
+def test_a_run_with_every_hour_in_the_future_still_queues_the_worker(tmp_path, monkeypatch):
+    """The worker makes the history's compact verification inputs and then
+    releases the .keep lease, even when no hour can be scored yet.  Not
+    starting it left the whole raw history pinned until someone ran the retry
+    by hand (item 8 review of a deferral that did that)."""
+    calls = []
+    monkeypatch.setattr(visuals.subprocess, "Popen", lambda *a, **kw: calls.append(a) or _Worker())
+    monkeypatch.setattr(visuals, "_process_identity", lambda pid: {"pid": pid, "birth": 2})
+    root = tmp_path / "run"
+    start = _future_start()
+    stamp = visuals._stamp(start)
+    state = visuals.finish_run(root, sections={"run_shape": {"start_time": stamp},
+                                               "output": {"frames": _hourly_frames(root, start, 3)}})
+    assert len(calls) == 1 and state["phase"] == "queued" and state["pid"] == _Worker.pid
+    assert state["lease_token"] == json.loads((root / ".keep").read_text())["token"]
+    line = visuals.finish_line(state)
+    assert line.startswith(f"verification: CPU check queued as process {_Worker.pid} (no card)")
+    assert "--no-verify-visuals" in line and "not made compact" in line

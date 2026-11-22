@@ -1,0 +1,73 @@
+{
+  "what": "What the example scripts should print, with the run each number was read from. Readings that depend on rounding (the dots) agree to their bar, not to every digit, on another card of the same family; verdicts and exit codes should agree exactly.",
+  "32gb": {
+    "card": "one GeForce RTX 5090 (32 GB, compute capability 12.0), Python 3.14, gpuwm-hex[ad] 0.6.0, empty home",
+    "adjoint-test": {
+      "command": "gpuwm-hex adjoint-test --row hrrrv5-q12.96.2890.n40.60w91.30 --steps 15 --at 40.6,-91.3 --radius-km 150",
+      "exit": 0,
+      "last_line_starts": "PASS: 2 directions resolved, each inside the bar",
+      "linear_model": "the boundary layer's tape-free route (this row's default)",
+      "dot": 1.128e-08, "fd": 9.906e-04, "taylor": 9.906e-04, "zero_nonzero_words": 0,
+      "directions": {"bump": "INSIDE (9.91e-04 from 1)", "descent": "INSIDE (5.00e-04 from 1)",
+                     "near-ground-moisture": "UNRESOLVED (7.21e-03 from 1)", "smooth-draw": "UNRESOLVED (1.47e-02 from 1)"},
+      "known_limits_named": ["near-ground-moisture", "window"],
+      "whole_state_dot": 7.494e-08, "whole_state_dot_roundings": 0.63, "whole_state_dot_bar_roundings": 4,
+      "card_peak_mib": 24766, "host_peak_mib": 41022, "seconds_first_run": 415.0,
+      "whole_state_dot_scored_on": "memory allocations (134): the example's plan holds 15 step boundaries, so the 15-step window end has no field map; the command prints so"
+    },
+    "sensitivity": {
+      "command": "gpuwm-hex sensitivity --row hrrrv5-q12.96.2890.n40.60w91.30 --steps 15 --circle 40.6,-91.3,150 --levels 1-10",
+      "exit": 0, "valid": true, "card_peak_mib": 27048, "host_peak_mib": 36904, "seconds": 88.5,
+      "map": "a positive disc of dJ_dtheta over the 150 km circle at 40.6N 91.3W, strongest on its south-west edge, nothing outside it"
+    },
+    "own_measure.py": {
+      "command": "python own_measure.py OUT (run-32gb.sh runs it last)",
+      "exit": 0,
+      "lines": [
+        "theta_m {'circle': '40.6,-91.3,150', 'levels': '1-10'}: valid True, passed True; largest |dJ/dtheta| 3.963e-04 at level 12, 40.20N -92.98E (cell index 678)",
+        "qv {'circle': '40.6,-91.3,100', 'levels': '1-7'}: valid True, passed True; largest |dJ/dqv| 7.129e-04 at level 12, 39.74N -91.05E (cell index 881)"
+      ],
+      "card_peak_mib": 27048, "host_peak_mib": 37552, "seconds_each": [48.6, 49.6],
+      "note": "read through run-32gb.sh on one RTX 5090 from a fresh install with an empty home; each gradient() runs the sensitivity command's own program on this row"
+    }
+  },
+  "96gb": {
+    "card": "one RTX PRO 6000 Blackwell (96 GB, compute capability 12.0); measured on builds before this one, through the same commands",
+    "120km": {
+      "adjoint-test": {"exit": 0, "last_line_starts": "PASS: 2 directions resolved, each inside the bar",
+                        "window_steps": 1, "step_sizes": 8,
+                        "bump_dot": 4.408e-08, "fd": 2.110e-04, "taylor": 2.110e-04, "whole_state_dot": 7.692e-09,
+                        "directions": {"bump": "INSIDE (2.11e-04 from 1)", "descent": "UNRESOLVED (1.14e-02 from 1; 1.008 to 1.047)",
+                                       "near-ground-moisture": "INSIDE (8.51e-04 from 1)", "smooth-draw": "UNRESOLVED"},
+                        "card_peak_mib": 60734, "host_peak_mib": 73994, "seconds": 271.9,
+                        "note": "read on one RTX PRO 6000 Blackwell through this command on its own 1-step window (12 minutes) at eight step sizes a factor of two apart, as docs/differentiable/LIMITS.md gives it; --steps 3 ends NOT PASSED (UNRESOLVED), --steps 2 FAIL (descent OUTSIDE)"},
+      "adjoint-test --row hrrrv5-full-x1.40962": {"exit": 0, "last_line_starts": "PASS: 3 directions resolved, each inside the bar",
+                        "boundary_layer": "floored (this row's default)",
+                        "bump_dot": 1.830e-09, "fd": 1.266e-04, "taylor": 1.266e-04, "whole_state_dot": 1.686e-08,
+                        "directions": {"bump": "INSIDE (1.27e-04 from 1)", "descent": "INSIDE (1.38e-03 from 1)",
+                                       "near-ground-moisture": "INSIDE (3.28e-04 from 1)", "smooth-draw": "UNRESOLVED"},
+                        "card_peak_mib": 76114, "host_peak_mib": 74333, "seconds": 305.6},
+      "tangent": {"largest_theta_K": 0.9965, "largest_pressure_Pa": 37.44},
+      "sensitivity": {"map": "a red patch over the box, up to 3.8e-4 K/K at model level 8, nothing elsewhere"},
+      "card_peak_mib": [71156, 71282], "host_peak_mib": [74860, 74923],
+      "seconds": {"adjoint-test (1 step)": 271.9, "tangent": 158.1, "sensitivity": 175.2, "param-grad": 186.1}
+    },
+    "3km_storm_adjoint_test": {
+      "command": "gpuwm-hex adjoint-test --row hrrrv5-q3.96.38278.n40.60w91.30 --steps 59 (the row's step sizes 0.3, 0.2, 0.1, 0.06, 0.03)",
+      "route": "the default: the number cloud route, the transport limiter live, the three double-arithmetic dynamics images",
+      "exit": 0, "last_line_starts": "PASS: 2 directions resolved, each inside the bar",
+      "dot": 1.317e-08, "fd": 3.653e-04, "taylor": 3.652e-04,
+      "directions": {"bump": "INSIDE (3.65e-04 from 1)", "descent": "INSIDE (1.92e-03 from 1)"},
+      "whole_state_dot": 1.786e-07, "whole_state_dot_roundings": -1.50, "whole_state_dot_bar_roundings": 4,
+      "whole_state_dot_scored_on": "the 12 model fields",
+      "card_peak_mib": 94162, "host_peak_mib": 420360, "host_asked_mib": 450866, "seconds": 2751.0,
+      "note": "read once through the command on one 96 GB card, on an earlier build of this release with this build's row; the exact route (--boundary-layer taped) ends FAIL"
+    },
+    "3km_storm_sensitivity": {
+      "command": "gpuwm-hex sensitivity --row hrrrv5-q3.96.38278.n40.60w91.30 --steps 59 --circle 40.6,-91.3,150 --levels 1-10",
+      "answer_check": 2.78e-08, "answer_check_bar": "4 single-precision roundings of the dot (4.77e-07 relative); the reading is 0.23 of one",
+      "card_peak_mib": 95666, "host_admitted_mib": 258057, "host_peak_mib": 241895, "seconds_first_call": 737.6,
+      "note": "this sensitivity was timed on a build before the default number cloud route"
+    }
+  }
+}

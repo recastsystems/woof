@@ -82,7 +82,7 @@ diffing its coefficients against `woof/core/wdm6_constants.py`, before
 attributing any process-rate difference to the process.
 
 This is inherited from WSM6, which shares `_rgmma`. It is deliberate: float64 is
-the defensible arithmetic, and WOOF's standing rule is not to be bit-exact to a
+the defensible arithmetic, and WOOF-ArWen's standing rule is not to be bit-exact to a
 rounding artifact.
 
 ## 2. The PLM remap's `kt` clamp -- REAL divergence, believed unreachable

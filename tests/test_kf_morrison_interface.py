@@ -295,3 +295,20 @@ def test_cuda_sources_keep_four_rates_and_wrf_number_seed_statement_order():
     assert "(MO_RHOW * MO_PI) * mo_powi3(rho)" in morrison
     assert "mo_powi3(rho) * MO_CONS1" in morrison
     assert "gfk_pow(80.E-6f, MO_DI) * MO_CI" in morrison
+
+
+def test_a_named_scheme_takes_its_phase_mode_from_its_row():
+    """TEMPO (id 900) with a cumulus scheme that reaches KF's category rule (Kain-Fritsch, Grell-Freitas) could not be
+    constructed: "KF has no verified phase-output contract for mp_physics=900".  Its moist package carries qi and qs, as
+    Thompson's does, so it returns the separate ice and snow tendencies; an id nobody owns is still refused."""
+    import pytest
+    from woof.core.kf import KFPhaseMode, kf_has_rain_for_microphysics, kf_phase_mode_for_microphysics
+    from woof.microphysics_schemes import TEMPO
+
+    assert {"qi", "qs"} <= set(TEMPO.ice_mass_species)
+    assert kf_phase_mode_for_microphysics(TEMPO.mp_id) == KFPhaseMode.SEPARATE_ICE_SNOW
+    assert kf_phase_mode_for_microphysics(TEMPO.mp_id) == kf_phase_mode_for_microphysics(28)
+    assert kf_has_rain_for_microphysics(TEMPO.mp_id) is True
+    with pytest.raises(ValueError, match="no verified phase-output contract"):
+        kf_phase_mode_for_microphysics(901)
+

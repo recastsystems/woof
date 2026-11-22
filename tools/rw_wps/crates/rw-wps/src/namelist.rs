@@ -95,17 +95,18 @@ pub const NAMELIST_SUPPORT_SCHEMA: &str = "rw-wps.namelist-support.v1";
 /// way when the 3.0 port folds inventoried them (b2817cdc11a, 9846f70556b, 74abec86b8f, 13a5a66c5bc):
 /// every wrfinput member of the four is float32 on the 3-D stock shape, or
 /// the 2-D `ij` shape for RCON's qnwfa2d/qnifa2d pair exactly as mp=28's,
-/// so the frontend had no obstacle to cite.  mp=29's open speed proof
-/// (gpuwm/config.py RCON-SPEED-01) refuses an ArWen FORECAST with it; it is
-/// not a reason to refuse the stock-WRF initialization file this frontend
-/// certifies, which an unchanged WRF reads.
+/// so the frontend had no obstacle to cite.  mp=29's speed guard
+/// (gpuwm/config.py RCON-SPEED-01) refused an ArWen FORECAST with it in
+/// 3.0.0 and 3.0.1 and was retired in 3.0.2; it was never a reason to refuse
+/// the stock-WRF initialization file this frontend certifies, which an
+/// unchanged WRF reads.
 ///
 /// A new engine package arrives as a new id here plus whatever its members'
 /// shapes require, never as a silently narrowed export.
 ///
 /// Public so `tests/engine_stock_inventory.rs` can hold it to the engine's
 /// own inventory (gpuwm/physics_consumer_export_v1.json).
-pub const STOCK_WRF_INVENTORIED_MP_PHYSICS: &[u16] = &[2, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15, 18, 24, 26, 27, 28, 29, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106];
+pub const STOCK_WRF_INVENTORIED_MP_PHYSICS: &[u16] = &[1, 2, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15, 18, 24, 26, 27, 28, 29, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamelistSupportRequest {

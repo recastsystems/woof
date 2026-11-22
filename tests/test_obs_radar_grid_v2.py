@@ -21,7 +21,6 @@ What this file pins:
 * a v2 file carries bit-identical observations to the v1 file written from
   the same merge -- checked field by field through the whole-domain view,
   with a guard that the windows really were smaller than the domain;
-* the adapter produces bit-identical LETKF batches from either;
 * fail closed: a window that under-covers its radar, or falls off the
   grid, is refused by the writer and by the reader.
 """
@@ -32,9 +31,6 @@ import numpy as np
 import pytest
 
 import woof.obs.superob as superob_mod
-from woof.da.letkf import (LetkfConfig, LetkfDiagnostics, Localization,
-                            analyze)
-from woof.da.obs_radar import letkf_grid_geometry, radar_grid_to_gridded_obs
 from woof.obs.radar_grid import (
     RADAR_GRID_SCHEMA_V1,
     RADAR_GRID_SCHEMA_V2,
@@ -178,66 +174,6 @@ def test_v2_carries_bit_identical_observations_to_v1(tmp_path, monkeypatch):
         np.testing.assert_array_equal(v2["variables"][name],
                                       v1["variables"][name],
                                       err_msg=f"{name} differs")
-
-
-def test_the_adapter_builds_identical_batches_from_either_layout(
-        tmp_path, monkeypatch):
-    """The filter must not be able to tell which layout it was fed."""
-    grid, params = _grid(), _params()
-    members = 3
-    rng = np.random.default_rng(7)
-    shape = (grid.nz, grid.ny, grid.nx)
-    simulated = rng.standard_normal((members,) + shape)
-
-    windowed = _merged(grid, params, dense=False)
-    _write(tmp_path / "v2.nc", windowed, grid, params)
-    dense = _merged(grid, params, dense=True, monkeypatch=monkeypatch)
-    _write(tmp_path / "v1.nc", dense, grid, params)
-
-    def _adapt(path):
-        return radar_grid_to_gridded_obs(
-            path, expected_grid=grid,
-            velocity_simulated=lambda index, radar: simulated)
-
-    from_v2, _ = _adapt(tmp_path / "v2.nc")
-    from_v1, _ = _adapt(tmp_path / "v1.nc")
-
-    assert [b.name for b in from_v2] == [b.name for b in from_v1]
-    assert len(from_v2) == len(PLACED)
-
-    # The batches are deliberately NOT the same shape: v2's are windowed,
-    # which is the entire point -- the filter never sees a whole-domain
-    # array for a radar that covers a fraction of the domain.  So the
-    # property to prove is not that the arrays match, it is that the
-    # ANALYSIS does.  That is what "the filter cannot tell which layout it
-    # was fed" has to mean.
-    assert all(b.window is not None for b in from_v2)
-    assert all(b.window is None for b in from_v1)
-
-    geometry = letkf_grid_geometry(grid)
-    prior = {"u": rng.standard_normal((members,) + shape),
-             "theta": rng.standard_normal((members,) + shape) + 300.0}
-    cfg = LetkfConfig(
-        localization=Localization(horizontal_m=3.0 * float(grid.dx_m),
-                                  vertical_m=1500.0),
-        analysis_fields=("u", "theta"), rtps_alpha=0.0, chunk_points=64)
-
-    v2_diag, v1_diag = LetkfDiagnostics(), LetkfDiagnostics()
-    from_v2_analysis = analyze(prior, from_v2, geometry, cfg, v2_diag)
-    from_v1_analysis = analyze(prior, from_v1, geometry, cfg, v1_diag)
-
-    for field in from_v1_analysis:
-        np.testing.assert_array_equal(
-            from_v2_analysis[field], from_v1_analysis[field],
-            err_msg=f"the layout changed the analysis of {field}")
-
-    # Non-vacuity at both ends: observations existed, and the analysis
-    # actually moved the state.
-    assert any(int(b.mask.sum()) > 0 for b in from_v2), (
-        "no batch carried an observation; the comparison proved nothing")
-    assert v2_diag.active_points > 0
-    assert v2_diag.active_points == v1_diag.active_points
-    assert np.max(np.abs(from_v2_analysis["u"])) > 0.0
 
 
 # --------------------------------------------------------------------------

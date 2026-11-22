@@ -375,7 +375,7 @@ def test_every_release_machinery_gate_is_listed(entry: str) -> None:
 # The per-case half of the exclusion rule above.  A listed file survives the
 # export, but a case inside it can still read a file the export drops: dry
 # cut 4 of 2.8.0 ran Stage 1 at the exported commit and seven cases failed
-# that way (the nesting ledger under docs/superpowers/**, a run report under
+# that way (the nesting ledger under docs/internal/**, a run report under
 # evidence/**, the rescued forks under tilestream/rescued-tools/**) while all
 # seven passed in the development tree.  tests/_release_export.py is how such
 # a case skips there, and these pin exactly when it may.

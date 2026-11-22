@@ -273,8 +273,9 @@ def test_two_sources_differ_only_in_source_derived_fields():
 
     left = _raw(forcing_source="gfs")
     right = _raw(forcing_source="ecmwf-open-data")
-    # Whole tables that are source-derived by construction.
-    for table in ("fetch", "case_data", "physics"):
+    # Whole tables that are source-derived by construction ([ingest] holds
+    # the GFS route's lake-ice choice, door item 7).
+    for table in ("fetch", "case_data", "physics", "ingest"):
         left.pop(table, None)
         right.pop(table, None)
     # One source-derived key inside a shared table: the configuration name

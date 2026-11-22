@@ -4,7 +4,7 @@ A one-way LES child receives smoothed parent fields through its lateral
 boundary and has to grow its own turbulence while the inflow advects
 across the domain.  The measured cost on the shipped 250 m child is a
 spin-up fetch larger than the domain itself
-(docs/superpowers/receipts/les/INFLOW-FETCH-D90-2026-08-03.md).  This
+(docs/internal/receipts/les/INFLOW-FETCH-D90-2026-08-03.md).  This
 module seeds that transition: cell-blocked potential-temperature
 perturbations applied to the child's rolling boundary VALUE tables on
 the inflow-side relax-zone rows, refreshed on the FORCE cadence, so the
@@ -13,7 +13,7 @@ target and advection carries the blocks into the interior where
 buoyancy amplifies them.
 
 Every constant is pinned in
-docs/superpowers/receipts/les/INFLOW-GENERATOR-ACCEPTANCE-V2.md,
+docs/internal/receipts/les/INFLOW-GENERATOR-ACCEPTANCE-V2.md,
 registered before any perturbed integration existed.  The mechanism in
 one paragraph:
 

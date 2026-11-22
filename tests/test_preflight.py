@@ -211,7 +211,13 @@ def test_state_manifest_matches_restart_classification(d01_cfg):
              | set(pf.state_array_shapes(fsbm_cfg))
              | set(pf.state_array_shapes(gf_cfg))
              | set(pf.state_array_shapes(tempo_cfg))
-             | set(pf.state_array_shapes(ccpp_cfg)))
+             | set(pf.state_array_shapes(ccpp_cfg))
+             # WRF v4.8.0 dynamic lightning owns its energies, flash counts,
+             # LPI and captured theta; no other configuration allocates them.
+             | set(pf.state_array_shapes(dataclasses.replace(
+                 d01_cfg, dyn_lightning_option=1))))
+    # ... and the time it captured that theta, a scalar attribute.
+    names.add("_dyn_lightning_theta_at")
     # Strict WRF arithmetic attaches its own carriers at first write, outside
     # DomainState's allocation list (c501f4d34, development branch); they
     # are classified, so they join the union by name.
@@ -2248,7 +2254,7 @@ def test_mp28_driver_aliases_the_scheme_accumulators_instead_of_copies():
 
     shapes = pf.physics_array_shapes(RunConfig(**_TINY, **_MP28, **_MP28_PBL))
     assert not any(name.startswith("microphysics/") for name in shapes), (
-        "mp=28 still budgets private driver-owned precipitation arrays")
+        "mp=28 still budgets driver-local precipitation arrays")
 
     control = pf.physics_array_shapes(
         RunConfig(**_TINY, moist=True, mp_physics=0, **_MP28_PBL))
@@ -5136,7 +5142,10 @@ def test_legacy_rrtmg_variant_prices_the_lw_chain_local_frame():
     # priced as thompson_fork_unit.
     covered = frozenset().union(
         *(tu.covers for tu in pf.CHAINED_TRANSLATION_UNIT_FRAMES.values()))
-    assert covered == {
+    # "terrain_drag_gwdo480" joined 2026-11-09 (port/wrf-480-L08): WRF
+    # v4.8.0's gwd_opt = 1 kernel compiles after terrain_drag.cu in its own
+    # unit, priced as terrain_drag_gwdo480_composed.
+    assert covered - {"terrain_drag_gwdo480"} == {
         "rrtmg_sw", "rrtmg_lw_chain", "rrtmg_lw_taugb02_10_11_12",
         "rrtmg_lw_taugb03_05", "rrtmg_lw_taugb06_09",
         "rrtmg_lw_taugb13_16", "p3", "urban_bep_bem",
@@ -5711,8 +5720,11 @@ def test_noahmp_on_an_unread_card_is_priced_from_the_ceiling_and_says_so(monkeyp
     frames = pf.kernel_local_frame_bytes(exp)
     ceiling = prov.composed_frame_ceiling(prov.usable_recordings())
     assert ceiling, "the shipped rows describe this tree"
+    # Since fix/noahmp-small-defects the default options step the selected
+    # (resident) images too, so a unit priced at its selected reading (the
+    # glacier's fused export, 792 B) sits above the composed ceiling (456 B).
     for key in ceiling:
-        assert frames[key] == ceiling[key]
+        assert frames[key] >= ceiling[key]
     reference = pf.MEASURED_LOCAL_MEMORY_PROFILE
     assert pf.kernel_local_memory_bytes(exp) == reference.reservation_bytes(max(frames.values()))
     basis = pf.non_pool_basis(reference, exp)
@@ -6204,13 +6216,19 @@ def test_estimate_domain_carries_the_noahmp_transient_items():
         history_interval_s=3600.0, run=cfg, time_step=1))
     names = {item.name: item for item in estimate.items
              if item.name.startswith("noahmp_lsm/")}
+    # Since fix/noahmp-small-defects the default options step the resident
+    # route (noahmp_surface_device.device_route): the device parameter pool,
+    # lookup and census replace the host slab caches.
+    resident = {"noahmp_lsm/device_parameter_pool", "noahmp_lsm/device_parameter_lookup",
+                "noahmp_lsm/device_census"}
     assert set(names) == {"noahmp_lsm/slab_chunk_transients",
                           "noahmp_lsm/slab_grid_transients",
                           "noahmp_lsm/staged_leaf_batches",
-                          "noahmp_lsm/slab_caches"}
+                          "noahmp_lsm/device_glacier_driver",
+                          "noahmp_lsm/device_parameter_gather",
+                          "noahmp_lsm/feedback_operands"} | resident
     for name, item in names.items():
-        assert item.category == ("physics" if name == "noahmp_lsm/slab_caches"
-                                 else "transient")
+        assert item.category == ("physics" if name in resident else "transient")
         assert item.itemsize == 1
 
 
@@ -6228,9 +6246,13 @@ def test_noahmp_slab_caches_are_priced_resident_per_grid_column():
     base = dict(nz=40, dx=1000.0, dy=1000.0, ztop=16000.0, dt=5.0,
                 run_seconds=0.0, time_step_sound=4, moist=True, mp_physics=6,
                 sf_sfclay_physics=1, bl_pbl_physics=1)
+    # The default options take the resident route (fix/noahmp-small-defects),
+    # whose resident cost is the device parameter pool, not per-column caches.
     assert noahmp_lsm_cache_shapes(RunConfig(
         nx=600, ny=600, sf_surface_physics=4, **base)) == {
-            "noahmp_lsm/slab_caches": (360000, per_column)}
+            "noahmp_lsm/device_parameter_pool": (513, 472),
+            "noahmp_lsm/device_parameter_lookup": (28, 20, 8),
+            "noahmp_lsm/device_census": (4, 8)}
     assert noahmp_lsm_cache_shapes(RunConfig(
         nx=600, ny=600, sf_surface_physics=2, **base)) == {}
 

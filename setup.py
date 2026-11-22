@@ -464,6 +464,9 @@ class _SourceDistribution(_Sdist):
         super().finalize_options()
 
     def make_release_tree(self, base_dir, files):
+        # The private files RELEASE-EXCLUDE.txt drops from the public tree
+        # (see is_release_excluded below) stay out of a source archive too.
+        files = [name for name in files if not is_release_excluded(name)]
         super().make_release_tree(base_dir, files)
         (Path(base_dir) / "gpuwm-build-provenance.json").write_text(
             json.dumps(_build_provenance(self.distribution.get_version()),
@@ -586,8 +589,61 @@ def pack_wheel_xz_data(build_lib: Path) -> list[tuple[str, int, int]]:
         return [row for row in pool.map(one, wheel_xz_data()) if row is not None]
 
 
+#: The export's own list of what the public tree never holds.
+#:
+#: THE BREAKAGE THIS PREVENTS: a 3.0.3 candidate wheel built from the
+#: development tree carried 45 files that RELEASE-EXCLUDE.txt keeps out of the
+#: public tree: 44 configuration records whose paths name the build machine's
+#: home directory, and one development script.  The export strips them, so a
+#: wheel built from the public tree never held them, but ``configs =
+#: ["**/*"]`` and the ``tools`` package swept them into a wheel built from
+#: the development tree.  A file RELEASE-EXCLUDE.txt drops from the public
+#: tree is now in no wheel or sdist built from any tree, and the candidate
+#: seal refuses an artifact that still carries one.  A tree without the list
+#: (an extracted sdist) has nothing to drop.
+_RELEASE_EXCLUDE = _HERE / "RELEASE-EXCLUDE.txt"
+
+
+@functools.lru_cache(maxsize=None)
+def release_exclusions() -> tuple[str, ...]:
+    """The rules of RELEASE-EXCLUDE.txt, as ``tools/release_exclusions.py`` reads them."""
+
+    if not _RELEASE_EXCLUDE.is_file():
+        return ()
+    return tuple(line for raw in _RELEASE_EXCLUDE.read_text(encoding="utf-8").splitlines()
+                 if (line := raw.strip()) and not line.startswith("#"))
+
+
+def is_release_excluded(path) -> bool:
+    """Is this tree file one the export drops from the public tree?
+
+    The match is ``tools.release_exclusions.matches``: a literal path, or a
+    trailing ``/**`` for a subtree.  ``path`` is relative to this tree (as
+    setuptools hands it over) or absolute inside it.
+    """
+
+    rules = release_exclusions()
+    if not rules:
+        return False
+    candidate = Path(path)
+    if candidate.is_absolute():
+        try:
+            candidate = candidate.resolve().relative_to(_HERE)
+        except ValueError:
+            return False
+    rel = candidate.as_posix()
+    for rule in rules:
+        if rule.endswith("/**"):
+            root = rule[:-3]
+            if rel == root or rel.startswith(root + "/"):
+                return True
+        elif rel == rule:
+            return True
+    return False
+
+
 class _OperationalBuildPy(_BuildPy):
-    """Copies every module of a package into the wheel EXCEPT the probes."""
+    """Copies every module of a package into the wheel EXCEPT the probes and the private files."""
 
     def build_package_data(self) -> None:  # noqa: D102
         super().build_package_data()
@@ -598,11 +654,12 @@ class _OperationalBuildPy(_BuildPy):
 
     def find_package_modules(self, package, package_dir):  # noqa: D102
         return [row for row in super().find_package_modules(package, package_dir)
-                if not is_development_module(row[0], row[1])]
+                if not is_development_module(row[0], row[1])
+                and not is_release_excluded(row[2])]
 
     def find_data_files(self, package, src_dir):  # noqa: D102
         return [path for path in self._declared_data_files(package, src_dir)
-                if not is_verify_oracle_file(path)]
+                if not is_verify_oracle_file(path) and not is_release_excluded(path)]
 
     def _declared_data_files(self, package, src_dir):
         if package not in DECLARATION_ONLY_DATA_PACKAGES:

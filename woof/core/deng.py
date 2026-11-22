@@ -19,7 +19,7 @@ def step(driver, a, state, cfg):
             raise ValueError('Deng source-bound saturation table hash differs')
         driver._deng_tables=cp.asarray(np.frombuffer(payload,dtype='<f4').copy())
     from woof.core.swint import calendar_scalars
-    _,xtime,gmt=calendar_scalars(driver.tmn_start_time,state.elapsed_seconds)
+    _,xtime,gmt=calendar_scalars(driver.tmn_start_time,state.elapsed_seconds,generation=getattr(cfg,'solar_generation','wrf_480'))
     elapsed=float(state.elapsed_seconds)
     constants=dict(xlv=2.5e6,xls=2.85e6,xlv0=3.15e6,xlv1=2370.,xls0=2.905e6,xls1=259.532,
                    cp=1004.5,r=287.,g=9.81,svp1=.6112,svp2=17.67,svp3=29.65,svpt0=273.15)

@@ -8,7 +8,7 @@ julian) points: mid-year interpolation, a leap year either side of the
 table's mid-June knot, the CFC onset era and an early-year day.
 
 Origin: the nested-domain case (2026-10-28): wrf.exe 4.6.1 ran its default
-ghg_input = 1 and WOOF had only the fixed gases, so longwave differed in
+ghg_input = 1 and WOOF-ArWen had only the fixed gases, so longwave differed in
 every column at step 1.
 """
 from __future__ import annotations

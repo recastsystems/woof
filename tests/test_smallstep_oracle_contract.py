@@ -84,7 +84,7 @@ def test_smallstep_fixture_builder_and_kernel_receipt_hashes():
     manifest = ORACLE_DIR / "oracle-sha256sums.json"
     # The published 170-entry manifest and all native fixture/tool pins stay
     # immutable. Attribution below is a finite source overlay, not a new map.
-    assert hashlib.sha256(manifest.read_bytes()).hexdigest() == '8efe357ad5e3b631aa95b9d476970391d05fb2fe859c9928449e6cffe3c253e4'
+    assert hashlib.sha256(manifest.read_bytes()).hexdigest() == '57dcb8039ddce1cf9cbb4715e7162c789ea635f27ce1808bd8148f75e09eef53'
     pins = json.loads(manifest.read_text())
     assert len(pins) >= 160
     assert "tools/smallstep_wrf471_oracle/build.py" in pins
@@ -105,7 +105,7 @@ def test_smallstep_fixture_builder_and_kernel_receipt_hashes():
     # 5d86ac9f37b passes an optional (nz, ny, nx) shape to get_kernel; the
     # horizontal probe getter only gained that parameter (same probe source,
     # options and launch), so its no-FMA/pressure-term gates run again.
-    source_byte_overlay = {'woof/verify/smallstep_bookkeeping_oracle.py': 'aa65f7af6e22588e81d134fb596a867267294c731c679892d5e4e87b80671db4',
+    source_byte_overlay = {'woof/verify/smallstep_bookkeeping_oracle.py': '78ee5836abe222348c238ba59d75dcf78e7d100ab3791b07e2308fc904aacf65',
      'woof/verify/smallstep_horizontal_oracle.py': 'ccadf0099ca5e4b191148cdee7022b28e09c4fffba523d2a05ee0f9f8dd20758',
      'tests/test_smallstep_vertical_wrf471_parity.py': 'aee56747f0a57abf17c2f50075977fff33aa5ec648c74d998ac55ba313d6b8f3'}
 

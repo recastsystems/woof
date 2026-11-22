@@ -7,13 +7,13 @@ engine_root=$3
 identity_helper=${4:-$lane_root/companion/tools/bench/identity_gate.py}
 test -f "$identity_helper" || { echo "qualified hex nonce identity helper is absent: $identity_helper" >&2; exit 2; }
 for forbidden in ${GPUWM_FORBIDDEN_CARDS:-}; do
-  case ",${GPU_MUTEX_CARDS:-}," in
+  case ",${CARD_QUEUE_CARDS:-}," in
     *",$forbidden,"*) echo "card queue granted forbidden physical card $forbidden; refusing before CUDA" >&2; exit 2;;
   esac
 done
 mkdir -p "$lane_root/tmp" "$lane_root/receipts"
 git rev-parse HEAD > "$lane_root/receipts/checked-source.txt"
-printf '%s\n' "${GPU_MUTEX_CARDS:-}" > "$lane_root/receipts/checked-card.txt"
+printf '%s\n' "${CARD_QUEUE_CARDS:-}" > "$lane_root/receipts/checked-card.txt"
 python -m pytest -q -s --basetemp "$lane_root/tmp/pytest-graphs" \
   tests/test_cuda_subcycle_graphs_dycore.py tests/test_cuda_subcycle_graphs.py \
   tests/test_cuda_graph_tables.py tests/test_cuda_subcycle_graphs_policy.py \

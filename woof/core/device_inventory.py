@@ -484,6 +484,23 @@ def state_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
     for name in active_tracers(cfg):
         shapes[name] = m
         shapes[name + "0"] = m
+    if getattr(cfg, "dyn_lightning_option", 0):
+        # WRF v4.8.0 dynamic lightning (woof/core/state.py, dyn_lightning
+        # .allocate): three advected energies with their RK time-t copies,
+        # the flash counts and LPI planes, the 3-D LPI and the captured
+        # post-scheme theta.  Unpriced, a lightning run's VRAM projection
+        # left out 8 full 3-D arrays (3.0.0 pass 1, test_preflight).
+        from woof.core.dyn_lightning import (DYN_LIGHTNING_FIELDS_2D,
+                                              DYN_LIGHTNING_FIELDS_3D,
+                                              DYN_LIGHTNING_SCALARS)
+        for name in DYN_LIGHTNING_SCALARS:
+            shapes[name] = m
+            shapes[name + "0"] = m
+        for name in DYN_LIGHTNING_FIELDS_2D:
+            shapes[name] = (cfg.ny, cfg.nx)
+        for name in DYN_LIGHTNING_FIELDS_3D:
+            shapes[name] = m
+        shapes["dyn_lightning_theta"] = m
     if cfg.bl_pbl_physics == 5 and cfg.bl_mynn_tkeadvect:
         shapes["qke_adv"] = m
         shapes["qke_adv0"] = m

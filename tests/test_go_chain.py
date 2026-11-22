@@ -112,6 +112,9 @@ def _startup_notices(command: str) -> tuple:
     # test that calls this.
     top_pass = "woof check: model-top check PASS: source "
     notices.append(lambda line: line.startswith(top_pass))
+    # A FIFTH, from the same stage: the ocean the run will use (door item 6:
+    # every plan states it, on stderr beside the model-top verdict).
+    notices.append(lambda line: line.startswith("woof check: ocean: "))
     return tuple(notices)
 
 

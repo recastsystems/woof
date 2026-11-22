@@ -12,6 +12,27 @@ def test_missing_ishmael_is_reported_before_preparation(tmp_path, monkeypatch):
     assert 'ishmael-qi-qr.bin' in sentence and 'fetch-tables --ishmael' in sentence
     assert microphysics_lookup_table_precondition(SimpleNamespace(mp_physics=10)) is None
 
+def test_missing_rcon_stream_is_reported_before_preparation(tmp_path, monkeypatch):
+    # RCON had no row here while its speed guard refused it first; with the
+    # guard gone, `woof go` fetched and prepared a whole case and only the
+    # forecast stage said the stream was missing.
+    from woof.core.rcon import TABLE_BYTES, TABLE_FILENAME
+    from woof.table_assets import MissingTableAssets
+    from woof.tables import _ensure_for_load
+    monkeypatch.setenv('WOOF_RCON_TABLE_ROOT', str(tmp_path))
+    cfg = SimpleNamespace(mp_physics=29)
+    sentence = microphysics_lookup_table_precondition(cfg)
+    assert sentence is not None
+    assert str(tmp_path / TABLE_FILENAME) in sentence
+    assert 'fetch-tables --schemes rcon' in sentence
+    # One wording: it is the sentence the run's own table check raises.
+    with pytest.raises(MissingTableAssets) as refusal:
+        _ensure_for_load({'mp_physics': 29}, fetch=False)
+    assert str(refusal.value) == sentence
+    with open(tmp_path / TABLE_FILENAME, 'wb') as stream:
+        stream.truncate(TABLE_BYTES)
+    assert microphysics_lookup_table_precondition(cfg) is None
+
 def test_hail_table_refusal_obeys_native_write_controls(tmp_path, monkeypatch):
     monkeypatch.setenv('WOOF_THOMPSON_HAIL_TABLE_ROOT', str(tmp_path))
     cfg = SimpleNamespace(mp_physics=38, force_read_thompson=False,

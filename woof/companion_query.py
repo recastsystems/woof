@@ -1,6 +1,6 @@
 """Read-only, native geometry for the companion and other CLI clients.
 
-Configuration resolution stays in WOOF. Grid coordinates come from the
+Configuration resolution stays in WOOF-ArWen. Grid coordinates come from the
 installed Rust static-fields bridge, including its registered nest placement.
 """
 from __future__ import annotations

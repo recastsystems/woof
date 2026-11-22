@@ -2,7 +2,7 @@
 
 Column arrays are CUDA float32, level-major (level, cell) where applicable.
 The source is MPAS's complete Noah sea-ice module, including its thermal
-solver dependency. WOOF's physics and default suite are unchanged.
+solver dependency. WOOF-ArWen's physics and default suite are unchanged.
 """
 from __future__ import annotations
 
@@ -872,7 +872,7 @@ def _module_on(device: int, nsoil: int):
 
     source = cuda_source(nsoil)
     # RawModule's cache compiler appends forced FTZ after caller options.
-    # Direct NVRTC preserves strict native subnormals (pool proof-bar ruling).
+    # Direct NVRTC preserves strict native subnormals (the proof bar's rule).
     binary = direct_image(source,
         options=_hex_numerics.options(("--std=c++11", "--fmad=false", "--ftz=false",
                  "--prec-div=true", "--prec-sqrt=true"), keep_ftz=True),

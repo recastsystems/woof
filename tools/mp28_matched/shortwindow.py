@@ -50,7 +50,7 @@ def _sha256(path: Path) -> str:
 
 
 def dual_run_screen(runs: Path, mp: int) -> dict:
-    """Byte-compare the duplicated WOOF short-window run against its twin.
+    """Byte-compare the duplicated WOOF-ArWen short-window run against its twin.
 
     The 5090 has no ECC, so a single GPU run is not a reproducible result.
     ``compare.py`` applies this screen to the 7200 s runs and writes it into
@@ -84,7 +84,7 @@ def main() -> int:
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--dt", type=float, default=60.0,
                     help="seconds between compared frames "
-                         "(WRF history interval == WOOF "
+                         "(WRF history interval == WOOF-ArWen "
                          "frame-steps * timestep)")
     args = ap.parse_args()
 

@@ -1,4 +1,4 @@
-"""THE JOIN, through WOOF's own seam: a real forecast configuration streamed.
+"""THE JOIN, through WOOF-ArWen's own seam: a real forecast configuration streamed.
 
 Real Lambert projection, real terrain, SPECIFIED lateral boundaries, full
 physics, the whole domain in pinned host RAM, one tile of it on the card at a
@@ -8,7 +8,7 @@ boundaries had been proven on FLAT UNPROJECTED ones; a real forecast is the
 intersection and it had never been run.
 
 It is driven through :func:`woof.core.streaming.make_stepper`, which is the
-callable WOOF's own run loops step a domain with
+callable WOOF-ArWen's own run loops step a domain with
 (:func:`woof.core.model.execute_experiment`'s STEP op and
 :func:`woof.runtime.integrate_prepared_case`'s substep both call it and
 nothing else).  So the object under test here is the object the model runs,
@@ -337,7 +337,7 @@ def _drive(stepper, state, cfg, clock, nsteps) -> None:
 
 def monolithic(cfg, nsteps, *, seed=SEED, boundaries=None, warmup=1,
                periodic_faces=False, clock=None) -> dict:
-    """The reference: one resident domain, WOOF's ordinary ``dycore.step``.
+    """The reference: one resident domain, WOOF-ArWen's ordinary ``dycore.step``.
 
     Deliberately the SAME loop shape as the streamed run below, so the only
     difference between the two is which callable ``make_stepper`` returned.

@@ -1,6 +1,6 @@
 # Case catalogs
 
-WOOF includes a default catalog of **300 historical cases** and also reads
+WOOF-ArWen includes a default catalog of **300 historical cases** and also reads
 custom catalogs from ZIP, JSON or TOML. A catalog can describe
 tornadoes, derechos, hurricanes and other studies without embedding commands or
 inventing another forecast engine. The same catalog serves the interface and
@@ -32,7 +32,7 @@ catalog.
 The supplied `woof/data/case-catalog/example.json` and `example.toml` contain
 **synthetic format demonstrations, not historical cases or scientific
 recommendations**. `schema.json` describes the format. Its native-setting list
-comes from the current WOOF physics/configuration contract.
+comes from the current ArWen physics/configuration contract.
 
 ## Authoring a catalog
 
@@ -51,12 +51,12 @@ Source options carry an option ID, a native source ID or alias, and
 lead from that cycle. An explicit `recommended_source_option` identifies the
 catalog author's preferred option. Multiple options without a recommendation
 require the user or script to select one. Unknown future sources remain
-browsable but cannot create a configuration until WOOF supports them.
+browsable but cannot create a configuration until WOOF-ArWen supports them.
 
 UTC timestamps may carry `Z` or an offset, which is converted to UTC. A source
 initialization must resolve to an exact UTC hour. Event start/end metadata may
 include minutes. A timestamp without an offset in a field named `_utc` means
-UTC. Source selection uses WOOF's source calendar and publication constraints;
+UTC. Source selection uses WOOF-ArWen's source calendar and publication constraints;
 catalog metadata never certifies that a server currently has the files.
 
 Each tier carries:
@@ -93,7 +93,7 @@ profile ID. For advanced work it may also specify `native_overrides`:
 ```
 
 These numbers demonstrate syntax only. Native override keys are derived from
-WOOF's registered scientific parameters/selectors and configuration scopes.
+WOOF-ArWen's registered scientific parameters/selectors and configuration scopes.
 Unknown keys, unsupported values, invalid combinations, paths, commands,
 environment settings and credentials are refused. No acknowledgement is taken
 from catalog data. Required scientific declarations must be explicitly supplied
@@ -101,7 +101,7 @@ with `--ack`, exactly as on the existing domain command.
 
 Overrides apply in this order: case, selected tier, explicit caller override.
 A shared override applies to all domains; a specific domain override then wins.
-The final experiment is parsed and admitted through WOOF's existing physics
+The final experiment is parsed and admitted through WOOF-ArWen's existing physics
 and memory validation after the changes. Creation is not a forecast result or
 scientific qualification. The original catalog and all recommendation
 provenance are retained beside the new configuration.

@@ -48,7 +48,12 @@ def test_explicit_exact_and_native_requests_match_pre_promotion_bytes(geometry):
         assert flags == case['argv']
         config, text = resolve(flags)
         assert text.encode() == case['namelist'].encode()
-        assert json.dumps(config.receipt(), sort_keys=True).encode() == json.dumps(case['receipt'], sort_keys=True).encode()
+        receipt = config.receipt()
+        # 0.6.2 added config_radt_mcica_seed (woof.hex.mpasphys.mcica_seed_rule); its default, MPAS's pressure rule, is
+        # the sample these bytes were recorded with, and the namelist above is unchanged.
+        if receipt.get('options', {}).get('config_radt_mcica_seed') == 'pressure':
+            receipt = {**receipt, 'options': {k: v for k, v in receipt['options'].items() if k != 'config_radt_mcica_seed'}}
+        assert json.dumps(receipt, sort_keys=True).encode() == json.dumps(case['receipt'], sort_keys=True).encode()
         assert defaults.init_flags(flags) == []
         assert 'hex_physics_profile' not in config.options
 

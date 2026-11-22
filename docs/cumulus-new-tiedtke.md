@@ -1,6 +1,6 @@
 # New Tiedtke (`cu_physics = 16`)
 
-New Tiedtke is WOOF's third cumulus scheme beside Kain-Fritsch (`cu_physics = 1`)
+New Tiedtke is WOOF-ArWen's third cumulus scheme beside Kain-Fritsch (`cu_physics = 1`)
 and Grell-Freitas (`cu_physics = 3`). It is the WRF v4.6.1 `module_cu_ntiedtke`
 scheme, ported stage by stage to CUDA and graded against the byte-frozen Fortran
 at every capture boundary. This page is what a user needs; the port record with

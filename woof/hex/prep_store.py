@@ -486,9 +486,15 @@ def stage_entry(kind: str, key: str, material: Mapping[str, Any], files: Mapping
 # the requests the binaries take, parsed into keys
 # ---------------------------------------------------------------------------
 _MESH_DEFAULTS = {"--triangulation": "rebuild", "--fit-spacing": "no", "--sweeps": "300",
-                  "--tolerance": str(1e-3), "--omega": str(1.4)}
+                  "--tolerance": str(1e-3), "--omega": str(1.4),
+                  # The generator's geometry words (woof.hex.mesh_ask.generator_request).  Geometry 1 said aloud
+                  # is the request with no word, so it shares that key; geometry 2 and its ramp words are options
+                  # of the key, so a geometry 2 mesh is never fetched for a geometry 1 request or the other way.
+                  # Before these were listed a command carrying them was simply built without the store.
+                  "--geometry": "1", "--ramp-onset": "0"}
 _MESH_VALUED = {"--spec", "--background-km", "--cells", "--card", "--vram-gib", "--fit-spacing",
-                "--sweeps", "--tolerance", "--omega", "--triangulation", "--out", "--receipt"}
+                "--sweeps", "--tolerance", "--omega", "--triangulation", "--out", "--receipt",
+                "--geometry", "--ramp-onset", "--rings"}
 _MESH_SWITCHES = {"--clobber"}
 _STATIC_VALUED = {"--grid", "--out", "--geog", "--nominal-dx-m", "--valid-time", "--receipt", "--supersample-30s"}
 # --native-init and --native-gwd-static (the native static stream the global and variable-resolution doors ask for)

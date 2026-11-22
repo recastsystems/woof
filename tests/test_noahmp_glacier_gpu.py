@@ -255,7 +255,9 @@ def _phase2(seam, fields):
         rho_dry=fields["rho_dry"], z_interface=fields["z_interface"])
 
 
-def test_the_seam_admits_glacier_columns_and_names_every_class():
+def test_the_seam_admits_glacier_columns_and_names_every_class(monkeypatch):
+    from test_noahmp_runtime import _host_layout_route
+    _host_layout_route(monkeypatch)
     seam = _seam()
     receipt = seam.surface_classification
     assert receipt["xland_source"] == "native"
@@ -390,6 +392,9 @@ def test_disabling_the_glacier_path_refuses_instead_of_running_sflx():
 def test_glacier_writeback_reuses_indices_and_preserves_unmasked_words(monkeypatch):
     """Prevent 150 redundant index allocations/uploads per glacier step.
 
+    (Host-classified layout, pinned: the resident layout runs the resident
+    glacier driver, test_noahmp_glacier_slab.)
+
     Instrument only write-back, after the real evaluator returns. CuPy still
     allocates combined advanced-index arrays; the old host-index path adds
     two uploads for each of 76 accesses (228 index-sized allocations total).
@@ -397,6 +402,8 @@ def test_glacier_writeback_reuses_indices_and_preserves_unmasked_words(monkeypat
     The upper bound allows backend scratch changes, but rejects that defect.
     """
     from woof.core import noahmp_runtime as runtime
+    from test_noahmp_runtime import _host_layout_route
+    _host_layout_route(monkeypatch)
     original = runtime._glacier_lsm_step
     observed = []
 

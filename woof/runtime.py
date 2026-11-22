@@ -475,6 +475,7 @@ def _write_runtime_report(outdir: Path, exp: ExperimentConfig, summary, *,
     ``runplan._chain_summary`` read no status, timing or hydro record from
     an ERA5 forecast.  Same file name and the same top-level keys.
     """
+    from woof.surface_ocean import domains_ocean_receipt
     nan_free = bool(getattr(summary, "nan_free", False))
     health = {"nan_free": nan_free}
     for key in ("w_max_ms", "boundary_w_max_ms", "interior_w_max_ms",
@@ -495,6 +496,8 @@ def _write_runtime_report(outdir: Path, exp: ExperimentConfig, summary, *,
         "timing_seconds": {"total": float(wall_seconds)},
         "health": health,
         **(dict(summary.hydro_receipts) if summary.hydro_receipts else {}),
+        # The ocean each domain ran, in words, every run (door item 6).
+        "ocean": domains_ocean_receipt(domain.run for domain in exp.domains),
     }
     path = Path(outdir) / "report.json"
     tmp = path.with_name(f".report.json.{os.getpid()}.tmp")
@@ -3942,7 +3945,7 @@ def _exchange_consumer_planes(model, steppers, direction: str,
 
     ``names`` is THIS consumer's slots and no one else's, on the same
     reasoning that gave the two consumers separate windows in the first place
-    (WOOF's ruling, 2026-08-07): the relocation runner resets the follow
+    (WOOF-ArWen's ruling, 2026-08-07): the relocation runner resets the follow
     window on its own cadence, from inside ``execute_experiment``, and a
     spawn boundary that published or adopted that window as well could undo a
     reset the tracker had already made or hand it a window measured against a
@@ -6074,6 +6077,10 @@ def _run_experiment(exp: ExperimentConfig, data: CaseDataConfig, outdir, *,
     """
     from woof.experiment import _bind_physics_params
     exp = _bind_physics_params(exp, "woof.runtime.run_experiment")
+    if restart is not None:
+        # A resume continues its checkpoint's TEMPO generation.
+        from woof.core.tempo import adopt_checkpoint_generation
+        exp = adopt_checkpoint_generation(exp, restart)
     from woof.ensemble.runtime_context import current_session
     ensemble = current_session()
     if ensemble is not None:

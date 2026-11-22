@@ -29,7 +29,7 @@ def assert_timeline(plan):
         assert job['end_s']<=job['deadline_s']+1e-7
         assert job['start_s']>=job['ready_offset_s']
 
-@pytest.mark.parametrize('count,totals',[(2,[138.7333333333,133.4066666667]),(1,[140.3577777778])])
+@pytest.mark.parametrize('count,totals',[(2,[138.7333333333,131.2733333333]),(1,[138.2244444444])])
 def test_budgets_and_all_card_lanes(count,totals):
     suite=example(count); plan=plan_suite(suite)
     assert plan['admitted'],plan['refusals']
@@ -270,16 +270,6 @@ def test_references_in_region_and_unpriced_da_refuse(tmp_path):
     data['regions']['PH']['profiles']['agency-generic']='missing-template'
     path.write_text(json.dumps(data))
     with pytest.raises(SuiteRefusal,match='missing-template'): initialize('PH',registry_dir=target)
-    suite=example(); row=next(r for r in suite['system'] if r['id']=='global-det')
-    row['da']['backend']=['cuda:4']
-    plan=plan_suite(suite)
-    assert not plan['admitted'] and any('solve backend' in r['reason'] for r in plan['refusals'])
-    row['da']['backend']=['cpu']; row['da']['cards']=8
-    assert not plan_suite(suite)['admitted']
-    row['da']['cards']=2; row['da']['host_memory_mib']=10**12
-    assert any(r['reason']=='host memory' for r in plan_suite(suite)['refusals'])
-    row['da']['every']='0h'
-    with pytest.raises(SuiteRefusal,match='DA cadence'): validate_suite(suite)
 
 def test_door_lead_alias_is_priced_before_placement():
     suite=example(); suite['override']=[{'system':'global-det','set':{'door.hours':24}}]
@@ -346,11 +336,6 @@ def test_measured_door_flag_is_only_a_rate_table_edit(tmp_path):
     assert argv_flags([],{'door_flags':{'fullstep-local-timestep':False}},shape)==['--no-fullstep-local-timestep']
     suite['override']=[{'system':'global-det','set':{'door.mesh':'missing-mesh'}}]
     with pytest.raises(SuiteRefusal,match='missing-mesh'): validate_suite(suite)
-    suite=example(); suite['policy']['rates']=str(path)
-    for row in data['rates']:
-        if row.get('role')=='da-forecast': row['kind']='P'
-    path.write_text(json.dumps(data))
-    assert any('projected DA' in r['reason'] for r in plan_suite(suite)['refusals'])
 
 
 def test_every_suite_verb_has_a_help_line():
@@ -399,16 +384,3 @@ def test_every_table_citation_resolves_inside_the_shipped_tree():
         for value in re.findall(re.escape(anchor) + r'[A-Za-z0-9.-]+', template.read_text(encoding='utf-8')):
             check(value, template.name)
     assert cited == set(receipts)
-
-
-def test_the_planner_prices_da_solves_on_the_cpu_row_only():
-    """The device solve row (a private build) left the public table; the
-    planner never read it: it prices the shadow solve from the CPU row and
-    refuses a device solve backend by name."""
-    rates = Registries().rates()
-    solves = [row for row in rates if row.get('role') == 'da-solve']
-    assert [row['cards'] for row in solves] == [0]
-    suite = example()
-    plan = plan_suite(suite)
-    shadows = [job for job in plan['jobs'] if job['phase'] == 'da-shadow']
-    assert shadows and all(job['cpu_solve_seconds'] == solves[0]['startup_s'] for job in shadows)

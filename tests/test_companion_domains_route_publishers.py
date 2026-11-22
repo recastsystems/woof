@@ -133,54 +133,6 @@ def test_both_creation_doors_hand_the_publisher_their_configuration():
             assert {keyword.arg for keyword in call.keywords} >= {"exp", "source"}
 
 
-def test_the_local_cycling_publisher_writes_the_route_files(tmp_path):
-    """A published case directory carries what its own route reads."""
-
-    from woof import local_da
-
-    base = _emit(tmp_path)
-    plan = {
-        "schema": local_da.SCHEMA, "review_sha256": "0" * 64,
-        "configuration": {
-            "experiment": base.read_text(encoding="utf-8"),
-            "wps": route_input_paths(base)["wps_namelist"].read_text(
-                encoding="utf-8"),
-            "ensemble": "[ensemble]\nn_members = 1\n"}}
-    directory = tmp_path / "cycling"
-    result = local_da.publish(plan, directory)
-
-    config = directory / "experiment.toml"
-    assert Path(result["plan_path"]).is_file()
-    assert _absent(config) == []
-    document = json.loads((directory / "local-da.json").read_text(
-        encoding="utf-8"))
-    for path in route_input_paths(config).values():
-        assert path.name in document["files"]
-    paths = route_input_paths(config)
-    verify_round_trip(load_experiment(config), paths["wps_namelist"],
-                      paths["namelist_input"])
-
-
-def test_the_local_cycling_publisher_leaves_another_route_alone(tmp_path):
-    from woof import local_da
-
-    base = _emit(tmp_path, source="gfs", name="global")
-    plan = {
-        "schema": local_da.SCHEMA, "review_sha256": "0" * 64,
-        "configuration": {
-            "experiment": base.read_text(encoding="utf-8"),
-            "wps": route_input_paths(base)["wps_namelist"].read_text(
-                encoding="utf-8"),
-            "ensemble": "[ensemble]\nn_members = 1\n"}}
-    directory = tmp_path / "global-cycling"
-    local_da.publish(plan, directory)
-
-    paths = route_input_paths(directory / "experiment.toml")
-    assert paths["wps_namelist"].is_file()
-    assert not paths["namelist_input"].exists()
-    assert not paths["target_domain"].exists()
-
-
 def _retain(tmp_path, base: Path, name: str, monkeypatch):
     """The retained draft, through the real refusal that retains one."""
 

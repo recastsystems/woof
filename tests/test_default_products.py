@@ -1,7 +1,7 @@
 """A local run's default product set draws what it asks for, and says what it did not.
 
 Each test names the concrete breakage it prevents, measured on real
-WOOF runs of the 2.8 line:
+WOOF-ArWen runs of the 2.8 line:
 
 * the default ``general`` preset asked every run for 10m_wind_gusts,
   precipitation_type and cloud_cover; no wrfout carries their fields, so

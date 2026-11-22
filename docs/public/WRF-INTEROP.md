@@ -1,6 +1,6 @@
 # Driving stock WRF from the same preprocessor
 
-WOOF's preprocessor, `rw-wps`, takes a downloaded GRIB file straight to
+WOOF-ArWen's preprocessor, `rw-wps`, takes a downloaded GRIB file straight to
 files that unchanged stock WRF runs: it replaces the whole
 `geogrid`/`ungrib`/`metgrid`/`real.exe` chain in one command and emits
 `wrfinput_d0N` + `wrfbdy_d01` directly. One thing to know before wiring
@@ -102,7 +102,7 @@ instrumentation patch) -- cite the clean builds instead.
   or GFS download to `wrfinput`/`wrfbdy`, with fail-closed decode,
   SHA-256 manifests at every seam, and no WPS toolchain build
   ([DATA.md](DATA.md); [migrating-from-wps.md](../migrating-from-wps.md)).
-- **Paired experiments:** initialize WOOF and stock WRF from
+- **Paired experiments:** initialize WOOF-ArWen and stock WRF from
   literally the same preprocessor pipeline -- the matched-run
   verification in [VERIFICATION.md](VERIFICATION.md) is this workflow
   at full depth.

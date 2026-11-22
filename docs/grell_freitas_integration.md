@@ -42,9 +42,9 @@ obs-skill-is-the-referee terms.
   is the WRF Registry default.
 * Both Grell-family keys are refused wherever no Grell scheme is selected,
   so unrelated configs cannot carry them.
-* **WOOF structural seam:** 390 (`pbl = 0`, `cu = 3`) cells of the WRF
-  v4.6.1 compatibility matrix are admitted by WRF and refused by WOOF.
-  WRF reads `KPBL = 0` there and indexes below the column base; WOOF
+* **WOOF-ArWen structural seam:** 390 (`pbl = 0`, `cu = 3`) cells of the WRF
+  v4.6.1 compatibility matrix are admitted by WRF and refused by WOOF-ArWen.
+  WRF reads `KPBL = 0` there and indexes below the column base; WOOF-ArWen
   refuses rather than reproduces. This is the second named structural
   seam and it is deliberate.
 

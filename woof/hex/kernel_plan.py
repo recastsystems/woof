@@ -1,6 +1,6 @@
 """Compile a run's whole CUDA kernel set at once, on every core, before step 1.
 
-THE DEFECT (2026-10-16, owner ruling: "no single-CPU path on the critical path").  On
+THE DEFECT (2026-10-16; no single-CPU stage may sit on the critical path).  On
 a cold kernel cache -- a new card architecture, a fresh box, a wiped cache --
 a forecast sat at 100 % of ONE core with its card at 0 % for minutes before
 step 1, compiling 160-220 NVRTC images one after another as each kernel was
@@ -611,7 +611,36 @@ def load_plan() -> tuple[list[dict[str, Any]], str]:
     return rows, ("tag" if rows else "none")
 
 
+#: Peak resident memory of one spawn compile worker: 0.96-1.02 GB for each
+#: of four workers compiling a cold 9 km regional kernel set (measured in
+#: jacobbieker/woof#239, 2026-11-09); the engine's woof.kernel_plan holds
+#: the same figure.
+COMPILE_WORKER_BYTES = 1 << 30
+#: The share of the host's available memory the compile pool may plan on;
+#: the forecast beside it is still growing while the pool compiles.
+COMPILE_MEMORY_SHARE = 0.5
+
+
+def _memory_workers() -> int | None:
+    """Compile workers the host's available memory holds, or None (unknown)."""
+    try:
+        from woof.ingest.preparation_workers import host_available_bytes
+        available = host_available_bytes()
+    except Exception:
+        return None
+    if not available:
+        return None
+    return max(1, int(available * COMPILE_MEMORY_SHARE) // COMPILE_WORKER_BYTES)
+
+
 def _workers() -> int:
+    """Compiler threads and processes: CPU affinity, capped by available memory.
+
+    32 spawn workers on a 32-core host peaked at 13-15 GB host RSS for one
+    cold compile (jacobbieker/woof#239); the default holds
+    COMPILE_WORKER_BYTES per worker within COMPILE_MEMORY_SHARE of the
+    available memory.  ``WOOF_KERNEL_PLAN_WORKERS`` overrides the memory cap.
+    """
     try:
         cores = len(os.sched_getaffinity(0))
     except (AttributeError, OSError):
@@ -619,6 +648,10 @@ def _workers() -> int:
     limit = os.environ.get(WORKERS_ENVIRONMENT, "").strip()
     if limit.isdigit() and int(limit) > 0:
         cores = min(cores, int(limit))
+    else:
+        memory = _memory_workers()
+        if memory is not None:
+            cores = min(cores, memory)
     return max(1, cores)
 
 
@@ -829,7 +862,8 @@ def prioritize_physics(config) -> None:
         for slot, scheme in selectors.items():
             if not active(slot):
                 continue
-            descriptor = slots[slot].get("cuda_entries", {}).get(scheme) or {}
+            from .mpasphys.driver_v842 import slot_cuda_entry
+            descriptor = slot_cuda_entry(config, slots, slot, scheme) or {}
             module = str(descriptor.get("module", "")).rsplit(".", 1)[-1]
             if module:
                 families.add(re.sub(r"_v[0-9]+$", "", module))

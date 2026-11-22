@@ -2,7 +2,7 @@
 not on the card.
 
 ``dycore.domain_mass_measure`` is an FP64 area-weighted sum of ``mu/msft**2``
-over the whole domain and it is the number WOOF's conservation closure is
+over the whole domain and it is the number WOOF-ArWen's conservation closure is
 built on.  It is a RECEIPT, not a carrier -- nothing in the forecast reads it
 -- which is exactly why it needs a gate of its own: a carrier that goes wrong
 changes the answer and the bit-exactness matrix catches it, and a receipt that
@@ -40,7 +40,7 @@ observed FIRING before its fix:
   simply called ``domain_mass_measure(tile_state)`` returns) must come back
   at the plan's redundancy, 2.5x;
 * ``step_kwargs`` must reach ``dycore.step``.  ``TiledRun.sweep`` documented
-  that it did and did not do it, so every keyword WOOF's run loop hands a
+  that it did and did not do it, so every keyword WOOF-ArWen's run loop hands a
   streamed domain was silently unset.  The control sweeps with
   ``acoustic=False`` and demands a DIFFERENT answer from the default sweep;
 * ``mass_flux_observer`` and ``mass_flux_accumulator`` must be REFUSED by a
@@ -311,7 +311,7 @@ def contract_step_kwargs_reach_the_tiles(nsteps: int = 2) -> str:
 
     THE control for the defect this gate was written around.  ``_sweep``
     built the keyword dict and then called ``step(tile, tile_cfg)`` without
-    it, so every keyword WOOF's run loop hands a streamed domain -- the
+    it, so every keyword WOOF-ArWen's run loop hands a streamed domain -- the
     history step's ``refl_10cm_due`` above all -- was silently unset, and
     nothing anywhere said so.
 

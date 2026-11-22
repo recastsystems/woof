@@ -1,4 +1,4 @@
-"""Prepare area-weighted WOOF land fluxes; launch performs no host numerics."""
+"""Prepare area-weighted WOOF-ArWen land fluxes; launch performs no host numerics."""
 from __future__ import annotations
 
 from pathlib import Path

@@ -26,7 +26,7 @@ class _HostCupy:
         return np.array(a, copy=True)
 
 
-def _columnwise(fields, *, pin_set, hailaware, melting, cp):
+def _columnwise(fields, *, pin_set, hailaware, melting, cp, version=None, hailhyperaware=None, corrections=()):
     # A per-column stand-in for the kernel: each output word depends on its own column only.
     t = fields['theta'] * np.float32(1.01)
     return (np.cumsum(fields['qr'] + fields['qs'] * np.float32(2.0), axis=0) * np.float32(1e4) + t

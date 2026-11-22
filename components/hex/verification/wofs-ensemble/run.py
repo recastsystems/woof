@@ -2,12 +2,13 @@
 from pathlib import Path
 import datetime as dt
 import json, os, subprocess, sys
+from woof.hex import card_queue
 W=Path(os.environ.get('HEX_WOFS_ROOT', 'hex-wofs-ensemble'))
 
 def main(phase):
     if phase not in ('pilot','showcase'): raise ValueError('unknown phase')
     if not (W/'evidence/inputs-ready.json').is_file(): raise ValueError('inputs are not prepared')
-    grant=os.environ.get('GPU_MUTEX_CARDS','').replace(',',' ').split()
+    grant=card_queue.granted()
     visible=os.environ.get('CUDA_VISIBLE_DEVICES','').split(',')
     if not grant or len(visible)!=len(grant): raise ValueError('card grant and visible devices disagree')
     members=1 if phase=='pilot' else 8
@@ -21,7 +22,7 @@ def main(phase):
     attempt = dict(status='running',returncode=None,started_utc=dt.datetime.now(dt.UTC).isoformat())
     exit_path.write_text(json.dumps(attempt)+'\n')
     (W/'evidence'/f'{phase}-grant.json').write_text(json.dumps(dict(grant=grant,visible_devices=visible,
-        members=members,hours=hours,command=command,whole_card=os.environ.get('GPU_MUTEX_SHARE')),
+        members=members,hours=hours,command=command,whole_card=card_queue.get(card_queue.SHARE, None)),
         indent=2)+'\n')
     result=subprocess.run(command)
     attempt.update(status='passed' if result.returncode==0 else 'failed',returncode=result.returncode,

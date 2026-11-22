@@ -44,6 +44,7 @@ from woof.hex import engines, mesh_point
 from woof.hex.errors import MeshValidationError
 from woof.hex.mesh import Mesh
 
+import site_support
 from test_mesh_validation import graded_sphere_mesh
 
 netCDF4 = pytest.importorskip("netCDF4")
@@ -193,7 +194,7 @@ def test_a_native_static_is_not_judged(tmp_path: Path, unit_mesh: Mesh) -> None:
 
 
 def _setup_module():
-    import setuptools
+    setuptools = site_support.setuptools_or_skip("loading setup.py's bridge list")
 
     original = setuptools.setup
     setuptools.setup = lambda *args, **kwargs: None

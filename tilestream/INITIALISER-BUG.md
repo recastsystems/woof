@@ -46,7 +46,7 @@ that the transport is sound.
 
 ## What to do instead
 
-For anything a human will look at, initialise from **real data**. WOOF has a
+For anything a human will look at, initialise from **real data**. WOOF-ArWen has a
 production ingest for GFS, HRRR, ERA5 and 20CR: see `REAL-DATA.md` in this
 directory, and branch `tilestream-ingest`, which routes real initial conditions
 into a pinned host store without materialising a monolithic device state.

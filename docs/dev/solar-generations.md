@@ -69,3 +69,36 @@ The one-bit negative control flips mantissa bit 20 of the corrected sine
 coefficient in a private image. Production source stays intact. The lowest
 coefficient bit was also tried and rounded away before the output clock;
 it is not claimed as a successful negative control.
+
+## WRF 4.8.0 native replay and the frame calendar (2026-11-09)
+
+`tools/wrf480_solar_replay` links a small driver against the referee build's
+own `module_radiation_driver.o` (WRF 4.8.0 06d4240ae989 and 4.7.1
+f52c197ed39d, strict serial, GNU Fortran 13.3.0, `-O2 -fno-fast-math
+-ffp-contract=off -fno-tree-vectorize`) and calls `radconst` and
+`calc_coszen` the way `radiation_driver` does: the radiation call at
+`xtime+radt*0.5`, and the swint call at `xtime`. Inputs are WRF's frame
+calendar words for the A071 and HRRR-recipe hours on an A071-shape grid,
+plus a whole leap year, the binade-edge days and a 30-minute start across a
+new year on a global 2-degree grid: 257,248,756 words (DECLIN, SOLCON,
+COSZEN, HRANG, COSZEN_LOC, HRANG_LOC).
+
+The replay found one defect in the corrected generation: the radiation
+calendar rounded JULIAN once, as `REAL(day)`, where WRF forms
+`REAL(dayOfYear_r8) - 1.0`. On days 0, 1, 3, 7, 15, 31, 63, 127 and 255
+about half of the calls carried a different JULIAN word, and DECLIN, the
+equation of time, COSZEN and HRANG followed it. `wrf_480` now takes its
+JULIAN, XTIME and GMT from `woof.core.solar.radiation_calendar` (WRF's
+frame words, `woof.core.wrf_radiation_clock.wrf_calendar_scalars`) in
+every solar consumer: legacy RRTMG (solar, ozone and aerosol of the call
+read one word), `swint.calendar_scalars` and its callers, `geometry_at`
+(Dudhia, RRTMGP, urban, Noah-MP and the analytic carriers), terrain
+radiation and RRTMGP SOLCON. `wrf_461` keeps its earlier words byte for
+byte.
+
+Result: `wrf_480` against native 4.8.0 is 0 of 257,248,756 words different
+when native runs on the host's glibc 2.43 libm, the runtime the A071 gate
+uses. Inside the build container (glibc 2.39) native's own ASIN rounds
+DECLIN differently on some calls; the same binary on the two libms differs
+by exactly the residue (1,227,093 words; 4 DECLIN words in 82 A071/HRRR-
+recipe calls), so that gap is the maths library, not the port.

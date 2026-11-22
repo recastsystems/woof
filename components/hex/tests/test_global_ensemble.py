@@ -331,7 +331,7 @@ def test_planner_prices_members_like_the_roster_admission(monkeypatch):
 
     The roster half charges what the roster charges for the route the member runs (the MPAS route, the hex
     default; ``multi_member.admit_suite_group``), not the ArWen-route floor: with the stored harmonic basis gone
-    (feat/stochastic-physics, 2026-10-29) two members fit at the WOOF floor, so that price no longer described
+    (feat/stochastic-physics, 2026-10-29) two members fit at the WOOF-ArWen floor, so that price no longer described
     the roster the planner matches."""
     from types import SimpleNamespace
     from woof.hex import forecast_door
@@ -428,7 +428,7 @@ def test_auto_members_per_card_prices_the_mpas_route_30km(monkeypatch, physics, 
     """U-H4 (global ensemble cycle, 2026-10-27): ``global --row global-30km --source gefs --members-per-card auto`` on
     RTX PRO 6000 cards planned 2 MPAS-physics members per card at the ArWen-route floor (43,080 MiB each); one member
     alone peaks 75,069 MiB, so all four ran out of memory ~3 min in.  A run that names no physics (the hex default)
-    or names an MPAS suite is priced on the MPAS route and planned 1 per card; the WOOF route keeps its price."""
+    or names an MPAS suite is priced on the MPAS route and planned 1 per card; the WOOF-ArWen route keeps its price."""
     from types import SimpleNamespace
 
     monkeypatch.setattr(global_door, "_visible_cards", lambda: [_PRO_6000["total"]])

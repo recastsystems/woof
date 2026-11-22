@@ -106,12 +106,51 @@ mode.
 
 ## 4.3 Generate a mesh and its static: `woof mesh`
 
-New meshes come from the **engine's** door, `woof mesh`: it generates an
+### First: this release's own generator, `woof hex mesh-plan` (geometry 2)
+
+The wheel carries its own mesh generator (`rw_mpas_mesh`, built under geometry 2), and
+`woof hex mesh-plan` builds a grid, its static and a rows file the forecast doors read, in one
+command. Nothing else needs installing beyond the geography (`woof fetch-geog`, 4.4). A request
+that names no geometry is built under geometry 2: every spacing as asked, one growth rate per cell
+from each fine zone's outline, no obtuse triangle and no cell of four edges. `--geometry 1` builds
+the halving ladder, and the same mesh 0.6.1 built, byte for byte.
+
+The 3 km CONUS globe (3 km to 2,100 km around 38.5 N 96.5 W, 96 km elsewhere), from a fresh install
+with an empty home:
+
+```sh
+woof hex mesh-plan --global-mesh --point 38.5,-96.5 --fine-dx-m 3000 --radius-km 2100 \
+    --background-km 96 --plan-only                       # 1,959,728 columns predicted, 3 s
+woof hex mesh-plan --global-mesh --point 38.5,-96.5 --fine-dx-m 3000 --radius-km 2100 \
+    --background-km 96 --card rtx-pro-6000 --cards 4 --generate --out-dir conus3km
+```
+
+```
+STAGE mesh-template
+STAGE mesh rotated from the cap-family template in 4.8 s
+STAGE static
+ADMIT mesh.grid.nc: dual edges 0.055780053522675205, coordination {'5': 276, '6': 1959399, '7': 262, '8': 1}, min dcEdge 2370.119 m, dt 18 s (Courant limit 21.994 s, 1.222x)
+RECEIPT .../conus3km/global-vr-receipt.json
+```
+
+1,959,938 cells in 109.5 s for the whole command (generator 33.7 s, static 68.2 s) on an otherwise
+idle 24-core host, 20 Nov 2026; the smallest edge 0.79 of 3 km, the largest dual-triangle angle 87.0
+degrees. `--global-mesh` prices the forecast too, so it needs `--card`, and `--cards 4` here because
+one 96 GB card cannot hold this mesh's forecast (the plan names the fewest cards that can). A region
+or a zone of any shape is asked for with a mesh row (`--spec ROW.json`); [mesh rows](../mesh-rows.md)
+has the row's words and more measured builds (a 3 km region of 18,320 cells in 32 s).
+
+The generator runs on at most 32 threads when `RAYON_NUM_THREADS` is unset
+(`RW_MPAS_MESH_MAX_THREADS` changes the cap) and writes the same bytes on any thread count.
+
+### The engine's door: `woof mesh`
+
+New meshes also come from the **engine's** door, `woof mesh`: it generates an
 icosahedral Goldberg grid at the resolution you ask for and builds the
 matching static in the same run, with no native toolchain anywhere in the
 loop. (This door was not present on the published gpuwm 2.5.2 wheel; it
 arrives with the 2.5.3 bundle, well below the floor this distribution's
-declared `gpuwm>=2.9.12,<2.10` range requires. The commands below were proven from a `woof` checkout.)
+declared `gpuwm>=3.0.0,<3.1` range requires. The commands below were proven from a `woof` checkout.)
 
 **See what a card can hold:**
 
@@ -315,7 +354,10 @@ forecast on an RTX 5070 Ti at `rc 0`, `status "passed"`, with
 **A graded generated mesh forecasts too.** A graded global mesh comes from
 a JSON spec, a background spacing plus any number of refinement regions
 (cap, lat/lon box, polygon), at any ratio, at any coordinates, with no code
-path per spec. The mechanism is a hierarchical Goldberg ladder: level 0 is
+path per spec. (This paragraph describes geometry 1, which `--geometry 1`
+still selects. From 0.6.2 the doors build with geometry 2 unless a request
+names another; see [chapter 11.1](11-new-in-0.6.2.md).) The geometry 1
+mechanism is a hierarchical Goldberg ladder: level 0 is
 the same icosahedral subdivision the uniform arm uses, each level halves the
 spacing by count-targeted midpoint insertion, and the transition annuli are
 drained by count-changing defect surgery. All three of the campaign's graded

@@ -29,7 +29,7 @@ from woof.verify import draw_spread
 
 _ROOT = Path(__file__).resolve().parents[1]
 _ORACLE = _ROOT / "tools" / "wrf_em_les_oracle"
-_FIXTURES = (_ROOT / "docs" / "superpowers" / "receipts" / "les"
+_FIXTURES = (_ROOT / "docs" / "internal" / "receipts" / "les"
              / "moist-2026-08-04")
 
 #: ``(published aggregate, its source receipts)`` -- the banked

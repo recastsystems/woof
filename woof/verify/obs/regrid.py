@@ -38,7 +38,7 @@ Geometry is done on the unit sphere in Cartesian coordinates, so longitude
 wrapping and the poles are not special cases; distances are converted between
 great-circle and chord form with :data:`EARTH_RADIUS_M`.
 
-**Where the arithmetic runs.**  WOOF's Python boundary names
+**Where the arithmetic runs.**  WOOF-ArWen's Python boundary names
 "regrid/transform" as data-path processing, so both halves of this module
 run on the Rust crate ``tools/rustwx/crates/obs-regrid`` by default,
 reached through :mod:`woof.obs_regrid_bridge`.  The bodies below

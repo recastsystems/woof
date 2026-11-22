@@ -67,7 +67,7 @@ every difference, real or not, would clear it.
 > (seeded FP32 noise, 0.01 K, interior theta) as ONE re-registered motion
 > before any campaign case is scored, never per case"
 
-`docs/superpowers/specs/2026-08-03-obs-verification-battery.md` §6.4:
+`docs/internal/specs/2026-08-03-obs-verification-battery.md` §6.4:
 
 > "escalate to rung 2 = seeded FP32 noise, amplitude 0.01 K, on interior
 > theta: re-registered as one motion before any battery case is scored,

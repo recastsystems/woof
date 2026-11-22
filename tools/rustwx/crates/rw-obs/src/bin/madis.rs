@@ -402,7 +402,7 @@ fn get_with_headers(
     agent: &ureq::Agent,
     url: &str,
 ) -> Result<Option<(Vec<u8>, Option<String>)>, Box<dyn Error>> {
-    match agent.get(url).call() {
+    match rw_http::get(agent, url) {
         Ok(mut response) => {
             let last_modified = response
                 .headers()

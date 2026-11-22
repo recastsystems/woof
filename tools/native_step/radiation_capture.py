@@ -15,7 +15,7 @@ from radiation_daylight import RecordedDaylight, DaylightUpload
 from radiation_ozone import RecordedOzone, OzoneUpload
 
 SOURCE_SHA256 = "6270ca552b88fb6bdfd7e31018b1de2cad311db30245f3075160be979f90a240"
-SOLAR_SHA256 = "906c61e8ae96800b4792aa8b3cf25af29bfbc109203d234f440b0341a9a7e093"
+SOLAR_SHA256 = "6f5fc085fbd910803568ea462446123d7d805ba970e26423157d1d01e522d7df"
 
 
 class RadiationFrame(C.Structure):

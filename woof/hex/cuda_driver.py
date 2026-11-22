@@ -146,7 +146,7 @@ CUDA_V841_PHYSICS_GWDO_AUTHORITY_NONCLAIMS = (
     "native full-physics CUDA authority",
     "native moist-dynamics CUDA authority",
     "final forecast authority",
-    "WOOF GWDO execution",
+    "WOOF-ArWen GWDO execution",
 )
 CUDA_V841_PHYSICS_GWDO_COMPONENTS = (
     "legacy_rrtmg_lw",
@@ -3132,7 +3132,7 @@ class CudaDryDycoreDriver:
                     "native split-three performs one scalar RK after flux averaging",
                     "config_split_dynamics_transport=True",
                 )
-            # RETIRED 2026-10-10 (owner ruling): three refusals that named an evidence inventory, not a
+            # RETIRED 2026-10-10: three refusals that named an evidence inventory, not a
             # breakage.  config_scalar_advection=False skips scalar transport
             # (advance_scalar_transport_cuda_v841 returns the stage
             # unchanged, as native does); config_positive_definite=True runs
@@ -5310,11 +5310,16 @@ class CudaDryDycoreDriver:
             # A where-assignment, not max(): -0.0 and NaN keep native's bits.
             cp.putmask(current.scalars, current.scalars < 0, 0)
         if self.regional_v841 is not None:
-            # driver.py:3259-3301, in this order: the unconditional clamp
-            # (atm_srk3:2798-2800), then the specified-zone resets and the
-            # F:8238 perturbation write and bdy_set_scalars, all reading the
-            # PRE-advance clock, then the clock advance last.
-            if self.config.config_moist_physics:
+            # driver.py:3259-3301, in this order: the clamp (atm_srk3:2798-2800),
+            # then the specified-zone resets and the F:8238 perturbation write
+            # and bdy_set_scalars, all reading the PRE-advance clock, then the
+            # clock advance last. With a post-transport callback the clamp has
+            # already run inside it, before microphysics, as native's
+            # mpas_atm_time_integration.F:2818 does; a second clamp after TEMPO
+            # is not native's (model audit D8, 15 Nov), so it runs only when no
+            # callback ran, as cuda_driver_rrfs.py already does.
+            if (self.config.config_moist_physics
+                    and physics_post_transport_callback is None):
                 self.regional_v841.clamp_negative_scalars(current.scalars)
             self.regional_v841.reset_speczone_values(
                 theta_m=carried.theta_m,

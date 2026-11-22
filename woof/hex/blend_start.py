@@ -4,8 +4,8 @@
         --grid MESH.grid.nc --static MESH.static.nc --vertical-spec tc55-v1.json
 
 THE BREAKAGE THIS CLOSES.  A zoom globe (WOOF's default hex shape: 96 -> 3 km, 400 km core) needs meteorology on
-the whole sphere, and HRRR covers CONUS only, so every zoom globe over CONUS started from GFS.  The project ruling of
-2026-10-29 ("start CONUS cycles from HRRR") is measured: a GFS cold start builds a sharp low-level-jet edge and a false
+the whole sphere, and HRRR covers CONUS only, so every zoom globe over CONUS started from GFS.  Starting CONUS
+cycles from HRRR (2026-10-29) is measured: a GFS cold start builds a sharp low-level-jet edge and a false
 squall line within an hour, while a HRRR start matches HRRR.  The HRRR start door (the ``hrrr`` row) initialises a
 limited-area cull only, so before this module no global or zoom mesh could start from HRRR anywhere.
 
@@ -55,7 +55,7 @@ EARTH_RADIUS_KM = 6371.229
 CULL_RINGS = 7
 #: Degrees the cut keeps inside the inscribed box: the intermediate door's 16-point stencil (2 points of 0.025
 #: degrees) plus its 30 km margin (0.42 degrees of longitude at 50N), so the door's box over the cut lies inside
-#: the inscribed box whole and it never has to trim.  THE BREAKAGE (a test host, 2026-10-29): at a 0.2 degree inset the
+#: the inscribed box whole and it never has to trim.  THE BREAKAGE (verification host, 2026-10-29): at a 0.2 degree inset the
 #: door's box reached south of HRRR's south-west corner and its trim gave up the west side, which had no ground.
 BOX_INSET_DEG = 0.6
 MESH_DIMS = {"nCells": "Cell", "nEdges": "Edge", "nVertices": "Vertex"}
@@ -262,19 +262,44 @@ def _mesh(path: Path) -> dict[str, np.ndarray]:
     with Dataset(str(path)) as dataset:
         dataset.set_auto_maskandscale(False)
         variables = dataset.variables
-        return {
+        mesh = {
             "lat": np.degrees(np.asarray(variables["latCell"][:], dtype=np.float64)),
             "lon": np.degrees(np.asarray(variables["lonCell"][:], dtype=np.float64)),
             "cellsOnCell": np.asarray(variables["cellsOnCell"][:], dtype=np.int64) - 1,
             "nEdgesOnCell": np.asarray(variables["nEdgesOnCell"][:], dtype=np.int64),
         }
+        mesh["parent_rings"] = _parent_rings(dataset, mesh["lat"].size)
+        return mesh
+
+
+def _parent_rings(dataset, cells: int) -> np.ndarray:
+    """The parent mesh's own lateral-boundary rings (``bdyMaskCell`` > 0): none on a global mesh.
+
+    THE BREAKAGE THIS PREVENTS: on a limited-area parent (NOAA's conus3km, whose rings HRRR's grid misses) the
+    rings are driven by the outside source's boundary files from the first step.  An inside value left in a ring,
+    or a cut whose own rings run off the parent's edge, would put a seam on the lateral boundary at t=0."""
+
+    if "bdyMaskCell" not in dataset.variables:
+        return np.zeros(cells, dtype=bool)
+    return np.asarray(dataset.variables["bdyMaskCell"][:], dtype=np.int64).reshape(-1)[:cells] > 0
 
 
 def plan_cut(grid: Path, box: Mapping[str, float], *, guard_rings: int = 1) -> dict[str, Any]:
-    """The lat-lon box the cut is made by, so the cut AND its seven rings lie inside ``box``."""
+    """The lat-lon box the cut is made by, so the cut AND its seven rings lie inside ``box`` (and, on a
+    limited-area parent, inside the parent's own interior: its boundary rings count as outside the box)."""
 
     mesh = _mesh(grid)
-    outside = ~_in_box(mesh["lat"], mesh["lon"], box)
+    source_box = dict(box)
+    if mesh["parent_rings"].any():
+        # cut_box moves each side toward the cells nearest it, so it needs a box no larger than the mesh:
+        # clamp the source's box to the parent's interior cells first (a no-op where the mesh is the larger).
+        inner = _in_box(mesh["lat"], mesh["lon"], box) & ~mesh["parent_rings"]
+        if not inner.any():
+            raise BlendRefusal(f"no interior cell of {grid} lies in the inside source's box {source_box}")
+        la, lo = mesh["lat"][inner], (mesh["lon"][inner] + 180.0) % 360.0 - 180.0
+        box = {"south": max(box["south"], float(la.min())), "north": min(box["north"], float(la.max())),
+               "west": max(box["west"], float(lo.min())), "east": min(box["east"], float(lo.max()))}
+    outside = ~_in_box(mesh["lat"], mesh["lon"], box) | mesh["parent_rings"]
     need = CULL_RINGS + guard_rings
     hops = hop_distance(outside, mesh["cellsOnCell"], mesh["nEdgesOnCell"], need + 1)
     region = cut_box(mesh["lat"], mesh["lon"], hops, box, need)
@@ -283,7 +308,8 @@ def plan_cut(grid: Path, box: Mapping[str, float], *, guard_rings: int = 1) -> d
         raise BlendRefusal(f"no cell of {grid} lies in the inside source's box {dict(box)}")
     return {"region": {"kind": "lat_lon_box", "lat_deg": [region["south"], region["north"]],
                        "lon_deg": [region["west"], region["east"]]},
-            "box": dict(box), "region_box": region, "region_cells": cells, "parent_cells": int(outside.size)}
+            "box": source_box, "region_box": region, "region_cells": cells, "parent_cells": int(outside.size),
+            "parent_ring_cells": int(mesh["parent_rings"].sum())}
 
 
 def decoder_box_fits(grid: Path, intermediate_row: str) -> bool:
@@ -388,6 +414,10 @@ def blend_inits(outside: Path, inside: Path, out: Path, *, taper_km: float, pare
     index = {kind: _element_index(cut_geometry[kind], parent_geometry[kind], kind) for kind in MESH_DIMS.values()}
     interior = np.zeros(len(parent_geometry["Cell"]), dtype=bool)
     interior[index["Cell"][cut_geometry["bdyMaskCell"] == 0]] = True
+    if "bdyMaskCell" in parent_geometry:
+        # A limited-area parent's own rings stay the outside source's (see _parent_rings), and the taper is
+        # measured from them as from the cut's rings.  A global parent has none, so its weights do not move.
+        interior &= parent_geometry["bdyMaskCell"].reshape(-1) == 0
     cell_w = cell_weights(parent_geometry["Cell"], interior, taper_km)
     cells_on_edge = parent_geometry["cellsOnEdge"] - 1
     cells_on_vertex = parent_geometry["cellsOnVertex"] - 1
@@ -417,7 +447,7 @@ def blend_inits(outside: Path, inside: Path, out: Path, *, taper_km: float, pare
         vertical: dict[tuple[str, str], np.ndarray] = {}
         if lid_m is not None:
             # The inside source's top: its analysis is used below lid_m[0] and the outside's above lid_m[1].
-            # THE BREAKAGE (a test host, 2026-10-29, default zoom): HRRR's lid is under the 30 km top, so the init
+            # THE BREAKAGE (verification host, 2026-10-29, default zoom): HRRR's lid is under the 30 km top, so the init
             # extrapolates it there and the top level's theta sat 16 K (mean) from GFS's in full-weight cells.
             if "zgrid" not in parent.variables:
                 raise BlendRefusal(f"{outside} carries no zgrid; the lid taper is by height")
@@ -480,7 +510,7 @@ def blend_inits(outside: Path, inside: Path, out: Path, *, taper_km: float, pare
                 raise BlendRefusal(f"the inside init's {name} is not finite where it is blended in")
             if np.array_equal(base, np.round(base)) and np.array_equal(incoming, np.round(incoming)):
                 # A flag held as a float (xland 1/2, snowc 0/1, a 0/1 ice field) is never averaged: each element
-                # takes the source that weighs more.  THE BREAKAGE (a test host, 2026-10-29, default zoom): a linear
+                # takes the source that weighs more.  THE BREAKAGE (verification host, 2026-10-29, default zoom): a linear
                 # blend wrote xland 1.012 on 21 Great Lakes cells where HRRR has ice and GFS has none.
                 blended = np.where(full_weight >= 0.5, incoming, base)
                 categorical.append(name)
@@ -496,6 +526,8 @@ def blend_inits(outside: Path, inside: Path, out: Path, *, taper_km: float, pare
         "taper_km": float(taper_km),
         "lid_taper_m": list(lid_m) if lid_m is not None else None,
         "cells": {"parent": int(cell_w.size), "cut": int(index["Cell"].size),
+                  "parent_rings": int((parent_geometry["bdyMaskCell"].reshape(-1) > 0).sum())
+                  if "bdyMaskCell" in parent_geometry else 0,
                   "cut_interior": int(interior.sum()), "weight_one": int(full.sum()),
                   "weight_between": int(((cell_w > 0) & ~full).sum()), "weight_zero": int((cell_w <= 0).sum())},
         "edges_blended": int((weights["Edge"] > 0).sum()),
@@ -617,6 +649,40 @@ def _capsule_of(init: Path) -> Path | None:
     return path if path.is_file() else None
 
 
+def init_valid_time(init: Path) -> str | None:
+    """An MPAS init's valid time from its ``xtime`` record (``YYYY-MM-DD_HH:MM:SS``), None when it has none."""
+
+    from netCDF4 import Dataset
+
+    with Dataset(str(init)) as dataset:
+        if "xtime" not in dataset.variables:
+            return None
+        raw = np.asarray(dataset.variables["xtime"][:])
+    row = raw.reshape(-1, raw.shape[-1])[0] if raw.ndim > 1 else raw
+    text = b"".join(bytes(c) if isinstance(c, (bytes, np.bytes_)) else str(c).encode() for c in row)
+    return text.decode("ascii", "ignore").strip().strip("\x00") or None
+
+
+def given_outside_init(path: Path | None, valid: datetime) -> dict[str, Any] | None:
+    """The ``--outside-init`` of a blend on a limited-area mesh, checked: a file whose valid time is the start's.
+
+    THE BREAKAGE THIS PREVENTS: a conus3km deck's init (made at another hour, or from a stale deck) taken as the
+    outside half would put HRRR's 15Z analysis inside a 12Z atmosphere with no error."""
+
+    if path is None:
+        return None
+    path = Path(path).expanduser().absolute()
+    if not path.is_file():
+        raise BlendRefusal(f"--outside-init {path} is not a file")
+    want = valid.strftime("%Y-%m-%d_%H:%M:%S")
+    have = init_valid_time(path)
+    if have is not None and have[:19] != want:
+        raise BlendRefusal(f"--outside-init {path} is valid at {have[:19]}, not at the start {want}")
+    stat = path.stat()
+    return {"path": str(path), "bytes": int(stat.st_size), "valid_time": have[:19] if have else None,
+            "mtime_utc": datetime.fromtimestamp(stat.st_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+
 def _cli(argv: list[str]) -> int:
     from .cli import main as cli_main
 
@@ -686,14 +752,20 @@ def run_blend(arguments: argparse.Namespace, table: Mapping[str, Any], row: Mapp
     lead = int(getattr(arguments, "lead_hours", 0) or 0)
     admit_cycle(inside_row, source_cycle)
     valid = source_cycle.when + timedelta(hours=lead)
-    outside_cycle = Cycle.parse(getattr(arguments, "boundary_cycle", None) or arguments.cycle)
-    from .regional_door import admit_boundary_cycle
-    admit_boundary_cycle(outside_row, outside_cycle)
-    outside_lead = int((valid - outside_cycle.when).total_seconds() // 3600)
-    if outside_lead < 0:
-        raise BlendRefusal(f"{outside_row['id']} outside cycle {outside_cycle.start_time} is later than the start")
-    from .init_sources import template_context
-    template_context(outside_cycle, outside_row, None, outside_lead)
+    given_outside = given_outside_init(getattr(arguments, "outside_init", None), valid)
+    if given_outside is None:
+        outside_cycle = Cycle.parse(getattr(arguments, "boundary_cycle", None) or arguments.cycle)
+        from .regional_door import admit_boundary_cycle
+        admit_boundary_cycle(outside_row, outside_cycle)
+        outside_lead = int((valid - outside_cycle.when).total_seconds() // 3600)
+        if outside_lead < 0:
+            raise BlendRefusal(f"{outside_row['id']} outside cycle {outside_cycle.start_time} is later than the start")
+        from .init_sources import template_context
+        template_context(outside_cycle, outside_row, None, outside_lead)
+    else:
+        # The outside half is the limited-area mesh's own init (its producer also wrote the boundaries from the
+        # outside source); its cycle is that producer's, recorded in its provenance, not fetched here.
+        outside_cycle, outside_lead = source_cycle, None
     out_dir = arguments.out_dir.expanduser().absolute()
     out_dir.mkdir(parents=True, exist_ok=True)
     outside_dir, inside_dir = out_dir / "outside", out_dir / "inside"
@@ -717,8 +789,11 @@ def run_blend(arguments: argparse.Namespace, table: Mapping[str, Any], row: Mapp
                         "omp_threads": os.environ.get("OMP_NUM_THREADS")},
         "blend": {"outside": outside_row["id"], "inside": inside_row["id"], "taper_km": block["taper_km"],
                   "fallback": fallback, "inside_cycle": source_cycle.start_time,
-                  "outside_cycle": outside_cycle.start_time, "outside_lead_hours": outside_lead},
+                  "outside_cycle": None if given_outside else outside_cycle.start_time,
+                  "outside_lead_hours": outside_lead},
     }
+    if given_outside is not None:
+        receipt["blend"]["outside_init_given"] = given_outside
     stages: dict[str, float] = dict(prior.get("stage_seconds") or {})
     if prior.get("blend", {}).get("prefetch"):
         receipt["blend"]["prefetch"] = prior["blend"]["prefetch"]
@@ -729,23 +804,29 @@ def run_blend(arguments: argparse.Namespace, table: Mapping[str, Any], row: Mapp
         receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True, default=str) + "\n",
                                 encoding="utf-8")
 
-    # 1. the outside row, every stage of it, through its own door.
+    # 1. the outside row, every stage of it, through its own door -- or, on a limited-area mesh, the init its
+    #    producer already made with the boundaries (--outside-init).
     t0 = time.time()
-    outside_args = _child_arguments(arguments, source=outside_row["id"], out_dir=outside_dir,
-                                    cycle=outside_cycle.when.strftime("%Y-%m-%dT%H"), lead_hours=outside_lead,
-                                    blend_fallback=None, boundary_cycle=None)
-    rc = run_init_source_command(outside_args)
-    stages["outside" if arguments.stop_after not in ("acquire", "decode") else "outside_decode"] = \
-        round(time.time() - t0, 3)
-    if rc != 0:
-        receipt["failed"] = f"the outside row {outside_row['id']} exited {rc}"
-        write_receipt()
-        return rc
-    outside_receipt = json.loads((outside_dir / "init-source-receipt.json").read_text(encoding="utf-8"))
-    receipt["outside"] = {key: outside_receipt.get(key) for key in
-                          ("source", "products", "decode", "init", "init_argv", "stage_seconds", "seconds",
-                           "effective_first_guess")}
-    receipt["first_guess"] = {"outside": outside_receipt.get("effective_first_guess", outside_row["first_guess"])}
+    if given_outside is None:
+        outside_args = _child_arguments(arguments, source=outside_row["id"], out_dir=outside_dir,
+                                        cycle=outside_cycle.when.strftime("%Y-%m-%dT%H"), lead_hours=outside_lead,
+                                        blend_fallback=None, boundary_cycle=None, outside_init=None)
+        rc = run_init_source_command(outside_args)
+        stages["outside" if arguments.stop_after not in ("acquire", "decode") else "outside_decode"] = \
+            round(time.time() - t0, 3)
+        if rc != 0:
+            receipt["failed"] = f"the outside row {outside_row['id']} exited {rc}"
+            write_receipt()
+            return rc
+        outside_receipt = json.loads((outside_dir / "init-source-receipt.json").read_text(encoding="utf-8"))
+        receipt["outside"] = {key: outside_receipt.get(key) for key in
+                              ("source", "products", "decode", "init", "init_argv", "stage_seconds", "seconds",
+                               "effective_first_guess")}
+        receipt["first_guess"] = {"outside": outside_receipt.get("effective_first_guess",
+                                                                 outside_row["first_guess"])}
+    else:
+        receipt["outside"] = {"given": given_outside}
+        receipt["first_guess"] = {"outside": "given"}
     if arguments.stop_after in ("acquire", "decode"):
         # The inside source's files need no mesh either: they come down beside the mesh and static.
         t0 = time.time()
@@ -760,8 +841,10 @@ def run_blend(arguments: argparse.Namespace, table: Mapping[str, Any], row: Mapp
         write_receipt()
         return 0
 
-    outside_init = outside_dir / "init.nc"
+    outside_init = Path(given_outside["path"]) if given_outside else outside_dir / "init.nc"
     init = out_dir / "init.nc"
+    if given_outside and outside_init.resolve() == init.resolve():
+        raise BlendRefusal(f"--outside-init {outside_init} is the blend's own output; give another --out-dir")
     # The zoom door discovers producer drag beside its final init. Keep that contract when the
     # whole-mesh producer ran in the outside subdirectory, or hrrrv5 loses its GSL statistics.
     drag = outside_dir / "ugwp_oro_data.nc"
@@ -794,6 +877,21 @@ def run_blend(arguments: argparse.Namespace, table: Mapping[str, Any], row: Mapp
     print(json.dumps({"source": row["id"], "init": str(init), "seconds": receipt["seconds"],
                       "cells": result["weights"]["cells"]}, indent=2))
     return 0
+
+
+def inside_hours(intermediate: str, lead: int) -> str:
+    """The ``intermediate --hours`` spec for the inside source's start: the start hour, and for a native projected
+    row (``hrrr``) the hour after it too.
+
+    THE BREAKAGE THIS CLOSES (hrrr-gfs on NOAA conus3km, 2026-11-12): the native decoder series refuses fewer than
+    two contiguous hours ("the decoder series requires at least two contiguous hours"), and this door asked for the
+    start hour alone, so every HRRR blend stopped at the intermediate after the whole GFS half had run.  The prefetch
+    already fetches both hours; the init still reads only the start hour's file.  A packaged row (``rrfs``) writes
+    one file per hour and keeps the single hour."""
+
+    from .packaged_intermediate import handles as has_packaged_intermediate
+
+    return str(lead) if has_packaged_intermediate(intermediate) else f"{lead}-{lead + 1}"
 
 
 def _build_inside_and_blend(arguments, row, block, inside_row, intermediate, source_cycle, lead, valid,
@@ -867,7 +965,7 @@ def _build_inside_and_blend(arguments, row, block, inside_row, intermediate, sou
                     os.link(path, grib_dir / path.name)
     # The decoder series takes two contiguous hours; the init reads the start hour's file.
     argv = ["intermediate", "--source", intermediate, "--grid", cut_grid, "--grib-dir", grib_dir,
-            "--cycle", source_cycle.when.strftime("%Y-%m-%dT%H"), "--hours", str(lead),
+            "--cycle", source_cycle.when.strftime("%Y-%m-%dT%H"), "--hours", inside_hours(intermediate, lead),
             "--out-dir", met_dir,
             "--workers", str(min(13, int(getattr(arguments, "jobs", None) or 8)))]
     if getattr(arguments, "physics_suite", None):
@@ -939,8 +1037,10 @@ def _build_inside_and_blend(arguments, row, block, inside_row, intermediate, sou
         init.with_name(init.name + ".provenance.json").write_text(
             json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8", newline="\n")
     stages["blend"] = round(time.time() - t0, 3)
-    # The door's caller removes spent inputs after its figures and numerical receipt are recorded.
-    result["spent_inputs"] = [str(outside_init), str(inside_init), str(cut_vertical), str(met_dir)]
+    # The door's caller removes spent inputs after its figures and numerical receipt are recorded. A given outside
+    # init is the caller's own file (the deck links it), so it is never listed as spent.
+    result["spent_inputs"] = ([] if getattr(arguments, "outside_init", None) else [str(outside_init)]) + \
+        [str(inside_init), str(cut_vertical), str(met_dir)]
     _log(f"blended {weights['cells']['weight_one']:,} cells at full {inside_row['id']} weight, "
          f"{weights['cells']['weight_between']:,} in the {block['taper_km']:g} km taper, "
          f"{weights['cells']['weight_zero']:,} {receipt['blend']['outside']} alone")

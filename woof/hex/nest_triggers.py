@@ -1051,7 +1051,7 @@ def arm_loop(table_path: Path | str, *, run_dir: Path, start_text: str, start_st
     """The armed look for one forecast's step loop: the ArWen-physics driver and the MPAS-physics route both call this.
 
     THE BREAKAGE ONE ARMING PREVENTS: until 2026-10-24 the arming lived inside
-    the WOOF driver only, so a ``--nest-triggers`` run on the MPAS-physics
+    the WOOF-ArWen driver only, so a ``--nest-triggers`` run on the MPAS-physics
     route finished rc 0 with the loop never armed, no look written and nothing
     refused (parity run group 3, capability 11).
 

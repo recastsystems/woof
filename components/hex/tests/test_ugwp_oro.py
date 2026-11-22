@@ -1,7 +1,7 @@
 """woof.hex.ugwp_oro: which runs need the GSL drag statistics, and the file layout they are written in.
 
 The breakage these pin: an RRFS-shape run (rrfs_v2_dev) on a mesh RRFS publishes
-no ugwp_oro_data.nc for stopped before its first step (box L, 2026-10-24); the
+no ugwp_oro_data.nc for stopped before its first step (2026-10-24); the
 prepare stages build the file only for runs whose physics reads it.
 """
 from __future__ import annotations

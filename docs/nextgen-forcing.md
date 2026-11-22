@@ -120,7 +120,7 @@ any supported axis position. A catchment CSV may instead name an angle column.
 Angles are instantaneous, using `temporal = "rate"`, the default for a field
 mapping. Missing angles, invalid shapes and unsupported frames fail preparation.
 The profile and input hashes record the declared orientation. This option
-does not derive angles from a projection or bind a WOOF parent-grid provider.
+does not derive angles from a projection or bind a WOOF-ArWen parent-grid provider.
 Existing earth-relative rows retain their packet bytes.
 
 ## Resident and coupled use

@@ -41,3 +41,33 @@ def test_the_packaged_bridge_is_loaded_before_any_build(tmp_path, monkeypatch):
         assert not (tmp_path / "empty-cache").exists()
     finally:
         native_libm_batch._library.cache_clear()
+
+
+def test_a_clean_install_loads_the_bridge_from_the_staged_helper_archive(tmp_path, monkeypatch):
+    """(Recast WOOF) the bridge resolves from the hex helper archive a PyPI install stages (woof.hex.helpers).
+    THE BREAKAGE: a clean install of the built wheels looked only in woof/hex/libexec and the CPU cache, found
+    neither, had no rustc, and every GNU float batch took one ctypes call per element."""
+    from types import SimpleNamespace
+    from woof.hex import helpers
+
+    name = native_libm_batch.packaged_name(native_libm_batch.source_key())
+    if (Path(native_libm_batch.__file__).with_name("libexec") / name).is_file():
+        pytest.skip("this install carries the bridge itself")
+    staged = tmp_path / "staged" / name
+    staged.parent.mkdir()
+    staged.write_bytes(b"fixture")
+    loaded = []
+    monkeypatch.setenv("WOOF_HEX_NATIVE_CPU_CACHE", str(tmp_path / "empty-cache"))
+    monkeypatch.setattr(helpers, "on_demand", lambda n: n == name)
+    monkeypatch.setattr(helpers, "path", lambda n, **kw: staged)
+    monkeypatch.setattr(native_libm_batch.shutil, "which", lambda n: None)
+    monkeypatch.setattr(native_libm_batch.ctypes, "CDLL",
+                        lambda p: loaded.append(p) or SimpleNamespace(batch_sin=SimpleNamespace(),
+                                                                      batch_binary=SimpleNamespace()))
+    native_libm_batch._library.cache_clear()
+    try:
+        assert native_libm_batch._library() is not None
+        assert loaded == [str(staged)]
+        assert not (tmp_path / "empty-cache").exists()
+    finally:
+        native_libm_batch._library.cache_clear()

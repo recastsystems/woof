@@ -94,7 +94,9 @@ def library():
                 errors.append(f"{candidate}: {error}")
         if lib is None:
             raise NcclError("NCCL/RCCL is not installed: the halo transport needs librccl.so on AMD, libnccl.so.2 on NVIDIA "
-                            "(WOOF_HEX_RCCL_LIBRARY / WOOF_HEX_NCCL_LIBRARY may name an installed library); "
+                            "(WOOF_HEX_RCCL_LIBRARY / WOOF_HEX_NCCL_LIBRARY may name an installed library). "
+                            "On NVIDIA, `pip install nvidia-nccl-cu12` in this environment, on every host of a "
+                            "--hosts run, gives it (the gpu extras do not carry it); "
                             + "; ".join(errors))
         p, v, i, s = ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t
         lib.ncclGetVersion.argtypes = [ctypes.POINTER(ctypes.c_int)]

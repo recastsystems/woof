@@ -84,6 +84,9 @@ def _stderr_beyond_the_banner(err: str) -> str:
         if line.startswith(top_pass):
             del lines[index]
             break
+    # ... and the ocean statement beside it (door item 6: every plan says
+    # which ocean the run uses), a healthy notice of the same kind.
+    lines = [line for line in lines if not line.startswith("woof check: ocean: ")]
     for index, line in enumerate(lines):
         door, sep, text = line.partition(": ")
         if sep and text == banner and door.startswith("woof "):

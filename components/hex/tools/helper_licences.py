@@ -67,7 +67,11 @@ PROGRAMS = (("S", "hex_obs_scorecard", "the observation scorer (rust/obs-scoreca
             # (rust/ugwp-oro), which links rayon and serde_json, and no program row listed it, so their texts did
             # not travel with the binary and the census refused it as an unrecognized ELF.
             ("U", "rw_hex_ugwp_oro", "the GSL orographic drag statistics builder (rust/ugwp-oro)"),
-            ("V", "rw_hex_wave_products and wave_audit", "the wave maps and audit (rust/wave-products)"))
+            ("V", "rw_hex_wave_products and wave_audit", "the wave maps and audit (rust/wave-products)"),
+            # THE BREAKAGE THIS PREVENTS (hex 0.5.0): the wheel ships ad-binder and libhexad_phys.so (rust/hexad),
+            # which link serde, serde_json, sha2 and flate2 (zlib-rs); without this row their texts would not travel
+            # with the binaries.
+            ("D", "ad-binder and libhexad_phys.so", "the differentiable-engine runner and its C ABI (rust/hexad)"))
 
 
 def cargo_tree(cwd: Path, *args: str, linked: bool, target: str = "all") -> list[tuple[str, str, str | None]]:
@@ -126,14 +130,16 @@ def closures(engines: dict[str, Path], work: Path) -> dict[str, dict[str, list]]
                               ("R", ("-p", "rw-s2s"), ("--locked",)),
                               ("H", ("--manifest-path", str(TREE / "rust/chem-sources/Cargo.toml")), ("--locked",)),
                               ("U", ("--manifest-path", str(TREE / "rust/ugwp-oro/Cargo.toml")), ("--locked",)),
+                              ("D", ("--manifest-path", str(TREE / "rust/hexad/Cargo.toml"), "--features",
+                                     "capi-exports"), ("--locked",)),
                               ("V", ("--manifest-path", str(TREE / "rust/wave-products/Cargo.toml")), ("--locked",)),
                               ("E", ("--manifest-path", str(energy / "Cargo.toml")), ("--locked",))):
         # E resolves from the engine workspace directory so its vendored sources apply, exactly as
         # tools/build_s2s_energy.sh builds it.
         root = {"F": sfc, "P": TREE / "rust/physics-pool", "R": TREE / "tools/rustwx",
-                "H": TREE / "rust/chem-sources", "U": TREE / "rust/ugwp-oro",
+                "H": TREE / "rust/chem-sources", "U": TREE / "rust/ugwp-oro", "D": TREE / "rust/hexad",
                 "V": TREE / "rust/wave-products"}.get(key, engines[key] / "tools/rustwx")
-        target = "x86_64-unknown-linux-gnu" if key in ("F", "P", "R", "H", "E", "U", "V") else "all"
+        target = "x86_64-unknown-linux-gnu" if key in ("F", "P", "R", "H", "E", "U", "V", "D") else "all"
         linked = cargo_tree(root, *locked, *args, linked=True, target=target)
         every = cargo_tree(root, *locked, *args, linked=False, target=target)
         out[key] = {"linked": linked,
@@ -153,7 +159,7 @@ def closures(engines: dict[str, Path], work: Path) -> dict[str, dict[str, list]]
 
 
 def own_crate(source: str | None, engines: dict[str, Path], work: Path) -> bool:
-    """WOOF's own rustwx crates and the scorer's private project; vendored crates are not own."""
+    """WOOF-ArWen's own rustwx crates and the scorer's private project; vendored crates are not own."""
     if source is None or not source.startswith("/"):
         return False
     path = Path(source)
@@ -364,7 +370,7 @@ def render(engines: dict[str, Path], notice_sha: str, notice: dict, sets: dict, 
            "Written by tools/helper_licences.py; do not edit it by hand.  The tool's own\n"
            "docstring says why this file exists and how to regenerate or check it.\n\n",
            "The programs below, which the wheel carries in woof/hex/libexec, are built\n"
-           "from WOOF's Rust workspace (tools/rustwx in the woof repository) and link\n"
+           "from WOOF-ArWen's Rust workspace (tools/rustwx in the woof repository) and link\n"
            "third-party "
            "crates.  Their grants condition redistribution in binary form on the\n"
            "notices below travelling with the copy; this file is that.\n\n"]
@@ -408,7 +414,7 @@ def render(engines: dict[str, Path], notice_sha: str, notice: dict, sets: dict, 
                    "simulated radar appendix, which is where it inventories that crate.\n")
     out.append(f"\n{RULE}\n1.  THE PROGRAMS' OWN CODE\n{DASH}\n\n"
                "rust/obs-scorecard is this project's own code (Apache-2.0, LICENSE).  The\n"
-               "WOOF crates below are the rustwx workspace's own under MIT; its text ships as\n"
+               "WOOF-ArWen crates below are the rustwx workspace's own under MIT; its text ships as\n"
                "woof/hex/data/licenses/rustwx-LICENSE-MIT.\n\n")
     out.append("rw-sfc-series is project code with MPAS-derived portions under Apache-2.0\n"
                "AND BSD-3-Clause. The Registry pool reader is MIT. rw-s2s, rw-s2s-energy and\n"
@@ -417,9 +423,9 @@ def render(engines: dict[str, Path], notice_sha: str, notice: dict, sets: dict, 
     out += [f"  {name} {version}\n" for name, version in sorted(own)]
     if two:
         out.append(f"\n{RULE}\n2.  NOTICES THAT ARE NOT CRATE LICENCES\n{DASH}\n\n"
-                   "Some of WOOF's own crates above port third-party code into themselves.\n"
+                   "Some of WOOF-ArWen's own crates above port third-party code into themselves.\n"
                    "The source notice's paragraphs for the ones these programs link follow\n"
-                   "unchanged; where they say \"this bundle\" they mean WOOF's bridge bundle,\n"
+                   "unchanged; where they say \"this bundle\" they mean WOOF-ArWen's bridge bundle,\n"
                    "and here they cover the programs in this wheel that link the crate named.\n\n")
         out += [notice["section_two"][key] + "\n" for key in two]
     out.append(f"{RULE}\n3.  RUST CRATES -- INVENTORY\n{DASH}\n\n"
@@ -501,12 +507,12 @@ def main(argv: list[str] | None = None) -> int:
         notice = parse_notice(notice_bytes.decode("utf-8"))
         supplement_notice(notice, sets, engines, work)
         # The sealed engine NOTICE records both as first-party MIT despite
-        # their unchanged Cargo metadata. Release ruling 2026-10-20 accepts it.
+        # their unchanged Cargo metadata. They are accepted as first-party code.
         for name in ('grib-core', 'wrf-core'):
             key = (name, '0.1.0')
             if key in notice['inventory']:
                 notice['inventory'][key] = ('MIT', notice['inventory'][key][1])
-                notice['untexted'][key] = 'first-party MIT; sealed engine NOTICE, Vendored Rust crates; release ruling 2026-10-20'
+                notice['untexted'][key] = 'first-party MIT; sealed engine NOTICE, Vendored Rust crates'
         if '2.2' in notice['section_two']:
             notice['section_two']['2.2'] = (TREE / 'licenses/LICENSE-embedded-fonts-OFL-1.1.txt').read_text()
         text = render(engines, hashlib.sha256(notice_bytes).hexdigest(), notice, sets, work)
@@ -516,7 +522,7 @@ def main(argv: list[str] | None = None) -> int:
                            "licence": (notice["inventory"][(n, v)][0] if (n, v) in notice["inventory"] else
                                        ("Apache-2.0" if n == "hex-obs-scorecard" else
                                         "Apache-2.0 AND BSD-3-Clause" if n == "rw-sfc-series" else
-                                        "Apache-2.0" if n in ("rw-s2s", "rw-s2s-energy", "hex-chem-sources", "hex-ugwp-oro", "hex-wave-products") else
+                                        "Apache-2.0" if n in ("rw-s2s", "rw-s2s-energy", "hex-chem-sources", "hex-ugwp-oro", "hex-wave-products", "hexad-phys") else
                                         crate_source(n, v, s, engines)[1].get("license", "UNKNOWN")))}
                           for n, v, s in closure["linked"]] for key, closure in sets.items()}
             args.closures_json.write_text(json.dumps({"engine": identity(engine), "programs": rows}, indent=2) + "\n")

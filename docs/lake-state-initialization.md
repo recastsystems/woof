@@ -27,6 +27,54 @@ lake_state_source = "era5-land"
 lake_state_path = "/inputs/lake-fields.nc"
 ```
 
+A WRF run directory or a WPS metgrid directory carries no lake-state key in its
+`namelist.input`, so those doors take the choice on the command line, for
+`woof run` and `woof go` alike:
+
+```
+woof run --met-em DIR --lake-state forcing      # keep the met_em lakes; request nothing
+woof run --wrfinput DIR --lake-state forcing    # keep the wrfinput lakes; request nothing
+woof run --met-em DIR --lake-state era5-land --lake-state-path /inputs/lake-fields.nc
+```
+
+The choices are `auto` (the default when the flag is absent), `forcing` and the
+ids of the table's rows. The door writes the choice into the resolved
+configuration as `lake_state_source` (and `lake_state_path`), prints it at plan
+review, and the prepared `experiment.toml` records it. A CONFIG run sets the two
+keys in its TOML instead, and refuses the flag.
+
+With `auto`, the run asks the first automatic row whose extent holds any of
+the domain's lake cells; GLSEA's extent is the Great Lakes, 38.9N to 50.6N,
+92.4W to 75.9W. The plan and dry run ask the same question of the root
+domain's cells before anything is spent, so a domain outside every row is told
+that its lakes keep the forcing's state and nothing is requested, and the
+run record names each row checked and how many lake cells it holds. On
+`woof go CONFIG` the lake mask does not exist yet at plan time, so for a
+domain a row does reach the plan states the run's condition rather than a
+request: the row is asked if any of the domain's lake cells is inside its
+extent, and otherwise nothing is. A domain whose northern edge enters GLSEA's
+box while its lakes lie south of it gets no request.
+
+A met_em or wrfinput directory already holds the lake mask (the cells whose
+`LU_INDEX` is the land-use table's `ISLAKE`, which is the run's own lake
+mask), so on those two doors the plan line is the decision itself, read from
+each domain's first file: the row that is asked and how many of the domain's
+lake cells its extent holds, or that no row holds any and nothing is
+requested, or that the domain has no lake cells. A nested run gets one line
+per domain (`lake state: d02: ...`), because each domain binds its own lakes.
+`woof run --wrfinput DIR` prints the line too, and `woof go --wrfinput DIR
+--dry-run` carries the lines as `lake_state_plan`.
+
+A wrfinput start reads its lake cells from `LAKEMASK` when the lake model is
+on (`sf_lake_physics = 1`) and from the land use when it is off. real.exe
+writes wrfinput's `LU_INDEX` with the lake category folded into water, so
+with the lake model off such a domain binds no lake analysis although its
+`LAKEMASK` holds lake cells. The plan line, the run's line and the run record
+(`status: retained_forcing`, `input_lake_cells`) say so; they used to say the
+domain had no lake cells. A resume, or a WRF warm
+start from wrfrst files, says that the lakes are restored and nothing is
+fetched. `--lake-state auto` prints the same plan line after the flag's own.
+
 The file contains `valid_time`, `latitude`, `longitude`, and the fields `lmlt`,
 `lblt`, `lmld`, `lshf`, `licd`, `lict` on those axes, in K, K, m, 1, m, K.
 Longitude may be in either conventional encoding. The latest analysis at or

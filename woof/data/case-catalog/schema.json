@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:arwen:case-catalog:v1",
-  "title": "WOOF case catalog v1",
-  "description": "Catalog data only. The WOOF loader additionally checks UTC, duplicate IDs, tier containment/order and native scientific contracts. Bounds describe required study coverage; native fitting reports actual grid extents.",
+  "title": "WOOF-ArWen case catalog v1",
+  "description": "Catalog data only. The WOOF-ArWen loader additionally checks UTC, duplicate IDs, tier containment/order and native scientific contracts. Bounds describe required study coverage; native fitting reports actual grid extents.",
   "type": "object",
   "properties": {
     "schema": {

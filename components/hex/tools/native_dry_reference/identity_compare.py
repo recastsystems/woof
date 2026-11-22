@@ -10,7 +10,7 @@ Nothing is tolerance-gated: a field is identical only if every 32-bit word is.
 """
 from __future__ import annotations
 import os as _hex_os
-_hex_os.environ["WOOF_HEX_NUMERICS"] = "strict"  # a bitwise proof against native MPAS runs strict numerics (owner ruling 2026-10-16: fast is the default, strict the opt-in)
+_hex_os.environ["WOOF_HEX_NUMERICS"] = "strict"  # a bitwise proof against native MPAS runs strict numerics (fast is the default, strict the opt-in)
 
 import argparse
 import hashlib

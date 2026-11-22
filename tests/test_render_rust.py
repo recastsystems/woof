@@ -670,7 +670,8 @@ def test_source_label_reaches_the_renderer_invocation(monkeypatch,
     # release cut.
     assert (command[command.index("--source-label") + 1]
             == render_module.default_source_label())
-    assert command[command.index("--source-label") + 1].startswith("WOOF ")
+    # (WOOF 1.1.7) the WRF engine's maps name it: "WOOF-ArWen <version>"
+    assert command[command.index("--source-label") + 1].startswith("WOOF-ArWen ")
 
     seen.clear()
     render_module.render_wrfouts_rust(
@@ -775,7 +776,7 @@ def test_engine_outputs_are_rebranded_to_the_product_prefix(monkeypatch,
 
     The vendored engine hardcodes ``rustwx_`` into every output
     filename (rustwx-products' format strings); the product shipping
-    those files is WOOF, and the field run's first question about its
+    those files is WOOF-ArWen, and the field run's first question about its
     own pictures was what "rustwx" meant.  The rename happens at the
     one seam every wheel render flows through, so the engine binary
     stays byte-identical to its campaign builds.  Filenames only:
@@ -1252,7 +1253,9 @@ def test_list_products_reports_the_full_catalog(wrfout, tmp_path, capsys):
     # recipes: uh_0to1km/0to2km/0to3km, composite_reflectivity_uh0to1km/
     # 0to2km/0to3km and 1km_reflectivity_uh2to5km/0to1km/0to2km/0to3km:
     # 414 + 10 = 424.
-    assert "total=424" in out
+    # The u and v wind-component maps (471e0eccf5: 10m_u_wind, 10m_v_wind and
+    # 850/700/500mb_u_wind and _v_wind) add eight direct recipes: 424 + 8 = 432.
+    assert "total=432" in out
     for slug in ("uh_0to1km", "uh_0to2km", "uh_0to3km",
                  "composite_reflectivity_uh0to1km",
                  "composite_reflectivity_uh0to2km",
@@ -1485,7 +1488,7 @@ def test_list_products_whole_hour_axis_serves_windowed(
 def test_an_hourly_wind_snapshot_is_not_listed_as_a_maximum(
         wrfout_hourly, tmp_path):
     """A wrfout with no sub-hourly 10 m wind maximum (no WSPD10MAX, which
-    is every WOOF history and this fixture's) gives the 1 h and run
+    is every WOOF-ArWen history and this fixture's) gives the 1 h and run
     maxima on whole hours only top-of-hour snapshots.  They were drawn
     under "(1 h max)" and "(run max)" titles and only the catalog detail
     said "lower bound"; the detail now names the fold and why it is not
@@ -1831,6 +1834,60 @@ def test_the_first_hour_after_a_move_draws_its_1h_rain(tmp_path, capsys):
     captured = capsys.readouterr()
     assert not any("qpf_1h" in path.parts for path in (tmp_path / "lying-png").rglob("*.png"))
     assert "different ground" in captured.out + captured.err, captured.out + captured.err
+
+
+def _write_ridden_wrfout(path, stamps, *, cells, seed_offset=0):
+    """A frame of the nest of :func:`_write_wrfout` at the SAME recorded
+    place, on ground ``cells`` nest cells east: a nest fixed in a parent
+    that moved (a cyclone run's d03 in its following d02)."""
+    import netCDF4
+
+    _write_wrfout(path, stamps, seed_offset=seed_offset)
+    step = np.float32(3.0 / (_NX - 1))
+    with netCDF4.Dataset(path, "a") as dataset:
+        dataset.CEN_LON = np.float32(dataset.CEN_LON + cells * step)
+        dataset.variables["XLONG"][:] = (
+            dataset.variables["XLONG"][:] + np.float32(cells) * step)
+    return path
+
+
+@needs_renderer
+def test_a_nest_fixed_in_a_moving_parent_draws_its_1h_rain_after_the_parent_moves(
+        tmp_path, capsys):
+    """THE DEFECT (run_c12e1e07306546b4, run_57345a967992018e): a cyclone
+    run's 1 km d03 sits fixed in its following 3 km d02, so every frame
+    records one place while its ground moves with d02.  Keyed on the
+    recorded place, the frames on either side of a d02 move were unrelated
+    series, and 1 h rain was drawn at no hour in which d02 moved (10 of
+    12), neither by the run's render stage nor by the worker's per-hour
+    recovery (``--context-wrfout`` the hour before)."""
+
+    from woof.render import history_series_groups
+
+    stamps = ("1974-04-03_18:00:00", "1974-04-03_19:00:00")
+    first = _write_wrfout(tmp_path / "wrfout_d02_1974-04-03_18:00:00", stamps[:1])
+    ridden = _write_ridden_wrfout(tmp_path / "wrfout_d02_1974-04-03_19:00:00",
+                                  stamps[1:], cells=6, seed_offset=1)
+    assert ([first, ridden], [first]) in history_series_groups([ridden, first])
+
+    out = tmp_path / "png"
+    rc = cli.main(["render", str(ridden), "--engine", "rust", "--series",
+                   "--products", "qpf_1h", "--size", "400x300", "--run-stamp", "off",
+                   "--context-wrfout", str(first), "--out", str(out)])
+    captured = capsys.readouterr()
+    assert rc == 0, captured.out + captured.err
+    drawn = sorted(path.name for path in out.rglob("*.png") if "qpf_1h" in path.parts)
+    assert len(drawn) == 1 and "_f001" in drawn[0], (drawn, captured.out, captured.err)
+
+    # Ground a whole width away shares nothing with the later frame: it is
+    # not joined, and the series stays on its own.
+    far = tmp_path / "far"
+    far.mkdir()
+    early = _write_wrfout(far / "wrfout_d02_1974-04-03_18:00:00", stamps[:1])
+    gone = _write_ridden_wrfout(far / "wrfout_d02_1974-04-03_19:00:00", stamps[1:],
+                                cells=_NX + 2, seed_offset=1)
+    assert sorted(history_series_groups([gone, early])) == sorted(
+        [([early], []), ([gone], [])])
 
 
 def _far_travelled_nest(root):
@@ -3003,7 +3060,7 @@ def test_native_750m_nest_inherits_the_woof_theme_without_changing_generic_pixel
         assert cli.main([
             "render", str(wrfout), "--engine", "rust", "--products", "t2",
             "--timeidx", "0", "--size", "640x480", "--out", str(out),
-            "--source-label", "WOOF 2.8.6", *extra]) == 0
+            "--source-label", "WOOF-ArWen 2.8.6", *extra]) == 0
         pictures = list(out.rglob("*.png"))
         assert len(pictures) == 1, pictures
         assert "d02-750m" in pictures[0].as_posix(), pictures[0]

@@ -20,7 +20,7 @@ the two surface emission fields.
 argument presence at `module_mp_thompson.F:480`.  Adding the aerosol
 optionals to `run_column.F90` would flip `nc1d`/`nwfa1d`/`nifa1d` for
 **every** scenario (`mp_gt_driver:1236-1256`) and rewrite all 92 committed
-mp=8 fixtures.  Those fixtures are the evidence behind WOOF's
+mp=8 fixtures.  Those fixtures are the evidence behind WOOF-ArWen's
 model-validated mp=8 port.  `build.sh`, `run_column.F90`,
 `generate_tables.F90`, `dump_aux_tables.F90` and `stub_wrf.F90` are
 therefore not modified by anything here.
@@ -116,8 +116,8 @@ with `p1000mb = 100000.` and `rcp = r_d/cp`, `r_d = 287.`, `cp = 7.*r_d/2.`
 
 **Until 2026-08-01 this file used `287.0/1004.0`** -- `0x3E925BCB`, 4774 ulps
 away, because `cp` is 1004.5 and not 1004.  The fixtures' `pii` was therefore
-2.09e-04 (relative) away from the one WOOF computes from the same `p_pa`, so
-the recorded `(p, theta)` pair could not be inverted exactly on the WOOF
+2.09e-04 (relative) away from the one WOOF-ArWen computes from the same `p_pa`, so
+the recorded `(p, theta)` pair could not be inverted exactly on the WOOF-ArWen
 side: `tests/test_thompson_aerosol_adapter.py::_reconstruct_entry_state` had
 to PERTURB the entry pressure by up to 15 float32 ulps to recover the
 fixture's `temp_k`, at 40 levels spread over 6 of the 19 fixtures.
@@ -262,7 +262,7 @@ SHA-256 and does not raise on this all-distinct shape, so that slab is the
 only real guard on the WOOF-side reader.
 
 `probe_aero_functions <output-dir>` tabulates the scalar helpers pointwise
-so WOOF's `__device__` transcriptions can be gated before any network
+so WOOF-ArWen's `__device__` transcriptions can be gated before any network
 kernel exists:
 
 | file | rows | grid |

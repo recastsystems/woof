@@ -186,7 +186,10 @@ FIRE_DOMAIN_FIELDS = tuple(name for name in FIRE_CONFIG_FIELDS
 def validate_fire_config(cfg):
     """Reject invalid geometry or clocks before creating a fire grid."""
     if cfg.ifire not in (0, 2):
-        raise ValueError("ifire must be 0 or 2; other fire algorithms are not SFIRE")
+        # WRF v4.8.0 start_em/first_rk_step_part1 select on ifire: 1 is the
+        # Community Fire Behavior Model (compiled only with WRF_CFBM, else
+        # wrf_error_fatal), 2 is SFIRE, anything else is fatal.
+        raise ValueError("ifire must be 0 or 2 (SFIRE); ifire=1 selects WRF 4.8.0's Community Fire Behavior Model, which WOOF-ArWen does not port, and native WRF stops on any other value")
     for key in ("sr_x", "sr_y", "fire_num_ignitions", "nfmc", "fmoist_freq"):
         value = getattr(cfg, key)
         if isinstance(value, bool) or not isinstance(value, int):

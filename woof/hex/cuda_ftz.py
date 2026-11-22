@@ -150,7 +150,7 @@ _GPUWM_PIN_PATHS = {
 
 
 def _strict_proof(name: str) -> None:
-    """The FTZ binding measures the strict route (owner ruling 2026-10-16: strict is opt-in).
+    """The FTZ binding measures the strict route (strict is opt-in).
 
     It selects strict numerics for its process; a process that already compiled fast kernels is refused by
     name (woof.hex.numerics.set_mode), since its kernels would not be the route the binding certifies."""

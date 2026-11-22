@@ -10,10 +10,10 @@
         "smoke"
       ],
       "ops": [],
-      "from": "DESIGN section 8 (WOOF addition, not a WRF-Chem sum)"
+      "from": "DESIGN section 8 (WOOF-ArWen addition, not a WRF-Chem sum)"
     }
   ],
   "divide_by_alt": false,
   "column_scale": 0.001,
-  "provenance": "WOOF-only 2-D output (DESIGN section 8), the counterpart of HRRR-Smoke's COLMD over the entire atmosphere; WRF-Chem has no such field."
+  "provenance": "WOOF-ArWen-only 2-D output (DESIGN section 8), the counterpart of HRRR-Smoke's COLMD over the entire atmosphere; WRF-Chem has no such field."
 }

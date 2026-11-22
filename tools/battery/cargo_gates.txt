@@ -237,6 +237,15 @@ cpu  tools/rustwx  rw-ingest  61
 # gate in this tree that compiles it at all.
 cpu  tools/rustwx  rw-nexrad  125
 
+# The HTTP layer every ureq front door (rw_asos, rw_mrms, rw_nexrad,
+# rw_goes, rw-obs) sends through: bounded backoff on 429/5xx honouring
+# Retry-After, the cross-process per-host gap, the URL body cache.  Its
+# tests run against a loopback server, so this gate needs no network.
+# Breakage it prevents: rw_asos dropping ASOS on 4 of 5 scored frames
+# on the first HTTP 429 (2026-11-09).  Floor = the crate's 9 tests (30 was
+# written first; 3.0.0 pass 5 R8 UNDER-RAN at 9 passed).
+cpu  tools/rustwx  rw-http  9
+
 # NetCDF: THE decoder for every NetCDF source the product accepts, since
 # that decode moved off the netCDF4 C library and onto the vendored
 # netcrust reader.  There is deliberately no Python decoder behind it, so

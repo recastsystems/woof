@@ -26,6 +26,7 @@ from contextlib import nullcontext
 from dataclasses import asdict
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import socket
 import sys
@@ -648,7 +649,7 @@ def replay_spec(door_replay):
     (the mesh bind and the physics resolution are replayed), and every module constant as it is now."""
     from woof.hex import numerics
     if door_replay is None:
-        raise ValueError("one process per card on the WOOF-physics route needs the door's request to rebuild "
+        raise ValueError("one process per card on the WOOF-ArWen-physics route needs the door's request to rebuild "
                          "the forecast's module state in each rank process")
     return {"numerics": numerics.mode(), "repo": door_replay["repo"], "request": door_replay["request"],
             "driver_argv": list(door_replay["driver_argv"]), "constants": _module_constants(),
@@ -1043,11 +1044,11 @@ def worker(job, rank, spec_text):
 
 def _child_context(rank, spec, request):
     """This rank process's context: the forecast's modules rebuilt, its card, stream, physics scope and halo end."""
-    grant = os.environ.get("GPU_MUTEX_CARDS", "").replace(",", " ").split()
+    grant = card_queue.granted()
     card = int(request["card"])
     if grant and 0 <= card < len(grant):
         # This process sees one card; the queue's grant list is narrowed to it (rank_event reads it).
-        os.environ["GPU_MUTEX_CARDS"] = grant[card]
+        card_queue.put(os.environ, card_queue.CARDS, grant[card])
     driver, replay = bootstrap(request["replay"])
     import cupy as cp
     from woof.hex.drivers.samehost_forecast_v841 import _StepLoopGarbage

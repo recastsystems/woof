@@ -21,6 +21,7 @@ from woof.wrf_direct import (
     _canonical,
     _interp_nodes,
     _lbc_to_wrf,
+    _side_to_wrf,
     _load_contract,
     _load_static_geometry_receipt,
     _prepare_output_target,
@@ -1029,6 +1030,76 @@ def test_a_replaced_start_state_exports_a_pair_the_wrf_door_accepts(tmp_path):
                             np.float32))
 
 
+@pytest.mark.parametrize("envelope_km", [25.0, 0.0])
+def test_the_wrfbdy_hydrometeor_arrays_carry_what_the_ring_is_fed(
+        tmp_path, envelope_km):
+    """Item 10 (an outside runner): the export wrote every hydrometeor
+    array of wrfbdy_d01 as zeros beside a prepared boundary that carried
+    the five masses and their numbers, and its limitations said only
+    "hydrometeor ... LBC arrays are zero", so a reader concluded the run was
+    fed no condensate at its edge.  The arrays now hold what the forecast
+    ring serves, through the ring's own function at the cache's own
+    envelope (held: zero tendency; at 0 the linear table), and the file's
+    GPUWM_LBC_HYDROMETEORS attribute, the manifest and its limitations say
+    so and name WRF's have_bcs_moist."""
+    from woof.ingest.lateral_bc import hold_hydrometeor_ring_envelope
+
+    carried = ("qv", "qc", "qr", "qi", "qs", "qg", "nr", "ni")
+    output, cfg, _ = _export_a_real_prepared_cache(
+        tmp_path, 8, boundary_scalars=carried, intervals=2,
+        lbc_hydrometeor_envelope_km=envelope_km)
+    cache = PreparedCache(tmp_path / "prepared-cache")
+    radius = 0 if envelope_km == 0.0 else max(
+        1, int(np.ceil(0.5 * envelope_km * 1000.0 / cfg.dx)))
+    wrf = {"qc": "QCLOUD", "qr": "QRAIN", "qi": "QICE", "qs": "QSNOW",
+           "qg": "QGRAUP", "nr": "QNRAIN", "ni": "QNICE"}
+    sides = {"XS": "west", "XE": "east", "YS": "south", "YE": "north"}
+    with netCDF4.Dataset(output / "wrfbdy_d01") as dataset:
+        statement = dataset.getncattr("GPUWM_LBC_HYDROMETEORS")
+        for record in (0, 1):
+            tables = {(name, side, item): np.array(
+                          cache.array(f"lbc/{record}/{name}/{side}/{item}"), np.float32)
+                      for name in wrf for side in sides.values()
+                      for item in ("value", "tendency")}
+            if radius:
+                hold_hydrometeor_ring_envelope(
+                    lambda n, s, i: tables[(n, s, i)], tuple(wrf), 3600.0,
+                    radius, np)
+            for name, wrf_name in wrf.items():
+                for suffix, side in sides.items():
+                    for kind, item in (("B", "value"), ("BT", "tendency")):
+                        written = np.asarray(
+                            dataset[f"{wrf_name}_{kind}{suffix}"][record], np.float32)
+                        np.testing.assert_array_equal(
+                            written, _side_to_wrf(tables[(name, side, item)], name, side),
+                            err_msg=f"{wrf_name}_{kind}{suffix}[{record}]")
+            assert np.asarray(dataset["QSNOW_BXS"][record]).max() > 0.0
+            if radius:
+                assert not np.asarray(dataset["QSNOW_BTXS"][record]).any()
+    manifest = json.loads((output / "manifest.json").read_text())
+    block = manifest["lbc_hydrometeors"]
+    assert block["wrfbdy_fields"] == sorted(wrf.values())
+    assert block["envelope_km"] == envelope_km and block["radius_columns"] == radius
+    assert block["statement"] == statement and statement in manifest["limitations"]
+    assert "have_bcs_moist = .true." in statement
+    # The key does not bind the cache: the file names the value it was
+    # written at, and that another value is fed differently (item 10 review).
+    assert f"lbc_hydrometeor_envelope_km = {envelope_km:g} (the value this cache" in statement
+    assert "at another value is fed differently" in statement
+    assert not any("hydrometeor/W" in line for line in manifest["limitations"])
+
+
+def test_a_vapour_only_boundary_says_its_hydrometeors_are_not_carried(tmp_path):
+    output, _cfg, _ = _export_a_real_prepared_cache(tmp_path, 6)
+    with netCDF4.Dataset(output / "wrfbdy_d01") as dataset:
+        statement = dataset.getncattr("GPUWM_LBC_HYDROMETEORS")
+        assert not np.asarray(dataset["QCLOUD_BXS"][0]).any()
+    assert statement.startswith("hydrometeor LBC arrays are not carried")
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert statement in manifest["limitations"]
+    assert manifest["lbc_hydrometeors"]["wrfbdy_fields"] == []
+
+
 def test_the_door_still_refuses_a_first_record_that_is_not_its_wrfinput(
         tmp_path):
     """The check stays: the prepared head under the replaced start is what
@@ -1794,6 +1865,7 @@ def test_hierarchy_export_publishes_every_input_and_root_boundary_atomically(
             "boundary_times": ["1999-05-03_12:00:00"],
             "next_boundary_times": ["1999-05-03_18:00:00"],
             "forcing_hours": [0, 6],
+            "lbc_hydrometeors": {"statement": "hydrometeor LBC arrays are not carried (zero)"},
         }
 
     def fake_context(artifact, domain, _exp, _expected_grid, _valid_time):
@@ -2008,7 +2080,8 @@ def test_the_tree_export_states_each_domains_recorded_physics(
                 "boundary_record_count": 1,
                 "boundary_times": ["1999-05-03_12:00:00"],
                 "next_boundary_times": ["1999-05-03_18:00:00"],
-                "forcing_hours": [0, 6]}
+                "forcing_hours": [0, 6],
+                "lbc_hydrometeors": {"statement": "hydrometeor LBC arrays are not carried (zero)"}}
 
     def fake_context(artifact, domain, _exp, _expected_grid, _valid_time):
         return _hierarchy_context(domain, thompson, "static")

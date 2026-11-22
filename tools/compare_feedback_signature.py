@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare WOOF and stock-WRF two-way nest feedback signatures.
+"""Compare WOOF-ArWen and stock-WRF two-way nest feedback signatures.
 
 This is deliberately a signature comparison, not a bitwise or amplitude
 certification.  Each feedback delta is ``feedback=1 - feedback=0`` on the
@@ -246,7 +246,7 @@ def _signature_row(
         ) -> dict[str, object]:
     if arwen_delta.shape != wrf_delta.shape:
         raise ValueError(
-            f"{field} WOOF/WRF overlap shapes differ: "
+            f"{field} WOOF-ArWen/WRF overlap shapes differ: "
             f"{arwen_delta.shape} vs {wrf_delta.shape}")
     finite = np.isfinite(arwen_delta) & np.isfinite(wrf_delta)
     if not finite.any():
@@ -354,7 +354,7 @@ def compare_runs(
                 continue
             if arwen_operator != wrf_operator:
                 raise ValueError(
-                    f"{field} WOOF/WRF operator classes differ: "
+                    f"{field} WOOF-ArWen/WRF operator classes differ: "
                     f"{arwen_operator} vs {wrf_operator}")
             rows.append(_signature_row(
                 arwen_delta, wrf_delta, field=field,

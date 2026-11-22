@@ -1,7 +1,7 @@
-"""``woof cells catalog``: one row per cell per frame, titan plus WOOF.
+"""``woof cells catalog``: one row per cell per frame, titan plus WOOF-ArWen.
 
 titan supplies the object: identity, track, age, area, centroid, echo
-tops, trend, forecast footprint.  WOOF supplies what a radar never
+tops, trend, forecast footprint.  WOOF-ArWen supplies what a radar never
 sees and a model always has: the updraft, the cloud's top and base and
 their temperatures, the freezing and supercooled levels, the
 supercooled liquid water.  The catalog joins the two on the cell's own
@@ -44,10 +44,10 @@ ISOTHERMS_C = (0.0, -5.0, -10.0, -15.0, -20.0)
 
 #: Column name -> (unit, provenance).  The order here is the CSV order.
 COLUMNS: dict[str, tuple[str, str]] = {
-    "valid_time": ("UTC, ISO 8601", "WOOF frame valid time"),
+    "valid_time": ("UTC, ISO 8601", "WOOF-ArWen frame valid time"),
     "timestamp_ms": ("ms since 1970-01-01T00:00:00Z", "titan frame timestamp"),
     "frame_index": ("1", "position in the exported series, from 0"),
-    "domain": ("text", "WOOF GRID_ID as dNN"),
+    "domain": ("text", "WOOF-ArWen GRID_ID as dNN"),
     "object_id": ("1", "titan object id within the frame"),
     "track_id": ("1", "titan track id (identity through time)"),
     "is_birth": ("bool", "titan: first observation of this track"),
@@ -58,8 +58,8 @@ COLUMNS: dict[str, tuple[str, str]] = {
     "child_track_ids": ("list", "titan lineage: tracks that split or merged from this one"),
     "centroid_x_m": ("m, east of the domain centre", "titan geometric centroid"),
     "centroid_y_m": ("m, north of the domain centre", "titan geometric centroid"),
-    "centroid_lat": ("degrees N", "WOOF XLAT at titan's centroid (bilinear)"),
-    "centroid_lon": ("degrees E", "WOOF XLONG at titan's centroid (bilinear)"),
+    "centroid_lat": ("degrees N", "WOOF-ArWen XLAT at titan's centroid (bilinear)"),
+    "centroid_lon": ("degrees E", "WOOF-ArWen XLONG at titan's centroid (bilinear)"),
     "projected_area_km2": ("km^2", "titan"),
     "volume_km3": ("km^3", "titan"),
     "max_dbz": ("dBZ", "titan"),
@@ -90,23 +90,23 @@ COLUMNS: dict[str, tuple[str, str]] = {
     "forecast_leads_s": ("s, list", "titan forecast lead times in this row"),
     "footprint_columns": ("count", "grid columns under titan's voxels"),
     "footprint_source": ("text", "voxels (titan 3-D cells) or polygon (rasterised footprint)"),
-    "peak_w_mps": ("m/s", "WOOF W, max over footprint columns and all w levels"),
+    "peak_w_mps": ("m/s", "WOOF-ArWen W, max over footprint columns and all w levels"),
     "peak_w_ft_min": ("ft/min", "peak_w_mps x 196.85"),
-    "peak_w_height_m_msl": ("m MSL", "WOOF w-level height of the peak"),
-    "peak_w_lat": ("degrees N", "WOOF XLAT of the peak's column"),
-    "peak_w_lon": ("degrees E", "WOOF XLONG of the peak's column"),
-    "min_w_mps": ("m/s", "WOOF W, min over footprint columns (downdraft)"),
-    "cloud_top_m_msl": ("m MSL", "WOOF: highest mass level with QCLOUD+QICE > 1e-6 kg/kg, max over footprint"),
-    "cloud_top_temperature_c": ("degrees C", "WOOF temperature at that level in that column"),
-    "cloud_base_m_msl": ("m MSL", "WOOF: lowest mass level with QCLOUD+QICE > 1e-6 kg/kg, min over footprint"),
-    "cloud_base_temperature_c": ("degrees C", "WOOF temperature at that level in that column"),
+    "peak_w_height_m_msl": ("m MSL", "WOOF-ArWen w-level height of the peak"),
+    "peak_w_lat": ("degrees N", "WOOF-ArWen XLAT of the peak's column"),
+    "peak_w_lon": ("degrees E", "WOOF-ArWen XLONG of the peak's column"),
+    "min_w_mps": ("m/s", "WOOF-ArWen W, min over footprint columns (downdraft)"),
+    "cloud_top_m_msl": ("m MSL", "WOOF-ArWen: highest mass level with QCLOUD+QICE > 1e-6 kg/kg, max over footprint"),
+    "cloud_top_temperature_c": ("degrees C", "WOOF-ArWen temperature at that level in that column"),
+    "cloud_base_m_msl": ("m MSL", "WOOF-ArWen: lowest mass level with QCLOUD+QICE > 1e-6 kg/kg, min over footprint"),
+    "cloud_base_temperature_c": ("degrees C", "WOOF-ArWen temperature at that level in that column"),
     "cloud_depth_m": ("m", "cloud_top_m_msl minus cloud_base_m_msl"),
-    "freezing_level_m_msl": ("m MSL", "WOOF: footprint mean of the lowest 0 C crossing (linear between mass levels)"),
-    "level_minus5c_m_msl": ("m MSL", "WOOF: footprint mean of the lowest -5 C crossing"),
-    "level_minus10c_m_msl": ("m MSL", "WOOF: footprint mean of the lowest -10 C crossing"),
-    "level_minus15c_m_msl": ("m MSL", "WOOF: footprint mean of the lowest -15 C crossing"),
-    "level_minus20c_m_msl": ("m MSL", "WOOF: footprint mean of the lowest -20 C crossing"),
-    "slwp_max_kg_m2": ("kg/m^2", "WOOF: sum of QCLOUD x rho x dz over levels with T < 0 C, max over footprint columns"),
+    "freezing_level_m_msl": ("m MSL", "WOOF-ArWen: footprint mean of the lowest 0 C crossing (linear between mass levels)"),
+    "level_minus5c_m_msl": ("m MSL", "WOOF-ArWen: footprint mean of the lowest -5 C crossing"),
+    "level_minus10c_m_msl": ("m MSL", "WOOF-ArWen: footprint mean of the lowest -10 C crossing"),
+    "level_minus15c_m_msl": ("m MSL", "WOOF-ArWen: footprint mean of the lowest -15 C crossing"),
+    "level_minus20c_m_msl": ("m MSL", "WOOF-ArWen: footprint mean of the lowest -20 C crossing"),
+    "slwp_max_kg_m2": ("kg/m^2", "WOOF-ArWen: sum of QCLOUD x rho x dz over levels with T < 0 C, max over footprint columns"),
     "slwp_mean_kg_m2": ("kg/m^2", "the same, mean over footprint columns"),
 }
 
@@ -293,7 +293,7 @@ def isotherm_heights(temperature_k: np.ndarray, z_mass: np.ndarray,
 
 
 def column_attributes(frame: ColumnFrame, cols: np.ndarray) -> dict:
-    """Every WOOF attribute of one footprint, sampled on ``cols``."""
+    """Every WOOF-ArWen attribute of one footprint, sampled on ``cols``."""
 
     if cols.size == 0:
         return {}
@@ -587,7 +587,7 @@ def write_catalog(rows: list[dict], geometries: list[dict], out_dir: Path,
     geojson_path = out_dir / GEOJSON_NAME
     geojson_path.write_text(json.dumps(
         {"type": "FeatureCollection",
-         "properties": {"coordinate_space": "WGS84 lon/lat from WOOF XLAT/XLONG",
+         "properties": {"coordinate_space": "WGS84 lon/lat from WOOF-ArWen XLAT/XLONG",
                         "schema": CATALOG_SCHEMA},
          "features": features}) + "\n", encoding="utf-8")
     return {"csv": str(csv_path), "json": str(json_path),

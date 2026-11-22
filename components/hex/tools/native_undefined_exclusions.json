@@ -1,6 +1,6 @@
 {
   "schema": "hex.native-undefined-exclusions/v1",
-  "policy": "Proof-bar ruling 1: words where native MPAS-A itself reads undefined memory are excluded only with a full witness (measured run-to-run variation of the pinned strict binary, plus a bounds-checked build naming the read) and the owner's sign-off for that specific case. Averaged, RMS or relative-error grades never count as landing proof. Ruling 2: every proof fixes the process count and states it. An entry covers exactly one unit, one case, one field and one word set; tools/native_undefined_exclusions.py refuses everything else, and every word outside the set is still compared with no tolerance.",
+  "policy": "Proof-bar rule 1: words where native MPAS-A itself reads undefined memory are excluded only with a full witness (measured run-to-run variation of the pinned strict binary, plus a bounds-checked build naming the read) and a recorded sign-off for that specific case. Averaged, RMS or relative-error grades never count as landing proof. Ruling 2: every proof fixes the process count and states it. An entry covers exactly one unit, one case, one field and one word set; tools/native_undefined_exclusions.py refuses everything else, and every word outside the set is still compared with no tolerance.",
   "paths": "Witness and sign-off paths are relative to the repository root (the folder that holds tree/). They are home evidence and are not part of the public tree.",
   "entries": [
     {

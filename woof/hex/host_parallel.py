@@ -139,7 +139,7 @@ def contiguous_copy(value: np.ndarray, *, dtype: np.dtype) -> np.ndarray:
 def copy_into(target: np.ndarray, source: np.ndarray) -> None:
     """``np.copyto(target, source)`` for a same-shape, same-dtype pair, written in blocks on host threads.
 
-    THE COST THIS REMOVES (RRFS hrrrv5 limited area, mv3km 206,726 cells, V6000, 2026-10-28): the ported MPAS
+    THE COST THIS REMOVES (RRFS hrrrv5 limited area, mv3km 206,726 cells, RTX PRO 6000, 2026-10-28): the ported MPAS
     framework's pool copies (``put_field`` while the physics session hydrates its pools, ``get_field`` copies in
     the TEMPO-aerosol and ozone initialisation) ran about 5 s on one core while the card waited, and they grow
     with the mesh (about 11x on NOAA's conus3km).  A same-dtype copy moves every word to one fixed place with no

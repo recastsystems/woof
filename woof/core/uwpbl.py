@@ -205,7 +205,7 @@ def uwpbl_step(inputs, carried, *, dt: float, itimestep: int,
 
 
 def uwpbl_ice_number_name(cfg) -> str | None:
-    """WOOF's name for WRF's ``P_QNI`` under ``cfg``, or None.
+    """WOOF-ArWen's name for WRF's ``P_QNI`` under ``cfg``, or None.
 
     ``woof.config.UW_PBL_ICE_NUMBER_SPECIES`` is the table and cites the
     Registry package lines.  None means WRF hands the scheme its zero

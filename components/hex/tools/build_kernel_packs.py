@@ -34,7 +34,11 @@ import time
 import urllib.request
 from pathlib import Path
 
-ENGINE = "woof==2.9.12"
+ENGINE = "woof==3.0.0"
+#: Before the engine is on PyPI (gpuwm 3.0.0 and woof hex 0.5.0 publish together), its sealed wheels come from this
+#: folder. THE BREAKAGE IT PREVENTS: packs for the 3.0 floor could not be built before the joint publish, so they would
+#: have been built against an engine the release does not declare.
+ENGINE_FIND_LINKS = os.environ.get("PACK_ENGINE_FIND_LINKS")
 CUPY = "14.2.0"
 BASE_REQUIREMENTS = ("numpy==2.5.4", "scipy==1.18.1", "netcdf4", "packaging", "psutil", "jsonschema",
                      "threadpoolctl")
@@ -126,7 +130,8 @@ def make_env(work, name, family):
                 subprocess.run([sys.executable, "-m", "venv", str(env)], check=True, stdout=out, stderr=out)
             install = [str(python), "-m", "pip", "install", "-q"]
         # The engine without its dependencies: the build reads its compile probes, not its CUDA stack.
-        subprocess.run([*install, "--no-deps", ENGINE], check=True, stdout=out, stderr=out)
+        subprocess.run([*install, "--no-deps", *(["--find-links", ENGINE_FIND_LINKS] if ENGINE_FIND_LINKS else []), ENGINE],
+                       check=True, stdout=out, stderr=out)
         subprocess.run([*install, *family["requirements"], *BASE_REQUIREMENTS], check=True, stdout=out, stderr=out)
     stamp.write_text(json.dumps(wanted))
     return python
@@ -195,7 +200,7 @@ def main():
                         help="run as a helper machine: compile smallest images first and none expected over GIB, "
                              "into a WORK/jobs that is synchronised with the main builder's (rsync *.json both ways)")
     parser.add_argument("--tag", help="pin the packs into the tree's on-demand-assets.json under this release tag")
-    parser.add_argument("--repository", default="FahrenheitResearch/gpuwm-hex")
+    parser.add_argument("--repository", default="recastsystems/gpuwm-hex")
     args = parser.parse_args()
     tree = args.tree.resolve()
     out = args.out.resolve()

@@ -1,21 +1,21 @@
-# WOOF Scientific Manual (written against engine 2.5)
+# WOOF-ArWen Scientific Manual (written against engine 2.5)
 
-WOOF is an independent, GPU-native implementation of a WRF-ARW-class regional
+WOOF-ArWen is an independent, GPU-native implementation of a WRF-ARW-class regional
 atmospheric model. It is not affiliated with or endorsed by NCAR or UCAR. The package and current product identity are stated in
 [README.md](../../README.md).
 
-WOOF is a research and educational tool. It is never a substitute for official
+WOOF-ArWen is a research and educational tool. It is never a substitute for official
 forecasts and warnings from your national meteorological service. Do not use it to
 make safety decisions [README.md, current release scope].
 
 This manual is written for atmospheric researchers who know WRF and are evaluating
-WOOF for real work: severe-storm simulation, downscaling, ensembles, and LES. It
+WOOF-ArWen for real work: severe-storm simulation, downscaling, ensembles, and LES. It
 states measured limits with the same prominence as measured capabilities, because a
 number without its conditions is a different claim.
 
 ## Chapters
 
-1. [What WOOF is and how it relates to WRF-ARW](01-arwen-and-wrf.md)
+1. [What WOOF-ArWen is and how it relates to WRF-ARW](01-arwen-and-wrf.md)
 2. [Dynamics, grids, nesting, and LES](02-dynamics-grids-nesting.md)
 3. [The physics suite](03-physics.md)
 4. [GPU numerics a researcher must know](04-gpu-numerics.md)
@@ -49,7 +49,7 @@ engine or assembled WOOF release. Current reference versions and the
 recent ensemble consistency results are listed in
 [the evidence page](../public/VERIFICATION.md).
 
-**Vocabulary.** WOOF is the product; `woof` is the Python package and CLI;
+**Vocabulary.** WOOF-ArWen is the product; `woof` is the Python package and CLI;
 `rw_wrfbatch` and `rw_ensbatch` are the Rust renderers driven through `woof.rustwx`;
 `wrf-rust` is the science core used for diagnostics. The physics maturity vocabulary
 is defined in chapter 1. A translation table from the product's vocabulary to the

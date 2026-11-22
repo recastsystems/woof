@@ -15,8 +15,9 @@ from woof.ensemble.stochastic_model import StochasticModelProvider
 def prepared(tmp_path):
     from woof.prepared_domain_tree_forecast import PreparedTreeInputs, PreparedDomainBundle
     cfg = RunConfig(nx=16, ny=14, nz=8, dx=3000., dy=3000., ztop=20000.,
-        dt=12., run_seconds=24., cu_physics=3, bl_pbl_physics=5,
-        sf_sfclay_physics=5, sf_surface_physics=3, num_soil_layers=9)
+        dt=12., run_seconds=24., cu_physics=3, cu_gf_version="wrf_461",
+        bl_pbl_physics=5, sf_sfclay_physics=5, sf_surface_physics=3,
+        num_soil_layers=9)  # GF SPP consumes through GFDRV (GFL has no SPP pattern)
     exp = experiment_from_run_config(cfg, datetime(2024, 1, 1, tzinfo=timezone.utc))
     source = MappingProxyType({"cache_header": "a" * 64, "cache_content": "b" * 64})
     bundle = PreparedDomainBundle(1, 0, tmp_path, tmp_path, tmp_path / "static",

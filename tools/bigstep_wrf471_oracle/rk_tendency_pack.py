@@ -81,7 +81,7 @@ def generate(executable,state,out,scratch,stored_theta=False):
         "canonical_pressure_sha256":hashlib.sha256(np.ascontiguousarray(canonical_pressure).tobytes()).hexdigest()}
     meta["theta_representation"]=(
         "literal WRF theta-minus-300 words, matched at the common transport-kernel input"
-        if stored_theta else "full theta (WRF T+300), matched at the common transport-kernel input; this is a WOOF transport-operator probe, not the literal WRF stored-T call")
+        if stored_theta else "full theta (WRF T+300), matched at the common transport-kernel input; this is a WOOF-ArWen transport-operator probe, not the literal WRF stored-T call")
     out.with_suffix(".json").write_text(json.dumps(meta,indent=2)+"\n")
 
 

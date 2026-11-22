@@ -104,6 +104,10 @@ def test_country_forwards_the_option_for_every_producer_suite(tmp_path, suite, p
 def test_regional_forwards_the_option_for_every_producer_suite(tmp_path, monkeypatch, suite, pin):
     from woof.hex.cli import build_parser
     from woof.hex import regional_door as door
+    # What is read here is the option's forwarding, for every producer suite and pin set. Whether a release install
+    # can run the suite (a slot on the CPU needs a site library) is the door's own refusal, read before the mesh
+    # (tests/test_door_slot_refusal.py).
+    monkeypatch.setattr("woof.hex.mpasphys.forecast_v842.forecast_args_slot_refusal", lambda flags: None)
     args = build_parser().parse_args([
         "regional", "--point", "40,-90", "--cycle", "2023-03-31T18", "--hours", "6",
         "--work-dir", str(tmp_path), "--boundary-recipe", "noaa",

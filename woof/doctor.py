@@ -121,8 +121,8 @@ GPU_EXTRA_UNKNOWN_ACTION = ("pip install 'recast-woof[gpu-cu12]'  "
 RENDER_EXTRA_HINT = ("pip install 'recast-woof[render]'\n"
                      "  # installs wrf-rust (the derived-quantity core\n"
                      "  # woof enprod and --engine matplotlib import) and\n"
-                     "  # pyshp (the shapefile reader the DA nowcast's\n"
-                     "  # basemaps read).  matplotlib is NOT in this extra:\n"
+                     "  # pyshp (the shapefile reader the basemaps\n"
+                     "  # read).  matplotlib is NOT in this extra:\n"
                      "  # it is a base dependency, installed already.")
 GEOG_STACK_HINT = (
     "pip install --upgrade 'recast-woof[geog]'\n"
@@ -1621,6 +1621,12 @@ _IMPORT_NAME = {
     # nvidia namespace package, and the installed version is judged against the declared range.
     "nvidia-cuda-nvrtc": "nvidia",
     "nvidia-nvjitlink": "nvidia",
+    # (WOOF 1.1.7) [ad], WOOF-HEX-A's derivative commands: the toolkit the recorded plans replay, CUPTI and the
+    # CUDA headers the recorder builds against.  cuda-toolkit is a metapackage over the nvidia namespace wheels;
+    # each is judged by its installed version against the declared range.
+    "cuda-toolkit": "nvidia",
+    "nvidia-cuda-cupti": "nvidia",
+    "nvidia-cuda-crt": "nvidia",
     # The kernel-image companions (3.0 size split): the AOT images and
     # the startup subset, imported by the kernel loader when present.
     "gpuwm-kernels": "gpuwm_kernels",
@@ -1651,6 +1657,8 @@ _IMPORT_NAME = {
     "ruff": "ruff",
     # The CDS client ([era5] extra): distribution and module share the name.
     "cdsapi": "cdsapi",
+    # (WOOF 1.1.7 round 4) [torch]: PyTorch, for WOOF-HEX-A's learned correction and its networks
+    "torch": "torch",
     "huggingface-hub": "huggingface_hub",
     "h5py": "h5py",
     # The companion distribution: pure reference tables (RRTMGP,
@@ -1899,6 +1907,24 @@ _EXTRA_FACTS: dict[str, _ExtraFacts] = {
         doors=_GPU_DOORS, still_works=_GPU_STILL_WORKS,
         blocking=True, severity=SEVERITY_UNREACHABLE,
         deferred_to="cupy (GPU runtime)", mutually_exclusive=True),
+    # (WOOF 1.1.7 round 4) gpuwm-hex 0.6.2's [torch]: the learned column correction
+    # (WOOF_HEX_LEARNED_CORRECTION) and the two network options on hrrrv5.  Off by default; a run that names one
+    # without PyTorch is refused by name, and every other door works without it.
+    "torch": _ExtraFacts(
+        doors=("woof hex forecast with WOOF_HEX_LEARNED_CORRECTION",
+               "woof hex forecast --physics config_surface_flux_net=... or config_neural_pbl=..."),
+        still_works="every forecast door of both engines, and the 8-parameter closure, which needs no "
+                    "network",
+        blocking=False, severity=SEVERITY_OPT_IN, expected_absent=True),
+    # (WOOF 1.1.7) WOOF-HEX-A's derivative commands.  Absent is the normal state: [ad] is a Python 3.14
+    # environment of its own (cupy-cuda13x and cuda-toolkit pinned to what the recorded plans replay), and
+    # every forecast door works without it.  The doors refuse, before any download, and name this extra.
+    "ad": _ExtraFacts(
+        doors=("woof hex tangent", "woof hex adjoint-test", "woof hex sensitivity",
+               "woof hex param-grad"),
+        still_works="every forecast door of both engines; only the derivative "
+                    "commands need it",
+        blocking=False, severity=SEVERITY_OPT_IN, expected_absent=True),
     "rocm": _ExtraFacts(
         doors=("woof --backend amd (experimental AMD forecasts)",),
         still_works="CUDA forecasts and every non-GPU door",
@@ -1914,9 +1940,7 @@ _EXTRA_FACTS: dict[str, _ExtraFacts] = {
     # render` work anyway is entitled to think the report is wrong.
     "render": _ExtraFacts(
         doors=("woof enprod", "woof render --engine matplotlib",
-               "woof go's render stage (it gates on the wrf package)",
-               "python -m tools.da_nowcast render and the launcher's "
-               "basemap endpoint (pyshp)"),
+               "woof go's render stage (it gates on the wrf package)"),
         still_works="woof render's DEFAULT rust engine, which draws from "
                     "the rw_wrfbatch binary and needs no Python package "
                     "from this extra",
@@ -1935,8 +1959,7 @@ _EXTRA_FACTS: dict[str, _ExtraFacts] = {
     # library their default path never loads.
     "dealias": _ExtraFacts(
         doors=("--dealias-engine vad-region, on python -m "
-               "tools.obs_radar_grid_build / tools.obs_radar_grid_from_pack "
-               "/ tools.da_nowcast run",),
+               "tools.obs_radar_grid_build / tools.obs_radar_grid_from_pack",),
         still_works="the shipped default --dealias-engine region-global, "
                     "which is the Rust library reported above",
         blocking=False, severity=SEVERITY_DEGRADED),
@@ -5153,7 +5176,7 @@ def _projected_intermediate_check() -> Check:
     2.9.0 no wheel and no bundle carried it, so a pip install could start
     hex only from lat-lon sources.  Judged the way woof hex loads it: the
     file resolves, its ABI answers, and the four entries it binds exist.
-    Not blocking: a WOOF run never calls it.
+    Not blocking: a WOOF-ArWen run never calls it.
     """
 
     import ctypes
@@ -6232,10 +6255,11 @@ def _arbitrary_input_check() -> Check:
 
 
 def _ocean_climatology_check() -> Check:
-    """Is the default mixed-layer ocean's WOA18 MLD climatology staged here?
+    """Is the mixed-layer ocean's WOA18 MLD climatology staged here?
 
-    The ocean is on by default for forecasts of 48 h and more and starts
-    from one month of this climatology.  Unstaged, a forecast fetches its
+    A forecast that sets sf_ocean_physics = 1 or 2 starts its ocean from
+    one month of this climatology (through 3.0.1 option 2 was also the
+    default at 48 h and more; since 3.0.2 an omitted key is 0).  Unstaged, a forecast fetches its
     month from NCEI at its first step, so an NCEI outage stops it there
     (2026-10-22: THREDDS 503 for an hour, a run died after 60 min of
     preparation).  Degraded, not blocking: the default still works while
@@ -6267,9 +6291,9 @@ def _ocean_climatology_check() -> Check:
                      "on use)")
     return Check(
         "ocean climatology", "missing",
-        f"{'; '.join(parts)} at {root}; the default mixed-layer ocean "
-        "(48 h and longer) then fetches its month from NCEI at the "
-        "forecast's first step, and fails there while NCEI is down",
+        f"{'; '.join(parts)} at {root}; a forecast that sets "
+        "sf_ocean_physics = 1 or 2 then fetches its month from NCEI at its "
+        "first step, and fails there while NCEI is down",
         "woof fetch-tables --ocean\n"
         "  # 12 files, about 85 MB, SHA-256 verified before install;\n"
         "  # --from DIR stages them from a local copy, offline",
@@ -7635,7 +7659,7 @@ def format_report(checks: list[Check]) -> str:
     pastes, and a paraphrase of a command is not a command.
     """
 
-    lines = ["woof doctor: runtime estate"]
+    lines = ["woof doctor: runtime estate (WOOF-ArWen)"]
     for check in checks:
         lines.append(f"  {_LABELS[check.status]} {check.name}: "
                      f"{check.detail}")
@@ -7752,7 +7776,7 @@ def format_brief(checks: list[Check]) -> str:
     command that does it.
     """
 
-    lines = ["woof doctor"]
+    lines = ["woof doctor (WOOF-ArWen)"]
     for check, count in _fold(checks):
         name = check.name if count == 1 else f"{check.group} ({count})"
         line = f"  {_LABELS[check.status]} {name}"

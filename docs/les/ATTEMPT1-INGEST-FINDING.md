@@ -5,7 +5,7 @@
 > question would not need a ruling in order to proceed. Nothing below has been
 > decided, no alias was added, and the Dodge City config and case module stay
 > in the tree. This is a standing task doc for a future Dodge City attempt.
-> See `docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`
+> See `docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`
 > session 3.
 
 **Measured 2026-08-05, before any bulk transfer.** This is a probe result, not
@@ -124,8 +124,8 @@ This is a known, pre-existing wall, not a defect in attempt #1's config. The
 shipped demonstration hit it with one PBL-off domain and solved it the way
 `INFLOW-FETCH-D90-2026-08-03.md:68-75` records: emit a wizard-compatible route
 input set, then extend the per-domain columns by hand. The generator is
-committed at `docs/superpowers/receipts/les/make_d03.py` and its output set at
-`docs/superpowers/receipts/les/inflow-fetch/route.*`. Attempt #1 needs the same
+committed at `docs/internal/receipts/les/make_d03.py` and its output set at
+`docs/internal/receipts/les/inflow-fetch/route.*`. Attempt #1 needs the same
 treatment for two domains rather than one.
 
 Deliberately **not** done here: widening `ADMITTED_PBL_PHYSICS` at emission.

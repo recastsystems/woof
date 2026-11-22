@@ -74,7 +74,7 @@ and three candidate models were measured against it and all three failed:
 ``float32(tgamma_float64(x))`` misses 31, ``expf(lgammaf(x))`` misses 39, and
 the exp-lgamma-times-product-recurrence shape glibc's own ``e_gammaf_r.c``
 uses misses 32 (``plgamma`` in ``gf-pow-probe.txt`` prints the decomposition).
-Nothing short of glibc's own algorithm closes it, and WOOF does not
+Nothing short of glibc's own algorithm closes it, and WOOF-ArWen does not
 reproduce it.
 
 That gap is NOT a rounding footnote, because **GF amplifies it by five orders
@@ -258,7 +258,7 @@ def _tgammaf(x):
 
     Through 2.6.5 the CUDA kernel's earlier gamma returned glibc's words and
     so disagreed with THIS function.  That gamma is replaced and
-    ``gfk_tgamma`` is now WOOF's own correctly rounded gamma: MEASURED, it
+    ``gfk_tgamma`` is now WOOF-ArWen's own correctly rounded gamma: MEASURED, it
     returns the same word as the line below on all 59,768,833 float32 of
     [0.25, 36], so the CPU and CUDA paths agree bitwise where they used to
     differ on 23,575,230 of them.  The divergence from WRF that both now

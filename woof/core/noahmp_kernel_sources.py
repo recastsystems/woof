@@ -223,7 +223,8 @@ def validate_vege_atan_profile(profile: str) -> str:
 def runtime_unit(name: str, *, kernel_dir: Path = KERNEL_DIR,
                  atan_profile: str = "glibc_2_39",
                  log10_profile: str = "glibc_2_39",
-                 selected_options: bool = False) -> RuntimeUnit:
+                 selected_options: bool = False,
+                 runoff_split: tuple[int, int] | None = None) -> RuntimeUnit:
     """Snapshot the production composition and options, including VEGE_FLUX.
 
     All custom runtime factories and the compile-only measurement harness use
@@ -282,11 +283,25 @@ def runtime_unit(name: str, *, kernel_dir: Path = KERNEL_DIR,
             texts=texts+((header,(Path(kernel_dir)/header).read_text(encoding="ascii")),)
             header="noahmp_soil_options.cuh"
             texts=texts+((header,(Path(kernel_dir)/header).read_text(encoding="ascii")),)
+        if name in ("noahmp_thermal", "noahmp_glacier"):
+            # opt_tksno: written from published formulas; selected images only.
+            header = "noahmp_tksno_options.cuh"
+            texts = texts + ((header, (Path(kernel_dir) / header).read_text(encoding="ascii")),)
         header = name + "_options.cuh"
         texts = texts + ((header, (Path(kernel_dir) / header).read_text(encoding="ascii")),)
         if name=="noahmp_water":
             header="noahmp_groundwater_options.cuh"
             texts=texts+((header,(Path(kernel_dir)/header).read_text(encoding="ascii")),)
+            if runoff_split is not None:
+                # opt_runsrf/opt_runsub split (re-implemented from published
+                # descriptions, not bitwise to upstream). Only the split module
+                # carries it; stock and selected images never see this text.
+                srf, sub = (int(v) for v in runoff_split)
+                header="noahmp_water_split.cuh"
+                defines = "".join(f"#define NOAHMP_SPLIT_{k} {v}" + chr(10) for k, v in (("SRF", srf), ("SUB", sub)))
+                texts=texts+((header,defines+(Path(kernel_dir)/header).read_text(encoding="ascii")),)
+    if runoff_split is not None and not (selected_options and name == "noahmp_water"):
+        raise ValueError("runoff_split is a selected noahmp_water unit only")
     if name == "noahmp_vegeflux":
         prefix = ""
         options = ("-std=c++14", "--ftz=false")
@@ -318,7 +333,8 @@ def compile_runtime_unit(name: str, *, module_key: str,
                          source: str | None = None, log_stream=None,
                          atan_profile: str = "glibc_2_39",
                          log10_profile: str = "glibc_2_39",
-                         selected_options: bool = False):
+                         selected_options: bool = False,
+                         runoff_split: tuple[int, int] | None = None):
     """Compile and load one Noah-MP runtime unit; no launch, no constant upload.
 
     The one direct-NVRTC route for Noah-MP. Every runtime factory
@@ -334,7 +350,7 @@ def compile_runtime_unit(name: str, *, module_key: str,
     under the caller's own ``module_key`` and are not the production unit.
     """
     unit = runtime_unit(name, atan_profile=atan_profile, log10_profile=log10_profile,
-                        selected_options=selected_options)
+                        selected_options=selected_options, runoff_split=runoff_split)
     code = unit.source if source is None else source
     opts = unit.options if options is None else tuple(options)
     return _compile_loaded_module(code, opts, module_key, log_stream)
@@ -363,6 +379,34 @@ def _selected_module_on(device, name):
         selected_options=True)
 
 
+#: Correct-mode SN1 (woof/correct_mode.py): the NVRTC define that compiles
+#: the Noah-MP land snowmelt reset with ESTG (and bare QSFC) re-evaluated at
+#: the reset ground temperature.  Without it the units are WRF's arithmetic.
+MELT_RESET_ESAT_DEFINE = "-DGPUWM_NOAHMP_MELT_RESET_ESAT=1"
+
+
+#: Set only while the staged per-column seam answers one leaf batch for a
+#: run with SN1 on (noahmp_runtime._melt_reset_leaves); the slab passes the
+#: switch explicitly.
+from contextvars import ContextVar
+STAGED_MELT_RESET: ContextVar = ContextVar("noahmp_staged_melt_reset", default=False)
+
+
+@lru_cache(maxsize=None)
+def _melt_reset_module_on(device, name):
+    unit = runtime_unit(name, selected_options=True)
+    return compile_runtime_unit(
+        name, module_key=f"woof.core.noahmp.selected:{name}:melt-reset-esat",
+        options=tuple(unit.options) + (MELT_RESET_ESAT_DEFINE,),
+        selected_options=True)
+
+
+def melt_reset_kernel(name, symbol):
+    """``symbol`` from the selected image of ``name`` compiled with SN1."""
+    import cupy as cp
+    return _melt_reset_module_on(cp.cuda.runtime.getDevice(), name).get_function(symbol)
+
+
 def selected_kernel(name, symbol):
     """Selected leaf image, isolated from the measured default image."""
     import cupy as cp
@@ -372,4 +416,5 @@ def selected_kernel(name, symbol):
 
 __all__ += ["DEFAULT_OPTIONS", "NOAHMP_PRICING_MODULES", "RuntimeUnit",
             "compile_runtime_unit", "compile_generated_slab_kernel", "exported_kernels", "pricing_key",
-            "runtime_unit", "selected_kernel"]
+            "runtime_unit", "selected_kernel", "melt_reset_kernel",
+            "MELT_RESET_ESAT_DEFINE"]

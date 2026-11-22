@@ -105,3 +105,26 @@ def test_resume_preserves_solar_history_between_radiation_calls(
     restart._restore_solar_split_provenance(
         driver, {name: np.zeros((4, 6), np.float32) for name in fields})
     assert driver._swdd_from_scheme is expected
+
+
+def _native_adaptive_reset(xtime_minutes, history_minutes, max_time_step):
+    # nwp_windows.cu's adaptive branch, verbatim in float32.
+    from_output = np.fmod(np.float32(xtime_minutes), np.float32(history_minutes))
+    return bool(from_output > 0 and from_output <= np.float32(max_time_step * 1.05) / np.float32(60))
+
+
+@pytest.mark.parametrize('dx,dy,value,expected', [
+    (3000., 3000., -1, 24), (1000., 1000., -1, 8), (1000., 1500., -1, 8), (3000., 3000., 18, 18)])
+def test_adaptive_windows_read_wrf_filled_max_time_step(dx, dy, value, expected):
+    """THE BREAKAGE (2026-11-10, WOOF canary run_6048ab38808a0625, its 1 km nest):
+    every adaptive run left max_time_step at WRF's -1, the kernel's reset test
+    became `<= -0.0175 min`, and UP_HELI_MAX, WSPD10MAX, W_UP_MAX, REFD_MAX and the
+    other windows held the maximum since the start of the run in every hourly
+    frame.  WRF fills -1 with NINT(8*min(dx,dy)/1000) before the module reads it."""
+    cfg = SimpleNamespace(dx=dx, dy=dy, max_time_step=value)
+    assert nwp.native_max_time_step(cfg) == expected
+    # The first adaptive step after an hourly write starts a new window ...
+    step_minutes = expected / 60.0
+    assert _native_adaptive_reset(60.0 + step_minutes, 60, nwp.native_max_time_step(cfg))
+    # ... and the raw -1 never would have.
+    assert not _native_adaptive_reset(60.0 + step_minutes, 60, -1)

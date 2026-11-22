@@ -45,7 +45,7 @@ projection records, the model grid's lat/lon and base state).  Porting it
 therefore serves every input source at once; there is no per-source branch
 anywhere in this module.
 
-ENGINE (2.5.0 data-path law): the data path is WOOF's Rust.  Decode,
+ENGINE (2.5.0 data-path law): the data path is WOOF-ArWen's Rust.  Decode,
 horizontal interpolation and vertical interpolation run in the packaged
 CPU bridge (``tools/grib1_bridge``, cdylib ``gpuwm_preprocess_cpu``) --
 ``gpuwm_wps_intermediate_read``, ``gpuwm_regular_cyclic_bilinear_f32``
@@ -1107,7 +1107,7 @@ def _not_found_sentence(staged: str, probe: str) -> str:
         "exists but does not begin with a complete WPS intermediate "
         "(IFV=5) field record is not counted as found, because an empty "
         "or truncated copy would refuse in the ingest lane instead of "
-        "here. WOOF does not "
+        "here. WOOF-ArWen does not "
         "redistribute this 225 MB dataset; it is WRF's own, downloaded with "
         "WRF, taken from a WRF run/ directory (" + WIF_REFERENCE_SOURCE
         + "), or staged with `woof fetch-tables --wif --from DIR`.")

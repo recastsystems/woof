@@ -27,7 +27,7 @@ on the gf-libm sweeps, the 254 powf answer-sheet rows, the pgamma fzu rows
 and the 123-word constant table.
 
 fzu IS PINNED from the WRF capture, and that changed at 2.7.0: the earlier
-gamma, which returned glibc's tgammaf words, was replaced, WOOF's gamma is
+gamma, which returned glibc's tgammaf words, was replaced, WOOF-ArWen's gamma is
 correctly rounded and glibc's is not, so the computed fzu is deliberately not WRF's
 (docs/gf_gamma_known_delta.md).  The pin is the same fzu_override the CPU
 reference has used since the port landed; it is what keeps every OTHER

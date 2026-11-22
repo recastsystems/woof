@@ -133,7 +133,7 @@ def _open_lbc(path: Path):
     boundary files.  The netCDF4-python reader this replaced had to stay on
     the forecast coordinator under the free-threaded serial-I/O guard, which
     is why the door's regional N-rank path refused at step 1 with
-    SerialExtensionIoError (rrfs-h-h3 skeptic finding, 2026-10-05).
+    SerialExtensionIoError (found in review, 2026-10-05).
     """
 
     from woof.netcdf_bridge import open_dataset
@@ -196,7 +196,7 @@ def _classic_float32_words(path: Path, dataset, schema: Mapping[str, Tuple[str, 
                            rows=None) -> Dict[str, np.ndarray]:
     """Record 0 of every schema variable a classic file stores as whole float32 words, read on host threads.
 
-    THE COST THIS REMOVES (mv3km 3 km limited area, 206,726 cells, V6000 RTX PRO 6000, 2026-10-28): each
+    THE COST THIS REMOVES (mv3km 3 km limited area, 206,726 cells, RTX PRO 6000, 2026-10-28): each
     1.17 GB boundary file was decoded one variable per ``rw_netcdf`` process, widened to float64 in a
     temporary file and narrowed back, about 9 s on one core per file.  The first step admits two files
     (18-21 s of its 25 s while the card waited) and every boundary interval after it one more.  A CDF-5

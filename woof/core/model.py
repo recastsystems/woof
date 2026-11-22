@@ -683,6 +683,8 @@ def restart_identity_payload(exp) -> dict:
             run.pop("scalar_adv_opt", None)
         from woof.lightning_contract import drop_default_lightning_selectors
         drop_default_lightning_selectors(run)
+        from woof.core.dyn_lightning import drop_default_dyn_lightning
+        drop_default_dyn_lightning(run)
         # fractional_seaice, absent-stays-absent: 0 is the 0.5 sea-ice
         # threshold every RUC fingerprint written before the field ran.
         if not run.get("fractional_seaice", 0):
@@ -730,6 +732,10 @@ def restart_identity_payload(exp) -> dict:
             run.pop("relax_timescale_s", None)
         if not run.get("relax_w"):
             run.pop("relax_w", None)
+        # The boundary hydrometeor envelope: 25 km is the constant every
+        # earlier fingerprint served with; another value is another run.
+        if run.get("lbc_hydrometeor_envelope_km", 25.0) == 25.0:
+            run.pop("lbc_hydrometeor_envelope_km", None)
         # New canopy controls bind selected nondefault physics while their
         # defaults preserve the older numerical-generation fingerprint.
         if run.get("urban_ucm_generation", "wrf_471") == "wrf_471":
@@ -871,6 +877,10 @@ def restart_identity_payload(exp) -> dict:
             run.pop("noahmp_snow_age", None)
         elif run.get("noahmp_snow_age") == "wrf_461":
             run.pop("noahmp_snow_age", None)
+        # Noah-MP snow compaction: option 1 is every earlier fingerprint.
+        if (run.get("sf_surface_physics", 0) != 4
+                or run.get("opt_snow_compact", 1) == 1):
+            run.pop("opt_snow_compact", None)
         # The solar generation: wrf_461 is what every earlier fingerprint
         # ran, so it is omitted; the WRF 4.8 default is bound by name.
         if run.get("solar_generation", "wrf_461") == "wrf_461":
@@ -907,6 +917,31 @@ def restart_identity_payload(exp) -> dict:
         if (run.get("bl_pbl_physics", 0) != 1
                 or run.get("ysu_version", "wrf_461") == "wrf_461"):
             run.pop("ysu_version", None)
+        # Shin-Hong (bl_pbl_physics = 11): a header without the selector ran
+        # the 4.6.1/4.7.1 kernel; the three 4.8.0 logicals at their Registry
+        # defaults are dropped, and none of them reach a non-Shin-Hong run.
+        if (run.get("bl_pbl_physics", 0) != 11
+                or run.get("shinhong_version", "wrf_461") == "wrf_461"):
+            run.pop("shinhong_version", None)
+        for _key, _default in (("shinhong_nonlocal_flux", True),
+                               ("shinhong_scu_mixing", False),
+                               ("shinhong_ke_dissipation", False)):
+            if (run.get("bl_pbl_physics", 0) != 11
+                    or run.get(_key, _default) == _default):
+                run.pop(_key, None)
+        # NTU/UDM source generations: absent off-scheme and at wrf_471.
+        from woof.mp_generations import drop_inactive as _drop_mp_generations
+        _drop_mp_generations(run)
+        if (run.get("cu_physics", 0) != 3
+                or run.get("cu_gf_version", "wrf_461") == "wrf_461"):
+            run.pop("cu_gf_version", None)
+        # Headers before this selector ran TEMPO v3.0.3 (no hail switch).
+        if (run.get("mp_physics", 0) != 900
+                or run.get("tempo_version", "v3.0.3") == "v3.0.3"):
+            run.pop("tempo_version", None)
+            run.pop("tempo_hailhyperaware", None)
+        if run.get("tempo_hailhyperaware", True) is True:
+            run.pop("tempo_hailhyperaware", None)
         if run.get("bl_mynn_gsd41_unsquared_qtke", False) is False:
             run.pop("bl_mynn_gsd41_unsquared_qtke", None)
         if run.get("bl_mynn_cloud_tendency_form", "wrf_461") == "wrf_461":
@@ -914,10 +949,20 @@ def restart_identity_payload(exp) -> dict:
         # WRF's cycling flag, omitted at its .false. default.
         if run.get("cycling", False) is False:
             run.pop("cycling", None)
+        # The upstream MYNN v6.1 fixes, omitted at their default (off).
+        if run.get("mynn_fixes_v61", False) is False:
+            run.pop("mynn_fixes_v61", None)
         # ... and the MYNN surface-layer generation, omitted at its wrf_461
         # default (what every earlier build ran) so no fingerprint moves.
         if run.get("mynn_sfclay_variant", "wrf_461") == "wrf_461":
             run.pop("mynn_sfclay_variant", None)
+        # ... and the MYNN-SFC (WRF v4.8.0) roughness keys at their
+        # Registry defaults.
+        for name, default in (("sf_mynn_sfcflux_land", 0),
+                              ("sf_mynn_sfcflux_water", 1),
+                              ("shalwater_z0", 0)):
+            if run.get(name, default) == default:
+                run.pop(name, None)
         # ... and the WRF v4.6.1 sixth-order filter form with no second
         # factor, and no mp_zero_out pass: omitted at those defaults so
         # every earlier fingerprint keeps its value; the fork form, its
@@ -999,6 +1044,13 @@ def restart_identity_payload(exp) -> dict:
         # fingerprint written before the two fields existed keeps its value.
         for name in ("topo_wind", "gwd_opt", "sst_skin"):
             if not run.get(name, 0):
+                run.pop(name, None)
+        # ... and the gwd_opt = 1 generation keys, read only under
+        # gwd_opt = 1 and inert under "wrf_471", which is the scheme every
+        # fingerprint written before they existed described.
+        if (int(run.get("gwd_opt", 0) or 0) != 1
+                or run.get("gwdo_version", "wrf_471") == "wrf_471"):
+            for name in ("gwdo_version", "gwd_dx_factor", "gwd_if_nonhyd"):
                 run.pop(name, None)
         # ... and no fog settling, WRF's default (grav_settling 0;
         # woof.core.fog_settling), on the same absent-stays-absent rule.

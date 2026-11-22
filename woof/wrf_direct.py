@@ -6,7 +6,7 @@ static cache, and a small geometry receipt.  A frozen WRF-v4.6.1 declaration
 contract supplies only NetCDF metadata; all gridded state is derived from the
 native inputs.
 
-Who writes the bytes: WOOF's Rust.  The DEFAULT engine is the classic
+Who writes the bytes: WOOF-ArWen's Rust.  The DEFAULT engine is the classic
 writer at ``tools/rustwx/crates/netcdf-writer``, driven through
 :mod:`woof.io.nc_writer_bridge` and the shared
 :class:`woof.io.classic_tape.ClassicTape` facade -- the same seam the
@@ -997,17 +997,11 @@ def write_domain_artifacts_manifest(
 
 
 def _interp_nodes(nodes: np.ndarray) -> np.ndarray:
-    output = []
-    for depth in _NOAH_LAYER_MIDPOINTS_M:
-        lower = int(np.searchsorted(_HRRR_SOIL_NODE_DEPTHS_M, depth) - 1)
-        weight = (
-            (depth - _HRRR_SOIL_NODE_DEPTHS_M[lower])
-            / (_HRRR_SOIL_NODE_DEPTHS_M[lower + 1]
-               - _HRRR_SOIL_NODE_DEPTHS_M[lower])
-        )
-        output.append(
-            nodes[lower] + weight * (nodes[lower + 1] - nodes[lower]))
-    return np.stack(output)
+    # One soil blend for every start route: real.exe's float32 order.
+    from woof.ingest.soil import _interp_nodes as wrf_soil_blend
+
+    return wrf_soil_blend(nodes, _HRRR_SOIL_NODE_DEPTHS_M,
+                          _NOAH_LAYER_MIDPOINTS_M)
 
 
 def _wrf_noah_landuse(raw_lu: np.ndarray, *, iswater: int = 17,
@@ -1974,7 +1968,8 @@ def _wrfinput_fields(cache: PreparedCache, static: Mapping[str, np.ndarray],
         "QVAPOR": cache.array("state/qv"),
         "QCLOUD": cache.array("state/qc"),
         "QRAIN": cache.array("state/qr"),
-        **({"QICE": cache.array("state/qi")} if mp_physics != 95 else {}),
+        **({"QICE": cache.array("state/qi")}
+           if mp_physics not in (1, 95) else {}),  # Kessler and Ferrier carry no qi
         "SHDMAX": surface["SHDMAX"],
         "SHDMIN": surface["SHDMIN"],
         "SHDAVG": surface["SHDAVG"],
@@ -2134,6 +2129,136 @@ def _wrfbdy_export_fields(cache: PreparedCache, inventory,
     return fields
 
 
+#: The wrfbdy global attribute that says what the export's hydrometeor
+#: boundary arrays hold (:func:`_wrfbdy_hydrometeor_plan`).
+WRFBDY_HYDROMETEOR_ATTRIBUTE = "GPUWM_LBC_HYDROMETEORS"
+
+
+def _wrfbdy_hydrometeor_plan(cache: PreparedCache, inventory,
+                             contract: Mapping[str, object],
+                             run_config: Mapping[str, object]) -> dict:
+    """What the export writes into the wrfbdy hydrometeor arrays.
+
+    THE DEFECT.  The export wrote every hydrometeor boundary array as zeros
+    whatever the prepared boundary carried, and its limitations said only
+    that they were zero; a reader of the stock-WRF file concluded the run
+    was fed no cloud or precipitation at its edge, while the forecast was
+    fed the tables :func:`woof.ingest.lateral_bc.hold_ring_tables` serves.
+
+    Now: every hydrometeor mass and paired number the prepared boundary
+    carries and the wrfbdy contract has a table for is written as the ring
+    SERVES it -- the same function, at the cache's own
+    ``lbc_hydrometeor_envelope_km`` and grid spacing (held: value at the
+    smaller frame eroded along the edge, zero tendency; at 0 the linear
+    table).  Stock WRF reads them only under ``&bdy_control have_bcs_moist
+    = .true.`` (masses) and ``have_bcs_scalar = .true.`` (numbers); at its
+    default ``.false.`` it ignores them (WRF run/README.namelist).  The
+    returned ``statement`` is written as the file's
+    :data:`WRFBDY_HYDROMETEOR_ATTRIBUTE` and into the manifest's
+    limitations, so the file says what it carries and what it does not.
+    """
+    from types import SimpleNamespace
+
+    from woof.boundary_fields import BOUNDARY_HYDROMETEOR_MASSES
+    from woof.ingest.lateral_bc import (
+        _HYDROMETEOR_RING_FIELDS, ring_cell_radius, ring_envelope_km)
+
+    by_state = {field.state_key: field.netcdf_name
+                for field in inventory.wrfinput_fields
+                if field.state_key is not None}
+    declared = {item["name"] for item in contract["variables"]}
+    carried = [name for name in sorted(_HYDROMETEOR_RING_FIELDS)
+               if f"lbc/0/{name}/west/value" in cache._arrays]
+    fields: dict[str, str] = {}
+    uncarried: list[str] = []
+    for logical in carried:
+        wrf_name = by_state.get(logical)
+        if wrf_name is None or f"{wrf_name}_BXS" not in declared:
+            uncarried.append(logical)
+            continue
+        fields[wrf_name] = logical
+    masses = [name for name in fields.values()
+              if name in BOUNDARY_HYDROMETEOR_MASSES]
+    if not masses:
+        statement = (
+            "hydrometeor LBC arrays are not carried (zero): the prepared "
+            "boundary holds water vapour only, so the forecast's ring gives "
+            "cloud, rain, ice, snow and graupel a flow-dependent boundary")
+        return {"fields": {}, "radius": 0, "envelope_km": None,
+                "statement": statement, "not_carried": uncarried}
+    cfg = SimpleNamespace(**dict(run_config))
+    km = ring_envelope_km(cfg)
+    radius = ring_cell_radius(cfg)
+    names = " ".join(sorted(fields))
+    rule = ("the linear table as prepared (lbc_hydrometeor_envelope_km = 0)"
+            if radius == 0 else
+            f"held as the forecast serves them (lbc_hydrometeor_envelope_km = "
+            f"{km:g}: the smaller of the two bracketing frames, the minimum "
+            f"over {radius} columns either way along the edge, zero tendency)")
+    # The key is preparation-inert (prepared_cache), so one cache serves
+    # forecasts at any envelope; this file is written once, from the
+    # cache's own value, and says so (item 10 review: it claimed to be what
+    # every forecast's ring is fed).
+    statement = (
+        f"hydrometeor LBC arrays {names} carry the tables a forecast at "
+        f"lbc_hydrometeor_envelope_km = {km:g} (the value this cache was "
+        f"prepared with) is fed, {rule}; a forecast run against this cache "
+        "at another value is fed differently, and its run record "
+        "(lateral_boundary_hydrometeors) states its own; stock WRF reads them "
+        "only with &bdy_control have_bcs_moist = .true. (and "
+        "have_bcs_scalar = .true. for numbers)")
+    if uncarried:
+        statement += (f"; carried by the forecast but with no wrfbdy table "
+                      f"here, so not written: {' '.join(uncarried)}")
+    return {"fields": fields, "radius": radius, "envelope_km": km,
+            "statement": statement, "not_carried": uncarried}
+
+
+def _held_wrfbdy_fields(cache: PreparedCache, interval_index: int,
+                        plan: Mapping[str, object],
+                        duration_seconds: float) -> dict[str, np.ndarray]:
+    """One record's hydrometeor arrays, as the forecast ring serves them."""
+    from woof.ingest.lateral_bc import hold_ring_tables
+
+    fields = plan["fields"]
+    if not fields:
+        return {}
+    radius = int(plan["radius"])
+    sides = tuple(_WRFBDY_SUFFIX_SIDES.values())
+    if radius and any(
+            f"lbc/{interval_index}/{logical}/{side}/quadratic" in cache._arrays
+            for logical in fields.values() for side in sides):
+        raise RuntimeError(
+            "a hydrometeor ring table carries a nonlinear time law; its two "
+            "frames cannot be read off value + tendency * duration")
+    tables = {(logical, side, item): np.array(
+                  cache.array(f"lbc/{interval_index}/{logical}/{side}/{item}"),
+                  dtype=np.float32)
+              for logical in fields.values() for side in sides
+              for item in ("value", "tendency")}
+    hold_ring_tables(tables, tuple(fields.values()), float(duration_seconds), radius)
+    result: dict[str, np.ndarray] = {}
+    for wrf_name, logical in fields.items():
+        for suffix, side in _WRFBDY_SUFFIX_SIDES.items():
+            result[f"{wrf_name}_B{suffix}"] = _side_to_wrf(
+                tables[(logical, side, "value")], logical, side)
+            result[f"{wrf_name}_BT{suffix}"] = _side_to_wrf(
+                tables[(logical, side, "tendency")], logical, side)
+    return result
+
+
+def _with_hydrometeor_attribute(contract: Mapping[str, object],
+                                statement: str) -> dict[str, object]:
+    """The wrfbdy contract with :data:`WRFBDY_HYDROMETEOR_ATTRIBUTE`."""
+    result = copy.deepcopy(dict(contract))
+    result["global_attributes"] = {
+        **result["global_attributes"], WRFBDY_HYDROMETEOR_ATTRIBUTE: statement}
+    result["global_attribute_types"] = {
+        **result["global_attribute_types"],
+        WRFBDY_HYDROMETEOR_ATTRIBUTE: {"kind": "str"}}
+    return result
+
+
 def _initial_boundary_head(wrfinput_fields: Mapping[str, np.ndarray],
                            export_fields: Mapping[str, str], *,
                            use_theta_m: int = 0
@@ -2257,10 +2382,13 @@ def _write_wrfbdy(path: Path, contract: Mapping[str, object],
                   engine: str | None = None, *,
                   initial_head: Mapping[str, np.ndarray] | None = None,
                   export_fields: Mapping[str, str] | None = None,
+                  hydrometeor_plan: Mapping[str, object] | None = None,
                   ) -> None:
     """``initial_head`` (:func:`_initial_boundary_head` of the wrfinput
     written beside this file) makes record 0 that file's own coupling;
-    every export passes it, with the ``export_fields`` it was built for."""
+    every export passes it, with the ``export_fields`` it was built for.
+    ``hydrometeor_plan`` (:func:`_wrfbdy_hydrometeor_plan`) adds the
+    hydrometeor arrays as the forecast ring serves them, every record."""
     dataset = _create_dataset(path, contract, dimensions, global_updates,
                               engine)
     try:
@@ -2272,6 +2400,10 @@ def _write_wrfbdy(path: Path, contract: Mapping[str, object],
                           cache, 0, initial_head=initial_head,
                           duration_seconds=boundary_interval_seconds,
                           export_fields=export_fields))
+            if hydrometeor_plan is not None:
+                fields.update(_held_wrfbdy_fields(
+                    cache, time_index, hydrometeor_plan,
+                    boundary_interval_seconds))
             stamp = _date_text(boundary_time)
             next_stamp = _date_text(
                 boundary_time
@@ -2366,7 +2498,7 @@ def _open_for_validation(path: Path, engine: str):
     """Open the written pair for its read-back, on the matching reader.
 
     The default engine's file is a classic container and is read by
-    :mod:`woof.netcdf_bridge` -- ``rw_netcdf``, WOOF's Rust -- in a
+    :mod:`woof.netcdf_bridge` -- ``rw_netcdf``, WOOF-ArWen's Rust -- in a
     metadata-only pass that decodes no value.
 
     The netCDF4 workaround engine's file is an HDF5 container, and there
@@ -2908,6 +3040,7 @@ def export_prepared_wrf_hierarchy(
             "forcing_offsets_seconds"
             if "forcing_offsets_seconds" in root_manifest
             else "forcing_hours")
+        root_lbc_hydrometeors = root_manifest["lbc_hydrometeors"]
         manifest = {
             "schema": HIERARCHY_EXPORT_SCHEMA,
             "status": "READY",
@@ -2941,9 +3074,11 @@ def export_prepared_wrf_hierarchy(
                 "WSM6/Thompson/Morrison/NSSL-2 "
                 "microphysics with YSU+classic-MM5+Noah only",
                 "T_INIT is bound to final dry theta and is diagnostic-only",
-                "hydrometeor/W/HT_SHAD/PC external root LBC arrays are zero",
+                "W/HT_SHAD/PC external root LBC arrays are zero",
+                "root " + root_lbc_hydrometeors["statement"],
                 "root forcing must be uniformly spaced and begin at f00",
             ],
+            "lbc_hydrometeors": root_lbc_hydrometeors,
         }
         (staging / "manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False)
@@ -3148,10 +3283,15 @@ def export_prepared_wrf(prepared_cache, static_cache, geometry_receipt,
             num_soil_layers=num_soil_layers, bdy_width=bdy_width)
         export_fields = _wrfbdy_export_fields(
             cache, physics_inventory, bdy_contract)
+        hydrometeor_plan = _wrfbdy_hydrometeor_plan(
+            cache, physics_inventory, bdy_contract, cfg)
+        bdy_contract = _with_hydrometeor_attribute(
+            bdy_contract, hydrometeor_plan["statement"])
         _write_wrfbdy(
             staging / "wrfbdy_d01", bdy_contract, bdy_dimensions,
             updates, cache, boundary_times, boundary_interval_seconds,
             engine, export_fields=export_fields,
+            hydrometeor_plan=hydrometeor_plan,
             initial_head=_initial_boundary_head(
                 wrfinput_fields, export_fields, use_theta_m=int(cfg.get("use_theta_m", 0))))
         files = {
@@ -3182,7 +3322,8 @@ def export_prepared_wrf(prepared_cache, static_cache, geometry_receipt,
                  "contract")
             ),
             "T_INIT is bound to final dry theta and is diagnostic-only",
-            "hydrometeor/W/HT_SHAD/PC external LBC arrays are zero",
+            "W/HT_SHAD/PC external LBC arrays are zero",
+            hydrometeor_plan["statement"],
             "forcing must be uniformly spaced and begin at f00",
         ]
         if not any(
@@ -3220,6 +3361,16 @@ def export_prepared_wrf(prepared_cache, static_cache, geometry_receipt,
             },
             "files": files,
             "limitations": limitations,
+            # What the wrfbdy hydrometeor arrays hold, as data for a
+            # consumer (the file's own GPUWM_LBC_HYDROMETEORS attribute says
+            # the same in words).
+            "lbc_hydrometeors": {
+                "wrfbdy_fields": sorted(hydrometeor_plan["fields"]),
+                "envelope_km": hydrometeor_plan["envelope_km"],
+                "radius_columns": hydrometeor_plan["radius"],
+                "not_carried": list(hydrometeor_plan["not_carried"]),
+                "statement": hydrometeor_plan["statement"],
+            },
         }
         if physics_selection is not None:
             manifest["physics"] = physics_selection

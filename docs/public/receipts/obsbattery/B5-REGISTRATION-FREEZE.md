@@ -142,7 +142,7 @@ Each with the receipt that measured it.
 The freeze is signed when every row here has a receipt. None of them is
 CPU-only; all need the card, a node, or an owner.
 
-1. **The shakedown scores themselves**: `S_refl` for the WOOF faithful arm on
+1. **The shakedown scores themselves**: `S_refl` for the WOOF-ArWen faithful arm on
    case-20240521, from the dual-run pair. Everything below hangs off this.
 2. **The twin band, and its non-degeneracy check.** The one twin envelope this
    project ever built came out identically zero. A zero band here fires the

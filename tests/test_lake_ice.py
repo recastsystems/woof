@@ -171,14 +171,16 @@ def test_a_failed_acquisition_falls_back_loudly(monkeypatch, capsys):
                         lambda valid_time: (None, ["https://x/y: HTTP 404"]))
     provider = lake_ice.resolve_lake_ice_provider(
         "observed", datetime(2025, 2, 20, 12), where="a test start")
-    assert provider.observation is None
-    assert "HTTP 404" in provider.fallback
-    err = capsys.readouterr().err
-    assert "warning: lake ice:" in err and "start as open water" in err
+    # Nothing is asked until a domain with lake cells asks (door item 7).
+    assert provider.observation is None and provider.fallback is None
     fields = {"SEAICE": np.zeros((1, 1))}
     out, skin, receipt = provider.freeze(
         fields, np.ones((1, 1)), lat=np.zeros((1, 1)), lon=np.zeros((1, 1)),
         lake_mask=np.ones((1, 1), bool), dx_m=3000.0, where="domain 1")
+    assert "HTTP 404" in provider.fallback
+    err = capsys.readouterr().err
+    assert "warning: lake ice:" in err and "start as open water" in err
+    assert "a test start" in err and "[ingest] gfs_lake_ice" in err
     assert out is fields and receipt["fallback"]
 
 

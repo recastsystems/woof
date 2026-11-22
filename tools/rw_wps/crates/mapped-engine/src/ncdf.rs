@@ -2136,6 +2136,11 @@ pub fn decode_netcdf(mapping: &Mapping, files: &[String]) -> Result<DecodedColle
         crate::digest::bytes_sha256(format!("{grid_fingerprint}:{}",
             mapping.doc.get("grid").unwrap().to_value()).as_bytes())
     } else { grid_fingerprint };
+    // The missing policy belongs to the mapping, not to the byte format:
+    // a NetCDF producer that writes soil over water (ERA5 does) declares
+    // landmask_water exactly as a GRIB one does, and gets the same mask,
+    // in the same order as the GRIB assembly (mask, then rotate).
+    let direct = crate::assemble::apply_landmask_water_missing(mapping, direct)?;
     let direct = if declaration.rotates_winds() {
         crate::assemble::rotate_grid_relative_winds(direct, &declaration, None)?
     } else { direct };
@@ -2256,6 +2261,41 @@ mod tests {
         mapping.doc = Node::parse(&serde_json::to_vec(&doc).unwrap()).unwrap();
         let error = decode_netcdf(&mapping, &[fixtures.join("projected-cf.nc").display().to_string()]).unwrap_err();
         assert!(error.message.contains("central meridian differs"));
+    }
+
+    /// A mapping's `landmask_water` policy is honoured on NetCDF input as it
+    /// is on GRIB (door item 9).  The fixture is ERA5-shaped: soil values are
+    /// published over water (271.46 K, -0.013 m3 m-3), with no missing mask,
+    /// and `lsm` is the land fraction.  Cells below 0.5 must come back NaN;
+    /// 0.5 itself is land; land cells keep their bytes.
+    #[test]
+    fn landmask_water_masks_soil_over_water_on_the_netcdf_route() {
+        let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let mapping = Mapping::load(fixtures.join("landmask-water.mapping.json").to_str().unwrap()).unwrap();
+        let decoded = decode_netcdf(&mapping,
+            &[fixtures.join("landmask-water.nc").display().to_string()]).unwrap();
+        let mut checked = 0;
+        for ((time, member, name), value) in &decoded.direct {
+            if name == "land_fraction" {
+                assert_eq!(value.missing_count, 0);
+                continue;
+            }
+            let land = &decoded.direct[&(*time, member.clone(), "land_fraction".to_owned())];
+            let land: Vec<f64> = land.values.iter().copied().collect();
+            assert_eq!(land.len(), 12);
+            let values: Vec<f64> = value.values.iter().copied().collect();
+            assert_eq!(values.len(), 24, "{name} is two soil planes of 3x4");
+            for (position, cell) in values.iter().enumerate() {
+                if land[position % 12] < 0.5 {
+                    assert!(cell.is_nan(), "{name} at {time} cell {position} is water and reads {cell}");
+                } else {
+                    assert!(cell.is_finite() && *cell > 0.0, "{name} at {time} cell {position} is land and reads {cell}");
+                }
+            }
+            assert_eq!(value.missing_count, 12, "{name} at {time}: six water cells on each of two layers");
+            checked += 1;
+        }
+        assert_eq!(checked, 4, "two soil fields at two valid times");
     }
 
     /// A parsed CF reference, for units that must be well-formed ones.

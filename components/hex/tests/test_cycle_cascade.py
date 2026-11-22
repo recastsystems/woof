@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 import re
@@ -487,11 +488,19 @@ def test_no_rows_leaves_the_registry_alone():
 # ---------------------------------------------------------------------------
 # the loop and its door
 # ---------------------------------------------------------------------------
+def _private_case_tokens() -> str:
+    """The project's own case names, read from the private pattern file (``case_tokens``; HEX_PRIVATE_PATTERNS names
+    it, and it is never packaged). THE BREAKAGE: this list spelled one, so every source package carried it."""
+    path = os.environ.get("HEX_PRIVATE_PATTERNS")
+    tokens = json.loads(Path(path).read_text(encoding="utf-8")).get("case_tokens", []) if path else []
+    return "".join("|" + re.escape(t) for t in tokens)
+
+
 FORBIDDEN_TOKENS = re.compile(
     r"("
     r"cyclone|hurricane|typhoon|tornado|derecho|convectiv|fire[_ -]?weather|"
     r"atmospheric[_ -]?river|winter[_ -]?storm|blizzard|"
-    r"conus|ohio|real74|hrrr"
+    r"conus|ohio|hrrr" + _private_case_tokens() +
     r")",
     re.IGNORECASE,
 )

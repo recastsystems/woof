@@ -231,7 +231,8 @@ def test_the_front_door_refuses_before_building_and_exits_two(
 ) -> None:
     _engine_or_skip()
     path = _spec_file(tmp_path, STEEP)
-    assert main(["mesh-plan", "--spec", str(path)]) == 2
+    # The ladder's gate (geometry 1); geometry 2, the default since 0.6.2, grows its own ramp.
+    assert main(["mesh-plan", "--spec", str(path), "--geometry", "1"]) == 2
     assert "refused before anything is built" in capsys.readouterr().err
 
 

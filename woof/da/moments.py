@@ -1,4 +1,4 @@
-"""EXPERIMENTAL (WOOF v1.2): what a multi-moment scheme's analysis must be.
+"""EXPERIMENTAL (WOOF-ArWen v1.2): what a multi-moment scheme's analysis must be.
 
 A two-moment microphysics scheme's state is PAIRS.  ``qr`` without ``nr``
 is not a rain field with a missing diagnostic; it is not a rain field at

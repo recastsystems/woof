@@ -1,7 +1,7 @@
 # PWP ocean on native atmospheric cells
 
 Select `woof hex forecast ... --ocean-mode pwp` on either physics route. With
-WOOF physics the columns run in its Noah-MP surface hook. With MPAS physics
+ArWen physics the columns run in its Noah-MP surface hook. With MPAS physics
 (the hex default) the same columns, kernel and parameter table take the OML1D
 slot's place and timing in the MPAS driver (once per `dt_pbl`, after the surface
 layer), forced by MPAS's own `gsw`, `glw`, `hfx`, `lh`, `ust`, `qfx` and

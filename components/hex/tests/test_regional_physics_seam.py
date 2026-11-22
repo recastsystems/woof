@@ -3,7 +3,7 @@
 the regional physics work, 2026-08-26.  Before this lane the limited-area
 runtime was a dry dycore with a single passive moisture variable: it produced
 wind, temperature, density and pressure and nothing renderable.  Joining it to
-the full WOOF stack was not wiring, but it was also not a second path -- the
+the full WOOF-ArWen stack was not wiring, but it was also not a second path -- the
 physics geometry constructors turned out to be cell-count agnostic, so the
 SAME constructors the global stack calls are called on a mesh view with one
 more cell in it.

@@ -132,9 +132,7 @@ fn fetch(o: &BTreeMap<String, String>, hs: &[DateTime<Utc>]) -> Result<String, B
             continue;
         }
         std::thread::sleep(std::time::Duration::from_millis(pause));
-        let mut response = agent
-            .get(&url)
-            .call()
+        let mut response = rw_http::get(&agent, &url)
             .map_err(|e| err(format!("GET {url}: {e}")))?;
         let modified = response
             .headers()

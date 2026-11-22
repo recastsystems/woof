@@ -1,7 +1,7 @@
 """Independent WRF v4.6.1 surface-forcing source transcription probes.
 
 This module intentionally imports no ``woof`` code.  It spells the pinned
-Fortran statements in NumPy float32 so tests compare the WOOF ports with the
+Fortran statements in NumPy float32 so tests compare the WOOF-ArWen ports with the
 authority, not with a second call into the implementation under test.
 
 Authority checkout:

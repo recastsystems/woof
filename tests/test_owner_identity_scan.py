@@ -9,16 +9,16 @@ tree skips this module.
 The owner's first name as a word is NOT read, in any spelling.  It was from
 2.9.0 cut r7 to 2.9.2 with a 264-phrase allowance for the past tense of
 "draw", and the 2.9.2 cut refused a source archive over nine renderer
-sentences.  Owner ruling 2026-10-17, verbatim: "for future remove the drew
-rule thats so dumb".  :func:`test_the_owners_first_name_is_a_word_not_a_hit`
+sentences.  It was retired on 2026-10-17.  :func:`test_the_owners_first_name_is_a_word_not_a_hit`
 keeps it retired; it replaces test_the_name_is_read_in_every_case,
 test_an_allowance_forgives_only_its_exact_phrase and
 test_the_allowance_names_a_reason_for_every_phrase_and_no_identity, and
 :func:`test_other_users_homes_are_not_the_owner` replaces
 test_words_and_other_users_are_not_the_owner.
 
-Every identity string below is assembled from fragments: this file ships in
-the sdist, where the packet gate reads it.
+Every identity string below comes from the never-shipped
+work/release_private_markers.py (``private_test_controls``): this file ships
+in the sdist, where the packet gate reads it, and must carry none of them.
 """
 
 from __future__ import annotations
@@ -36,14 +36,18 @@ REPO = Path(__file__).resolve().parents[1]
 DRIVERS = REPO / "tools" / "release" / "cut" / "drivers"
 SCANNER = DRIVERS / "owner_identity_scan.py"
 
+from tools.release_exclusions import private_test_controls
+
+_CONTROLS = private_test_controls()
+
 pytestmark = pytest.mark.skipif(
-    not SCANNER.is_file(),
+    not SCANNER.is_file() or not _CONTROLS,
     reason="the release cut tooling is not in this tree (published snapshot)")
 
-NAME = "Dr" + "ew"
-USER = "dr" + "ew"
+NAME = _CONTROLS.get("owner_name", "")
+USER = NAME.lower()
 CAPS = USER.upper()
-MAIL = "fahrenheit" + "agi" + "@example.invalid"
+MAIL = _CONTROLS.get("owner_mail", "")
 BS = chr(92)
 
 

@@ -4,7 +4,7 @@ MPAS module_ra_cam.F and module_ra_cam_support.F are authoritative; each
 numeric routine and statement cites its source. The host-glibc witness passes
 all defined arguments in 30 synthetic calls. Device initialization, driver
 conversion, real CLI selection and whole forecasts remain unqualified.
-No WRF radiation kernel is reused and WOOF defaults remain unchanged.
+No WRF radiation kernel is reused and WOOF-ArWen defaults remain unchanged.
 """
 from __future__ import annotations
 

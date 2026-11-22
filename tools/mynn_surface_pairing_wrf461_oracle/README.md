@@ -29,6 +29,6 @@ Pinned source SHA-256:
 - `module_sf_noahmpdrv.F`:
   `2201527e9febdd8d0f6cd56e4cc3ad22a180a656a6eafc93252ba4658369114b`
 
-The probe imports no WOOF modules. It is intentionally limited to driver
+The probe imports no WOOF-ArWen modules. It is intentionally limited to driver
 assignments and diagnostics; it does not duplicate either land-surface
 column solver.

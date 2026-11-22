@@ -189,8 +189,9 @@ def setup_main(args) -> int:
         if getattr(args, "from_dir", None) is not None and label != "geog":
             overrides["from_dir"] = args.from_dir
         if label == "tables":
-            # The mixed-layer ocean is on by default (48 h and longer), so
-            # its WOA18 climatology is staged with the tables.  Breakage it
+            # The mixed-layer ocean (sf_ocean_physics = 1 or 2; an omitted
+            # key is 0 since 3.0.2) starts from the WOA18 climatology, so it
+            # is staged with the tables.  Breakage it
             # prevents: NCEI THREDDS down for an hour (2026-10-22) killed
             # every forecast with water at its first step on boxes and
             # images that setup had called complete.

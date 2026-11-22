@@ -38,7 +38,7 @@ tendencies. Implementation: `woof/core/mpas_column_batch.py`.
     (ice, rain and cloud droplet number; `nc` is prognostic here) and
     the aerosol number tracers `nwfa/nifa` (water- and ice-friendly).
     No `nbca` (WRF zeroes black carbon without `wif_input_opt=2`,
-    which WOOF refuses by name) and no rime pair; both directions of
+    which WOOF-ArWen refuses by name) and no rime pair; both directions of
     slack refuse by name. Phase 2 refuses `rho_dry` (Thompson builds
     density from the EOS pressure in-kernel), receipts are the
     seven-slot WSM6 shape (`rainncv/snowncv/graupelncv/sr`; the

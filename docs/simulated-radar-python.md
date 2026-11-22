@@ -82,7 +82,7 @@ An object carrying a `native_columns` path uses
 `input_contracts()["native_columns"]` and the shared Rust canonical-atmosphere
 adapter. Its timestamp is authoritative. That contract has rectilinear
 geographic axes, top-to-surface levels, earth-relative mass winds and moist-air
-mass fractions. It cannot represent a WOOF projected staggered C-grid
+mass fractions. It cannot represent a WOOF-ArWen projected staggered C-grid
 verbatim. Such a state uses one temporary WRF history frame with radar
 coordinates, winds, thermodynamics, hydrometeor moments and reflectivity;
 the Rust history writer retains its stored precision and staggering. The

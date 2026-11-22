@@ -99,7 +99,7 @@ class FLGRadiation:
                 moist['qc'],moist['qi'],cf,fields=fields,cfg=cfg,columns=columns)
         tw = _t8w_columns(cp,temp,columns(atmosphere['z_interface']),
                           cp.asarray(state.fnm,dtype=cp.float32),cp.asarray(state.fnp,dtype=cp.float32))
-        julian,xtime,gmt = calendar_scalars(self.start_time,state.elapsed_seconds)
+        julian,xtime,gmt = calendar_scalars(self.start_time,state.elapsed_seconds,generation=getattr(cfg,'solar_generation','wrf_480'))
         self.radconst_kernel((1,),(1,),(np.float32(julian),_DEGRAD,_DPD,self.solar))
         launch = (((ncol+31)//32,),(32,))
         # RAD_FLG has its own solar angle; calc_coszen includes an EOT term

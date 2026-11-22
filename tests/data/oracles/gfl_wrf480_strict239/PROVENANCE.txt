@@ -1,0 +1,29 @@
+GFL (WRF v4.8.0 cu_physics=3) module-replay oracle, 72 columns.
+
+Input case: NCAR WRF v4.4 CONUS 12 km benchmark (public), 2019-11-26 12Z,
+  wrfinput_d01 sha256 e8b86acc703f64c91c02bd5afbcc3ffc514ead80ab6e5dde4af4a43e6344d953
+  wrfbdy_d01   sha256 159365527b4d52beb1ccfcdf4a7d44a58e383d6ad17f8f7687e758234a680c1d
+  424 x 299 x 49 mass points, dx 12 km, dt 72 s; namelist: cu_physics=3, ishallow=1,
+  mp_physics=6, ra_lw/sw 4, sf_sfclay 1, sf_surface 2, bl_pbl 1, radt 15.
+Capture: a CAPTURE COPY of the WRF v4.8.0 strict serial build (06d4240ae989, GNU Fortran
+  13.3.0, glibc 2.39, -O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize) whose
+  cu_grell_freitas_li is wrapped by tools/gfl_873b414/gfl_capture_wrapper.F90 (capture
+  wrf.exe sha256 5bc7015205dd51cde72fa610861c7086d11d8b085c62bd5edb7da64d09920abb).
+  Step 3 of a 216 s run (a development machine, 2026-11-09). The full tile is 126,776 columns.
+Referee objects (pristine build, phys/):
+  826fa604b5052ae71138e886e07e061a951302a69b3f18a9df8590c35504bcd3  ccpp_kind_types.o
+  25a6eb993f00a86a5a81881c0a3366ac120d2025006152a9892c4494b87f88ee  module_cu_gfl_common.o
+  7f0662afe498288e99a4d2b8ff2605a84064853ef07061cccd9c2f99c4f49079  module_cu_gfl_deep.o
+  88a83a09e9d3a9eeccf8597488dd4861cb8b2548c848f62e72eb3476688faad1  module_cu_gfl_sh.o
+  4db99a41795096821d3913ccbfe6c2071841710a66096dec295e6f3febdfac73  module_cu_gfl_wrf.o
+Integrity: gfl_replay_native.F90 linked against those objects reproduces the in-run POST
+  of steps 1, 2 and 3 word for word (55,018,800 words each, 0 different).
+Files:
+  pre.bin                    every argument word of the 72 columns as a 1-row tile
+                             (make_oracle.py; vertical bounds kept, kms=1 kme=50 kts=1 kte=49)
+  post_native_glibc239.bin   the referee's POST for those columns (glibc 2.39 tgammaf)
+  post_native_crgamma.bin    the same objects linked with tgammaf_cr.c (libquadmath tgammaq
+                             rounded once to binary32): the gamma witness
+  columns.json               the (i, j) of each column, 48 raining, 24 gamma-sensitive
+The 1-row tile replayed natively reproduces both POST files word for word (29,376 words),
+so the columns are independent in the native code as well.

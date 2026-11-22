@@ -192,7 +192,7 @@ def _convert_proposal(document: dict, archive_report: dict | None = None, *, ver
                     elif value == 2:
                         mapped_counts["fixed_diff_opt_2"] += 1
                         transforms.append({"tier": tier, "grid_id": index + 1, "field": "diff_opt", "value": 2,
-                                           "binding": "The existing woof.namelist_import contract maps diff_opt=2 to WOOF's native mixing form; km_opt remains explicit."})
+                                           "binding": "The existing woof.namelist_import contract maps diff_opt=2 to WOOF-ArWen's native mixing form; km_opt remains explicit."})
                     else:
                         chosen["diff_opt"] = value
                         transforms.append({"tier": tier, "grid_id": index + 1,

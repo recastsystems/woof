@@ -76,7 +76,7 @@ def for_mesh(mesh, *, output_root, grid_path, start_time, seconds, initial_secon
 
 
 def _arwen_columns(cp, mesh, n, layout, nlocal):
-    """A WOOF owner pack's (local owned, owned global, all local global) cell lists; the regional garbage
+    """A WOOF-ArWen owner pack's (local owned, owned global, all local global) cell lists; the regional garbage
     column repeats its donor."""
     if layout is None:
         ids = cp.arange(n, dtype=cp.int32)
@@ -89,7 +89,7 @@ def _arwen_columns(cp, mesh, n, layout, nlocal):
         donor = int(mesh.attrs.get("regional_garbage_donor_cell", n-1))
         ids = cp.concatenate((ids, cp.asarray([donor], dtype=cp.int32)))
     if nlocal != ids.size:
-        raise ValueError("wave owner mapping differs from WOOF column extent")
+        raise ValueError("wave owner mapping differs from WOOF-ArWen column extent")
     return local, owners, ids
 
 
@@ -383,7 +383,7 @@ def peer_roughness(binding):
 
 
 def _arwen_forcing(backend):
-    """The WOOF route's wave forcing fields, local column order."""
+    """The WOOF-ArWen route's wave forcing fields, local column order."""
     cp = __import__("cupy")
     fields = backend._seam._driver.fields
     # The backend keeps the step's lowest-level moist air density for this (its preparation's dry density times
@@ -904,7 +904,7 @@ class ArwenFeedback:
 
     @property
     def checkpoint_target(self):
-        """The WOOF coupler this adapter wraps, for woof's restart writer (None: nothing to carry there).
+        """The WOOF-ArWen coupler this adapter wraps, for woof's restart writer (None: nothing to carry there).
 
         The spectrum is checkpointed by the hex wave service (snapshot/restore, gpuwm-hex.waves/v1).
         """

@@ -223,9 +223,8 @@ def capture_spectra(model, cells):
     """Gather requested device cells. No spectral transform executes on the CPU."""
     arrays = [model.frequency, model.df]
     raw_rate = model.cp.zeros_like(model.spectrum)
-    model._launch("dia_unlimited", model.nc * model.ns, (model.spectrum, raw_rate,
-        model.frequency, model.df, model.depth, model.moments, model.i(model.nc),
-        model.i(model.nf), model.i(model.nd), model.f(math.log(model.spectral.ratio))))
+    model.dia.launch(model.spectrum, raw_rate, None, model.frequency, model.df, model.depth,
+                     model.moments, model.nc)
     for point in cells:
         i, j = point["i"], point["j"]
         c = j * model.nx + i

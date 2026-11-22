@@ -27,24 +27,28 @@ import sys
 def pool_lease_budget_bytes(device: int = 0) -> int | None:
     """This process's per-card reservation, never another owner's.
 
-    The helper exports GPU_MUTEX_CARDS (physical indices in CUDA order),
-    and records the budget in OWNER-N.json. Match a live ancestor's PID
+    The host card queue exports its granted cards (physical indices in CUDA
+    order; :mod:`woof.core.card_queue`) and records the budget in its
+    ledger folder's OWNER-N.json. Match a live ancestor's PID
     AND birth tick, just as the helper does, to avoid stale/reused PIDs.
     Exclusive leases have no declared budget and keep measured sizing.
     """
     import os
     from pathlib import Path
 
-    cards = os.environ.get("GPU_MUTEX_CARDS", "").split(",")
+    from woof.core.card_queue import granted_cards, queue_value
+
+    cards = granted_cards()
     if device < 0 or device >= len(cards) or not cards[device].isdigit():
         return None
-    ledger_root = os.environ.get("GPU_MUTEX_DIR")
+    ledger_root = queue_value("DIR")
     if not ledger_root:
         return None
     try:
         ledger = json.loads((Path(ledger_root)
                              / f"OWNER-{cards[device]}.json").read_text())
-        if ledger.get("schema") != "gpu-mutex.owner.v1":
+        schema = ledger.get("schema")
+        if not (isinstance(schema, str) and schema.endswith(".owner.v1")):
             return None
         pid = os.getpid()
         while pid > 1:

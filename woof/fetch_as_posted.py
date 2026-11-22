@@ -513,8 +513,13 @@ class PostingLoop:
         what = (f"f{int(lead):03d}" if need is None
                 else f"{need.role} {need.source} f{int(need.lead):03d}"
                 if need.lead is not None else f"{need.role} objects")
+        # A time not today carries its date, and one still ahead how long
+        # that is (readiness.MAX_START_WAIT names the breakage).
+        now = self.now()
+        said = ("?" if expected is None
+                else readiness.when_words(expected, now=now))
         self.progress(f"{self.label}: {what} not posted yet; the schedule "
-                      f"says from about {_clock(expected)}"
+                      f"says from about {said}"
                       + (f"; waiting until {_clock(late)}" if late else ""))
         # A start need on the window's own source and lead is that lead's
         # own wait, so its row says so too (:meth:`_own`).

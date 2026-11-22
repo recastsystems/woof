@@ -284,7 +284,7 @@ def test_the_staged_release_tree_carries_no_machine_paths():
 
     Applies RELEASE-EXCLUDE to the release file set exactly as the
     builder does, then reads every in-scope file.  A new machine path
-    anywhere in WOOF fails here, days before anyone runs the release
+    anywhere in WOOF-ArWen fails here, days before anyone runs the release
     build -- and now in an exported tree too, where this used to skip.
     """
 
@@ -453,10 +453,15 @@ def test_nothing_shipped_imports_the_excluded_campaign_harness():
 # 2.8.1's fetch route table named the lab host that watched the posting
 # times in 20 measured rows: a private machine's name published in a
 # wheel.  2.9.0's wheel carried lab host and internal folder names in 61
-# members, nearly all code, because code was out of scope.  Built from
-# fragments, like the paths above.
-HOST = "no" + "de-4"
-WEATHER_HOST = "weather-" + "no" + "de-1"
+# members, nearly all code, because code was out of scope.  The lab hosts'
+# names are private, so the controls read them from the never-shipped
+# work/release_private_markers.py; every test using them needs the builder,
+# which is in work/ too, so a published snapshot skips them.
+from tools.release_exclusions import private_test_controls
+
+_CONTROLS = private_test_controls()
+HOST = _CONTROLS.get("host", "")
+WEATHER_HOST = _CONTROLS.get("site_host", "")
 LAN = "192." + "168.68.50"
 FOLDER = "Down" + "loads/"
 
@@ -484,7 +489,8 @@ def test_private_machine_names_are_refused_in_shipped_files(tmp_path):
         "tools/release/cut/drivers/probe.py": "# on " + HOST + "\n",
         "docs/public/receipts/run.json": '{"host": "' + HOST + '"}\n',
         "tools/battery/list.txt": HOST + "\n",
-        "woof/data/governor.json": '{"note": "the node-wide governor, node_4"}\n',
+        "woof/data/governor.json": ('{"note": "the node-wide governor, '
+                                     + _CONTROLS.get("host_identifier", "") + '"}\n'),
     }
     for rel, text in files.items():
         target = tmp_path / rel
@@ -608,19 +614,18 @@ def test_the_host_rule_allowance_is_live_and_names_one_shipped_config():
             f"config: {shipped.get(digest)}")
 
 
-#: The owner's identity, assembled so this file carries none of it.
-OWNER_NAME = "Dr" + "ew"
-OWNER_MAIL = "fahrenheit" + "agi" + "@example.invalid"
+#: The owner's identity, from the private controls so this file carries none of it.
+OWNER_NAME = _CONTROLS.get("owner_name", "")
+OWNER_MAIL = _CONTROLS.get("owner_mail", "")
 
 
 @requires_builder
 def test_the_owners_mail_is_refused_and_the_first_name_is_a_word(tmp_path):
-    """Code is read too: a comment is published text (owner ruling 2026-09-10).
+    """Code is read too: a comment is published text (2026-09-10).
 
     The e-mail is refused wherever it sits.  The owner's first name is not
-    read in any spelling (owner ruling 2026-10-17: "for future remove the
-    drew rule thats so dumb"); it is an English verb, and the scan that read
-    it blocked cuts over renderer sentences.  Replaces
+    read in any spelling (2026-10-17): it is an English verb, and the
+    scan that read it blocked cuts over renderer sentences.  Replaces
     test_the_owners_name_and_mail_are_refused_in_every_shipped_file.
     """
 
@@ -644,19 +649,11 @@ def test_the_owners_mail_is_refused_and_the_first_name_is_a_word(tmp_path):
         ("docs/public/receipts/run.json", "owner's e-mail")]
 
 
-# The private DA system's names, assembled so this file carries none of them
-# (tools/release_exclusions.py, owner rulings 2026-10-14 and 2026-10-16).
-_J = "JE" + "DI"
-_DA_SAMPLES = {
-    # The 2.9.2 compose's GLM door described its table by the private DA
-    # repository's converter; a comment is published text.
-    "woof/obs/cli.py": "# the cycle's GLM converter in woof" + "-da\n",
-    "tools/rustwx/crates/rw-goes/src/glm.rs": "//! MPAS-" + _J + " observations of the cycle\n",
-    "tools/rustwx/crates/rw-radar-feeds/Cargo.toml": "# (`rw_odim`, `hex-" + "radar-superob --odim`) consume.\n",
-    "tools/box/run.sh": "source ~/lane" + "kit/env.sh\n",
-    "docs/da-cycle.md": "the CUDA Column " + "LETKF solves each window\n",
-    "configs/rows/case.json": '{"schema": "hex.enkf' + '-case.v1"}\n',
-}
+# The private DA system's names come from the private controls so this file
+# carries none of them (tools/release_exclusions.py, rulings 2026-10-14 and
+# 2026-10-16).
+_J = _CONTROLS.get("da_framework", "")
+_DA_SAMPLES = dict(_CONTROLS.get("da_samples", {}))
 _DA_KINDS = {
     "woof/obs/cli.py": "private DA repository",
     "tools/rustwx/crates/rw-goes/src/glm.rs": "JCSDA DA framework (the private DA system)",
@@ -713,7 +710,7 @@ def test_the_public_local_da_and_upstream_names_are_not_the_private_system(tmp_p
         target.write_text(text, encoding="utf-8")
     assert snap.machine_path_hits(str(tmp_path)) == []
     # Masking an upstream name leaves the rest of the line read.
-    line = "rrfs-mpas-" + _J.lower() + " and woof" + "da"
+    line = "rrfs-mpas-" + _J.lower() + " and " + _CONTROLS.get("da_repository", "")
     assert snap.da_violations("tools/x.py", line.encode())[0][1] == "private DA repository"
 
 

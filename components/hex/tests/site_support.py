@@ -18,7 +18,7 @@ MPAS-A v8.4.2 source
 Proof receipts a test writes
     the named environment variable, else a temporary folder.
 The pinned RRFS fork and its published decks
-    the test's own variable, else ``ref/rrfs/`` under ``MPAS_LANES`` on a
+    the test's own variable, else ``ref/rrfs/`` under ``HEX_REFERENCE_ROOT`` on a
     maintainers' pool host, else ``vendor/`` in this checkout (the order
     tools/check_mpas_citations.py resolves the fork in).  Recipe: ``RRFS_SOURCE_RECIPE``.
 """
@@ -85,15 +85,15 @@ RRFS_SOURCE_RECIPE = (
 def rrfs_reference(relative: str, *preferred: str, vendor: str | None = None) -> Path:
     """A pinned RRFS reference a maintainers' pool keeps under ``ref/rrfs/<relative>``.
 
-    The first of ``preferred`` that is set names it; else a host that exports ``MPAS_LANES``
-    keeps it under ``$MPAS_LANES/ref/rrfs/``; else it is ``vendor/<vendor or relative>`` in this
+    The first of ``preferred`` that is set names it; else a host that exports ``HEX_REFERENCE_ROOT``
+    keeps it under ``$HEX_REFERENCE_ROOT/ref/rrfs/``; else it is ``vendor/<vendor or relative>`` in this
     checkout.  No skip: the caller keeps its own behaviour for an absent reference.
     """
     for key in preferred:
         value = os.environ.get(key)
         if value:
             return Path(value)
-    lanes = os.environ.get("MPAS_LANES")
+    lanes = os.environ.get("HEX_REFERENCE_ROOT")
     if lanes:
         return Path(lanes) / "ref" / "rrfs" / relative
     return Path(__file__).resolve().parents[1] / "vendor" / (vendor or relative)
@@ -103,7 +103,7 @@ def rrfs_source(*preferred: str) -> Path:
     """The pinned RRFS fork checkout; skips by name, with the fetch recipe, when it is absent."""
     root = rrfs_reference("MPAS-Model-rrfs", *preferred)
     if not root.is_dir():
-        names = ", ".join((*preferred, "MPAS_LANES"))
+        names = ", ".join((*preferred, "HEX_REFERENCE_ROOT"))
         pytest.skip(f"needs the pinned RRFS fork source ({names}; {root} is absent): {RRFS_SOURCE_RECIPE}")
     return root
 
@@ -129,6 +129,67 @@ def tools_or_skip(*programs: str, what: str) -> None:
     if missing:
         pytest.skip(f"{what} needs {', '.join(missing)} on PATH; install the build toolchain "
                     f"({', '.join(programs)}) to run it")
+
+
+def setuptools_or_skip(what: str):
+    """``setuptools``, or a skip that names the test dependency.
+
+    THE BREAKAGE THIS PREVENTS (0.6.0 candidate, every whole-directory run since dist47): since
+    Python 3.12 a fresh venv carries no setuptools, and 22 packaging tests that load ``setup.py`` or
+    drive the sdist template engine ended in ModuleNotFoundError (20 errors at fixture setup, 2
+    failures) instead of saying what they need.  ``setuptools`` is declared in the ``dev`` extra;
+    where it is installed these tests run exactly as before.
+    """
+    try:
+        import setuptools
+    except ModuleNotFoundError:
+        pytest.skip(f"{what} needs setuptools, which this interpreter does not have (a fresh venv "
+                    'since Python 3.12 carries none); install the test dependency: pip install '
+                    '"woof hex[dev]" (or setuptools>=77)')
+    return setuptools
+
+
+def contract_hostprep_or_skip() -> Path:
+    """The ``hex_contract_hostprep`` executable, or a skip that says how to get it.
+
+    THE BREAKAGE THIS PREVENTS (same runs): the wheel carries the helper in ``woof/hex/libexec``; a
+    source checkout does not until it is built, and 14 bitwise tests failed there with the door's
+    own refusal.  The refusal is right for a user; a test tier says what is missing and moves on.
+    """
+    from woof.hex.drivers import contract_hostprep
+    from woof.hex.errors import MpasPortError
+
+    try:
+        return Path(contract_hostprep.engine())
+    except MpasPortError:
+        pytest.skip("hex_contract_hostprep is not built in this checkout (the wheel carries it in "
+                    "woof/hex/libexec): cargo build --release --locked --manifest-path "
+                    "rust/host-prep/Cargo.toml, or name one with $WOOF_HEX_CONTRACT_HOSTPREP")
+
+
+def current_bridge_or_skip(spec, mark: bytes, speaks: str, what: str) -> Path:
+    """The ``spec`` bridge this machine resolves, when it is new enough for this release.
+
+    A bridge found on a machine's own ladder (``~/.woof/bridges``, an older engine wheel, PATH) can
+    predate what this release needs; the release's wheel carries current ones in ``woof/hex/libexec``.
+    THE BREAKAGE THIS PREVENTS (same runs): 11 tests failed on a host whose staged ``rw_mpas_stream``
+    and ``rw_mpas_geometry`` were a month older than the pinned ones.  An old bridge on the machine
+    is a skip that names it.  An old bridge in THIS distribution's ``woof/hex/libexec``, or one the
+    environment names on purpose, is a failure: that is the thing a user would run.
+    """
+    from woof.hex import engines
+
+    path = engine_bridge_or_skip(spec, what)
+    if mark in Path(path).read_bytes():
+        return path
+    named = [name for name in (*spec.env_names, spec.gpuwm_env) if name and os.environ.get(name)]
+    if named or Path(path).resolve() == engines.bundled_candidate(spec).resolve():
+        pytest.fail(f"{path} does not speak {speaks}, and it is the {spec.name} "
+                    f"{'$' + named[0] + ' names' if named else 'this distribution carries'}")
+    names = " or ".join("$" + name for name in (*spec.env_names, spec.gpuwm_env) if name)
+    pytest.skip(f"{what} needs a {spec.name} that speaks {speaks}; the one this machine resolves "
+                f"({path}) is older.  The woof hex wheel carries a current one in woof/hex/libexec; "
+                f"in a checkout run tools/build_engine_bridges.sh, or name one with {names}")
 
 
 def engine_bridge_or_skip(spec, what: str) -> Path:

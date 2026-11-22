@@ -12,13 +12,13 @@ calibration (section 8.5).
 
 Receipt: [receipt:ARWEN-WRF-16GB-REFERENCE-20260803.md]. Method: WRF memory is
 kernel VmHWM per rank summed across ranks; WRF timing from its own per-step rsl
-lines with the cold first step split from the warmed mean; WOOF memory is the
+lines with the cold first step split from the warmed mean; WOOF-ArWen memory is the
 reported pool peak plus nvidia-smi sampling. Same case class both sides: 3 km
 HRRR init, Thompson/YSU/MM5/Noah/Dudhia SW, dt 15 s. The WRF radiation bracket
 moves timing only 5.5%; WRF timing stability 0.62% across three repeats; WRF
 24-to-48-rank scaling 98.5% efficient.
 
-Operational throughput, the WOOF side of the receipt: an RTX 5090 32 GB runs a
+Operational throughput, the WOOF-ArWen side of the receipt: an RTX 5090 32 GB runs a
 551x551x50 domain (14.82 M mass cells) at 0.871 warmed seconds per simulated
 minute in 12.35 GiB of VRAM; an RTX 5070 Ti 16 GB runs 568x454x49 (12.6 M
 cells) at 1.27 s per simulated minute in 9.94 GiB. Both runs are dual-run
@@ -42,7 +42,7 @@ marks it as an estimate and the marker travels with it). The asymmetry: CPU
 capacity shrinks as cores are added (+9/+25/+61/+130% total footprint at
 2/4/8/16 ranks); GPU capacity does not.
 
-Memory-model fits for sizing: WOOF VRAM 0.74-0.84 KiB/cell plus a 2.9-3.4 GiB
+Memory-model fits for sizing: WOOF-ArWen VRAM 0.74-0.84 KiB/cell plus a 2.9-3.4 GiB
 intercept; WRF wrf.exe serial 0.88 KiB/cell + 0.26 GiB (Morrison; Thompson
 +9.6%, WSM6 -5.0%); WRF 24 ranks 0.98 KiB/cell + 12.7 GiB summed (convex,
 interpolate only); WRF real.exe 0.80 KiB/cell + 0.14 GiB, and it allocates all

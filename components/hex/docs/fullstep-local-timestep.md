@@ -73,7 +73,7 @@ python -m pytest tests/test_fullstep_lts_shadow.py tests/test_fullstep_lts_pilot
 HEX_LTS_GPU_TESTS=1 python -m pytest tests/test_fullstep_lts_cuda_monitor.py
 ```
 
-The GPU commands require the authorized GPU mutex launcher. The pilot carries
+The GPU commands need one CUDA card to themselves (name it with `CUDA_VISIBLE_DEVICES`). The pilot carries
 six native scalar slots with physics and explicit mixing off. It writes compact
 array hashes and receipts instead of raw histories. A successful pilot does not
 replace the six-hour reference-physics shadow, interface conservation/order
@@ -472,9 +472,9 @@ own layout, and advances its own boundary clock by its own class step.
   (`cuda_fullstep_lts_scalars.tap_acoustic_momentum`). Before 0.4.5 the tap
   sat only on the global kernel, never fired on a region, and the first class
   step of any region with an interior interface stopped with "class 0 imposed
-  the child's interface flux 0 times". Measured 2026-10-24 (box L, one RTX
+  the child's interface flux 0 times". Measured 2026-10-24 (one RTX
   PRO 6000): a 1400 km cap cut from a 120-15 km globe (7,173 cells; 4,082 at
-  rate 1, 3,091 at rate 2), GFS 2024-05-06 18Z, WOOF physics, 1 h. Stock
+  rate 1, 3,091 at rate 2), GFS 2024-05-06 18Z, ArWen physics, 1 h. Stock
   0.4.4 stopped at the first class step; fixed, it runs, the interior budget
   closes to 8.3e-11 (the parent globe's own LTS run: dry mass drift 2.4e-10),
   and against the uniform 90 s step at +1 h: surface pressure RMS 3.5 Pa,
@@ -651,19 +651,19 @@ independent of the history cadence.
 
 ## On the MPAS suite route (`--physics-suite`)
 
-Full-step LTS runs on the MPAS-physics route as on the WOOF route (`woof.hex.mpasphys.lts_v842`):
+Full-step LTS runs on the MPAS-physics route as on the WOOF-ArWen route (`woof.hex.mpasphys.lts_v842`):
 
 * `--fullstep-local-timestep --fullstep-lts-mode active` steps every rate class at its own whole step with the
   MPAS suite as each class's physics. The coordinator is the same `FullStepLtsActive` (mailboxes, matched
   interface flux, reflux). Each class runs the ported route on its own local mesh, and the physics runs on every
   local column. Class 0 writes the global history and diag frames from every class's owned words.
-* `--fullstep-local-timestep` alone is the shadow: the same observer as on the WOOF route, on the fixed step.
+* `--fullstep-local-timestep` alone is the shadow: the same observer as on the WOOF-ArWen route, on the fixed step.
 
 Measured on a 54,422-cell 3-to-192 km variable mesh (one card, 1 h, GFS 2026-10-24 00Z, four classes at
-rates 1/2/4/8): the MPAS route's LTS-minus-fixed difference matches the WOOF route's band by band (surface
+rates 1/2/4/8): the MPAS route's LTS-minus-fixed difference matches the WOOF-ArWen route's band by band (surface
 pressure 21.2 Pa RMS on cells of 40 km and coarser on both, theta 0.198 K RMS in the 20-40 km band on both),
 and the maps show no seam at a class boundary. On a mesh this small LTS does not pay on either route: each class
-step costs a fixed host time. The MPAS route takes about 1.9 times the WOOF route's time with LTS on and with
+step costs a fixed host time. The MPAS route takes about 1.9 times the WOOF-ArWen route's time with LTS on and with
 it off.
 
 The door chooses between the fixed step and LTS at each top class, on both physics routes
@@ -683,7 +683,7 @@ tree, seconds per forecast hour, warm hours 2-3; each LTS arm ran at the same ti
 | Route | Fixed, 18 s | LTS top class 8, 15 s | LTS top class 4, 18 s | Row: per class step + per cell-step |
 |---|---:|---:|---:|---|
 | MPAS suite | 77.2 / 75.2 | 75.4 | 64.0 (1.18x) | 0.086 s + 2.0 us |
-| WOOF | 80.2 | 83.0 | 73.2 (1.10x) | 0.106 s + 2.0 us |
+| WOOF-ArWen | 80.2 | 83.0 | 73.2 (1.10x) | 0.106 s + 2.0 us |
 
 Why the top class matters on that mesh: radiation every 1800 s, and 8 x 18 s = 144 s does not divide it, so top
 class 8 needs a 15 s step (20 % more base steps than the fixed step) and 15 class steps per 120 s; top class 4 keeps

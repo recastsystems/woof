@@ -2,7 +2,7 @@
 
 `sst_update=1`, `sst_skin=1` and `tmn_update=1` are independent WRF selectors.
 All default to zero. The namelist importer preserves them. Native WRF enforces
-`lagday=150` when TMN updating is enabled, and WOOF does the same.
+`lagday=150` when TMN updating is enabled, and WOOF-ArWen does the same.
 
 A stock `namelist.input` directory with `wrfinput_dNN`, `wrfbdy_d01` and
 `wrflowinp_dNN` runs through `woof go DIRECTORY`. Auxiliary stream 4 uses
@@ -61,7 +61,7 @@ Skin SST evolves SSTSK and DTW with WRF's incoming and outgoing surface
 fluxes, then writes TSK over water. Bulk SST remains separate. Fast CUDA
 math is the default; `GPUWM_WRF_EXACT=1` selects strict replay math. WRF
 initializes allocated REAL state to zero in tools/gen_allocs.c. SSTSK has
-no later cold-start initializer, so WOOF preserves the native zero seed.
+no later cold-start initializer, so WOOF-ArWen preserves the native zero seed.
 A supplied SSTSK or checkpoint state takes precedence.
 
 TMN updating keeps TLAG, TYR, TYRA, TDLY, NDAY and NYEAR on the device.

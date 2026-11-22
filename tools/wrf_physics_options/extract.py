@@ -7,7 +7,7 @@ value with a package and no README label is labelled with its package name.
 README-only values are included too: WRF rewrites the legacy NSSL selectors
 17/19/21/22 before package selection, and radiation-off has no package.
 
-Usage: python tools/wrf_physics_options/extract.py WRF_SOURCE_DIR OUT_JSON
+Usage: python tools/wrf_physics_options/extract.py WRF_SOURCE_DIR OUT_JSON [--tag v4.8.0]
 
 The published table (docs/public/WRF-OPTIONS.md) is generated from this JSON
 by tools/build_wrf_option_coverage.py, which asks the importer about every
@@ -64,7 +64,7 @@ _PACKAGE = re.compile(r"^package\s+(\S+)\s+([a-z_0-9]+)==(-?\d+)\b")
 
 def _packages(root: Path) -> dict[str, dict[int, str]]:
     out: dict[str, dict[int, str]] = {key: {} for key in SCHEME_SELECTORS}
-    for path in sorted((root / "Registry").iterdir()):
+    for path in sorted((root / "Registry").iterdir(), key=lambda p: p.name):
         if not path.is_file():
             continue
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -119,8 +119,19 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+#: The release each packaged table was read from; ``--tag`` picks one.
+RELEASES = {"v4.7.1": "f52c197ed39d12e087d02c50f412d90d418f6186",
+            "v4.8.0": "06d4240ae989cc3e50af412bb472df3d9048783c"}
+
+
 def main(argv: list[str]) -> int:
-    root, out = Path(argv[1]), Path(argv[2])
+    args = list(argv)
+    tag = "v4.7.1"
+    if "--tag" in args:
+        at = args.index("--tag")
+        tag = args[at + 1]
+        del args[at:at + 2]
+    root, out = Path(args[1]), Path(args[2])
     readme_path = root / "run" / "README.namelist"
     readme = readme_path.read_text(encoding="utf-8", errors="replace")
     packages = _packages(root)
@@ -128,15 +139,15 @@ def main(argv: list[str]) -> int:
     switches = {key: [{"value": value, "label": label} for value, label in rows]
                 for key, rows in SWITCHES.items()}
     sources = [{"file": str(p.relative_to(root)).replace("\\", "/"), "sha256": _sha(p)}
-               for p in [readme_path, *sorted((root / "Registry").iterdir())]
+               for p in [readme_path, *sorted((root / "Registry").iterdir(), key=lambda p: p.name)]
                if p.is_file()]
     document = {"schema": "gpuwm-wrf-physics-options-v1",
-                "wrf": {"tag": "v4.7.1",
-                        "commit": "f52c197ed39d12e087d02c50f412d90d418f6186",
+                "wrf": {"tag": tag, "commit": RELEASES[tag],
                         "url": "https://github.com/wrf-model/WRF"},
                 "read_from": sources,
                 "selectors": selectors, "switches": switches}
-    out.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8",
+                   newline="\n")
     return 0
 
 

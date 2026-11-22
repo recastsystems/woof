@@ -2,7 +2,8 @@
 
 MPAS-Model-rrfs 1d6e370e driver_sfclayer.F:606-615,899-972:
 strict partial-ice mask, ice-side land flag, and deferred FLHC/FLQC blend.
-The MMM a4baf7f scheme is identical to MPAS-A v8.4.2.
+The MMM a4baf7f scheme is identical to MPAS-A v8.4.2. KIM form drag (MMM 550b5b4, opt-in) is the shared
+module's variant: the column kernel always comes from sfclay_mm5_v842.launch_columns.
 """
 
 from woof.backend import compilation_target as _compilation_target
@@ -53,9 +54,10 @@ def run_slot(call):
         p['atmosphere'], p['diag_physics'], p['sfc_input'], p['mesh_density'],
         config_len_disp=p['config_len_disp'], config_frac_seaice=frac,
         xice_threshold=p['xice_threshold'], driver_module=module)
-    shared.launch_columns(main, p['constants'], scheme=call.scheme)
+    tofd = shared.slot_tofd(call, p)
+    shared.launch_columns(main, p['constants'], scheme=call.scheme, tofd=tofd)
     if frac:
-        shared.launch_columns(sea, p['constants'], scheme=call.scheme)
+        shared.launch_columns(sea, p['constants'], scheme=call.scheme, tofd=tofd)
         for name, destination in p['sea_exchange'].items():
             destination[...] = sea[shared.FIELDS.index(name)]
     shared.sfclayer_to_mpas(main, sea, held, p['diag_physics'], p['sfc_input'],

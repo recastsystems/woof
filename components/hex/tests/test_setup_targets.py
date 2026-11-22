@@ -123,7 +123,7 @@ def test_cape_shear_target_follows_the_core_not_the_sprawl():
 
 
 def test_cape_shear_target_stays_with_its_storms():
-    """GFS 2026-10-23 18Z f354 (box L): storms used up the CAPE they grew from, the index core slid away from them
+    """GFS 2026-10-23 18Z f354: storms used up the CAPE they grew from, the index core slid away from them
     and the region left the storms. Storms inside the area now hold the target; with no storms it is the core."""
     lat, lon = cloud(radius_km=1400.0)
     core = st.destination(*CENTRE, 270.0, 250.0)
@@ -150,7 +150,7 @@ def test_cape_shear_target_stays_with_its_storms():
 
 
 def test_cape_shear_target_moves_like_weather_not_across_the_country():
-    """Same run, +16 h (box L): the storms died after dark, the one connected area's peak was a storm-free ocean
+    """Same run, +16 h: the storms died after dark, the one connected area's peak was a storm-free ocean
     plume 900 km away and the fixes ran 100-150 km per check. The core is now taken near the prediction and one
     fix moves at most max_step_km."""
     lat, lon = cloud(radius_km=1400.0)

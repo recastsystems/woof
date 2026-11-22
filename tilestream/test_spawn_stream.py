@@ -271,7 +271,7 @@ def physics_fire_counts(state) -> dict:
 
 
 def resident(cfg, nsteps, *, boundaries, seed=SEED, warmup=1) -> dict:
-    """The control: one resident domain, WOOF's own ``dycore.step``."""
+    """The control: one resident domain, WOOF-ArWen's own ``dycore.step``."""
     import cupy as cp
     from woof.core.dycore import step as dycore_step
     from woof.core.uh_diag import UH_SPAWN_WINDOW_SLOT

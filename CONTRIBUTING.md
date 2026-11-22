@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for considering a contribution to WOOF. Two things shape how
+Thanks for considering a contribution to WOOF-ArWen. Two things shape how
 this project accepts changes: every WRF-derived mechanism is gated
 against WRF v4.6.1 evidence before it ships, and the pipeline fails
 closed rather than approximating. Contributions are expected to keep

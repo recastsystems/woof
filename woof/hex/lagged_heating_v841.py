@@ -1,4 +1,4 @@
-"""MPAS-A's lagged microphysics heating for the WOOF column physics path (finding SG2).
+"""MPAS-A's lagged microphysics heating for the WOOF-ArWen column physics path (finding SG2).
 
 What native MPAS-A v8.4.2 does (the authority, read at MPAS-Model f34984b2):
 
@@ -16,7 +16,7 @@ What native MPAS-A v8.4.2 does (the authority, read at MPAS-Model f34984b2):
   and wind response inside the step is what the carry changes.
 
 hex had the consumer half only on ``hex/gap-da-to-nest-les`` (commit e7be214b,
-fed by the native mpasphys runtime) and no producer at all on the WOOF column
+fed by the native mpasphys runtime) and no producer at all on the WOOF-ArWen column
 path that every state analysis forecast runs: the adapter declined the engine's WRF-style
 ``h_diabatic`` (a DRY-theta rate, which is not the MPAS quantity; the audit's
 heating contract measured a 21 % error on a condensing fixture if it were
@@ -37,7 +37,7 @@ The rate is formed from the same two values the native assignment uses:
 stepping, the class step -- which is native's ``dt_dyn`` for that call.
 
 There is no switch.  The carry is MPAS-A's own behaviour, so it moves the hex
-WOOF path TOWARD the matched dynamics; with physics off nothing produces a
+WOOF-ArWen path TOWARD the matched dynamics; with physics off nothing produces a
 rate, the dycore launches nothing and the dry byte identity is untouched.
 """
 

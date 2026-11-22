@@ -17,7 +17,7 @@
 Pinned authority: UGWP c1c893e, MPAS f34984b. The source below ports the
 full reachable default MPAS non-stationary operator, including background
 initialization, source interpolation, dissipative propagation, eddy smoothing,
-and the MPAS tendency/diagnostic conversion. WOOF is untouched.
+and the MPAS tendency/diagnostic conversion. WOOF-ArWen is untouched.
 
 Layout is resident FP32 C [level, column], bottom to top; climate ABSMF is
 C [day, latitude] (Fortran [latitude, day]). Indices in CUDA local scratch
@@ -1538,7 +1538,7 @@ def _module(nlev: int, math_header: str, device_id: int):
 
     if not math_header.strip():
         raise RuntimeError("UGWP needs the shared glibc device math header; "
-                           "the lane base rkind_libm.py has host hooks only")
+                           "the base rkind_libm.py has host hooks only")
     source = cuda_source(nlev, math_header)
     with cp.cuda.Device(device_id):
         # Direct NVRTC preserves --ftz=false; CuPy RawModule appends --ftz=true.

@@ -349,6 +349,11 @@ def run_initialized_native_ensemble(inputs, node, *, members, member_ids=None, m
             "final": [asdict(report) for report in final_health], "final_stability": list(final_stability),
             "history": history, "stability_backend": stability.receipt, "full_state_backend": validator.receipt},
         "native_allocations": owners.receipt(), "products": products, "validation": validation_records,
+        # The members' lateral-boundary hydrometeors, as one run's record
+        # states them (None when the boundary carries water vapour only).
+        "lateral_boundary_hydrometeors": (None if owners.tables is None else
+            owners.tables.hydrometeor_receipt(owners.member_ids,
+                                              through_seconds=float(clock.elapsed_seconds))),
         "precipitation_counter_calendar": (None if counter_calendar is None else
             [counter_calendar.receipt(member_id=member, through_ticks=clock.ticks) for member in owners.member_ids]),
         "member_history_count": 0, "registered_compilation_modules": {"before": len(modules_before),

@@ -21,6 +21,7 @@ class LandField:
     units: str = '1'
     required: bool = False
     role: str = "surface_state"
+    signed_diagnostic_soil_levels: tuple[int, ...] = ()
 
     @property
     def sources(self):
@@ -48,8 +49,8 @@ LAND_FIELDS = (
     LandField('q2', units='kg kg-1', role='diagnostic'),
     LandField('tmn', lower=200, upper=340, units='K'),
     LandField('snoalb', lower=0, upper=1),
-    LandField('sfc_albedo', lower=0, upper=1),
-    LandField('sfc_albbck', lower=0, upper=1),
+    LandField('sfc_albedo', ('albedo',), lower=0, upper=1),
+    LandField('sfc_albbck', ('albbck',), lower=0, upper=1),
     LandField('sfc_emiss', lower=0, upper=1),
     LandField('sfc_emibck', lower=0, upper=1),
     LandField('znt', lower=0, units='m'), LandField('z0', lower=0, units='m'),
@@ -57,13 +58,37 @@ LAND_FIELDS = (
     # then QSFC=Q1/(1-Q1); native noahlsm:805 and noahdrv:1283.
     LandField('qsfc', units='kg kg-1', role='diagnostic'),
     LandField('sfcrunoff', lower=0, units='mm'), LandField('udrunoff', lower=0, units='mm'),
-    LandField('acsnom', lower=0, units='mm'), LandField('acsnow', lower=0, units='mm'),
+    # Native RUC land_snowtemp L4334-4344 evaluates
+    # snwepr/delt - (snwepr/(epot*ras*delt))*epot*ras, then GOTO 88
+    # skips MAX(0,smelt). L3249 accumulates that signed cancellation
+    # residual in SNOM/ACSNOM. This is a derived diagnostic, not a snow
+    # reservoir. Preserve its finite native words on nine-level RUC;
+    # other producers retain their nonnegative accumulator contract.
+    LandField('acsnom', lower=0, units='mm', role='diagnostic',
+              signed_diagnostic_soil_levels=(9,)),
+    LandField('acsnow', lower=0, units='mm'),
     LandField('snopcx', units='kg m-2'), LandField('potevp', units='m'),
     LandField('hfx', units='W m-2'), LandField('qfx', units='kg m-2 s-1'),
     LandField('lh', units='W m-2'), LandField('grdflx', units='W m-2'),
     LandField('smstav'), LandField('smstot', units='mm'),
     LandField('chs'), LandField('chs2'), LandField('cqs2'), LandField('chklowq'),
     LandField('lai', lower=0), LandField('smcrel', like='tslb'), LandField('noahres'),
+)
+# Preserve the ordinary forecast's default history surface. The extended state
+# inventory below is published only when the native background is requested.
+DEFAULT_HISTORY_FIELDS = tuple(f.name for f in LAND_FIELDS)
+LAND_FIELDS += (
+    # Native RUC warm memory. Cycling skips the cold first-call assignments
+    # (module_ruc_land.F90:587-650), so allocation zeros are not a warm state:
+    # in particular soilt1 feeds the surface balance's temperature solve.
+    LandField('qcg', units='kg kg-1'), LandField('qsg', units='kg kg-1'),
+    LandField('qvg', units='kg kg-1'), LandField('soilt1', lower=170, upper=400, units='K'),
+    LandField('tsnav', units='degC'), LandField('dew', units='m'),
+    LandField('mavail'), LandField('flqc'), LandField('flhc'),
+    LandField('smfr3d', like='tslb'), LandField('keepfr3d', like='tslb'),
+    LandField('acrunoff', units='mm'), LandField('sfcexc'), LandField('sfcevp'),
+    LandField('rhosnf', units='kg m-3'), LandField('precipfr'),
+    LandField('snowfallac', units='m'),
 )
 LAND_BY_NAME = {f.name: f for f in LAND_FIELDS}
 LAND_SOURCES = tuple((f.name, f.sources) for f in LAND_FIELDS)
@@ -79,6 +104,12 @@ STAS_RUC_POROSITY = np.array([np.nan, .395, .410, .435, .485, .485, .451, .420,
                              .477, .451, .426, .492, .482, .451, 1., .200, .435,
                              .468, .200, .339], dtype=np.float32)
 RUC_SOIL_LEVELS = 9
+# Noah-MP's glacier arm explicitly publishes XLAIXY=PLAI=undefined_value
+# (module_sf_noahmpdrv.F; woof/core/noahmp_runtime.py _glacier_lsm_step).
+# This is live model memory, not a missing land reservoir or a value to clip.
+NOAHMP_GLACIER_LAI_UNDEFINED = np.float32(-1e36)
+RUC_WARM_MEMORY = frozenset(('qcg', 'qsg', 'qvg', 'soilt1', 'tsnav', 'dew',
+                             'mavail', 'flqc', 'flhc', 'smfr3d'))
 # RUC (module_sf_ruclsm.F soilprop, mosaic_soil=1) saturates a cell at the soil-fraction-weighted MAXSMC over
 # its land classes (water, class 14, excluded), so no per-class row bounds it: hrrrv5 histories carried smois
 # 0.4387 on sandy loam (row .435), 0.4196 on loamy sand (row .410) and 0.451 on urban cells (Noah cap .45).
@@ -94,16 +125,19 @@ def read(var):
 
 def require_land(template_vars, history_vars, where='history'):
     soil = any(n in template_vars for n in ('smois', 'sh2o', 'tslb'))
+    variable = template_vars.get('tslb') if hasattr(template_vars, 'get') else None
+    ruc = (getattr(variable, 'dimensions', ())[-1:] == ('nSoilLevels',)
+           and getattr(variable, 'shape', ())[-1:] == (RUC_SOIL_LEVELS,))
     for f in LAND_FIELDS:
-        if (f.name in template_vars or (soil and f.required)) and not any(n in history_vars for n in f.sources):
+        if (f.name in template_vars or (soil and f.required) or (ruc and f.name in RUC_WARM_MEMORY)) and not any(n in history_vars for n in f.sources):
             raise ValueError(f'{where} lacks {f.name} (aliases {f.sources}); refusing init-hour land fallback')
 
 
 def context(template):
     names = ('isltyp', 'ivgtyp', 'xland', 'xice', 'isice', 'mminlu')
-    result = {n: read(template[n]) for n in names if n in template.variables}
+    result = {n: read(template.variables[n]) for n in names if n in template.variables}
     if 'isice_lu' in template.variables:
-        result['isice'] = read(template['isice_lu'])
+        result['isice'] = read(template.variables['isice_lu'])
     return result
 
 
@@ -143,6 +177,14 @@ def porosity(ctx, ncells, nsoil=None):
         if np.any(veg >= 31):
             raise ValueError('LCZ land classes require an explicit porosity contract')
         cap[urban] = np.float32(.45)  # module_sf_noahlsm.F:440
+    # real.exe merges the lake class into water before IVGTYP is set (module_initialize_real.F:2859-2872;
+    # woof.core.landuse._derive_categories), so Noah-MP and RUC integrate a lake cell as water and writes the water
+    # carrier SMOIS=1 there, while the hex init keeps ivgtyp=ISLAKE and xland=1. Breakage: every ArWen
+    # Noah-MP background refused "soil bounds cell=288 layer=0: sh2o=0.189 smois=1.0 porosity=0.476"
+    # (a Kansas lake cell, 2026-11-03; under RUC the same cell, porosity 0.492). ISLAKE from WRF LANDUSE.TBL.
+    islake = {"MODIFIED_IGBP_MODIS_NOAH": 21, "USGS": 28}.get(text)
+    if islake is not None:
+        cap[veg == islake] = 1
     # The glacier/sea-ice branch writes SMC=SH2O=1; water is not a soil column.
     cap[(land == 2) | (veg == isice.item()) | (ice >= float(ctx.get('xice_threshold', .02)))] = 1
     return cap
@@ -153,19 +195,37 @@ def validate_land(fields, ctx, *, require_core=False):
         missing = {f.name for f in LAND_FIELDS if f.required} - set(fields)
         if missing:
             raise ValueError(f'incomplete warm land state: {sorted(missing)}')
+    soil_temperature = np.asarray(fields.get('tslb', ()))
+    nsoil = soil_temperature.shape[1] if soil_temperature.ndim == 2 else None
     for name, arr in fields.items():
         if name not in LAND_BY_NAME:
             continue
         a = np.asarray(arr)
         f = LAND_BY_NAME[name]
+        lower = None if nsoil in f.signed_diagnostic_soil_levels else f.lower
         bad = ~np.isfinite(a) | (np.abs(a) >= 1e30)
-        if f.lower is not None:
-            bad |= a < f.lower
+        if lower is not None:   # a rounded zero (acsnom -3.9e-17 after a cycle) is not a bad land state
+            bad |= a < lower - 1e-9
         if f.upper is not None:
             bad |= a > f.upper
+        if name == 'lai' and np.any(a == NOAHMP_GLACIER_LAI_UNDEFINED):
+            if a.ndim != 1:
+                raise ValueError('lai: expected cell-major surface state')
+            # Validate the complete classification before granting the one
+            # native sentinel exception. Never infer a glacier from LAI.
+            porosity(ctx, a.size)
+            isice = np.asarray(ctx['isice']).item()
+            threshold = float(ctx.get('xice_threshold', .02))
+            if (not np.isfinite(isice) or isice != np.floor(isice) or isice < 1
+                    or not np.isfinite(threshold) or not 0 <= threshold <= 1):
+                raise ValueError('lai: invalid glacier classification')
+            glacier = ((np.asarray(ctx['ivgtyp']) == isice)
+                       & (np.asarray(ctx['xland']) == 1)
+                       & (np.asarray(ctx['xice']) < threshold))
+            bad &= ~((a == NOAHMP_GLACIER_LAI_UNDEFINED) & glacier)
         if np.any(bad):
             idx = tuple(int(i) for i in np.argwhere(bad)[0])
-            raise ValueError(f'{name}{idx}={a[idx]} outside finite bounds [{f.lower}, {f.upper}]')
+            raise ValueError(f'{name}{idx}={a[idx]} outside finite bounds [{lower}, {f.upper}]')
     if 'smois' in fields or 'sh2o' in fields:
         if not {'smois', 'sh2o', 'tslb'} <= set(fields):
             raise ValueError('soil bounds require smois, sh2o and tslb together')
@@ -173,7 +233,21 @@ def validate_land(fields, ctx, *, require_core=False):
         if sm.ndim != 2 or sm.shape != sw.shape or sm.shape != st.shape:
             raise ValueError('soil fields need identical (nCells, nSoilLevels) shape')
         cap = porosity(ctx, sm.shape[0], sm.shape[1])[:, None]
-        bad = (sw > sm) | (sm > cap)
+        liquid_exceeds_total = sw > sm
+        if sm.shape[1] == 4:
+            # Noah-MP skips soil physics for XICE >= XICE_THRESHOLD and
+            # explicitly writes SH2O=1 there every step (:715-725). SMC is
+            # set to one only for full ice at ITIMESTEP=1 (:689-711), so
+            # partial ice can retain the cold MAXSMC. These are non-soil
+            # carriers, not liquid fractions of that retained SMC. Admit
+            # only the exact prescribed SH2O, never arbitrary bad water.
+            threshold = float(ctx.get('xice_threshold', .02))
+            if not np.isfinite(threshold) or not 0 <= threshold <= 1:
+                raise ValueError('soil bounds: invalid sea-ice threshold')
+            prescribed_ice = ((np.asarray(ctx['xice']) >= threshold)[:, None]
+                              & (sw == np.float32(1)))
+            liquid_exceeds_total &= ~prescribed_ice
+        bad = liquid_exceeds_total | (sm > cap)
         if np.any(bad):
             i, j = (int(v) for v in np.argwhere(bad)[0])
             raise ValueError(f'soil bounds cell={i} layer={j}: sh2o={sw[i,j]} smois={sm[i,j]} porosity={cap[i,0]}')
@@ -284,6 +358,10 @@ def warm_land_fields(sources, *, xice_threshold=.02):
             if set(names) - set(ds.variables):
                 raise ValueError(f'{path}: warm land manifest names absent fields')
             fields = {n: read(ds[n]) for n in names}
+            if 'tslb' in fields and fields['tslb'].shape[-1:] == (RUC_SOIL_LEVELS,):
+                missing = RUC_WARM_MEMORY - set(fields)
+                if missing:
+                    raise ValueError(f'{path}: incomplete native RUC warm memory: {sorted(missing)}')
             validate_land(fields, dict(context(ds), xice_threshold=xice_threshold), require_core='smois' in ds.variables)
             if marked is not None:
                 raise ValueError('multiple marked warm land sources: ambiguous member state')

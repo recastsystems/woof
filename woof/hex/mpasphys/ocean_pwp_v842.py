@@ -1,6 +1,6 @@
 """PWP ocean columns on the MPAS physics route (a hex extension, not part of MPAS-A).
 
-Selected by the same door flag as the WOOF route (``--ocean-mode pwp``), with the same column
+Selected by the same door flag as the WOOF-ArWen route (``--ocean-mode pwp``), with the same column
 physics (Price, Weller and Pinkel 1986, doi:10.1029/JC091iC07p08411; ``kernels/ocean_pwp.cuh``)
 and the same parameter table (``data/ocean-pwp.v1.json``, ``--pwp-options``). On this route the
 columns take the OML1D slot's place and timing in the MPAS driver: after the surface layer and
@@ -15,7 +15,7 @@ MPAS's own pool fluxes:
 
 The top layer is published as ``sst`` and ``skintemp`` (what the surface layer reads next step) and
 as MPAS's own mixed-layer diagnostics ``t_oml``/``h_oml``/``hu_oml``/``hv_oml``. Columns step only on
-open water (``xland`` water, no sea ice, not a preserved lake), as on the WOOF route where PWP is
+open water (``xland`` water, no sea ice, not a preserved lake), as on the WOOF-ArWen route where PWP is
 the tropical open-water option and ice stays with the sea-ice scheme.
 
 With PWP off nothing here runs, so the matched MPAS configuration is unchanged. The columns are
@@ -55,7 +55,7 @@ extern "C" __global__ void pwp_mpas_step(const int n, const double dt, const dou
   double* d = diagnostics + 4*(long long)c;
   if (d[3] < 0.5) {
     // A column that has not started: this cell's SST over the configured thermocline prior
-    // (the WOOF route's PWP initialization), fixed salinity, at rest.
+    // (the WOOF-ArWen route's PWP initialization), fixed salinity, at rest.
     const double top = double(sst[c]);
     for (int k = 0; k < nz; k++) {
       const double z = (k + 0.5)*dz;

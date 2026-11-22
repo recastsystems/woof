@@ -5,7 +5,7 @@ publish ONE soil layer, 0-10 cm.  The RUC land surface (hrrrv5, the RRFS v2
 suites) cannot start from one slab -- ``init_soil_3_real`` builds its 0 m
 moisture anchor off the top TWO layers, and one 10 cm slab does not hold the
 3 m column RUC integrates -- so every RUC suite was refused from every
-Canadian source, on WOOF and on hex.
+Canadian source, on WOOF-ArWen and on hex.
 
 The fix is a TABLE declaration, not a per-source path (the arbitrary
 acceptance test): a composition's ``soil_layers`` may declare a
@@ -14,7 +14,7 @@ The source keeps its own published layer(s); the donor's layers under them
 are sampled at the same valid time onto the target points (land-only
 bilinear, then the nearest donor land within a declared radius) and stacked
 below.  The stacked column is then an ordinary layer contract, so every
-consumer -- WOOF's Noah and RUC ingest, the WPS box export hex initialises
+consumer -- WOOF-ArWen's Noah and RUC ingest, the WPS box export hex initialises
 from -- runs its existing arm on it.  The donor layers carry their own soil
 model (``noah`` for GFS), so the soil-moisture index remap
 (:mod:`woof.ingest.land_state`) moves THEIR moisture onto the target land

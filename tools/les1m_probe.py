@@ -1,4 +1,4 @@
-"""Is a 1 m LES actually viable in WOOF?  A measurement, not an estimate.
+"""Is a 1 m LES actually viable in WOOF-ArWen?  A measurement, not an estimate.
 
 Four questions, one driver:
 

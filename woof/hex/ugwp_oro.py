@@ -9,7 +9,7 @@ con, oa1-4, ol1-4 at large and small scale) from the mesh's
 region, a point mesh, a storm-following member -- the forecast refused before
 its first step: "--orographic-statistics names a missing file
 .../region-adb5903adc0b.ugwp_oro_data.nc" (3 km region from GFS 2026-10-23
-18Z f348, box L, 2026-10-24).
+18Z f348, 2026-10-24).
 
 This module builds the file for any mesh, from the 30-arc-second terrain the
 static already reads (``topo_gmted2010_30s``), with the Rust generator
@@ -80,8 +80,17 @@ def binary() -> Path:
             raise UgwpOroError(f"{BINARY_ENV}={path} does not exist")
         return path
     here = Path(__file__).resolve()
-    for candidate in (here.with_name("libexec") / name,
-                      here.parents[2] / "rust/ugwp-oro/target/release" / name):
+    candidates = [here.with_name("libexec") / name]
+    # (WOOF 1.1.7) A PyPI wheel of recast-woof carries the hex helpers' pins, not the helpers: rw_hex_ugwp_oro comes in
+    # the release's woof-hex-helpers archive, staged on first use like every other hex helper (woof.hex.helpers).
+    # THE BREAKAGE: `woof hex regional ... --physics-suite hrrrv5` on a generated mesh stopped building its static on
+    # "rw_hex_ugwp_oro is not installed" from a clean install of the built wheels (the Grell-Freitas command of the
+    # manual's section 11.10 among them).  Only a helper this install pins is fetched; a source checkout has no pins.
+    from woof.hex import helpers
+    if helpers.on_demand(name):
+        candidates.append(helpers.path(name))
+    candidates.append(here.parents[2] / "rust/ugwp-oro/target/release" / name)
+    for candidate in candidates:
         if candidate.is_file():
             return candidate
     found = shutil.which(name)
@@ -167,7 +176,7 @@ def write(path: Path, fields: np.ndarray, *, provenance: Mapping[str, Any]) -> N
     n = fields.shape[1]
     partial = path.with_name(path.name + ".partial")
     partial.unlink(missing_ok=True)
-    with netCDF4.Dataset(partial, "w", format="NETCDF3_64BIT_OFFSET") as out:
+    with netCDF4.Dataset(partial, "w", format="NETCDF3_64BIT_DATA") as out:
         out.createDimension("nCells", n)
         for k, name in enumerate(ORDER):
             units, long_name = VARIABLES[name]

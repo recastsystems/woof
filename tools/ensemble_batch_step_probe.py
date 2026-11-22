@@ -35,8 +35,6 @@ def arguments():
     parser.add_argument("--diff6", type=int, choices=(0, 1, 2), default=0)
     parser.add_argument("--layout-trial", choices=("none", "outermost", "innermost"), default="none")
     parser.add_argument("--advection-family", action="store_true")
-    parser.add_argument("--acoustic-fusion", action="store_true")
-    parser.add_argument("--acoustic-shared", action="store_true")
     parser.add_argument("--terrain-height", type=float, default=0.0)
     parser.add_argument("--mapped", action="store_true")
     parser.add_argument("--receipt", type=Path, required=True)
@@ -244,9 +242,7 @@ def run(args):
         if batch.plan.required_bytes(count) != plan.required_bytes(count):
             raise RuntimeError("allocated inventory differs from the quoted inventory")
         step = prepare_dry_step(batch, layout_trial=trial_selection,
-                                advection_family=getattr(args, "advection_family", False),
-                                acoustic_fusion=getattr(args, "acoustic_fusion", False),
-                                acoustic_shared=getattr(args, "acoustic_shared", False))
+                                advection_family=getattr(args, "advection_family", False))
         row["layout_trial"] = step.trial_receipt
         for _ in range(args.warmup):
             step()

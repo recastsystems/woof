@@ -195,13 +195,13 @@ def cu_physics_for_constructor_scheme(scheme: str | None) -> int:
 #: vocabulary.
 EVERY_STEP_SCHEMES: frozenset[str] = frozenset({"gf", "ntiedtke"})
 
-#: The ruling of 2026-08-26: convection is switched off BELOW this spacing.
+#: Convection is switched off BELOW this spacing.
 #: From here up to ``NTIEDTKE_AT_OR_ABOVE_M`` the proven Grell-Freitas
 #: configuration is unchanged.
 CONVECTION_OFF_BELOW_M: float = 3_000.0
 
-#: The ruling of 2026-10-05: New Tiedtke, not Grell-Freitas, AT and above
-#: this spacing.  It supersedes the 2026-08-26 default's GF answer for these
+#: New Tiedtke, not Grell-Freitas, AT and above
+#: this spacing.  It replaces the earlier Grell-Freitas default for these
 #: meshes only.  20 km is where the registered rows change timestep: every
 #: row at 20 km or coarser declares dt 120 s and every finer row declares
 #: 100 s or less, so the band is exactly the set the dt 120 s New Tiedtke
@@ -220,7 +220,7 @@ RULING: str = (
 
 #: The 2026-10-05 ruling, quoted where its threshold lives.
 NTIEDTKE_RULING: str = (
-    "2026-10-05 (delegated by the owner): New Tiedtke becomes the hex "
+    "2026-10-05: New Tiedtke becomes the hex "
     "coarse-mesh default once a second case confirms it scores better "
     "against observations.  Two 72 h x1.40962 cases confirmed it, so it "
     "supersedes the 2026-08-26 default's Grell-Freitas answer at 20 km and "
@@ -644,7 +644,7 @@ def _uniform_mesh_decision(
         if coarse:
             band = (
                 f"at or above the {NTIEDTKE_AT_OR_ABOVE_M:g} m New Tiedtke "
-                f"threshold (ruling of 2026-10-05)"
+                f"threshold"
             )
         else:
             band = (

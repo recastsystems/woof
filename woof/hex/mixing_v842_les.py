@@ -4054,7 +4054,7 @@ def validate_les_configuration(config, *, les_dissipation=None) -> tuple[int, in
         refuse(active[0],
                "the forecast driver has not connected LesDissipationV842 at the RK mixing boundary; "
                "its 2-D path would omit LES/TKE tendencies, surface fluxes or scalar filtering",
-               "the forecast front door (WOOF or --physics-backend mpasphys), which connects it; "
+               "the forecast front door (WOOF-ArWen or --physics-backend mpasphys), which connects it; "
                "or config_les_model='none' and config_mix_scalars=false")
     return model, surface
 

@@ -2,7 +2,7 @@
 
 Until this door the only way a hex history became a regular latitude-longitude
 NetCDF file was inside ``render``: the converter wrote the frames into the
-render scratch, the renderer drew them, and the scratch was removed.  A user who
+render scratch, the renderer rendered them, and the scratch was removed.  A user who
 wanted the numbers -- to feed another model, to score with their own tool, to
 open in any NetCDF reader -- had no command for it (woof global has had
 ``export`` since 0.1).
@@ -13,7 +13,7 @@ frame of a run, onto the window asked for, and files each frame as
 ``<out>/<view>/<valid-day>/<frame>``.  The frames are WRF-shaped
 (``wrfout_d01_<valid>``: XLAT/XLONG on a regular grid, the WRF names for the
 fields, the MPAS provenance in global attributes), which is what every WRF
-reader and the WOOF engine's own wrfout readers open.  The converter's own
+reader and the WOOF-ArWen engine's own wrfout readers open.  The converter's own
 JSON receipt -- mesh, weights and per-frame output digests and the WRF fields
 the history did not carry -- is kept beside them as ``export-receipt.json``.
 
@@ -440,7 +440,7 @@ def _convert_and_file(entry: dict[str, Any], histories: list[Path], *, args, mes
 def run_follow(args: argparse.Namespace) -> int:
     """``export --follow``: export each frame the moment the forecast closes it.
 
-    THE BREAKAGE THIS PREVENTS: a WOOF domain driven by a hex parent could only
+    THE BREAKAGE THIS PREVENTS: a WOOF-ArWen domain driven by a hex parent could only
     start after the whole hex forecast had run, because the export read a finished
     run.  A nest fed this way waits hours for boundaries it needs one at a time.
     Followed, each closed frame is converted onto the window at once and filed by an
@@ -791,7 +791,7 @@ def add_export_arguments(parser: argparse.ArgumentParser) -> None:
                              "of grids, each band of the mesh at its own spacing: wrfout_d01 the sphere at the "
                              "outer spacing, d02.. each ring, the last the refined core), global-0.25, mesh, focus, "
                              "region:CLAT,CLON,W_KM,H_KM, region-latlon:CLAT,CLON,W_KM,H_KM (a regular "
-                             "lat-lon box at any latitude: the window a WOOF domain takes as its parent, "
+                             "lat-lon box at any latitude: the window a WOOF-ArWen domain takes as its parent, "
                              "with --field-set full) or lambert:... (default global)")
     parser.add_argument("--view", default=None, metavar="NAME",
                         help="folder name under --out (default: the window's view name)")

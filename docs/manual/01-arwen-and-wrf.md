@@ -1,8 +1,8 @@
-# 1. What WOOF is and how it relates to WRF-ARW
+# 1. What WOOF-ArWen is and how it relates to WRF-ARW
 
 ## 1.1 The relationship in one paragraph
 
-WOOF integrates a WRF-ARW-class compressible nonhydrostatic core in FP32
+WOOF-ArWen integrates a WRF-ARW-class compressible nonhydrostatic core in FP32
 on CUDA. WRF-derived schemes use versioned WRF sources; the historical
 comparison below uses v4.6.1, while newer ports identify v4.7.1 in their
 rows. SASE and the RTE+RRTMGP coupling are original schemes or couplings
@@ -43,7 +43,7 @@ dry-mass flux accumulator `mudf` lifecycle across RK stages, and WRF's open-top 
 moist pressure-coupling factors `cqu`/`cqv`/`cqw` [docs/gpuwm-project-history.md:71].
 
 WRF's namelist is a first-class input: a WRF namelist imports through the
-preprocessing front door, and options WOOF does not implement are refused by name
+preprocessing front door, and options WOOF-ArWen does not implement are refused by name
 rather than silently substituted (chapter 5).
 
 ## 1.3 The maturity ladder
@@ -152,7 +152,7 @@ inert from step 2 onward, the step-1 delta declared)
 perform WRF's `q2xk(kpbl+1)` out-of-bounds read [docs/public/PHYSICS.md:876-878].
 
 Two schema extensions leave WRF-expressible territory on purpose and are named as
-such: per-domain `isfflx` (a scalar in the WRF Registry, per-domain in WOOF's TOML,
+such: per-domain `isfflx` (a scalar in the WRF Registry, per-domain in WOOF-ArWen's TOML,
 so such a configuration cannot round-trip back to a namelist)
 [docs/public/LES.md:357-362], and per-domain radiation-cadence inheritance, which is
 WRF's own namelist guidance made the default rather than a per-nest derivation

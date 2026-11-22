@@ -725,10 +725,10 @@ def test_the_schemes_are_in_the_config_schema():
 @pytest.mark.parametrize("sfclay,pbl", [(2, 0), (2, 1), (2, 5), (2, 11),
                                         (0, 2), (1, 2), (5, 2), (91, 2)])
 def test_a_half_myj_suite_is_refused_at_load(sfclay, pbl):
-    """WRF's own fatal, plus WOOF's stated reverse.
+    """WRF's own fatal, plus WOOF-ArWen's stated reverse.
 
     module_physics_init.F:3770-3772 refuses bl_pbl_physics=2 without
-    isfc=2; the reverse direction is WOOF's, because the Eta layer
+    isfc=2; the reverse direction is WOOF-ArWen's, because the Eta layer
     publishes no MOL/ZOL/PSIM/PSIH and every other ported PBL reads one.
     """
     with pytest.raises(ValueError) as excinfo:

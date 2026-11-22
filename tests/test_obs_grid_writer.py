@@ -284,26 +284,6 @@ def test_a_python_written_product_still_reads(tmp_path: Path, monkeypatch):
 
 
 # ------------------------------------------------------------- DA uptake
-def test_the_da_read_side_consumes_the_default_product(tmp_path: Path,
-                                                       monkeypatch):
-    """The point of the file: a DA batch comes out of what the door wrote."""
-
-    _require_writer()
-    from woof.da.obs_radar import (                       # noqa: PLC0415
-        radar_grid_to_gridded_obs)
-
-    grid = _grid()
-    path = tmp_path / "radar-grid.nc"
-    _write_radar(path, grid, None, monkeypatch)
-    document = read_radar_grid(path, expected_grid=grid)
-    simulated = np.zeros((1, grid.nz, grid.ny, grid.nx), dtype=np.float64)
-    batches, provenance = radar_grid_to_gridded_obs(
-        document, expected_grid=grid, reflectivity_simulated=simulated)
-    assert batches, "the DA adapter built no batch from the product"
-    assert batches[0].mask.sum() > 0
-    assert provenance["batches"]
-
-
 # -------------------------------------------------------------- refusals
 def test_a_missing_rust_library_refuses_and_names_the_workaround(
         tmp_path: Path, monkeypatch):

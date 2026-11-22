@@ -13,6 +13,17 @@
 // diagnosed u* with old UST and old USTM.  Outputs remain FP32 model state;
 // gpuwm.verify.npref.np_sfclay is the float64 transcription mirror.
 //
+// WRF v4.8.0 (physics_mmm 550b5b4) changes two things in option 1:
+//   * kim_tofd (default .false.) adds the KIM turbulent orographic form drag
+//     to CD/CDA and UST.  It lives under GPUWM_SFCLAY_TOFD, compiled only into
+//     the sfclay_tofd unit (sfclay_tofd.cuh); graded by
+//     tools/sfclayrev_wrf480_oracle against the native 4.8.0 strict referee's
+//     own sf_sfclayrev.o (tests/test_sfclayrev_wrf480_tofd_parity.py);
+//   * the per-column zol(i)=0. reset before the stability branches is gone.
+//     That changes no word for any finite br: br > 0 and br < 0 both assign
+//     ZOL, and br = 0 (class 3) sets ZOL = 0 after the gotos, so the reset
+//     below is kept in every unit (same words, unchanged sfclay cubins).
+//
 // Bitwise WRF for option 1 (tools/sfclayrev_wrf461_oracle, graded by
 // tests/test_sfclayrev_wrf461_parity.py against the pinned strict recipe's
 // build: gfortran 13.3 -O2 -fno-fast-math -ffp-contract=off
@@ -131,6 +142,18 @@ __device__ real sf_atan(real x)
 #define SF_INV_2P5     4.000000059604644775390625e-1f
 #define SF_SQRT_0P71   8.42614948749542236328125e-1f
 #define SF_SQRT_0P60   7.74596691131591796875e-1f
+
+#ifdef GPUWM_SFCLAY_TOFD
+// WRF v4.8.0 KIM turbulent orographic form drag (kim_tofd = .true.;
+// physics_mmm 550b5b4 sf_sfclayrev.F90:15-16, 707-720 and 779-783; Koo et al.
+// 2018, Koo and Hong 2025).  Compiled only into the sfclay_tofd unit, so the
+// sfclay and sfclay_dx2d units (kim_tofd = .false., WRF's default, and the
+// 4.6.1/4.7.1 pin) preprocess to exactly the text they had before.
+//   varf_min  = 5.
+//   ca_square = 0.4 * 0.4, folded by gfortran in default REAL: 0x3E23D70B.
+#define SF_TOFD_VARF_MIN   5.0f
+#define SF_TOFD_CA_SQUARE  1.6000001132488250732421875e-1f
+#endif
 
 __device__ __forceinline__ double sf_f2d(real x)
 {
@@ -364,6 +387,11 @@ void sfclay_column(
     const real* __restrict__ dx2d,
 #else
     real dx,
+#endif
+#ifdef GPUWM_SFCLAY_TOFD
+    // VAR (geo_em's sub-grid orographic standard deviation, WRF's var2d)
+    // and the tofd_factor namelist value.
+    const real* __restrict__ varf, real tofd_factor,
 #endif
     int option, int isfflx, int isftcflx, int iz0tlnd, int n)
 {
@@ -609,10 +637,35 @@ void sfclay_column(
         }
     }
 
+#ifdef GPUWM_SFCLAY_TOFD
+    // sf_sfclayrev.F90:707-720.  br is the stability number after the
+    // MOL<0 clamp, as WRF's br(i) is by then.  Upstream's first statement in
+    // this block, dx_factor = varf/(dx*dx_factor/32000.+7./8.), reads the
+    // local dx_factor before anything sets it and its value is never used
+    // afterwards; the strict -O2 referee object drops it as dead code
+    // (declared upstream defect, WRF-480 lane L07-sfclayrev), so it is not
+    // computed here.
+    real cf = 0.0f;
+    {
+        const real vf = varf[idx];
+        if (vf > SF_TOFD_VARF_MIN) {
+            real zf = fminf(vf * tofd_factor, za);
+            real fri = fminf(fmaxf(1.0f - br, 0.0f), 1.0f);
+            real ff = sf_log((za + zf) / zf);
+            cf = SF_TOFD_CA_SQUARE / (ff * ff) * fri;
+        }
+    }
+    // :722-725: CD and CDA gain the form-drag coefficient (+0 with no drag).
+    real ck = (karman / psix10) * (karman / psiq10);
+    real cd = (karman / psix10) * (karman / psix10) + cf;
+    real cka = (karman / psix) * (karman / psiq);
+    real cda = (karman / psix) * (karman / psix) + cf;
+#else
     real ck = (karman / psix10) * (karman / psiq10);
     real cd = (karman / psix10) * (karman / psix10);
     real cka = (karman / psix) * (karman / psiq);
     real cda = (karman / psix) * (karman / psix);
+#endif
     bool scalar_exp_overflow = false;
     if (iz0tlnd >= 1 && land) {
         real visc = (1.32f + 0.009f * (temp - 273.15f)) * 1.0e-5f;
@@ -647,7 +700,15 @@ void sfclay_column(
         }
     }
 
+#ifdef GPUWM_SFCLAY_TOFD
+    // :779-783: u* averaged with the old value, plus half the form-drag
+    // velocity sqrt(cf)*wspd where the drag is not negligible.
+    real new_ust = cf > 1.0e-20f
+        ? 0.5f * old_ust + 0.5f * karman * wspd / psix + 0.5f * sqrtf(cf) * wspd
+        : 0.5f * old_ust + 0.5f * karman * wspd / psix;
+#else
     real new_ust = 0.5f * old_ust + 0.5f * karman * wspd / psix;
+#endif
     // TKE coupling (module_sf_sfclay.F:800-804,
     // physics_mmm/sf_sfclayrev.F90:759-763): USTM repeats the UST
     // relaxation on the wind speed WITHOUT the Beljaars/Mahrt-Sun

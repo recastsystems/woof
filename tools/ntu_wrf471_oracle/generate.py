@@ -7,14 +7,22 @@ from pathlib import Path
 import subprocess
 import sys
 
-from build import HERE, MANIFEST, verify
+from build import HERE, MANIFESTS, verify
 
-EXPECTED = 'cff4807966d0ee63217616278536bedb58a0fa60446238f0327af95cd29c1e0b'
+#: The canonical transcription of each pinned release.  v4.8.0's differs
+#: from v4.7.1's by the one moved RATIO statement; the shipping kernel
+#: composes it from ntu.cu (woof.mp_generations), and
+#: tests/test_mp_generations.py holds that composition to this digest.
+EXPECTED_BY_WRF = {
+    '4.7.1': 'cff4807966d0ee63217616278536bedb58a0fa60446238f0327af95cd29c1e0b',
+    '4.8.0': 'c3f150a6ef85dd8b742a7c846939295b080cfc1d92524eeb1c0a2db151771f2d',
+}
+EXPECTED = EXPECTED_BY_WRF['4.7.1']
 
 
-def generate(source, licence, out, compiler):
+def generate(source, licence, out, compiler, wrf='4.7.1'):
     source, licence, out = source.resolve(), licence.resolve(), out.resolve()
-    verify(source, licence)
+    verify(source, licence, wrf)
     out.mkdir(parents=True,exist_ok=True)
     translator=HERE.parent/'ntu_wrf461_oracle'/'f2cu.py'
     params=out/'params.f90'
@@ -34,9 +42,10 @@ def generate(source, licence, out, compiler):
         else:
             subprocess.run(command,cwd=out,check=True)
     digest=hashlib.sha256(generated.read_bytes()).hexdigest()
-    if digest!=EXPECTED:
-        raise ValueError(f'transcription changed: expected {EXPECTED}, got {digest}')
-    receipt=dict(source=MANIFEST,commands=commands,generated_sha256=digest,
+    expected=EXPECTED_BY_WRF[wrf]
+    if digest!=expected:
+        raise ValueError(f'transcription changed: expected {expected}, got {digest}')
+    receipt=dict(source=MANIFESTS[wrf],commands=commands,generated_sha256=digest,
                  compiler=subprocess.check_output([compiler,'--version'],text=True))
     (out/'generate-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
 
@@ -46,5 +55,6 @@ if __name__=='__main__':
     for name in ('source','licence','out'):
         ap.add_argument(name,type=Path)
     ap.add_argument('--compiler',default='gfortran')
+    ap.add_argument('--wrf',choices=tuple(MANIFESTS),default='4.7.1')
     args=ap.parse_args()
-    generate(args.source,args.licence,args.out,args.compiler)
+    generate(args.source,args.licence,args.out,args.compiler,args.wrf)

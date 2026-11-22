@@ -141,7 +141,7 @@
     "woof/ingest/wrfrst.py": "c2cb70bdb7c4163737bf37cb234d4d2e71fc0a0537a3e29f390b434eaf7344ef",
     "woof/io/restart.py": "94315571e333d6f463b9dadaf639eaa12e5f996a7c2bfb1c0c2782d0c3876198",
     "woof/io/history_layout.py": "e034ae8dee916cb9e176be71ec5776ae19576fa78d01b2f5a8b89fbe45b80d0e",
-    "woof/static/rust_bridge.py": "b6bfb36ff71481897f28a94defd9348f02494c56eec608c0ef6f9dd24cf33717",
+    "woof/static/rust_bridge.py": "7e236474253a64bd69431c6181931cae4afd08f45e783cc5a994327df925779e",
     "woof/cli.py": "27be791808fbd368502b047557d0573654e696b49104b72954c3d7340e076088",
     "woof/wrfinput_forecast.py": "125a9cd1804ba58377e5c76ff2296079ed429d54b861702f744aee79c6cd0844",
     "tilestream/output.py": "32c1ba27cef1e32e26176a2d36a2225f6971aca5197e1367ed21f5b16ac8b9bb",

@@ -63,7 +63,7 @@ def finish_segment_maps(run, *, poll_seconds=5.0, timeout_seconds=3600.0, log=pr
 
     THE BREAKAGE THIS PREVENTS: each segment's forecast starts its product door detached, and the last one is still
     drawing when ``moving run`` returns. Under a card lease the wrapper then stops what is left of the process tree,
-    so the last segment's maps were never drawn: GFS 2026-10-23 18Z f354 setup-following run, box L 2026-10-24
+    so the last segment's maps were never drawn: GFS 2026-10-23 18Z f354 setup-following run, 2026-10-24
     ("child-barrier reaped=51 stopped=5"), segment-012 (+20 to +24 h) left with an empty products folder. A stage
     still drawing is waited for; one that died is redrawn (moving_run.restart_dead_products) and waited for.
     Returns {"waited": [...], "redrawn": [...], "unfinished": [...]}."""

@@ -1,6 +1,6 @@
 """A moved member's sea points take the role their carried ice implies.
 
-Breakage it guards: Milton hex storm-following (box M, 2026-10-27). The moved
+Breakage it guards: Milton hex storm-following (2026-10-27). The moved
 member's xland/vegetation/soil words came from its cold geography (the initial
 ice extent on the new mesh) while its ice concentration was carried, so polar
 sea points were left as glacier or land; the history census refused, Noah-MP's

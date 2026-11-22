@@ -1442,6 +1442,46 @@ def _required_twentycr_args(args: argparse.Namespace) -> list[str]:
     return errors
 
 
+#: How long an as-posted preparation waits for its first planned input before
+#: it picks the source's layout variant (woof.source_authorities
+#: PROFILE_VARIANTS).  The decode waits for that same lead anyway; this only
+#: moves the wait ahead of the choice.  Past it, the profile itself is used.
+LAYOUT_VARIANT_WAIT_SECONDS = 900.0
+
+
+def _layout_variant(args: argparse.Namespace, profile_id: str) -> str:
+    """The member of the packaged profile's family the inputs are laid out for.
+
+    A source that writes more than one layout under one id (a woof hex
+    export carries Noah's four soil layers or RUC's nine nodes, by the run's
+    land surface) ships one profile per layout; the files decide, never the
+    caller.  An as-posted preparation names files that do not exist yet, so
+    it waits for the first one (or the posting's failed.json).
+    """
+
+    from woof.source_authorities import (packaged_profile_family,
+                                          packaged_variant_for_inputs)
+
+    if len(packaged_profile_family(profile_id)) == 1:
+        return profile_id
+    files = [Path(f) for f in getattr(args, "mapped_inputs", None) or ()]
+    if not files and getattr(args, "input_list", None) is not None:
+        try:
+            files = [Path(line.strip()) for line in
+                     Path(args.input_list).read_text(encoding="utf-8").splitlines()
+                     if line.strip() and not line.lstrip().startswith("#")]
+        except OSError:
+            files = []
+    posting = getattr(args, "as_posted", None)
+    if posting is not None and files:
+        import time
+        deadline = time.monotonic() + LAYOUT_VARIANT_WAIT_SECONDS
+        while (not files[0].is_file() and time.monotonic() < deadline
+               and not (Path(posting) / "failed.json").is_file()):
+            time.sleep(0.5)
+    return packaged_variant_for_inputs(profile_id, files)
+
+
 def _apply_packaged_profile(
     args: argparse.Namespace, adapter, program: str,
 ) -> list[str]:
@@ -1476,6 +1516,8 @@ def _apply_packaged_profile(
             selector = getattr(import_module(owner), "preparation_profile", None)
             if selector:
                 profile_id = selector(args, adapter)
+        else:
+            profile_id = _layout_variant(args, str(profile_id))
         profile = packaged_profile(str(profile_id))
         authorities = packaged_authorities(str(profile_id))
         contributing = packaged_contributing_mappings(

@@ -1,6 +1,6 @@
 # Research workspaces
 
-WOOF's research catalog organizes 12 weather families into 23 submodes, 38 research questions and 114 recommended experiment configurations. Each final question has three distinct starting configurations; every family and submode also names at least three starting recommendations. The machine-readable authority is `woof/data/tui/research-workspaces.json`.
+WOOF-ArWen's research catalog organizes 12 weather families into 23 submodes, 38 research questions and 114 recommended experiment configurations. Each final question has three distinct starting configurations; every family and submode also names at least three starting recommendations. The machine-readable authority is `woof/data/tui/research-workspaces.json`.
 
 These are **development recommendations**. Every configuration starts with `qualification_status = "unqualified"`. This status records execution qualification, not accuracy against observations. A recommendation becomes qualified only through execution evidence tied to its catalog identity, source revision, actual configuration, inputs and hardware. Existing release receipts do not qualify this catalog or establish forecast skill. The historical `validation_status = "unvalidated"` field and value remain readable and are exported as compatibility aliases; receipts add `execution_qualification` and retain `science_validation` as a legacy alias. The terminal display and new configuration headings use execution qualification. A qualified configuration still needs separate observation-based validation.
 
@@ -18,7 +18,7 @@ The five hardware classes (8, 12, 16, 24 and 32 GiB) are resource choices separa
 
 ## Methods and their limits
 
-The packaged diagnostic capabilities in `woof/data/tui/research-diagnostics.json` describe a reviewed subset of the WOOF history-import path, so creating a research TOML does not require a built plotting executable. Actual plotting still uses the native renderer and checks saved fields and complete time windows. Each setup names additional analysis when the available charts do not directly calculate its requested quantity. Plain-temperature lapse-rate browse fields are explicitly distinct from the virtual-temperature products.
+The packaged diagnostic capabilities in `woof/data/tui/research-diagnostics.json` describe a reviewed subset of the WOOF-ArWen history-import path, so creating a research TOML does not require a built plotting executable. Actual plotting still uses the native renderer and checks saved fields and complete time windows. Each setup names additional analysis when the available charts do not directly calculate its requested quantity. Plain-temperature lapse-rate browse fields are explicitly distinct from the virtual-temperature products.
 
 The hail questions separate growth-supporting storm conditions from the subsequent melting environment. Their diagnostics are proxies: this catalog has no hail-diameter or hail-trajectory product. [NOAA NSSL's hail overview](https://www.nssl.noaa.gov/education/svrwx101/hail/forecasting/) motivates that separation. Rotation comparisons follow the established use of buoyancy and shear in storm-structure experiments; kilometer-scale UH remains a rotating-updraft diagnostic, not a tornado prediction. [Weisman and Klemp (1982)](https://journals.ametsoc.org/view/journals/mwre/110/6/1520-0493_1982_110_0504_tdonsc_2_0_co_2.xml), [Bryan, Wyngaard and Fritsch (2003)](https://journals.ametsoc.org/view/journals/mwre/131/10/1520-0493_2003_131_2394_rrftso_2.0.co_2.xml).
 
@@ -196,7 +196,7 @@ Limit: A modeled bow or gust swath does not establish a derecho; a compact child
 Additional analysis required:
 
 - The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.
-- The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.
+- The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.
 
 ### Hurricanes & tropical weather
 
@@ -346,7 +346,7 @@ Limit: QPF and snow-category fields are not snow depth; snow density, settling a
 
 Additional analysis required:
 
-- Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
+- Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
 
 #### Lake-effect bands · `lake-snow`
 
@@ -369,7 +369,7 @@ Submode starts: `ice-transition.thermal`, `blizzard.overlap`, `ice-transition.ed
 
 Additional analysis required:
 
-- Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
+- Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
 
 #### Freezing rain & sleet · `ice-transition`
 
@@ -389,8 +389,8 @@ Limit: Categorical precipitation type does not calculate ice accretion on roads,
 
 Additional analysis required:
 
-- Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
-- The current WOOF history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation.
+- Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
+- The current WOOF-ArWen history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation.
 
 #### Snow and strong wind · `blizzard`
 
@@ -410,7 +410,7 @@ Limit: The overlap of modeled snow and wind does not establish blizzard visibili
 
 Additional analysis required:
 
-- Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
+- Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
 - The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.
 - Air temperature and 10 m wind are shown separately. Wind chill is not calculated by this history-rendering path and requires separate analysis.
 
@@ -441,7 +441,7 @@ Limit: Rainfall location and amount do not determine runoff or flood depth; a mo
 
 Additional analysis required:
 
-- The plots show temperature, dewpoint and winds separately. The current WOOF history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis.
+- The plots show temperature, dewpoint and winds separately. The current WOOF-ArWen history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis.
 
 #### Monsoon convection · `monsoon-rain`
 
@@ -480,7 +480,7 @@ Limit: Precipitable water is not integrated vapor transport. QPF does not includ
 
 Additional analysis required:
 
-- Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
+- Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
 
 ### Fire weather
 
@@ -553,7 +553,7 @@ Limit: No lightning or ignition model is enabled; low QPF alone does not prove d
 
 Additional analysis required:
 
-- The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.
+- The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.
 - The stored 0-3 km lapse-rate plot uses plain temperature. It is not the virtual-temperature lapse rate; the virtual-temperature quantity requires separate analysis.
 - Air temperature and dewpoint are shown separately. Dewpoint depression is not calculated by this history-rendering path and requires separate analysis.
 - The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.
@@ -628,7 +628,7 @@ Limit: DCAPE is an environmental diagnostic, not a realized downdraft speed; the
 
 Additional analysis required:
 
-- The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.
+- The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.
 - The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.
 
 ### Heat, cold & frost
@@ -659,7 +659,7 @@ Limit: Heat index and wet-bulb temperature describe different quantities; neithe
 Additional analysis required:
 
 - Air temperature and relative humidity are shown separately. Heat index is not calculated by this history-rendering path and requires separate analysis.
-- The current WOOF history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation.
+- The current WOOF-ArWen history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation.
 
 #### Cold-air outbreak · `cold-advection`
 
@@ -810,7 +810,7 @@ Limit: Finer numerical spacing does not supply finer terrain or guarantee a bett
 
 Additional analysis required:
 
-- Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
+- Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.
 
 #### Downslope wind & warming · `downslope-flow`
 

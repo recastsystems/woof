@@ -73,17 +73,21 @@ FROZEN_RECORDS: dict[str, tuple[str, str]] = {
     # record of what ran and the file a reproduction points at are both
     # exact, and they are two different numbers from 1.8.8 on.
     "configs/frozen/les_nest_250m_km3.toml": (
-        # RE-PINNED for WOOF 1.0.0: a comment names the engine WOOF. No value
-        # changed; the as-run digest is unchanged.
-        "52bd29d0a0c9a235aaa449642cdee154cd589e3e03c7af2bfdb29df2766c62e3",
+        # RE-PINNED for WOOF 1.0.0: a comment names the engine WOOF-ArWen; a
+        # comment cites the unpublished record folder by a neutral name. No
+        # value changed; the as-run digest is unchanged.
+        "b3b1104876325dea10d412ebeb740738d2afdeb1772847ba9e183c14e878ffc6",
         "the nested-LES 250 m tree the inflow-fetch run_a/run_b and "
         "grayzone p4/r1 receipts ran, plus its 1.8.8 declaration; as-run "
         "digest 2a3a279b6d..., which is what those receipts and "
-        "docs/superpowers/receipts/les/INFLOW-FETCH-D90-2026-08-03.md "
+        "docs/internal/receipts/les/INFLOW-FETCH-D90-2026-08-03.md "
         "name, at `git show 4152fcb31:configs/les_nest_250m_km3.toml`",
     ),
     "configs/frozen/les_nest_250m_grayzone.toml": (
-        "25c65cddd8a622a51103ca48ab4dc7a755eb63986e00dc3ff43ca83b31260fe4",
+        # RE-PINNED for WOOF 1.0.0: a comment cites the unpublished record
+        # folder by a neutral name. No value changed; the as-run digest is
+        # unchanged.
+        "8db558076a9779d28a0cc3b538dc85a0c128668737b860c0e2349ebeabbbf094",
         "the bytes the P4 gray-zone campaign's R2 and R3 arms ran, plus "
         "their 1.8.8 declaration; as-run digest d3eb6c70c0..., at "
         "`git show 4152fcb31:configs/les_nest_250m_grayzone.toml`",
@@ -93,9 +97,10 @@ FROZEN_RECORDS: dict[str, tuple[str, str]] = {
     # document from both byte strings; the as-run digest is unchanged.
     "configs/frozen/les_tornado_100m_mayfield_20211210.toml": (
         # RE-PINNED for WOOF 1.0.0: a comment no longer names a person or cites
-        # an internal document; a comment names the engine WOOF. No value
+        # an internal document; a comment names the engine WOOF-ArWen; a comment
+        # cites the unpublished record folder by a neutral name. No value
         # changed; the as-run digest is unchanged.
-        "037f9af7a4c3ffbe88f0522f268bd4c8342a7c5cf53f2701d02ad9851d270761",
+        "445e3f725f90eb84fdd627f013eef08d108254cf58291d2b149a81fbd46155c3",
         "the tornado-LES attempt #1 configuration, plus its 1.8.8 "
         "declaration; as-run digest 7aab68c6df..., which is what "
         "docs/les/ATTEMPT1-EXPECTATIONS.md registered before the run, at "
@@ -103,16 +108,22 @@ FROZEN_RECORDS: dict[str, tuple[str, str]] = {
         "les_tornado_100m_mayfield_20211210.toml`",
     ),
     "configs/les_tornado_100m_mayfield_20211210_attempt2.toml": (
-        "e70081ef24d5e57ffbf177ea2d5a9ba79b0befecfcc81b3ece005010fa26e9e2",
+        # RE-PINNED for WOOF 1.0.0: a comment cites the unpublished record
+        # folder by a neutral name. No value changed; the as-run digest is
+        # unchanged.
+        "8b27d7426d85fdf228acdd40bf139dc419f2147b9fd04594bb81af85734a453e",
         "attempt #2 revision a: the run whose arm a is the record of both "
         "the crash and the tornadic vortex that motivated the re-placement",
     ),
     "configs/les_tornado_100m_mayfield_20211210_attempt2b.toml": (
+        # RE-PINNED for WOOF 1.0.0: a comment cites the unpublished record
+        # folder by a neutral name. No value changed; the as-run digest is
+        # unchanged.
         # RE-PINNED 2026-09-20: c065da2d4 (2026-09-09) changed one word of
         # one comment in this record (an owner's name became "the
         # project") and no value; the digest below is that commit's
         # bytes (proof/node-reds-276).
-        "b0ae8e8560331b9c7cbd95888a2c09e1e1ee082d38312afc105b01bcb16f2443",
+        "f02f47f8deded7f961888f39a9c704ecec26fd03d9764d7d7f8281abb411851f",
         "attempt #2 revision b: the run that tripped at step 5467 with "
         "w = 239.48 m/s and produced the criterion; frozen by name in "
         "configs/les_tornado_100m_mayfield_20211210_attempt3.toml:248-255",

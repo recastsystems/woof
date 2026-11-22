@@ -208,85 +208,8 @@ def test_maspt_recorder_measures_the_insertion_jump():
     assert abs(jump["lowest_level_p_mean_abs_hpa"] - 0.5) < 1e-12
 
 
-def _leg_context(tmp_path, *, leg, t_start, t_end, restart=None, pending=None,
-                 analysis_due=True):
-    from tools.da_member_leg import MemberLegContext
-
-    return MemberLegContext(
-        args=None, inputs=None, identity=None, cfg_perturb=None,
-        hot_cfg=None, leg=leg, absolute_leg_number=leg, t_start=t_start,
-        t_end=t_end, stage_root=tmp_path / "stage", out=tmp_path / "out",
-        restart=restart, pending=pending, analysis_due=analysis_due)
-
-
-def test_4d_runner_splits_the_leg_before_an_analysis_and_rewinds_after(
-        tmp_path):
-    from tools.da_cycle_prepared import Iau4dLegRunner
-
-    calls = []
-
-    def fake(context, name):
-        calls.append(context)
-        root = (context.stage_root / "restart"
-                / f"leg{context.leg:03d}" / str(name))
-        root.mkdir(parents=True, exist_ok=True)
-        restart = root / "root.npz"
-        restart.write_bytes(b"x")
-        return SimpleNamespace(restart=restart,
-                               record={"elapsed_seconds": context.t_end})
-
-    runner = Iau4dLegRunner(fake, window_seconds=3600.0)
-    # leg 0: no analysis pending, one due at its end: split at 1800 s
-    r0 = runner(_leg_context(tmp_path, leg=0, t_start=0.0, t_end=3600.0), 3)
-    assert [(c.t_start, c.t_end) for c in calls] == [(0.0, 1800.0),
-                                                    (1800.0, 3600.0)]
-    assert calls[0].stage_root.name == "iau-mid"
-    assert calls[1].restart == runner.mid[3] and calls[1].pending is None
-    assert calls[1].resumed
-    mid0 = runner.mid[3]
-    # leg 1: the analysis at 3600 s is pending: rewind to 1800 s, force
-    # there, and split again before the next analysis at 7200 s
-    calls.clear()
-    r1 = runner(_leg_context(tmp_path, leg=1, t_start=3600.0, t_end=7200.0,
-                             restart=r0.restart, pending={"thp": 1}), 3)
-    assert [(c.t_start, c.t_end) for c in calls] == [(1800.0, 5400.0),
-                                                    (5400.0, 7200.0)]
-    assert calls[0].restart == mid0 and calls[0].pending == {"thp": 1}
-    assert calls[0].iau_rewound and not calls[1].iau_rewound
-    assert not mid0.exists()               # restored once, then removed
-    assert r1.record["iau4d"]["rewound_from_seconds"] == 1800.0
-    # the free leg after the last analysis: rewound, not split
-    calls.clear()
-    runner(_leg_context(tmp_path, leg=2, t_start=7200.0, t_end=10800.0,
-                        restart=r1.restart, pending={"thp": 1},
-                        analysis_due=False), 3)
-    assert [(c.t_start, c.t_end) for c in calls] == [(5400.0, 10800.0)]
-    assert runner.mid == {}
-
-
-def test_4d_runner_never_splits_or_rewinds_the_control(tmp_path):
-    from tools.da_cycle_prepared import Iau4dLegRunner
-
-    calls = []
-
-    def fake(context, name):
-        calls.append(context)
-        return SimpleNamespace(restart=tmp_path / "r", record={})
-
-    runner = Iau4dLegRunner(fake, window_seconds=3600.0)
-    runner(_leg_context(tmp_path, leg=0, t_start=0.0, t_end=3600.0),
-           "control")
-    assert [(c.t_start, c.t_end) for c in calls] == [(0.0, 3600.0)]
-
-
-def test_4d_runner_refuses_a_pending_analysis_without_its_mid_restart(
-        tmp_path):
-    from tools.da_cycle_prepared import Iau4dLegRunner
-
-    runner = Iau4dLegRunner(lambda c, n: None, window_seconds=3600.0)
-    with pytest.raises(RuntimeError):
-        runner(_leg_context(tmp_path, leg=1, t_start=3600.0, t_end=7200.0,
-                            restart=tmp_path / "r", pending={"thp": 1}), 2)
+# The 4D leg runner these tests drove was the local data assimilation cycle
+# driver's, removed in gpuwm 3.0.3.
 
 
 def test_node_groups_share_one_each():

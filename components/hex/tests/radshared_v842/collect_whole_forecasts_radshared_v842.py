@@ -108,7 +108,7 @@ def main():
         unbound_requests=sorted(set(range(required['required_requests'])) - decks.keys()),
         pending_plans=missing_plans, comparator=config['comparator'],
         comparator_sha256=sha(config['comparator']),
-        pending_reason='Remaining whole forecasts and owner-approved exact contexts; nested ozone initialization/time and radiation effective-radius consumers remain native.',
+        pending_reason='Remaining whole forecasts and approved exact contexts; nested ozone initialization/time and radiation effective-radius consumers remain native.',
         backend_scope='cloudiness hex-cuda; every other slot native-cpu',
         missing_fields_are_not_numerical_differences=True, private_ratchet_created=False)
     temporary = args.out.with_suffix('.partial')

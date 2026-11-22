@@ -7,7 +7,7 @@ import shutil
 import xml.etree.ElementTree as ET
 import pytest
 
-# The 2026-10-14 07:45Z source-authority ruling record carries private context, so it is kept in the
+# The 2026-10-14 07:45Z source-authority record carries private context, so it is kept in the
 # reference store (each init derivative publication's REFERENCE-RULING.json), not in this tree; these tests
 # bind its exact bytes and run where RRFS_SOURCE_AUTHORITY_RULING names it (the reference hosts).
 _RULING_TESTS = {
@@ -27,7 +27,7 @@ def _ruling_record(request):
              or request.node.name == "test_published_field_recomparison_rejects_untrusted_archives[lost-derivative-label]")
     ruling = os.environ.get("RRFS_SOURCE_AUTHORITY_RULING")
     if needs and not (ruling and Path(ruling).is_file()):
-        pytest.skip("source-authority ruling record not supplied (RRFS_SOURCE_AUTHORITY_RULING)")
+        pytest.skip("source-authority record not supplied (RRFS_SOURCE_AUTHORITY_RULING)")
 
 ROOT = Path(__file__).parents[1] / 'tools/native_physics_reference/rrfs'
 spec = importlib.util.spec_from_file_location('rrfs_flags', ROOT / 'audit_flags.py')
@@ -1002,7 +1002,7 @@ def test_relative_registry_includes_and_commented_include(tmp_path):
 
 
 def test_workflow_and_fork_decks_include_required_options(tmp_path):
-    source = Path(os.environ.get('RRFS_REFERENCE_SOURCE') or Path(os.environ.get('MPAS_LANES', '.')) / 'ref/rrfs/MPAS-Model-rrfs')
+    source = Path(os.environ.get('RRFS_REFERENCE_SOURCE') or Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/rrfs/MPAS-Model-rrfs')
     workflow = source.parent / 'rrfs-workflow'
     if not (source / 'src/core_atmosphere/Registry.xml').exists():
         pytest.skip('pinned external native sources unavailable')
@@ -1114,7 +1114,7 @@ def test_native_writable_input_copy_preserves_sealed_source_and_ingress(tmp_path
 def test_workflow_overlay_authenticates_source_and_preserves_all_stream_lists(tmp_path):
     spec = importlib.util.spec_from_file_location('rrfs_workflow_overlay', ROOT / 'workflow_deck.py')
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-    ref = Path(os.environ.get('MPAS_LANES', '.')) / 'ref/rrfs'
+    ref = Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/rrfs'
     original = ref / 'decks/gsl-ci-source-v1/ufscommunity.hrrrv5.gfs.winter'
     if not original.exists():
         pytest.skip('external immutable GSL deck absent')

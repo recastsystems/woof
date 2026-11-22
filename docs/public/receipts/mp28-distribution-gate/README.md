@@ -16,12 +16,12 @@ commit `0d69a648` before any build started; the evaluator
   environment path; see ADAPTATIONS below) plus the orchestration
   wrapper and CPU provenance collector.
 - `local-provenance.txt`, the GPU half: device, driver, toolchain,
-  WOOF source commit, table-root hashes, the canonical
+  WOOF-ArWen source commit, table-root hashes, the canonical
   derived-constant asset check, post-transfer input hashes (the
-  transfer manifest), and the WOOF output hashes.
-- `arwen-phase.log`: the four WOOF runs' stdout with before/after GPU
+  transfer manifest), and the WOOF-ArWen output hashes.
+- `arwen-phase.log`: the four WOOF-ArWen runs' stdout with before/after GPU
   coexistence snapshots.
-- `sw-arwen-*-run.json`, each WOOF run's own receipt.
+- `sw-arwen-*-run.json`, each WOOF-ArWen run's own receipt.
 
 ADAPTATIONS to the banked scripts, in full: (1) the work root, `mp28sw`
 → `mp28dist` (each under its node's own home directory), the adaptation

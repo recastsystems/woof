@@ -91,7 +91,7 @@ def validate_selection(*, product_type="reanalysis", member=None, cadence=6, pro
         return None
     if provider != "cds" or cadence % 3:
         raise ValueError("ERA5 EDA requires CDS and a cadence that is a positive multiple "
-                         "of its native 3-hour interval; this WOOF ARCO reader carries HRES reanalysis only")
+                         "of its native 3-hour interval; this WOOF-ArWen ARCO reader carries HRES reanalysis only")
     if isinstance(member, str) and len(member) == 1 and member.isascii() and member.isdigit():
         member = int(member)
     if isinstance(member, bool) or not isinstance(member, int) or not 0 <= member <= 9:
@@ -134,7 +134,7 @@ def require_bridge():
     from woof.bridges import find_bridge
     bridge = find_bridge("grib1_bridge")
     if bridge is None:
-        raise ValueError("ERA5 EDA needs the native grib1_bridge with --era5-member support; rebuild/install the matching WOOF bridge")
+        raise ValueError("ERA5 EDA needs the native grib1_bridge with --era5-member support; rebuild/install the matching WOOF-ArWen bridge")
     report = _invoke(bridge, ["--era5-member-capabilities"], timeout=15)
     if report.get("members") != list(range(10)) or report.get("complete_input_census") is not True:
         raise ValueError("The selected native bridge lacks complete ten-member ERA5 EDA verification")

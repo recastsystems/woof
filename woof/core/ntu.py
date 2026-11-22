@@ -3,8 +3,9 @@
 The column transcription follows the pinned public WRF 4.7.1 module without
 its recovered prototype's F1-F6 physics changes. Native INIT_AEROSOL's
 unfilled top density is completed analytically in the cold-start driver.
-A real native capture witnesses LARGE_DT's undefined DNGRM read; see the
-source-pinned oracle receipts before interpreting that wet-graupel residue.
+A real native capture witnesses LARGE_DT's undefined DNGRM read at v4.7.1;
+WRF v4.8.0 sets DNGRM before that read, and ``ntu_version = "wrf_480"`` (the
+default) composes that statement order (woof.mp_generations).
 
 CUDA runs each column, including native substeps, activation, all moments,
 ice shape/density, and sedimentation. The default uses CUDA transcendental
@@ -54,6 +55,8 @@ CCNTY_CHOICES = (1, 2, 3, 4)
 # independently of optimization.
 MODULE_OPTIONS = ("-std=c++17", "--ftz=false")
 _TPB = 64
+#: WRF source generation (woof.mp_generations); RunConfig.ntu_version.
+DEFAULT_GENERATION = "wrf_480"
 
 
 def kmax_for(nz: int) -> int:
@@ -65,11 +68,13 @@ def kmax_for(nz: int) -> int:
         f"({KMAX_TIERS[-1]} levels); a deeper column would overrun them")
 
 
-def module_source(kmax: int, kernel_dir=None) -> str:
+def module_source(kmax: int, kernel_dir=None, version: str = DEFAULT_GENERATION) -> str:
     from woof.core.kernels import module_source_int_defines
+    from woof.mp_generations import ntu_source
     from pathlib import Path
     kw = {} if kernel_dir is None else {"kernel_dir": kernel_dir}
-    source = module_source_int_defines("ntu", (("NTU_KMAX", int(kmax)),), **kw)
+    source = ntu_source(
+        module_source_int_defines("ntu", (("NTU_KMAX", int(kmax)),), **kw), version)
     directory = Path(kernel_dir) if kernel_dir is not None else Path(__file__).with_name("kernels")
     source += "\n" + (directory / "ntu_parallel.cuh").read_text(encoding="utf-8")
     # This is an NVRTC-only source. Remove its dead host include so the
@@ -105,33 +110,37 @@ def compile_options() -> tuple[str, ...]:
     return MODULE_OPTIONS
 
 
-def compile_image(kmax: int, arch=None):
+def module_key(kmax: int, version: str = DEFAULT_GENERATION) -> str:
+    """The manifest key; the v4.7.1 tier keeps the key it always had."""
+    tier = f"NTU_KMAX={kmax}" + ("" if version == "wrf_471" else ",NTU_WRF=480")
+    return f"woof.core.ntu:ntu[{tier}]"
+
+
+def compile_image(kmax: int, arch=None, version: str = DEFAULT_GENERATION):
     """Compile (or fetch from the direct-route cache) one KMAX tier."""
     from woof.nvrtc_ptx_cache import compile_using_nvrtc
-    image, _ = compile_using_nvrtc(module_source(kmax), compile_options(),
-                                   arch, "ntu.cu")
+    source = module_source(kmax, version=version)
+    image, _ = compile_using_nvrtc(source, compile_options(), arch, "ntu.cu")
     from woof.certify.kernel_manifest import record_module
-    record_module(f"woof.core.ntu:ntu[NTU_KMAX={kmax}]",
-                  source=module_source(kmax), options=compile_options(), module=None)
+    record_module(module_key(kmax, version), source=source,
+                  options=compile_options(), module=None)
     return image
 
 
 @lru_cache(maxsize=None)
-def _module(device: int, kmax: int):
+def _module(device: int, kmax: int, version: str = DEFAULT_GENERATION):
     import cupy as cp
-    from woof.certify.kernel_manifest import record_module
     from woof.kernel_compile_notice import observe_module_compile
-    key = f"woof.core.ntu:ntu[NTU_KMAX={kmax}]"
-    with cp.cuda.Device(device), observe_module_compile(key):
-        image = compile_image(kmax)
+    with cp.cuda.Device(device), observe_module_compile(module_key(kmax, version)):
+        image = compile_image(kmax, version=version)
         module = cp.cuda.function.Module()
         module.load(image.encode() if isinstance(image, str) else image)
     return module
 
 
-def _kernel(name: str, kmax: int):
+def _kernel(name: str, kmax: int, version: str = DEFAULT_GENERATION):
     import cupy as cp
-    return _module(cp.cuda.Device().id, kmax).get_function(name)
+    return _module(cp.cuda.Device().id, kmax, version).get_function(name)
 
 
 @lru_cache(maxsize=None)
@@ -175,7 +184,7 @@ def _require(name, a, shape):
 
 
 def launch_init(phb, ph, p, pb, alt, qv, aerosol, *, ccnty: int,
-                restart: bool) -> None:
+                restart: bool, version: str = DEFAULT_GENERATION) -> None:
     """NTU_INIT over every column: fills the five aerosol tracers in place
     (left unchanged on a restart, as WRF).  ``phb``/``ph`` are (nz+1, ny, nx)
     geopotential on w levels; ``p``/``pb`` are the pressure pair WRF sums;
@@ -195,13 +204,14 @@ def launch_init(phb, ph, p, pb, alt, qv, aerosol, *, ccnty: int,
     status = cp.zeros(1, dtype=cp.uint32)
     table = _ptr_table(aerosol)
     ncol = ny * nx
-    _kernel("ntu_init_kernel", kmax)(
+    _kernel("ntu_init_kernel", kmax, version)(
         ((ncol + _TPB - 1) // _TPB,), (_TPB,),
         (ac, phb, ph, p, pb, alt, qv, table, np.int64(ncol), np.int32(nz),
          np.int32(1 if restart else 0), status))
 
 
-def launch(fields: dict, surface: dict, dt: float, *, ccnty: int, workspace=None) -> None:
+def launch(fields: dict, surface: dict, dt: float, *, ccnty: int, workspace=None,
+           version: str = DEFAULT_GENERATION) -> None:
     """One MP_NTU call over every column, fields updated in place.
 
     ``fields`` maps the names in ``_FIELD3`` to (nz, ny, nx) arrays (``w``
@@ -231,7 +241,7 @@ def launch(fields: dict, surface: dict, dt: float, *, ccnty: int, workspace=None
     if workspace is None:
         workspace = cp.empty((WORK_VOLUMES, nz, ny, nx), dtype=cp.float32)
     _require("workspace", workspace, (WORK_VOLUMES, nz, ny, nx))
-    launch_stages(_module(cp.cuda.Device().id, kmax), ac, t3, t2,
+    launch_stages(_module(cp.cuda.Device().id, kmax, version), ac, t3, t2,
                   workspace, ncol, nz, dt)
 
 
@@ -261,6 +271,11 @@ PREP_SLOTS = ("ntu_theta", "ntu_pii", "ntu_dz", "ntu_z8w", "ntu_workspace")
 
 def ccnty_of(cfg) -> int:
     return int(getattr(cfg, "ntu_ccnty", CCNTY_DEFAULT))
+
+
+def version_of(cfg) -> str:
+    from woof.mp_generations import selected
+    return DEFAULT_GENERATION if cfg is None else selected(cfg, "ntu_version")
 
 
 def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
@@ -311,7 +326,8 @@ def apply(state, cfg, dt: float, *, refl_10cm_due: bool = False):
             "hailnc": slots["mp_hailnc"], "hailncv": slots["mp_hailncv"],
             "sr": slots["mp_sr"]},
            dt, ccnty=ccnty_of(cfg),
-           workspace=state.scratch((WORK_VOLUMES, nz, ny, nx), "ntu_workspace"))
+           workspace=state.scratch((WORK_VOLUMES, nz, ny, nx), "ntu_workspace"),
+           version=version_of(cfg))
     if refl_10cm_due:
         from woof.core.refl import stash_refl_10cm
         refl = reflectivity(state, theta=theta, pii=pii, cfg=cfg)
@@ -354,7 +370,7 @@ def reflectivity(state, *, temperature=None, pressure=None, theta=None,
     ccnty = ccnty_of(cfg) if cfg is not None else CCNTY_DEFAULT
     ac = aero_constants(cp.cuda.Device().id, ccnty)
     ncell = nz * ny * nx
-    _kernel("ntu_refl_kernel", kmax_for(nz))(
+    _kernel("ntu_refl_kernel", kmax_for(nz), version_of(cfg))(
         ((ncell + 127) // 128,), (128,), (ac, table, np.int64(ncell), refl))
     return refl
 
@@ -374,7 +390,7 @@ def init_state(state, cfg, *, restart: bool) -> dict:
     zeros = cp.zeros((nz, ny, nx), dtype=cp.float32)
     launch_init(phb, cp.ascontiguousarray(state.php), state.p, zeros,
                 alt, state.qv, [getattr(state, n) for n in NTU_AEROSOL],
-                ccnty=ccnty_of(cfg), restart=False)
+                ccnty=ccnty_of(cfg), restart=False, version=version_of(cfg))
     return {"ntu_aerosol": f"INIT_AEROSOL climatology, ccnty={ccnty_of(cfg)}"}
 
 

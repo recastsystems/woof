@@ -23,7 +23,7 @@ def _client(progress):
     try:
         import cdsapi
     except ImportError:
-        raise ValueError("Automatic ERA5 retrieval needs cdsapi>=0.7.7 in this WOOF Python environment.") from None
+        raise ValueError("Automatic ERA5 retrieval needs cdsapi>=0.7.7 in this WOOF-ArWen Python environment.") from None
     try:
         # Both legacy and modern CDS clients accept these callbacks. quiet
         # alone does not disable an already configured DEBUG logger.

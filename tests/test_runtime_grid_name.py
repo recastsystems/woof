@@ -1,7 +1,7 @@
 """``GPUWM_GRID_NAME``: what a run's maps call its outermost domain instead of ``d01``.
 
 The breakage (WOOF Hex with Regional, 2026-10-28): a nest added to a hex run is
-its own one-domain WOOF run, so every nest map was headlined ``d01 3 km`` while
+its own one-domain WOOF-ArWen run, so every nest map was headlined ``d01 3 km`` while
 the site files the nest as d05.  ``woof hex add-nest`` sets the name for its
 ``woof sim``; the frames carry it and ``rw_wrfbatch`` prints it in the headline.
 """

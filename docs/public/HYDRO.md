@@ -1,6 +1,6 @@
-# NextGen hydrology in WOOF
+# NextGen hydrology in WOOF-ArWen
 
-WOOF's hydrology work uses NOAA-OWP's NextGen framework and t-route, with
+WOOF-ArWen's hydrology work uses NOAA-OWP's NextGen framework and t-route, with
 numerical processing in CUDA and Rust. Python handles configuration and
 launches. Native ngen, t-route and runoff modules serve as development
 referees; they are never installed as the product's runtime.
@@ -177,13 +177,13 @@ measured routing and standalone restart scopes](../nextgen-output.md). Use
 Standalone and routing continuation are separately measured compositions;
 combined runoff/routing/terrain and parent-atmosphere restart remain pending.
 
-Coupled mode uses WOOF's Noah-MP runoff and ET, aggregated by catchment area
+Coupled mode uses WOOF-ArWen's Noah-MP runoff and ET, aggregated by catchment area
 weights. Standalone mode advances selected NextGen runoff modules from
 forcing. Both modes need resident state on the forecast member's card and
 the prepared launch sequence. The parent atmosphere owns the fixed hydro
 domain; moving child nests do not create another routing domain.
 
-Coupling requires the parent to select WOOF Noah-MP with
+Coupling requires the parent to select WOOF-ArWen Noah-MP with
 `sf_surface_physics = 4`. A complete coupled realization also needs prepared
 catchment-to-parent overlap weights and the physical routing inputs; selecting
 `--hydro` supplies neither. The initialized three-catchment standalone row is
@@ -443,7 +443,7 @@ not resolve the licence of this example's v201 GeoPackage.
 
 Report discharge in m³/s, depth in metres, timing in milliseconds per actual
 hydro step, and ensemble exceedance probability with its threshold and member
-count. Hydro fields use WOOF's Rust renderer through `woof.rustwx`.
+count. Hydro fields use WOOF-ArWen's Rust renderer through `woof.rustwx`.
 Reference-model agreement and USGS observation skill are separate results.
 
 The speed target is under 10 ms for the complete Lower Colorado hydro step

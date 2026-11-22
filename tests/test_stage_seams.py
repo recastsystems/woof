@@ -1,6 +1,6 @@
 """The pipeline's three stages, each reachable and each usable alone.
 
-A collaborator running WOOF inside his own pipeline reported the defect
+A collaborator running WOOF-ArWen inside his own pipeline reported the defect
 this file is the gate for: he wants to pull his own data, author his own
 namelist, run OUR preprocessing on HIS inputs, then run OUR simulation
 alone with nothing fetching and nothing plotting.  ``woof go`` welded

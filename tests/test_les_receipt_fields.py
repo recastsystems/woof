@@ -2,7 +2,7 @@
 
 CPU-only.  The dual-run screen for the CBL receipts is documented as
 "compare every numeric receipt field, excluding wall-clock timings"
-(docs/superpowers/receipts/les/ARWEN-REALISATION-SPREAD.md §1).  The
+(docs/internal/receipts/les/ARWEN-REALISATION-SPREAD.md §1).  The
 sm_89 stress lane falsified that phrasing on a shared card: two
 same-seed reps were byte-identical in every other field and differed
 ONLY in ``vram_gib`` (0.72 vs 1.60 GiB), because that figure was
@@ -28,7 +28,7 @@ import pytest
 from woof.verify.cases import convective_boundary_layer as cbl
 
 _LES_RECEIPTS = (Path(__file__).resolve().parents[1]
-                 / "docs" / "superpowers" / "receipts" / "les")
+                 / "docs" / "internal" / "receipts" / "les")
 _COMMITTED = sorted(
     _LES_RECEIPTS.glob("cbl-2026-08-02/*/cbl_*_receipt.json"))
 

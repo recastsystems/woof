@@ -1,6 +1,6 @@
 """The chem species table: rows, sets, sources and table diagnostics.
 
-Every chem species WOOF can carry is a ROW in a JSON file under
+Every chem species WOOF-ArWen can carry is a ROW in a JSON file under
 ``woof/data/chem/species/``; every named species set is a file under
 ``sets/``; every external emission, boundary, oxidant or static source is a
 file under ``sources/``; every output diagnostic built by a term sum is a file

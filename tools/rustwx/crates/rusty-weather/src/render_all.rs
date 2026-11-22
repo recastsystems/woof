@@ -393,8 +393,8 @@ fn hour_presentation(
         None => String::new(),
     };
     // The init clock is the frame's own (valid - lead), not the run's cycle
-    // HOUR: a forecast from a 10:15Z analysis is "Init 07/10 10:15Z | +003:00 |
-    // Valid 07/10 13:15Z", never "Init 07/10 10Z | +003:00 | Valid ... 13:15Z".
+    // HOUR: a forecast from a 10:15Z analysis is "Init 07/10 10:15Z | F003:00 |
+    // Valid 07/10 13:15Z", never "Init 07/10 10Z | F003:00 | Valid ... 13:15Z".
     let init_clock = i64::try_from(exact.lead_seconds)
         .ok()
         .and_then(|lead| exact.valid_unix.checked_sub(lead))
@@ -405,6 +405,12 @@ fn hour_presentation(
             second => format!("{:02}:{:02}:{second:02}Z", init.3, init.4),
         })
         .unwrap_or_else(|| format!("{:02}Z", config.cycle_utc));
+    // The run's initial-condition disclosure, where the whole-hour line puts
+    // it (shared_context::model_time_subtitle), so a frame between hours and
+    // a whole-hour frame of the same run carry the same header.
+    let disclosure = rustwx_products::shared_context::initial_condition_disclosure()
+        .map(|text| format!(" ({text})"))
+        .unwrap_or_default();
     Ok(HourPresentation {
         forecast_hour,
         output_suffix: Some(format!(
@@ -412,7 +418,7 @@ fn hour_presentation(
             valid.0, valid.1, valid.2, valid.3, valid.4, valid.5
         )),
         subtitle_left: Some(format!(
-            "Init {init} {init_clock} | +{lead_hours:03}:{lead_minutes:02}{lead_tail} | Valid {:02}/{:02} {:02}:{:02}{valid_tail}Z | {}{spacing_tail}",
+            "Init {init} {init_clock}{disclosure} | F{lead_hours:03}:{lead_minutes:02}{lead_tail} | Valid {:02}/{:02} {:02}:{:02}{valid_tail}Z | {}{spacing_tail}",
             valid.1,
             valid.2,
             valid.3,
@@ -804,7 +810,7 @@ mod tests {
             "spacing must ride at the end of the exact-time line: {subtitle}"
         );
         assert!(
-            subtitle.starts_with("Init 04/03 18Z | +000:30 | Valid "),
+            subtitle.starts_with("Init 04/03 18Z | F000:30 | Valid "),
             "{subtitle}"
         );
         // The exact-time suffix is untouched by the spacing segment.
@@ -812,6 +818,29 @@ mod tests {
             presentation.output_suffix.as_deref(),
             Some("valid_19740403_183000z_lead_000h30m00s")
         );
+    }
+
+    /// A whole-hour frame drawn on the minute clock and a frame on the
+    /// exact-time axis at the same instant write the same header, so a
+    /// sub-hourly loop's header does not change length on the hour.
+    #[test]
+    fn exact_time_on_the_hour_matches_the_minute_clock_line() {
+        let spaced = presentation_config(Some("\u{0394}x 1 km"), None);
+        // 1974-04-03 21:00:00Z, 3 h after the 18Z initialization.
+        let exact = RwsExactTime::new(10_800, 134_254_800);
+        let subtitle = hour_presentation(&spaced, 3, Some(exact)).unwrap().subtitle_left.unwrap();
+        let clocked = format!(
+            "{} | \u{0394}x 1 km",
+            rustwx_products::shared_context::model_time_subtitle_clocked(
+                spaced.model,
+                &spaced.date_yyyymmdd,
+                spaced.cycle_utc,
+                3,
+                true,
+            )
+        );
+        assert_eq!(subtitle, clocked);
+        assert!(subtitle.starts_with("Init 04/03 18Z | F003:00 | Valid 04/03 21:00Z |"), "{subtitle}");
     }
 
     #[test]
@@ -822,7 +851,7 @@ mod tests {
         // 2023-07-10 13:15:00Z, 3 h after a 10:15Z analysis.
         let exact = RwsExactTime::new(10_800, 1_688_994_900);
         let subtitle = hour_presentation(&config, 1, Some(exact)).unwrap().subtitle_left.unwrap();
-        assert!(subtitle.starts_with("Init 07/10 10:15Z | +003:00 | Valid 07/10 13:15Z |"), "{subtitle}");
+        assert!(subtitle.starts_with("Init 07/10 10:15Z | F003:00 | Valid 07/10 13:15Z |"), "{subtitle}");
     }
 
     #[test]
@@ -836,7 +865,7 @@ mod tests {
         assert_eq!(presentation.output_suffix.as_deref(),
             Some("valid_20210628_210000z_lead_365925h00m00s"));
         let subtitle = presentation.subtitle_left.unwrap();
-        assert!(subtitle.contains("+365925:00"), "{subtitle}");
+        assert!(subtitle.contains("F365925:00"), "{subtitle}");
         assert!(subtitle.contains("Valid 06/28 21:00Z"), "{subtitle}");
         // Keep the existing whole-hour token when it is representable.
         let boundary = hour_presentation(&config, 7,
@@ -867,7 +896,7 @@ mod tests {
             left.contains("Valid 04/03 22:50Z"),
             "the full valid time must survive: {left}"
         );
-        assert!(left.starts_with("Init 04/03 18Z | +004:50 |"), "{left}");
+        assert!(left.starts_with("Init 04/03 18Z | F004:50 |"), "{left}");
         assert!(left.ends_with("| \u{0394}x 100 m"), "{left}");
 
         // Whole-hour frame without overrides: the shared model time

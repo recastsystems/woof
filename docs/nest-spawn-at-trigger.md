@@ -189,7 +189,7 @@ the rule in words: interpolation at the leading edge "taking into
 account the land/sea/ice mask to only consider values from the same
 surface type".
 
-WOOF keeps the half of `fine_input_stream = 2` it CAN have (the
+WOOF-ArWen keeps the half of `fine_input_stream = 2` it CAN have (the
 own-grid statics) which is strictly more than `input_from_file =
 .false.` gives, and is exactly why the mask is essential: the child's
 land-use categories are its OWN, resolved at the child's dx, so they

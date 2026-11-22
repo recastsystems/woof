@@ -37,10 +37,13 @@ def test_hrrrv5_with_gf_li_runs_on_the_resident_gpu_glue(monkeypatch):
     monkeypatch.setenv('WOOF_HEX_MPAS_RESIDENT', 'auto')
     dims = dict(nCells=3, nCellsSolve=3, nEdges=6, nEdgesSolve=6)
     assert resident_requested(config, dims)
-    # New Tiedtke with TEMPO is still not on the 44c0849 glue: it stays refused by name.
+    # New Tiedtke with TEMPO (NOAA's 12 km hrrrv5) is on the 44c0849 card route and its resident glue, as on
+    # 1d6e370e (job cumulus: the table had no CUDA entry, so the run fell to native-cpu and asked for a library).
     tiedtke = resolve_namelist(_deck('cu_ntiedtke'), default_backend='hex-cuda', table_key=ROW)
-    if framework_only(tiedtke):
-        assert 'convection=cu_ntiedtke' in (ported_route_refusal(tiedtke) or '')
+    assert tiedtke.backends['convection'] == Backend.HEX_CUDA
+    assert framework_only(tiedtke)
+    assert ported_route_refusal(tiedtke) is None
+    assert resident_requested(tiedtke, dims)
 
 
 def test_the_pairing_is_labelled_as_a_variant_never_as_hrrrv5_alone():

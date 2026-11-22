@@ -21,5 +21,31 @@
     "ice_indices": "CC0-1.0",
     "derived_dust": "CC-BY-4.0; NOTICE and licenses/LICENSE-mineral-ri-CC-BY-4.0.html",
     "solar_weights": "DOE/NLR/ALLIANCE data notice; licenses/LICENSE-NLR-solar.txt"
+  },
+  "optical_sets": {
+    "status": "re-implemented from published descriptions, not bitwise to upstream",
+    "snicar_ice_ri_opt": {
+      "1": "optics-ice-warren1984.bin",
+      "2": "optics.bin",
+      "3": "optics-ice-picard2016.bin"
+    },
+    "snicar_dust_optics_opt": {
+      "0": "Zhang 2024 (in-table row)",
+      "1": "Saharan",
+      "2": "Colorado",
+      "3": "Greenland"
+    },
+    "dust_rows": "SNDUST01; little-endian f32, 4 sets x 480 bins x (ext, abs, g)",
+    "generated_sha256": {
+      "optics-ice-warren1984.bin": "3b2addc46200f28e73fd8c8a7bdb6661633dfb51fc7c883cbcad64c1354e07da",
+      "optics-ice-picard2016.bin": "03467d49b19c79cc9341daef96a6d5dd6daaa11dbdaeeb71fe52fc566d783c01",
+      "dust-rows.bin": "6b9b928a8f3ba719d5694976c1cc3e020a77c99a09fb734ceb6a95fdad2df792"
+    },
+    "license_terms": {
+      "picard_ice": "CC-BY-3.0",
+      "colorado_dust": "CC-BY-4.0",
+      "mineral_dust": "CC-BY-4.0",
+      "warren1984_ice": "CC0-1.0"
+    }
   }
 }

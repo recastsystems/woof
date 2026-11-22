@@ -7,7 +7,7 @@ from conftest import requires_gpu
 
 def test_source_scoped_policy_normalizes_cache_and_final_options():
     from types import SimpleNamespace
-    from woof.cuda_subnormals import MARKER, install
+    from woof.cuda_subnormals import KEY_OPTION, MARKER, install
     calls = []
     class Program:
         def __init__(self, source):
@@ -23,12 +23,44 @@ def test_source_scoped_policy_normalizes_cache_and_final_options():
     install(compiler)
     request = ('-std=c++17', '-fmad=true', '-ftz=true', '--ftz=false')
     compiler._compile_with_cache_cuda(MARKER + 'urban source', request)
-    assert calls == [('cache', ('-std=c++17', '-fmad=true', '--ftz=false')),
-                     ('final', ('-std=c++17', '-fmad=true', '--ftz=false'))]
+    # The cache key carries KEY_OPTION, so an image an unhooked process wrote
+    # for the same source and options (flushed by CuPy's -ftz=true) is never
+    # read back by a hooked request.
+    assert calls == [('cache', ('-std=c++17', '-fmad=true', KEY_OPTION, '--ftz=false')),
+                     ('final', ('-std=c++17', '-fmad=true', KEY_OPTION, '--ftz=false'))]
     calls.clear()
     compiler._compile_with_cache_cuda('other source', ('-std=c++17',))
     assert calls == [('cache', ('-std=c++17',)),
                      ('final', ('-std=c++17', '-ftz=true'))]
+
+
+def test_install_rehooks_after_another_hook_restores_cupy():
+    """A hook that saves and restores CuPy's functions (kernel_aot.capture_requests)
+    must not leave marked units compiling with flush-to-zero for the rest of the
+    process."""
+    from types import SimpleNamespace
+    from woof.cuda_subnormals import KEY_OPTION, MARKER, install
+    calls = []
+    class Program:
+        def __init__(self, source):
+            self.src = source
+        def compile(self, options=(), log_stream=None):
+            calls.append(options)
+    plain_compile = Program.compile
+    def cache(source, options, *args, **kwargs):
+        return Program(source).compile(options + ('-ftz=true',))
+    compiler = SimpleNamespace(_NVRTCProgram=Program, _compile_with_cache_cuda=cache)
+    install(compiler)
+    # Another hook restores what it saved before this one was installed.
+    compiler._compile_with_cache_cuda = cache
+    Program.compile = plain_compile
+    install(compiler)
+    compiler._compile_with_cache_cuda(MARKER + 'urban source', ('-std=c++17', '--ftz=false'))
+    assert calls == [('-std=c++17', KEY_OPTION, '--ftz=false')]
+    # Installing again over a live hook does not stack a second one.
+    hooked = compiler._compile_with_cache_cuda
+    install(compiler)
+    assert compiler._compile_with_cache_cuda is hooked
 
 
 @pytest.mark.parametrize("name", ["urban_ucm", "urban_bep", "urban_bep_couple"])

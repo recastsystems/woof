@@ -141,8 +141,8 @@ def forecast_physics_arm(table: Mapping[str, Any], named: Mapping[str, str],
 
     THE BREAKAGE THIS PREVENTS (G12, 2026-10-20): ``--forecast-arg=--physics-suite=mesoscale_reference``
     ran the MPAS suite, but the plan (and the ``global-plan.json`` the run keeps as its physics record)
-    said ``physics: arwen``, "No override: the forecast door's own default", and the WOOF arm's step
-    cap was computed for it.  The suite is the run's physics: it is labelled as such, carries no WOOF
+    said ``physics: arwen``, "No override: the forecast door's own default", and the WOOF-ArWen arm's step
+    cap was computed for it.  The suite is the run's physics: it is labelled as such, carries no WOOF-ArWen
     overrides, and its step cap is the one the forecast door itself applies to that suite's selectors
     (:func:`default_step_cap`)."""
 
@@ -193,6 +193,13 @@ def engine_identities() -> frozenset[str]:
     try:
         from woof.checkpoint_identity import CUMULUS_ALGORITHM_IDENTITIES
         found.update(str(value) for value in CUMULUS_ALGORITHM_IDENTITIES.values())
+    except (ImportError, AttributeError):
+        pass
+    try:
+        # An engine that carries the fix of a microphysics long-step defect names it here
+        # (microphysics_step_cap); gpuwm 2.9.13 publishes no such table.
+        from woof.checkpoint_identity import MICROPHYSICS_ALGORITHM_IDENTITIES
+        found.update(str(value) for value in MICROPHYSICS_ALGORITHM_IDENTITIES.values())
     except (ImportError, AttributeError):
         pass
     return frozenset(found)
@@ -266,6 +273,62 @@ def default_step_cap(dt_selection: Mapping[str, Any], selectors: Mapping[str, An
                        f"own {mesh_dt:g} s, rounded down to divide the {float(radiation_seconds):g} s radiation interval")
     if required:
         capped["engine_lacks"] = sorted(set(required) - set(engine))
+    return capped
+
+
+def microphysics_step_cap(dt_selection: Mapping[str, Any], selectors: Mapping[str, Any], *,
+                          radiation_seconds: float, route: str = "arwen",
+                          engine: frozenset[str] | set[str] | None = None,
+                          table: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The WOOF-ArWen route's step under the picked microphysics' long-step cap (``microphysics_step_caps`` in
+    data/global-runs.v1.json).
+
+    THE BREAKAGE THIS PREVENTS (hex 0.5.0, after the ArWen-route microphysics picks of WOOF run
+    run_8473f081008d5e1f, 2026-11-09): TEMPO picked over arwen_mpas_column on the 120 km globe ran at the
+    mesh's own 600 s step, held 0.90 kg/kg of rain water and 74 dBZ by +30 min and stopped at 2400 s on a
+    non-finite density; at 300 s it still grew (0.16 kg/kg at +1 h); at 150 s it stayed bounded.  A DEFAULT
+    step (the mesh's, the row's, or another arm's cap) above the scheme's cap takes the cap; an EXPLICIT step
+    above it (``--dt`` or a namelist ``config_dt``) is refused by name, because that run would stop or draw
+    rain that is not there.  Only the WOOF-ArWen route is capped: MPAS-A's own suites run TEMPO on the MPAS route,
+    which sub-steps microphysics itself.  The cap dies with its defect: an engine that publishes every
+    identity in the row's ``max_dt_retired_by_engine`` (:func:`engine_identities`) runs the step as given."""
+    from .mpas_defaults import SECONDS_PER_KM, default_dt_seconds
+
+    selection = dict(dt_selection)
+    scheme = str(selectors.get("config_microp_scheme", "") or "")
+    table = load_table() if table is None else table
+    arm = (table.get("microphysics_step_caps") or {}).get(scheme)
+    if not isinstance(arm, Mapping) or route not in (arm.get("routes") or ()):
+        return selection
+    cap = float(arm["max_dt_seconds"])
+    step = float(selection["dt_seconds"])
+    if step <= cap:
+        return selection
+    required = sorted(str(value) for value in arm.get("max_dt_retired_by_engine") or ())
+    engine = engine_identities() if engine is None else engine
+    if required and set(required) <= set(engine):
+        selection["microphysics_cap_retired"] = {"scheme": scheme, "cap_seconds": cap,
+                                                 "engine_identities": required}
+        return selection
+    lacks = sorted(set(required) - set(engine))
+    if selection.get("source") not in ("mesh", "row", "physics cap"):
+        raise GlobalDoorError(
+            f"{scheme} on the WOOF-ArWen route at a {step:g} s step: TEMPO picked over a WOOF-ArWen-route suite goes "
+            f"non-physical above {cap:g} s on this engine (120 km globe: stopped at 600 s, rain water still "
+            f"growing at 300 s, bounded at 150 s; data/global-runs.v1.json microphysics_step_caps)"
+            + (f"; this engine lacks {', '.join(lacks)}" if lacks else "")
+            + f".  Give --dt {cap:g} or less, leave --dt out to take the capped default, or run an MPAS-A "
+              "suite that carries TEMPO (hrrrv5) on the MPAS route")
+    capped = default_dt_seconds(cap * 1000.0 / SECONDS_PER_KM, radiation_seconds=float(radiation_seconds))
+    capped.update(source="physics cap", mesh_dt_seconds=float(selection.get("mesh_dt_seconds", step)),
+                  cap_seconds=cap, arm=f"microphysics {scheme}", why=arm.get("max_dt_why"),
+                  rule=(f"the {scheme} microphysics cap of {cap:g} s on the WOOF-ArWen route (data/global-runs.v1.json "
+                        f"microphysics_step_caps) under the {step:g} s default, rounded down to divide the "
+                        f"{float(radiation_seconds):g} s radiation interval"))
+    if selection.get("source") == "physics cap":
+        capped["under_arm"] = {"arm": selection.get("arm"), "cap_seconds": selection.get("cap_seconds")}
+    if lacks:
+        capped["engine_lacks"] = lacks
     return capped
 
 
@@ -470,7 +533,7 @@ def plan(args: argparse.Namespace, table: Mapping[str, Any] | None = None) -> di
     hours = float(args.hours if args.hours is not None else row.get("hours", 24))
     named = forecast_arg_physics(args.forecast_arg)
     suite_arm = forecast_physics_arm(table, named, args.physics_row)
-    # The hex default (owner ruling 2026-10-25): a row on the "mpas" arm with no suite named runs MPAS-A's own
+    # The hex default (2026-10-25): a row on the "mpas" arm with no suite named runs MPAS-A's own
     # suite for its mesh (woof.hex.physics_default), passed to the forecast door below as --physics-suite.  An
     # "arwen" arm with no overrides passes --physics-suite arwen_mpas_column (the ArWen route as it always ran).
     route_suite = None
@@ -506,6 +569,14 @@ def plan(args: argparse.Namespace, table: Mapping[str, Any] | None = None) -> di
         step = {**step, "capped": step.get("source") == "physics cap", "mesh_dt_seconds": mesh_dt,
                 "passed_as_dt": False,
                 "note": "the forecast door applies this step to the named suite itself; the global door passes no --dt"}
+    from .mpasphys.forecast_v842 import forecast_args_slot_refusal
+    door_flags = [str(item) for item in (args.forecast_arg or ())]
+    if route_suite is not None and not named.get("suite"):
+        door_flags += ["--physics-suite", route_suite]
+    slot_refusal = forecast_args_slot_refusal(door_flags)
+    if slot_refusal is not None:
+        # The forecast door's own refusal, read before the mesh, the static and any download.
+        raise GlobalDoorError(slot_refusal + " Nothing was built or downloaded.")
     physics["mode"] = named.get("mode") or "correct"
     physics["mode_source"] = ("--forecast-arg=--physics-mode" if named.get("mode")
                               else "the forecast door default (correct)")
@@ -760,6 +831,32 @@ def stage_mesh(value: Mapping[str, Any], status) -> dict[str, Any]:
     if grid.is_file() and sha256_file(grid) == mesh["grid_sha256"]:
         status.skip("mesh", f"the cache holds {grid.name} with the pinned sha256 {mesh['grid_sha256'][:16]}")
         return {"grid": str(grid), "cached": True}
+    # One run at a time fetches and unpacks a mesh into this cache; a run that arrives meanwhile waits and then
+    # finds the grid.  THE BREAKAGE THIS PREVENTS (hex 0.5.0 both-routes matrix and its exact rerun, 2026-11-09):
+    # two `woof hex global` runs started together on an empty cache both fetched the archive; the loser of the
+    # publish stopped ("could not publish x1.40962.tar.gz without replacing existing bytes: File exists"), and
+    # with that forgiven it stopped a second later on FileNotFoundError, because the winner had unpacked the
+    # grid and removed the archive under it.
+    from .file_lock import lock as _flock, unlock as _funlock
+    gate = grid.with_name(grid.name + ".lock")
+    gate.parent.mkdir(parents=True, exist_ok=True)
+    with gate.open("a") as stream:
+        try:
+            _flock(stream, blocking=False)
+        except BlockingIOError:
+            status.note(f"another run on this cache is fetching {grid.name}; waiting for it")
+            _flock(stream)
+        try:
+            if grid.is_file() and sha256_file(grid) == mesh["grid_sha256"]:
+                status.skip("mesh", f"another run on this cache fetched {grid.name}; it has the pinned sha256 "
+                                    f"{mesh['grid_sha256'][:16]}")
+                return {"grid": str(grid), "cached": True}
+            return _fetch_mesh(mesh, grid, status)
+        finally:
+            _funlock(stream)
+
+
+def _fetch_mesh(mesh: Mapping[str, Any], grid: Path, status) -> dict[str, Any]:
     archive = grid.parent / Path(mesh["url"]).name
     size = int(mesh.get("archive_bytes") or 0)
     if not (archive.is_file() and sha256_file(archive) == mesh["archive_sha256"]):
@@ -779,7 +876,14 @@ def stage_mesh(value: Mapping[str, Any], status) -> dict[str, Any]:
             if "pin refused" in detail or "pinned object refused" in detail:
                 archive.unlink(missing_ok=True)
                 raise GlobalDoorError(f"{mesh['url']}: not the published mesh; {detail}") from error
-            raise GlobalDoorError(detail) from error
+            # Another run on this cache published the same archive while this one was fetching it (the fetcher
+            # never replaces existing bytes).  The pinned bytes are in place, which is all this stage needs.  THE
+            # BREAKAGE THIS PREVENTS (hex 0.5.0 both-routes matrix, 2026-11-09): two `woof hex global` runs
+            # started together on an empty cache; the second to finish stopped in its mesh stage with "could not
+            # publish x1.40962.tar.gz without replacing existing bytes: File exists".
+            if not (archive.is_file() and sha256_file(archive) == mesh["archive_sha256"]):
+                raise GlobalDoorError(detail) from error
+            status.note(f"{archive.name} was fetched by another run on this cache; its bytes are the pinned ones")
         got = sha256_file(archive)
         if got != mesh["archive_sha256"]:
             archive.unlink()
@@ -788,7 +892,10 @@ def stage_mesh(value: Mapping[str, Any], status) -> dict[str, Any]:
                 f"is not the published mesh and was removed")
     from woof.table_assets import _rw_asset
     from woof.geog_assets import GeogFetchError
-    decoder = shutil.which("rapidgzip")
+    # rapidgzip is a declared dependency, so pip puts its executable beside this interpreter. A user who runs the
+    # venv's woof hex by its full path (cron, a service, no activated venv) has that folder off PATH; look there too.
+    import sysconfig
+    decoder = shutil.which("rapidgzip") or shutil.which("rapidgzip", path=sysconfig.get_path("scripts"))
     if decoder is None:
         raise GlobalDoorError("rapidgzip is missing; reinstall woof hex to get the parallel mesh decoder")
     # The Rust tar reader walks the decoded stream once, checking paths and
@@ -875,6 +982,11 @@ def stage_static(value: Mapping[str, Any], status) -> dict[str, Any]:
     from .ugwp_oro import prepare_for_forecast
     prepare_for_forecast(value.get("commands", {}).get("forecast", ()), grid,
                          argv[argv.index("--geog") + 1] if "--geog" in argv else None, log=status.note)
+    # The KIM drag (gwdo_version=kim2026, by name only; v842 is the default) reads MPAS PR #1408's elvmax and statistics
+    # (woof.hex.kim_gwd_static); built here too, so the forecast finds them and no card waits.
+    from .kim_gwd_static import prepare_for_forecast as prepare_kim_statistics
+    prepare_kim_statistics(value.get("commands", {}).get("forecast", ()), grid,
+                           argv[argv.index("--geog") + 1] if "--geog" in argv else None, log=status.note)
     _register(value, grid, static, rows_file, receipt_path)
     return {"static": str(static), "mesh_rows": str(rows_file)}
 
@@ -1026,6 +1138,7 @@ def run_global(args: argparse.Namespace) -> int:
             _write_receipt(work, receipt)
             return 0
         live_receipt = None  # the first look's live-frames.json: the products pass skips the hours it rendered
+        scoring = None       # door_scorecard's answer: the last line says whether the scorer has finished
         for name in stages:
             started = time.monotonic()
             if name == "mesh":
@@ -1039,7 +1152,7 @@ def run_global(args: argparse.Namespace) -> int:
                     continue
                 if name == "score":
                     from .observation_scorecard import door_scorecard
-                    joined = door_scorecard(value["paths"]["forecast"], score_config)
+                    joined = scoring = door_scorecard(value["paths"]["forecast"], score_config)
                     if joined is not None:
                         status.skip("score", joined["note"])
                         receipt["stages"][name] = {**joined, "seconds": round(time.monotonic() - started, 1)}
@@ -1075,15 +1188,17 @@ def run_global(args: argparse.Namespace) -> int:
                     result["card_given_back"] = gpu_work_done(env)
                     if "score" in stages:
                         from .observation_scorecard import door_scorecard
-                        result["observation_scoring"] = door_scorecard(value["paths"]["forecast"], score_config)
+                        result["observation_scoring"] = scoring = door_scorecard(value["paths"]["forecast"], score_config)
                 if rc != 0:
                     receipt["stages"][name] = {**result, "seconds": round(time.monotonic() - started, 1)}
                     status.failed(f"the {name} stage exited {rc}")
                     _write_receipt(work, receipt)
                     return rc
             receipt["stages"][name] = {**result, "seconds": round(time.monotonic() - started, 1)}
-        status.done(f"{value['row']['id']} {value['cycle']}: {', '.join(stages)}")
+        from .observation_scorecard import say_scoring, stages_done_text
+        status.done(f"{value['row']['id']} {value['cycle']}: {stages_done_text(stages, scoring)}")
         _write_receipt(work, receipt)
+        say_scoring("global", stages, scoring)   # the terminal's last line: still running, or the scorecard's status
         return 0
     except MpasPortError as error:
         status.refused(str(error))
@@ -1099,15 +1214,20 @@ def run_global(args: argparse.Namespace) -> int:
 
 def _ran_physics(path: Path) -> dict[str, Any] | None:
     """The suite and mode the forecast stage ran, from its own receipt (None until it writes one).
-    No ``configuration.physics_mode`` block means exact: the forecast door records it only for correct."""
+
+    The WOOF-ArWen route's door receipt records the mode under ``configuration.physics_mode`` (only for correct); the MPAS
+    suite route's record keeps it at ``physics.physics_mode``. Neither means exact.
+    THE BREAKAGE THIS PREVENTS: a correct-mode global run on an MPAS suite wrote ``"ran": {"mode": "exact"}`` into
+    global-receipt.json, because only the WOOF-ArWen route's key was read."""
 
     try:
         forecast = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+    physics = forecast.get("physics") or {}
     block = (forecast.get("configuration") or {}).get("physics_mode") or {}
-    return {"suite": (forecast.get("physics") or {}).get("suite") or "arwen",
-            "mode": block.get("physics.mode", "exact")}
+    mode = block.get("physics.mode") or physics.get("physics_mode") or "exact"
+    return {"suite": physics.get("suite") or "arwen", "mode": mode}
 
 
 def _write_receipt(work: Path, receipt: Mapping[str, Any]) -> None:

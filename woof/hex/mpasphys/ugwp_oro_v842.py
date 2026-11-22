@@ -8,7 +8,10 @@
 # governing permissions and limitations under the License.
 #
 # Source: https://github.com/NOAA-GSL/UGWP, commit c1c893edcf171af5639af60e3a3a528816f6cc2b
-# (tag MPAS_20241223), bl_ugwp.F. Upstream LICENSE: https://github.com/NOAA-GSL/UGWP/blob/main/LICENSE
+# (tag MPAS_20241223, the MPAS-A v8.4.2 and RRFS 44c0849 referee pin), bl_ugwp.F, carried to the latest
+# release MPAS_20261104 (4108d491470c2576a7c1e97cc6a38bf454590193): its one code change, 96a9a13, makes the
+# TOFD coefficient alpha_fd an input of bl_ugwp_run (bl_ugwp.F:36,144,762); at its value 12 the compiled
+# source is the pin's token for token (UGWP_ALPHA_FD below). Upstream LICENSE: https://github.com/NOAA-GSL/UGWP/blob/main/LICENSE
 # (added at 4108d491470c2576a7c1e97cc6a38bf454590193); copy in licenses/LICENSE-UGWP-Apache-2.0.txt.
 # Ported to CUDA for woof hex: the Fortran is rewritten as CUDA kernels with a Python
 # launcher; changes are this project's, under the same licence. NOTICE section 8.
@@ -269,7 +272,7 @@ extern "C" __global__ void ugwp_oro_run(
         float ut=0.0f,vt=0.0f;
         if(form) {
             const float wsp=__fsqrt_rn(u[k]*u[k]+v[k]*v[k]);
-            var_temp=12.0f*6.325e-3f*gfk_exp(-gfk_pow(za[k]/hex_divisor_44bb8000,1.5f))*a2
+            var_temp=UGWP_ALPHA_FD*6.325e-3f*gfk_exp(-gfk_pow(za[k]/hex_divisor_44bb8000,1.5f))*a2
                      *gfk_pow(za[k],-1.2f)*ss_taper;
             ut=-var_temp*wsp*u[k]/(1.0f+var_temp*dt*wsp);
             vt=-var_temp*wsp*v[k]/(1.0f+var_temp*dt*wsp);
@@ -396,12 +399,36 @@ def _shared_math_source() -> str:
     )
 
 
+#: UGWP MPAS_20261104 bl_ugwp.F:144 ``alpha_fd``, the Beljaars et al. (2004) TOFD coefficient; the pin
+#: (MPAS_20241223 bl_ugwp.F:302-304) hard-codes 12._kind_phys.  No MPAS-A or RRFS driver passes it yet, so there is
+#: no upstream namelist name, and both namelist resolvers refuse an unregistered one: runs use 12.  The value is an
+#: argument of ``bl_ugwp_run``/``driver_gwdo``; a slot call's ``config_ugwp_alpha_fd`` option (set programmatically,
+#: never from a namelist) reaches the slot paths.
+ALPHA_FD_DEFAULT = 12.0
+
+
+def alpha_fd_literal(alpha_fd: float = ALPHA_FD_DEFAULT) -> str:
+    """The CUDA float literal for alpha_fd: ``12.0f`` at the default, so the compiled source is the pin's."""
+    value = float(alpha_fd)
+    if not np.isfinite(value) or value < 0.0:
+        # THE BREAKAGE THIS PREVENTS: a negative or non-finite coefficient turns form drag into acceleration or NaN.
+        raise ValueError(f"config_ugwp_alpha_fd must be a finite number >= 0, not {alpha_fd!r}")
+    return repr(value) + "f"
+
+
+def call_alpha_fd(call) -> float:
+    """alpha_fd for one scheme call: a programmatic ``config_ugwp_alpha_fd`` call option, else upstream's 12."""
+    options = getattr(call, "options", None) or {}
+    return float(options.get("config_ugwp_alpha_fd", ALPHA_FD_DEFAULT))
+
+
 @lru_cache(maxsize=None)
-def _module(device: int, levels: int):
+def _module(device: int, levels: int, alpha_fd: float = ALPHA_FD_DEFAULT):
     """MPAS bl_ugwp.F:15-1059 compilation preserving native gradual underflow."""
     import cupy as cp
     from woof import nvrtc_ptx_cache as compiler
-    source = _shared_math_source() + f"\n#define UGWP_LEVELS {levels}\n" + CUDA_SOURCE
+    source = (_shared_math_source() + f"\n#define UGWP_LEVELS {levels}\n"
+              + f"#define UGWP_ALPHA_FD {alpha_fd_literal(alpha_fd)}\n" + CUDA_SOURCE)
     with cp.cuda.Device(device):
         ptx, _ = compiler.compile_using_nvrtc(source, _hex_numerics.options(COMPILE_OPTIONS), None, "ugwp_oro_v842.cu")
         module = cp.cuda.function.Module()
@@ -435,7 +462,8 @@ def _on_stream(function):
 
 @_on_stream
 def bl_ugwp_run(columns: Mapping[str, object], *, g, cp, rd, rv, fv, pi, deltim,
-                ugwp_diags: bool = False, stream=None) -> dict[str, object]:
+                ugwp_diags: bool = False, alpha_fd: float = ALPHA_FD_DEFAULT,
+                stream=None) -> dict[str, object]:
     """MPAS bl_ugwp.F:15-1059; module_bl_ugwp_gwdo.F:325-357,385-429.
 
     Returns candidate outputs without mutating PBL tendencies. Optional
@@ -457,7 +485,7 @@ def bl_ugwp_run(columns: Mapping[str, object], *, g, cp, rd, rv, fv, pi, deltim,
     out = cupy.empty((12,nz,nc), dtype=cupy.float32)
     sout = cupy.empty((10,nc), dtype=cupy.float32)
     status = cupy.zeros((1,), dtype=cupy.int32)
-    module = _module(cupy.cuda.runtime.getDevice(), nz)
+    module = _module(cupy.cuda.runtime.getDevice(), nz, float(alpha_fd))
     kernel = module.get_function("ugwp_oro_run")
     kernel(((nc+63)//64,), (64,),
            (layers, columns["prsi"], surface, columns["kpbl"], out, sout, status,
@@ -530,14 +558,14 @@ def gwdo_to_MPAS(fields: Mapping[str, object], outputs: Mapping[str, object], *,
 
 @_on_stream
 def driver_gwdo(fields: Mapping[str, object], *, len_disp, g, cp, rd, rv, fv, pi,
-                deltim, ugwp_diags=False, stream=None):
+                deltim, ugwp_diags=False, alpha_fd=ALPHA_FD_DEFAULT, stream=None):
     """MPAS mpas_atmphys_driver_gwdo.F:753-822,829: orographic driver slice.
 
     p15 composes its nonstationary call after this operator when enabled.
     """
     columns = gwdo_from_MPAS(fields,len_disp=len_disp,stream=stream)
     outputs = bl_ugwp_run(columns,g=g,cp=cp,rd=rd,rv=rv,fv=fv,pi=pi,
-                          deltim=deltim,ugwp_diags=ugwp_diags,stream=stream)
+                          deltim=deltim,ugwp_diags=ugwp_diags,alpha_fd=alpha_fd,stream=stream)
     return gwdo_to_MPAS(fields,outputs,stream=stream)
 
 
@@ -584,7 +612,8 @@ def register_backend(registry, *, get_fields, get_constants, commit_outputs,
         stream = get_stream(call) if get_stream is not None else None
         columns = gwdo_from_MPAS(fields, len_disp=constants.pop("len_disp"), stream=stream)
         outputs = bl_ugwp_run(columns, **constants, deltim=call.dt,
-                             ugwp_diags=bool(call.options["config_ugwp_diags"]), stream=stream)
+                             ugwp_diags=bool(call.options["config_ugwp_diags"]), alpha_fd=call_alpha_fd(call),
+                             stream=stream)
         if ngw:
             outputs = nonstationary(call, fields, outputs)
         outputs = gwdo_to_MPAS(fields, outputs, stream=stream)
@@ -679,7 +708,7 @@ def run_slot(call):
     for name, target in zip(("sina", "cosa", "dxmeter"), packet["orientation"]):
         target[...] = columns[name]
     outputs = bl_ugwp_run(columns, **constants, deltim=call.dt,
-                         ugwp_diags=bool(call.options["config_ugwp_diags"]))
+                         ugwp_diags=bool(call.options["config_ugwp_diags"]), alpha_fd=call_alpha_fd(call))
     if ngw:
         outputs = nonstationary(call, fields, outputs)
     outputs = gwdo_to_MPAS(fields, outputs)
@@ -689,3 +718,8 @@ def run_slot(call):
         value = outputs[name]
         target[:value.shape[0]] = value
     return outputs
+
+
+# WOOF_HEX_AD_PARAMS (default unset: nothing changes) runs the forward at chosen values of the carried constants.
+from . import ad_params_override as _ad_params_override
+_ad_params_override.patch_module(globals(), "ugwp")

@@ -84,7 +84,7 @@ def require_cold_start(dataset) -> None:
             "This file carries Noah-MP state that cannot be discarded "
             f"({', '.join(indicators)}), but this input route does not restore "
             "the full WRF restart inventory, including snow-age state. "
-            "Use the original real.exe inputs with a WOOF --restart checkpoint, "
+            "Use the original real.exe inputs with a WOOF-ArWen --restart checkpoint, "
             "or continue the WRF restart with WRF.")
 
 
@@ -162,9 +162,10 @@ def input_dispositions(cfg) -> MappingProxyType:
                 f"operation these cold-start records do not initialize. "
                 f"Use the supported {name}={wanted} option or provide its state consumer.")
     result=dict(NOAHMP_INPUT_DISPOSITIONS)
-    if int(getattr(cfg,"opt_run",3)) in (1,2):
+    from woof.core.noahmp_runoff_split import carrier_of as _runoff_carrier_of
+    if _runoff_carrier_of(cfg) in (1,2):
         result.update({name:"initialized from common cold-start fields" for name in ("ZWT","WT")})
-    if int(getattr(cfg,"opt_run",3))==5:
+    if _runoff_carrier_of(cfg)==5:
         for name in ("FDEPTH","EQZWT","RIVERBED","RECHCLIM"):result.pop(name,None)
         for name in ("ZWT","SMCWTD","DEEPRECH","RECH","SMOISEQ"):result[name]="initialized from common cold-start fields"
     if int(getattr(cfg,"dveg",4)) in (2,5,6):

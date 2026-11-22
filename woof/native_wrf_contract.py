@@ -507,7 +507,12 @@ def validate_native_static_fields(
     missing = sorted(NATIVE_STATIC_REQUIRED - set(fields))
     if missing:
         raise KeyError(f"native static fields are missing {missing}")
-    from woof.static.orographic import OROGRAPHIC_ROWS
+    from woof.static.orographic import GWDO_480_EXTRA_FIELDS, OROGRAPHIC_ROWS
+    # ELVMAX (WRF v4.8.0's gwd_opt = 1) is not a GEOGRID-table row, so it is
+    # retained beside OROGRAPHIC_ROWS: without it the cache dropped the field
+    # the static build had just made, and the forecast refused the prepared
+    # tree (prepared_terrain_drag_missing) on every gwd_opt = 1 run.
+    orographic = tuple(OROGRAPHIC_ROWS) + tuple(GWDO_480_EXTRA_FIELDS)
     chem_fields = set(NATIVE_CHEM_STATIC_PLANES) & set(fields)
     if chem_fields and chem_fields != set(NATIVE_CHEM_STATIC_PLANES):
         raise ValueError(
@@ -521,7 +526,7 @@ def validate_native_static_fields(
                 | ({"LAKE_DEPTH", "LAKEMASK", "SLOPECAT"} & set(fields))
                 | chem_fields
                 | ({"FRC_URB2D"} & set(fields))
-                | (set(OROGRAPHIC_ROWS) & set(fields)))
+                | (set(orographic) & set(fields)))
     result = _decode_native_static_fields(fields, retained)
     landuse_categories = _landuse_category_count(result["LANDUSEF"])
     expected_shapes = {
@@ -539,7 +544,7 @@ def validate_native_static_fields(
         "E": (ny, nx),
         "SINALPHA": (ny, nx),
         "COSALPHA": (ny, nx),
-        **{name: (ny, nx) for name in OROGRAPHIC_ROWS},
+        **{name: (ny, nx) for name in orographic},
         "LAKE_DEPTH": (ny, nx),
         "LAKEMASK": (ny, nx),
         "SLOPECAT": (ny, nx),
@@ -683,7 +688,14 @@ def validate_wps_geometry(exp, wps_namelist: Path, *, source_name: str):
         raise ValueError(f"WPS/experiment domain identity mismatch: WPS {wps_ids}, experiment {expected_ids}")
     slots = {grid_id: slot for slot, grid_id in enumerate(expected_ids, start=1)}
     expected_parents = [slots[domain.parent_id or 1] for domain in exp.domains]
-    observed_parents = wps_values.get("parent_id", [1])[:len(exp.domains)]
+    observed_parents = list(wps_values.get("parent_id", [1])[:len(exp.domains)])
+    # 3.0.2 item 2: the head grid has no parent; WPS asks for 1 there and
+    # namelist generators write WRF's head-grid spelling 0.  import-namelist
+    # and the support report take both and book the 0 as normalized to 1, so
+    # the same file is read the same way here.  Any other d01 value is still
+    # compared, and refused as a parent the head grid cannot have.
+    if observed_parents[:1] == [0]:
+        observed_parents[0] = 1
     if observed_parents != expected_parents:
         raise ValueError(f"WPS/experiment parent-slot identity mismatch: WPS {observed_parents}, experiment {expected_parents}")
 

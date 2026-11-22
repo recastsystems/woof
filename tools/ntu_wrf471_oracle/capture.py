@@ -51,8 +51,8 @@ def block(output: bool) -> str:
     return "\n".join(lines)
 
 
-def instrument(source: Path, licence: Path, destination: Path) -> dict:
-    verify(source, licence)
+def instrument(source: Path, licence: Path, destination: Path, wrf: str = "4.7.1") -> dict:
+    verify(source, licence, wrf)
     original = source.read_text()
     text = original.replace(
         "      CONTAINS\n",
@@ -69,6 +69,7 @@ def instrument(source: Path, licence: Path, destination: Path) -> dict:
     text = text[:start] + part + block(True) + text[end:]
     destination.write_text(text)
     receipt = {
+        "wrf": wrf,
         "source_sha256": hashlib.sha256(original.encode()).hexdigest(),
         "instrumented_sha256": hashlib.sha256(text.encode()).hexdigest(),
         "scope": "module-entry and module-return real forecast arguments; no physics edits",
@@ -83,5 +84,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     for name in ("source", "licence", "destination"):
         ap.add_argument(name, type=Path)
+    ap.add_argument("--wrf", choices=("4.7.1", "4.8.0"), default="4.7.1")
     args = ap.parse_args()
-    print(json.dumps(instrument(args.source, args.licence, args.destination), indent=2))
+    print(json.dumps(instrument(args.source, args.licence, args.destination, args.wrf), indent=2))

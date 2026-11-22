@@ -1,6 +1,6 @@
-"""Updraft helicity on the partitioned WOOF executors: LTS classes (one card or several) and same-host ranks.
+"""Updraft helicity on the partitioned WOOF-ArWen executors: LTS classes (one card or several) and same-host ranks.
 
-THE BREAKAGE THIS GUARDS (both-routes matrix, woof hex 0.4.14 candidate, 2026-11-06): the WOOF fixed-step driver
+THE BREAKAGE THIS GUARDS (both-routes matrix, woof hex 0.4.14 candidate, 2026-11-06): the WOOF-ArWen fixed-step driver
 wrote updraft_helicity_max, but the full-step LTS class executor and the same-host multi-card ranks never armed the
 layers, so those runs rendered no UH maps. Each partition now arms its own layers over its local mesh; a cell sums its
 kites in its own verticesOnCell order, so a partition's owned words are the whole mesh's words.

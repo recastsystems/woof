@@ -55,6 +55,9 @@ __all__ = [
     "divide",
     "snowh2o",
     "snowwater",
+    "COMPACTION_OPTIONS",
+    "COMPACTION_LABEL",
+    "compaction_cbd",
 ]
 
 
@@ -80,6 +83,51 @@ _C4 = _f(0.04)         # [1/K]
 _C5 = _f(2.0)
 _DM = _f(100.0)        # upper limit on destructive metamorphism [kg/m3]
 _ETA0 = _f(1.33e+6)    # viscosity coefficient, He et al. 2021 value
+
+# --- Snow compaction option 2: overburden C_bd(T_air, p_sfc) --------------
+# Re-implemented from published descriptions, not bitwise to upstream.
+# Source: Abolafia-Rosenzweig, He, Chen & Barlage (2024), "Evaluating and
+# Enhancing Snow Compaction Process in the Noah-MP Land Surface Model",
+# JAMES 16, e2023MS003869, doi:10.1029/2023MS003869 (CC BY), Section 2.4:
+#   Eq. 11  C_bd = -0.00069503 * T_air + 0.20606699      (T_air in K)
+#   Eq. 12  pressure-binned C_bd,min: 0.019 (psfc < 80,000 Pa),
+#           0.018 (80,000 <= psfc < 85,000 Pa), 0.017 (psfc >= 85,000 Pa)
+#   text    upper constraint C_bd <= 0.0315 (T_air below ~251 K)
+# Eq. 12 is printed with "min(C_bd, .)", but the same section calls the
+# bins "variable lower constraints" and "C_bd,min", and Figure 2's three
+# lines are Eq. 11 floored at 0.019/0.018/0.017 at warm temperatures, so
+# the bins are applied as floors (max).  No upstream source file was read.
+COMPACTION_OPTIONS = (1, 2)
+COMPACTION_LABEL = ("re-implemented from published descriptions, "
+                    "not bitwise to upstream")
+_AR24_SLOPE = _f(-0.00069503)   # [m3/kg/K]  Eq. 11
+_AR24_ICEPT = _f(0.20606699)    # [m3/kg]    Eq. 11
+_AR24_P_LO = _f(80000.0)        # [Pa]       Eq. 12 bin edge
+_AR24_P_HI = _f(85000.0)        # [Pa]       Eq. 12 bin edge
+_AR24_MIN_LO = _f(0.019)        # psfc < 80 kPa (high terrain)
+_AR24_MIN_MID = _f(0.018)       # 80 <= psfc < 85 kPa
+_AR24_MIN_HI = _f(0.017)        # psfc >= 85 kPa
+_AR24_MAX = _f(0.0315)          # upper constraint, Section 2.4 text
+
+
+def compaction_cbd(sfctmp, psfc) -> np.float32:
+    """Overburden compaction parameter C_bd [m3/kg] of compaction option 2.
+
+    ``sfctmp`` is the surface air temperature Noah-MP is forced with (K) and
+    ``psfc`` the surface pressure (Pa).  Float32, one rounding per operation,
+    in the order the CUDA option kernel evaluates it.
+    """
+    t = _f(sfctmp)
+    p = _f(psfc)
+    cbd = _f(_f(_AR24_SLOPE * t) + _AR24_ICEPT)
+    if p < _AR24_P_LO:
+        floor = _AR24_MIN_LO
+    elif p < _AR24_P_HI:
+        floor = _AR24_MIN_MID
+    else:
+        floor = _AR24_MIN_HI
+    return _f(min(max(cbd, floor), _AR24_MAX))
+
 
 # --- COMBINE's DZMIN DATA statement, line 6648 ------------------------------
 # MB's revised limits.  1-based like the Fortran MSSI index.
@@ -249,9 +297,15 @@ def snowfall(col: SnowColumn, dt, qsnow, snowhin, sfctmp) -> None:
 # COMPACT -- lines 6974-7081
 # ===========================================================================
 
-def compact(col: SnowColumn, dt, imelt, ficeold) -> None:
-    """Compact the snowpack by metamorphism, overburden and melt."""
+def compact(col: SnowColumn, dt, imelt, ficeold, cbd=None) -> None:
+    """Compact the snowpack by metamorphism, overburden and melt.
+
+    ``cbd`` replaces the overburden parameter C2 (``None`` keeps WRF's 0.021,
+    the default and byte-identical path); compaction option 2 passes
+    :func:`compaction_cbd`.
+    """
     dt = _f(dt)
+    c2 = _C2 if cbd is None else _f(cbd)
     imelt = np.asarray(imelt, dtype=np.int32)
     ficeold = np.asarray(ficeold, dtype=np.float32)
     IMELT = _Col(imelt, -col.nsnow + 1)
@@ -283,7 +337,7 @@ def compact(col: SnowColumn, dt, imelt, ficeold) -> None:
 
             # Compaction due to overburden; 0.5*WX is the self-burden
             ddz2 = (-(burden + _HALF * wx)
-                    * _f(expf(_f(-0.08) * td - _C2 * bi)) / _ETA0)
+                    * _f(expf(_f(-0.08) * td - c2 * bi)) / _ETA0)
 
             # Compaction occurring during melt
             if IMELT[j] == 1:
@@ -627,11 +681,17 @@ def snowh2o(col: SnowColumn, dt, qsnfro, qsnsub, qrain, ssi, snow_ret_fac,
 # ===========================================================================
 
 def snowwater(col: SnowColumn, dt, zsoil, imelt, ficeold, sfctmp, snowhin,
-              qsnow, qsnfro, qsnsub, qrain, ssi, snow_ret_fac):
+              qsnow, qsnfro, qsnsub, qrain, ssi, snow_ret_fac, *,
+              compaction=1, psfc=None):
     """Sequence the snow leaves and rebuild the layer geometry.
 
-    Returns ``(qsnbot, snoflow, ponding1, ponding2)``.
+    Returns ``(qsnbot, snoflow, ponding1, ponding2)``.  ``compaction=2``
+    selects the C_bd(T_air, p_sfc) overburden parameter and needs ``psfc``.
     """
+    if compaction not in COMPACTION_OPTIONS:
+        raise ValueError(f"snow compaction option {compaction!r} is not 1 or 2")
+    if compaction == 2 and psfc is None:
+        raise ValueError("snow compaction option 2 needs surface pressure psfc")
     dt = _f(dt)
     zsoil = np.asarray(zsoil, dtype=np.float32)
     ZSOIL = _Col(zsoil, 1)
@@ -645,7 +705,8 @@ def snowwater(col: SnowColumn, dt, zsoil, imelt, ficeold, sfctmp, snowhin,
 
     # MB: do each if block separately
     if col.isnow < 0:
-        compact(col, dt, imelt, ficeold)
+        compact(col, dt, imelt, ficeold,
+                None if compaction == 1 else compaction_cbd(sfctmp, psfc))
     if col.isnow < 0:
         ponding1, ponding2 = combine(col, ponding1, ponding2)
     if col.isnow < 0:

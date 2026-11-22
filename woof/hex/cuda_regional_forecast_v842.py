@@ -231,11 +231,12 @@ def run_native_regional_dynamics(arguments, config, layout, payload, streams, li
     options.update(config_dt=dt,config_moist_physics=config.moist_physics)
     from .cuda_regional_forecast_v841 import open_regional_forecast_v841
     from .lbc_stream import initial_paths
+    from .mpasphys.runtime_v842 import native_lbc_scalar_order
     dycore=open_regional_forecast_v841(mesh,state,grid.vertical_grid,reference,
         saved,grid.terrain_metrics,RegionalNativeDycoreConfigV842(**options),
         reference_wind_profiles=profiles,lbc_paths=initial_paths(arguments.lbc_dir),
         start_time=datetime.strptime(start,'%Y-%m-%d_%H:%M:%S'),
-        scalar_names=tuple('lbc_'+name for name in names),
+        scalar_names=native_lbc_scalar_order(layout,config,names)[0],
         kernel_cache=MpasPhysicsKernelCache(capability=require_cuda(min_compute=(12,0)),
                                 cache_dir=str(payload.parent/'cuda-cache')))
     geometry=CudaMpasToPhysGeometryV841.from_host(dycore.regional_v841.padded)
@@ -310,5 +311,6 @@ def run_native_regional_dynamics(arguments, config, layout, payload, streams, li
     from .device_memory_release import process_release
     receipt['device_memory_release']=process_release().receipt()
     (out/'native-physics-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
-    print(json.dumps(receipt))
+    from .correct_mode import terminal_record
+    print(json.dumps(terminal_record(receipt)))
     return 0

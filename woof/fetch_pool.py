@@ -61,6 +61,7 @@ import math
 import os
 from pathlib import Path
 from dataclasses import dataclass
+import sys
 import threading
 import time
 from typing import Callable
@@ -408,6 +409,58 @@ class _HostTurns:
             self._free += 1
             self._cond.notify_all()
 
+    def widen(self, cap: int) -> bool:
+        """Raise this host's cap to ``cap`` (never lower it); True when it rose."""
+
+        with self._cond:
+            if cap <= self._cap:
+                return False
+            self._free += cap - self._cap
+            self._cap = cap
+            self._cond.notify_all()
+            return True
+
+
+class _Widening:
+    """One host's ``transfer`` row applied to a request: when to widen it.
+
+    Fed each landed file's bytes and seconds; once ``sample`` downloaded
+    files of at least the row's ``sample_min_bytes`` are in and the last
+    ``sample`` of them averaged below the row's
+    ``wide_below_bytes_per_s``, the host's turns widen to ``cap`` once,
+    for the rest of the request (see
+    :class:`woof.fetch_endpoints.TransferWatch`).
+    """
+
+    def __init__(self, watch, turns: _HostTurns, cap: int) -> None:
+        self.watch, self.turns, self.cap = watch, turns, cap
+        self._lock = threading.Lock()
+        self._landed: list[tuple[int, float]] = []
+        self.widened: dict | None = None
+
+    def landed(self, entry: dict, seconds: float) -> None:
+        size = entry.get("bytes") if isinstance(entry, dict) else None
+        if (self.widened is not None or not isinstance(size, int) or isinstance(size, bool)
+                or size <= 0 or size < self.watch.sample_min_bytes or seconds <= 0
+                or entry.get("reused") or entry.get("adopted")
+                or entry.get("downloaded") is False):
+            return
+        with self._lock:
+            if self.widened is not None:
+                return
+            self._landed.append((size, seconds))
+            last = self._landed[-self.watch.sample:]
+            if len(last) < self.watch.sample:
+                return
+            rate = sum(b for b, _ in last) / sum(s for _, s in last)
+            if rate >= self.watch.wide_below_bytes_per_s or not self.turns.widen(self.cap):
+                return
+            self.widened = {"after_files": len(self._landed), "files_in_flight": self.cap,
+                            "bytes_per_s": round(rate)}
+        print(f"woof fetch: {self.watch.host} is serving {rate / 1e6:.2f} MB/s per file "
+              f"over the last {len(last)} files (below {self.watch.wide_below_bytes_per_s / 1e6:.2f}); "
+              f"moving up to {self.cap} of its files at once", file=sys.stderr, flush=True)
+
 
 class TransferContext:
     """What a transport can reach of the pool job it is running under.
@@ -661,7 +714,7 @@ def _raise_first_failure(futures, origin: int | None) -> None:
 def run_transfers(jobs, *, workers: int,
                   on_admitted: Callable[[int, dict], None] | None = None,
                   on_completed: Callable[[int, dict], None] | None = None,
-                  monitor=None) -> tuple[list[dict], dict]:
+                  monitor=None, widen: bool = True) -> tuple[list[dict], dict]:
     """Run every job; return ``(entries, receipt)`` in submission order.
 
     ``on_admitted(index, entry)`` fires on the caller's thread, in
@@ -689,6 +742,12 @@ def run_transfers(jobs, *, workers: int,
     -- whether it lands here or inside an action -- stops the rest the
     same way and propagates, so route-level interrupt handling keeps
     working unchanged.
+
+    ``widen`` lets a host whose ``host_policy`` row has a ``transfer``
+    object move more of its files at once while it serves each one slowly
+    (:class:`woof.fetch_endpoints.TransferWatch`); a caller that asked
+    for an exact width passes False.  The receipt's ``host_widened`` says
+    when that happened.
     """
 
     jobs = list(jobs)
@@ -753,6 +812,23 @@ def run_transfers(jobs, *, workers: int,
                          [index for index, job in enumerate(jobs)
                           if host_key(job.url) == host])
         for host in seen_hosts if host}
+    # A host whose table row widens it while it serves slowly gets the
+    # threads for that width now; its turns stay at the pool's width
+    # until the row's evidence is in (_Widening).
+    widenings: dict[str, _Widening] = {}
+    if widen:
+        share = None
+        for host in sorted(turns):
+            watch = fetch_endpoints.transfer_watch(host)
+            if watch is None:
+                continue
+            if share is None:
+                share = fetch_connections.process_share()
+            mine = sum(1 for job in jobs if host_key(job.url) == host)
+            cap = min(watch.wide_files_in_flight, share, mine)
+            if cap > host_worker_cap(host, workers):
+                widenings[host] = _Widening(watch, turns[host], cap)
+    threads = max([workers_effective] + [w.cap for w in widenings.values()])
     timing_lock = threading.Lock()
 
     announced: set[int] = set()
@@ -778,10 +854,13 @@ def run_transfers(jobs, *, workers: int,
                 gate.release()
         with timing_lock:
             serial_seconds += elapsed
+        widening = widenings.get(host_key(job.url))
+        if widening is not None:
+            widening.landed(entry, elapsed)
         return entry
 
     executor = ThreadPoolExecutor(
-        max_workers=workers_effective,
+        max_workers=threads,
         thread_name_prefix="gpuwm-fetch")
     futures: list = []
     admitted = 0
@@ -851,12 +930,16 @@ def run_transfers(jobs, *, workers: int,
         raise
     finally:
         executor.shutdown(wait=True)
-    return entries, _receipt(
+    receipt = _receipt(
         entries=entries, workers_requested=workers,
         workers_effective=workers_effective, host_caps=host_caps,
         wall_seconds=time.perf_counter() - started,
         serial_seconds=serial_seconds, streams_used=stop.streams_used,
         connection_slots=stop.connection_slots)
+    widened = {host: w.widened for host, w in widenings.items() if w.widened}
+    if widened:
+        receipt["host_widened"] = widened
+    return entries, receipt
 
 
 __all__ = [

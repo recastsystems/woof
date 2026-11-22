@@ -1,0 +1,232 @@
+{
+ "assets": {
+  "ad-aux-bl-closure-sm120-v1.tar.gz": {
+   "bytes": 10003374,
+   "holds": [
+    "latest/aux/bl-closure/LICENSE-MYNN-EDMF-Apache-2.0.txt",
+    "latest/aux/bl-closure/NOTICE.txt",
+    "latest/aux/bl-closure/cap120.cubin",
+    "latest/aux/bl-closure/direct120.cubin",
+    "latest/aux/bl-closure/rel.0.cubin",
+    "latest/aux/bl-closure/rel.1.cubin",
+    "latest/aux/bl-closure/rel.2.cubin"
+   ],
+   "kind": "ad-aux",
+   "sha256": "8c316312f0649dd57b3168912ea3f4e0e8f9deab0c812fce2beb368e1ed70716",
+   "what": "the five images of the 3 km storm row's default boundary-layer route (tape-free), NVIDIA sm_120 cards, one linear model: direct120.cubin (sha256 d7b12c3802a32446f307a07a16c58d3c36bcd52ee72f198269016974201d4574), the boundary layer's backward run without its tape, cap120.cubin (sha256 34bc34bf6e05aca1797efefb95539dac5e1fa7b86f4d0ed718219198a5f72042), the boundary layer's forward that keeps the values that backward needs, and rel.0.cubin (sha256 40c3988a9ebe518feece79cb6b1a0f7d77380ade7262b04dbfd64211ea00c3e4), rel.1.cubin (sha256 058f8a52e8efd3263fcc743e1e6ff0677651a2e4780715bd9bbef2b30f2d161d) and rel.2.cubin (sha256 9f7f018c3901d3033647183442ab6d98ca7002431ffe665957d4a0fe927afa88), the same form's tangent, taped reverse and tape count. The form differentiates the turbulence closure, the plume's momentum, heat and moisture (its coefficients held) and the returned boundary-layer height, with the weak-shear rule at 1e-5 s-2; the forecast is unchanged. With a notice and the MYNN-EDMF Apache-2.0 LICENSE file beside them. Fetched only by a door on a row whose route names them; --boundary-layer taped (the exact route) and guarded use none of them"
+  },
+  "ad-aux-bl-guarded-sm120-v1.tar.gz": {
+   "bytes": 8259882,
+   "holds": [
+    "latest/aux/bl-guarded/LICENSE-MYNN-EDMF-Apache-2.0.txt",
+    "latest/aux/bl-guarded/NOTICE.txt",
+    "latest/aux/bl-guarded/rel.0.cubin",
+    "latest/aux/bl-guarded/rel.1.cubin",
+    "latest/aux/bl-guarded/rel.2.cubin"
+   ],
+   "kind": "ad-aux",
+   "sha256": "e26ddf62b4c867501ae93ec4325500595c1669a07df783c90de0d13620c3e667",
+   "what": "the three images of the 3 km storm row's guarded boundary-layer route (--boundary-layer guarded), NVIDIA sm_120 cards: rel.0.cubin (sha256 a90522cea9fbf27f68019246eb0ebbf68a8a22a90f5c78297a7160d0700206bc), the tangent, rel.1.cubin (sha256 849608c867e0ba9fd71ecc4bd1534f0901522ffa3adac80c8441ea8724dfb709), the taped reverse, and rel.2.cubin (sha256 4c0bd4d62adb66c76757da8fd2ebc609e1a5e7be8d35eefafc80684dd8dbc742), the tape count, of the MYNN-EDMF boundary layer's derivative with nothing held and the weak-shear guard (the stability functions keep their forecast value where the squared wind shear between two levels is under 1e-4 s-2; the forecast is unchanged); with a notice and the MYNN-EDMF Apache-2.0 LICENSE file beside them. Fetched only by a command that asks for --boundary-layer guarded; no other route uses them"
+  },
+  "ad-aux-bl-q1floor-sm120-v1.tar.gz": {
+   "bytes": 8528517,
+   "holds": [
+    "latest/aux/bl-q1floor/LICENSE-MYNN-EDMF-Apache-2.0.txt",
+    "latest/aux/bl-q1floor/NOTICE.txt",
+    "latest/aux/bl-q1floor/rel.0.cubin",
+    "latest/aux/bl-q1floor/rel.1.cubin",
+    "latest/aux/bl-q1floor/rel.2.cubin"
+   ],
+   "kind": "ad-aux",
+   "sha256": "5e7ea9c8977d33685d1a3dd12a6cb349a7617e132902bffc78a3991f6d0652ef",
+   "what": "the full-physics rows' boundary-layer images, NVIDIA sm_120 cards, one linear model: rel.0.cubin (sha256 20d85d374a2fa2dc78f2b8853d335fcf262fc38f4a0e95c9464aa50bf9afae32), rel.1.cubin (sha256 f0a7ebb8fbfad714634bf9a485332a3d9faa3bbbfd9fbc946187dd7441fd4e6e) and rel.2.cubin (sha256 a646b0145802f02be1181748cd5a80f363986488f16190b33c83a8f3118e6858), the tangent, taped reverse and tape count of the row's live boundary layer with the turbulence-energy path of the diffusivities floored at a turbulence speed of 0.5 m/s (gen_whole.py --freeze closure-plume --plume-w-smooth ramp:0.5:1.5 --mix-live q:1:0.5 --fused m8 on the captured MYNN-EDMF forward 70da4af7, integrated/compose.sh auto (variant A), weakshear/bimg.sh entries 0 and 1,2); the forecast is unchanged. With a notice and the MYNN-EDMF Apache-2.0 LICENSE file beside them. Fetched only by a door on a full-physics row; --boundary-layer taped uses none of them"
+  },
+  "ad-aux-cloud-gated-sm120-v2.tar.gz": {
+   "bytes": 6533325,
+   "holds": [
+    "latest/aux/cloud-gated/LICENSE-Apache-2.0.txt",
+    "latest/aux/cloud-gated/NOTICE.txt",
+    "latest/aux/cloud-gated/c2chain-0xc6-rd3600n100.cubin",
+    "latest/aux/cloud-gated/split2-0xc6-rd3600n100.cubin",
+    "latest/aux/cloud-gated/tlfd-0xc6-rd3600n100.cubin",
+    "latest/aux/cloud-gated/tlfd64-0xc6-rd3600n100.cubin"
+   ],
+   "kind": "ad-aux",
+   "sha256": "f850f567a7c94d8de37378693235cab6e4c84fedd492a820206ddcb3d40a5d3f",
+   "what": "the four images of the cloud scheme's gated derivative (the 3 km storm row's default from 0.6.0; --cloud-derivative shipped runs the derivative of the builds before), NVIDIA sm_120 cards: the block reverse c2chain-0xc6-rd3600n100.cubin, the tangent tlfd-0xc6-rd3600n100.cubin and its double-precision form tlfd64-0xc6-rd3600n100.cubin, and the taped image split2-0xc6-rd3600n100.cubin: the rime ratio is held at its forecast value where riming is slow, the riming fall-speed boost where a trace of cloud water would carry it to its cap, the true derivative elsewhere; the forecast is unchanged. With a notice and the Apache-2.0 licence text beside them. Fetched by every 3 km storm command that does not ask for --cloud-derivative shipped"
+  },
+  "ad-aux-cloud-number-sm120-v1.tar.gz": {
+   "bytes": 6396219,
+   "holds": [
+    "latest/aux/cloud-number/LICENSE-Apache-2.0.txt",
+    "latest/aux/cloud-number/NOTICE.txt",
+    "latest/aux/cloud-number/c2chain-0x06-rd3600n100-nfr-nfc-ts-dg200.cubin",
+    "latest/aux/cloud-number/split2-0x06-rd3600n100-nfr-nfc-ts-dg200.cubin",
+    "latest/aux/cloud-number/tlfd-0x06-rd3600n100-nfr-nfc-ts-dg200.cubin",
+    "latest/aux/cloud-number/tlfd64-0x06-rd3600n100-nfr-nfc-ts-dg200.cubin"
+   ],
+   "kind": "ad-aux",
+   "sha256": "2d4090e8133c10b47864e3aeacb2094ca2d7a8c253f1c49d3a7fa31b10922776",
+   "what": "the four images of the cloud scheme's number-following derivative (the 3 km storm row's default from 0.6.0; --cloud-derivative gated runs the form that holds rain and droplet number), NVIDIA sm_120 cards: the block reverse c2chain-0x06-rd3600n100-nfr-nfc-ts-dg200.cubin (sha256 e1d67c6a5bfc399164f586f333a0a70d60f7123b472089d5110b8cf02746fc1e), the tangent tlfd-0x06-rd3600n100-nfr-nfc-ts-dg200.cubin (sha256 bf6f507fff5b241938633ca09a77a9817bbd2b6e3465bc8d410c3f29df896063) and its double-precision form tlfd64-0x06-rd3600n100-nfr-nfc-ts-dg200.cubin (sha256 6fb6043551d41db2b1f64882d4bb5818227797325fb960aa98923a84941a7265), and the taped image split2-0x06-rd3600n100-nfr-nfc-ts-dg200.cubin (sha256 2b80d55bd75280612078a7a5526afa7d738e76f42e1c19040e46c0ed5088e515); with the Apache-2.0 notice and licence text. Built from the same generator as the gated images (that generator rebuilds the gated four byte for byte)"
+  },
+  "ad-aux-rad-step-sm120-v1.tar.gz": {
+   "bytes": 2345002,
+   "holds": [
+    "latest/aux/rad-step/LICENSE-AER-RRTMG-BSD-3-Clause.txt",
+    "latest/aux/rad-step/NOTICE-AER-RRTMG-as-distributed-with-MPAS.txt",
+    "latest/aux/rad-step/NOTICE.txt",
+    "latest/aux/rad-step/rsw_taumol.sm_120.cubin",
+    "latest/aux/rad-step/taumol.sm_120.cubin"
+   ],
+   "kind": "ad-aux",
+   "sha256": "d713cfe64794fc8ac1b4629fe6b90e438236ead45178140c6f6e94980776a583",
+   "what": "the radiation step's rewritten gas-optics backward kernels for the 3 km storm row's default route, NVIDIA sm_120 cards: rsw_taumol.sm_120.cubin (sha256 4d1d5f3d14baa4f72b0bd805bbf5b9bc1e420ed75d5315d038201db2891618a7) and taumol.sm_120.cubin (sha256 4d08a863ce3ce18cbc6fe87e3ae7c3bb181b04e3eac65251342cd63d0934aaa7), the same derivative as the two images of the row's scheme bundle with the backward kernels rewritten for speed (same answer bytes); with a notice and the AER RRTMG licence and notice files beside them. A door lays them over a copy of the row's scheme bundle in its cache; --boundary-layer taped uses neither"
+  },
+  "ad-aux-ugwp-dad-sm120-v1.tar.gz": {
+   "bytes": 491261,
+   "holds": [
+    "latest/aux/ugwp.dad.sm_120.cubin",
+    "latest/aux/ugwp.dad.sm_120.NOTICE.txt",
+    "latest/aux/LICENSE-UGWP-Apache-2.0.txt"
+   ],
+   "kind": "ad-aux",
+   "sha256": "aacb9e7394fc79f171fbd5a33d23a36ce07acbbc1a73af2999479766aba4934b",
+   "what": "optional: the mountain-drag adjoint image run directly (ugwp.dad.sm_120.cubin, sha256 2c15775233221613705592f1788b29394970efb9636d77f6d4c553676d423bf6, NVIDIA sm_120 cards), the storm row's gradient line's optional asset AD_P4_UGWP_DIRECT; with the UGWP Apache-2.0 notice and the UGWP LICENSE file beside it. Fetched only by a door on a row that names it; without it the gradient line runs without the image and the receipt says so"
+  },
+  "ad-case-q3.96.38278.n40.60w91.30-20230331T18-p1-v1.tar.gz": {
+   "bytes": 574978560,
+   "holds": [
+    "cases/q3.96.38278.n40.60w91.30-20230331T18/"
+   ],
+   "kind": "ad-case",
+   "sha256": "454c6bafcf975838635d6b443c11e46d0d055ec237b1bd1ef46fd9fa45391f76",
+   "what": "the 3 km storm example's start for --init: init.nc (NOAA HRRR 2023-03-31 18Z), the static file, boundaries at 18Z and 19Z, the parent grid and mesh rows (file names relative to the case), the contract deck of the box's rings and case.env"
+  },
+  "ad-gradmesh-q3.96.38278.n40.60w91.30-6km-p1-v2.tar.gz": {
+   "bytes": 1229171840,
+   "holds": [
+    "gradient-meshes/q3.96.38278.n40.60w91.30/6km/"
+   ],
+   "kind": "ad-gradient-mesh",
+   "sha256": "990b57c31077073724d7a6ce25686b495972131dd170fe5c55c6a371f254965f",
+   "what": "the 6 km companion of the 3 km storm box for sensitivity --gradient-mesh 6km: the companion's mesh files q6.96.10014.n40.60w91.30.grid.nc and .ugwp_oro_data.nc (the GSL drag orography), the map pc.csr (HXCSR1, 38,278 x 10,014, 114,834 weights) and the thinned 6 km plan plan-hrrr-20240521T15-s30 (30 steps of 30 s from the HRRR 2024-05-21 15Z start, strict numerics; 807 files); plan.json and its companions cleaned of machine and run folders, every sha256 record moved with them; three recorded kernel sources carry two reworded comment lines and are named by their new sha256 (no record names them); from v2 the plan folder carries the UGWP notice and LICENSE (NOTICE-UGWP.txt, LICENSE-UGWP-Apache-2.0.txt) for the recorded source and image of the mountain-drag forward kernel; every other member is byte for byte v1's"
+  },
+  "ad-kset-storm-bs5-lean2-astra2-dyn6-v1.tar.gz": {
+   "bytes": 21498637,
+   "holds": [
+    "latest/kset/storm-bs5-lean2-astra2-dyn6/"
+   ],
+   "kind": "ad-kset",
+   "sha256": "5ab15cc4c527d3ca644797de2e886505ea4824b7015ece7747bf87593b29f011",
+   "what": "optional: the launch-fused 3 km kernel set storm-bs5-lean2-astra2-dyn6 (storm-bs5-lean2-astra2 with six rewritten dynamics reverse rows, specs unchanged) with its tape-finite table beside kernels.json (the runner reads it from there); kernels.json 9756e5353c6104243c34c778c5f716fad27b759d52cc23636ac90fc750f11262 after the path cleaning, 186 images. The 3 km storm row runs it (its derivative check read 2.29e-08 at 59 steps); a door on that row fetches this file"
+  },
+  "ad-kset-storm-bs5-lean2-astra2-dynE5-sp74-ddr-v1.tar.gz": {
+   "bytes": 22250478,
+   "holds": [
+    "latest/kset/storm-bs5-lean2-astra2-dynE5-sp74-ddr/"
+   ],
+   "kind": "ad-kset",
+   "sha256": "5ad6a4dd7072f66e1769ca5d308c28b274d2bea0f261a4d93e32d63482b6e4bf",
+   "what": "the 3 km storm row's default (tape-free) route kernel set storm-bs5-lean2-astra2-dynE5-sp74-ddr: storm-bs5-lean2-astra2-dynE5-sp74 with three dynamics derivative images in double arithmetic (theta_vertical_flux_f32 36753272, acoustic_rs_ts_regional_v841 d3be2582, density_tendency_f32 77776026; each image float words in and out, derivative products and sums in double), the density row of its tape-finite table pinned to the new image (its reverse entry does not read tendency); kernels.json the same file as storm-bs5-lean2-astra2-dynE5-sp74's, 186 images. The exact and guarded routes keep storm-bs5-lean2-astra2-dynE5-sp74"
+  },
+  "ad-kset-storm-bs5-lean2-astra2-dynE5-sp74-v1.tar.gz": {
+   "bytes": 22755935,
+   "holds": [
+    "latest/kset/storm-bs5-lean2-astra2-dynE5-sp74/"
+   ],
+   "kind": "ad-kset",
+   "sha256": "c2447c3df6e7badb862cf898eb3eac225511bfe5f0dd2c59d774c6d82faa475c",
+   "what": "the 3 km storm row's fast-route kernel set storm-bs5-lean2-astra2-dynE5-sp74: storm-bs5-lean2-astra2 with 27 rewritten dynamics reverse rows and the faster shortwave solver reverse image (specs unchanged where the answer is), with its tape-finite table beside kernels.json; kernels.json f3d8a723d7782cda3783cf692bf0ded6c723d0efd76176f38f366c3e69a25417 after the path cleaning, 186 images. The row's default (tape-free) route runs it: same answer bytes as that route on the six-kernel set, at 59 steps on the engine's own route, and its derivative check read the same 2.29e-08. The exact route (--boundary-layer taped) keeps the six-kernel set"
+  },
+  "ad-mesh-q12.96.2890.n40.60w91.30-p1-v1.tar.gz": {
+   "bytes": 2092427,
+   "holds": [
+    "meshes/q12.96.2890.n40.60w91.30.grid.nc"
+   ],
+   "kind": "ad-mesh",
+   "sha256": "34bfc7547454479a00a469129f8c7cbdc3872284e0245cb5d89f68a750bea548",
+   "what": "the 12 km cut of the storm box's mesh file: q12.96.2890.n40.60w91.30.grid.nc (2,890 cells of 12 km around 40.6N 91.3W, a limited-area cull of 405 km radius, 55 levels)"
+  },
+  "ad-mesh-q3.96.38278.n40.60w91.30-p1-v1.tar.gz": {
+   "bytes": 27841686,
+   "holds": [
+    "meshes/q3.96.38278.n40.60w91.30.grid.nc",
+    "meshes/q3.96.38278.n40.60w91.30.ugwp_oro_data.nc"
+   ],
+   "kind": "ad-mesh",
+   "sha256": "6aaa38ff57195b169d97a80f3f65f3611d19ff0d20c86f3369328dcc7d146343",
+   "what": "the 3 km storm box's mesh files: q3.96.38278.n40.60w91.30.grid.nc and q3.96.38278.n40.60w91.30.ugwp_oro_data.nc (the GSL drag orography)"
+  },
+  "ad-mesh-x1.40962-p1-v1.tar.gz": {
+   "bytes": 26208396,
+   "holds": [
+    "meshes/x1.40962.grid.nc",
+    "meshes/x1.40962.ugwp_oro_data.nc"
+   ],
+   "kind": "ad-mesh",
+   "sha256": "377a8d3c8e2d82af6f90a9803fe66075508202ac4ee379de646d1dfc564fe850",
+   "what": "the 120 km mesh files of the example: x1.40962.grid.nc and x1.40962.ugwp_oro_data.nc (the GSL drag orography; its geog path attribute reads <geog>/)"
+  },
+  "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz": {
+   "bytes": 921564984,
+   "holds": [
+    "plans/hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-e15/"
+   ],
+   "kind": "ad-plan",
+   "sha256": "57930d145c9e748f7bcdeabd4faf6fc526e2f12d3246675c91a969e23c712503",
+   "what": "the example plan plans/hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-e15 of the 12 km cut of the storm box: 921 files (971107557 bytes before packing); a hex forecast from the HRRR 2024-05-21 15Z start, 15 steps of 60 s, strict numerics, recorded on an sm_120 card; the payloads the window replays only; plan.json and its companions cleaned of machine and run folders, every sha256 record moved with them; three recorded kernel sources carry two reworded comment lines and are named by their new sha256 (no record names them); the plan folder carries the UGWP notice and LICENSE (NOTICE-UGWP.txt, LICENSE-UGWP-Apache-2.0.txt) for the recorded source and image of the mountain-drag forward kernel"
+  },
+  "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz": {
+   "bytes": 1223743292,
+   "holds": [
+    "plans/hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-e240/"
+   ],
+   "kind": "ad-plan",
+   "sha256": "3b702cd1672b75696da136fbb83309207d0874ad9014b32d40c4c3d20d32aa2b",
+   "what": "part 1 of 2 of the example plan plans/hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-e240: 563 files; plan.json and its companions cleaned of machine and run folders, every sha256 record moved with them; three recorded kernel sources carry two reworded comment lines and are named by their new sha256; from v2 the plan folder carries the UGWP notice and LICENSE (NOTICE-UGWP.txt, LICENSE-UGWP-Apache-2.0.txt) for the recorded source and image of the mountain-drag forward kernel; every other member is byte for byte v1's"
+  },
+  "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p2-v1.tar.gz": {
+   "bytes": 1146280260,
+   "holds": [
+    "plans/hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-e240/"
+   ],
+   "kind": "ad-plan",
+   "sha256": "d61eaa664a44b4d3ae8b10ea588d7875c90a6fab05268e86074e4cc130fa7637",
+   "what": "part 2 of 2 of the example plan plans/hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-e240: 146 files (1146280260 bytes before packing), recorded payloads only"
+  },
+  "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz": {
+   "bytes": 1759282079,
+   "holds": [
+    "plans/hrrrv5-x1.40962-20230331T12-e4/"
+   ],
+   "kind": "ad-plan",
+   "sha256": "08a84ad2d327d95c84f0602efe82741d00dcba5dd1aee6b28af7947c8ac388f2",
+   "what": "part 1 of 2 of the example plan plans/hrrrv5-x1.40962-20230331T12-e4: 741 files (1779356211 bytes before packing); plan.json and its companions cleaned of machine folders, every sha256 record moved with them; three recorded kernel sources carry two reworded comment lines and are named by their new sha256 (no record names them)"
+  },
+  "ad-plan-hrrrv5-x1.40962-20230331T12-p2-v2.tar.gz": {
+   "bytes": 416941866,
+   "holds": [
+    "plans/hrrrv5-x1.40962-20230331T12-e4/"
+   ],
+   "kind": "ad-plan",
+   "sha256": "7eefa7d965c3fe0ce186e4c05f0d21cb2ef068582ad0ceca4e7c23871f41d604",
+   "what": "part 2 of 2 of the example plan plans/hrrrv5-x1.40962-20230331T12-e4: 96 files (419899450 bytes before packing); plan.json and its companions cleaned of machine folders, every sha256 record moved with them"
+  },
+  "ad-row-hrrrv5-any-v6.tar.gz": {
+   "bytes": 245950743,
+   "holds": [
+    "latest/",
+    "rows/hrrrv5-any/"
+   ],
+   "kind": "ad-row",
+   "sha256": "67d8f1c96cd90896be67ffea115c060f3d6695c7a14eee7240e16fd0680874f7",
+   "what": "files of the rows made on demand (--mesh) for the hrrrv5 suite, from the published set 20261112T0001Z-284234ec and the live-physics files made on it: kernel sets kset-d12, storm-h, storm-h-ws (storm-h with the column-solve row bound to the size it uses, for the limited-area class sized to the mesh and the card), storm-rev4, b10-kset-d12 and b10-storm-rev4, scheme bundles gen-B9, gen-A, genB9-gfrz, genA-gfrz and phys-B9-gfrz (the last two are gen-A and the full-physics bundle with the mountain-drag closure held at the trajectory; phys-B9, which differentiates it, is no longer in the asset), schemes18-phys.json, the parameter-carrier bundle gen-B9-p4w, TEMPO images (sm_120), schemes18.json, the left-out memory lists and the refuse lists; with the UGWP notice and LICENSE beside the compiled UGWP derivative images of its bundles (latest/bundle/NOTICE-UGWP.txt, latest/bundle/LICENSE-UGWP-Apache-2.0.txt)"
+  }
+ },
+ "breakage": "The differentiable-engine doors need about 1 GB of operator-row files and an example plan; the PyPI per-file cap (100,000,000 B) cannot hold them in the wheel, so they are pinned here and fetched once on first use (hexcore.ad.assets).",
+ "release_assets": {
+  "repository": "recastsystems/gpuwm-hex",
+  "tag": "ad-assets-v0.6.0"
+ },
+ "schema": "gpuwm-hex.on-demand-assets/v1"
+}

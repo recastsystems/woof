@@ -798,8 +798,32 @@ INGEST_TABLE_ROWS = key_rows(
     KeyRow("soil_texture_downscale", "boolean", True,
            "downscale the initial land soil state below the forcing's "
            "mesh; false keeps WPS's plain interpolation"),
+    # The GFS route's three preparation choices (woof.case_data.
+    # gfs_preparation_policy).  They lived only in [case_data], which a
+    # `woof domain` / `woof go` GFS config does not carry and cannot
+    # carry without declaring the ERA5 route's forcing, Vtable and the rest,
+    # so on the prepared GFS route the switches could not be set at all
+    # (door item 7, 2026-11-12).  [case_data] still accepts them.
+    KeyRow("gfs_lake_ice", "string", "observed",
+           "GFS route lake ice: observed starts lakes the IMS analysis sees "
+           "frozen as ice; wps keeps the forcing's ice and fetches nothing"),
+    KeyRow("gfs_lake_skin", "string", "wps",
+           "GFS route lake skin temperature: wps takes the nearest GFS "
+           "water; air_temperature takes 2 m air past the inland-water reach"),
+    KeyRow("gfs_snow_convention", "string", "wps",
+           "GFS route snow: wps doubles WEASD and derives SNOWH; raw keeps "
+           "the decoded WEASD and SNOD"),
 )
 INGEST_TABLE_KEYS = tuple(INGEST_TABLE_ROWS)
+
+#: The values a string row of ``[ingest]`` takes; the first is the row's
+#: default.  Kept equal to the [case_data] spellings (woof.case_data
+#: GFS_LAKE_ICE_CHOICES / GFS_LAKE_SKIN_CHOICES, tests/test_lake_ice.py).
+INGEST_TABLE_CHOICES = {
+    "gfs_lake_ice": ("observed", "wps"),
+    "gfs_lake_skin": ("wps", "air_temperature"),
+    "gfs_snow_convention": ("wps", "raw"),
+}
 
 
 def parse_ingest_table(table, *, source: str) -> dict:
@@ -813,9 +837,16 @@ def parse_ingest_table(table, *, source: str) -> dict:
             f"keys are {list(INGEST_TABLE_KEYS)}")
     # ``None`` when absent, not the row's default: callers tell a
     # declaration from silence (declared_soil_texture_downscale).
-    return {key: (row.check(table[key], where=f"[ingest] of {source}")
-                  if key in table else None)
-            for key, row in INGEST_TABLE_ROWS.items()}
+    parsed = {key: (row.check(table[key], where=f"[ingest] of {source}")
+                    if key in table else None)
+              for key, row in INGEST_TABLE_ROWS.items()}
+    for key, choices in INGEST_TABLE_CHOICES.items():
+        if parsed[key] is not None and parsed[key] not in choices:
+            raise ValueError(
+                f"{key} in [ingest] of {source} must be one of "
+                + ", ".join(repr(value) for value in choices)
+                + f", got {parsed[key]!r}.")
+    return parsed
 
 
 def declared_soil_texture_downscale(source=None) -> bool:

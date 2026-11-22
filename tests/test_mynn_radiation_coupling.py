@@ -114,7 +114,7 @@ def test_mynn_cloud_merge_is_exactly_the_wrf_source_transcription(itimestep):
     """Pin thresholds, first-step ordering, mass addition, and fraction copy.
 
     The expected values are transcribed from
-    ``module_radiation_driver.F:1403-1429``, not calculated by another WOOF
+    ``module_radiation_driver.F:1403-1429``, not calculated by another WOOF-ArWen
     implementation.  Equality at each threshold proves WRF's strict ``<`` and
     ``>`` comparisons.
     """

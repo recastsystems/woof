@@ -158,8 +158,8 @@ transported species set (:data:`_SPECIES_BY_SCHEME`):
   black-carbon scalar in the mp=28 package (Registry.EM_COMMON:3036)
   but ``mp_gt_driver`` reads and emits it only under
   ``wif_input_opt=2`` and zeroes it otherwise (module_mp_thompson.F
-  :1322-1325, :3983-3988), WOOF refuses that option by name
-  (woof/config.py's MP28_AEROSOL_SOURCE_OPTIONS) and no WOOF state
+  :1322-1325, :3983-3988), WOOF-ArWen refuses that option by name
+  (woof/config.py's MP28_AEROSOL_SOURCE_OPTIONS) and no WOOF-ArWen state
   allocates the species, so the seam refuses it rather than carrying
   an exact zero.  Radii are WSM6's own backgrounds -- ``mp_gt_driver``
   seeds re_qc/re_qi/re_qs from the same RE_*_BG parameters and clamps
@@ -1010,7 +1010,7 @@ class MpasColumnBatchPhysics:
                 "(P3 has one ice category and writes neither qs nor qg; "
                 "WSM6 carries no number or aerosol moments; mp=28 "
                 "carries no rime pair, and its black-carbon scalar "
-                "nbca exists in no WOOF state)")
+                "nbca exists in no WOOF-ArWen state)")
         return {name: candidates[name] for name in self._species}
 
     def _rebind_species_buffers(self):

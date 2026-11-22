@@ -1,5 +1,5 @@
-WOOF keeps a surviving nest's grid ID when another nest is removed. WPS
-continues to use compact Fortran array slots. For example, WOOF domains
+WOOF-ArWen keeps a surviving nest's grid ID when another nest is removed. WPS
+continues to use compact Fortran array slots. For example, WOOF-ArWen domains
 `[1, 3, 4]` with parents `[0, 1, 3]` occupy WPS slots `[1, 2, 3]` and use
 WPS `parent_id = 1, 1, 2`. A standard Fortran comment binds that slot order:
 

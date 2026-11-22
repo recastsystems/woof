@@ -266,3 +266,166 @@ def repair_shinhong_passenger_outputs(
             out[name] = xp.where(bad, value.dtype.type(floor), value)
             counts[name] = repaired
     return counts
+
+
+# ---------------------------------------------------------------------------
+# WRF v4.8.0 generation (physics_mmm bl_shinhong.F90), kernels/shinhong_480.cu.
+# ---------------------------------------------------------------------------
+
+#: Generation keys, ``RunConfig.shinhong_version``.  ``wrf_461`` is the
+#: 4.6.1/4.7.1 scheme (module_bl_shinhong.F sha256 99f44dbe, the same file in
+#: both releases) on the unchanged ``shinhong`` unit; ``wrf_480`` is WRF
+#: 4.8.0's rewrite on ``shinhong_480``.
+from woof.core.shinhong_generations import (  # noqa: E402
+    SHINHONG_DEFAULT_GENERATION, SHINHONG_GENERATIONS)
+
+_SH480_3D_FLOAT_OUTPUTS = (
+    "du", "dv", "dtheta", "dqv", "dqc", "dqi", "exch_h", "exch_m", "tke", "el",
+)
+_SH480_2D_FLOAT_OUTPUTS = ("hpbl", "wstar", "delta", "u10", "v10")
+_SH480_OUTPUTS = _SH480_3D_FLOAT_OUTPUTS + ("kpbl",) + _SH480_2D_FLOAT_OUTPUTS
+
+#: kernels/shinhong_480.cu option bits.
+SH480_NONLOCAL_FLUX = 1
+SH480_SCU_MIXING = 2
+SH480_KE_DISSIPATION = 4
+
+
+def shinhong480_flags(*, nonlocal_flux: bool = True, scu_mixing: bool = False,
+                      ke_dissipation: bool = False) -> int:
+    """The launch's option word from WRF's three namelist logicals."""
+    return ((SH480_NONLOCAL_FLUX if nonlocal_flux else 0)
+            | (SH480_SCU_MIXING if scu_mixing else 0)
+            | (SH480_KE_DISSIPATION if ke_dissipation else 0))
+
+
+def launch_shinhong_480(u, v, theta, qv, qc, qi, p, p_interface, exner, dz,
+                        tke, *, rthraten: cp.ndarray | None = None,
+                        psfc, znt, ust, hfx, qfx, wspd, br, psim, psih, xland,
+                        u10, v10, corf, dt: float, dx: float,
+                        nonlocal_flux: bool = True, scu_mixing: bool = False,
+                        ke_dissipation: bool = False,
+                        uoce: cp.ndarray | None = None,
+                        voce: cp.ndarray | None = None,
+                        topo: tuple[cp.ndarray, cp.ndarray] | None = None):
+    """Launch WRF 4.8.0 Shin-Hong on device columns; return device outputs.
+
+    The inputs are :func:`launch_shinhong`'s, plus ``rthraten`` (the
+    radiation theta tendency, read only by the stratocumulus option) and the
+    optional sea-surface current ``uoce``/``voce`` (zero when absent, as
+    WRF's driver passes it uncoupled).  ``dx`` is WRF's ``dx2d``, which is
+    the domain ``dx`` (module_physics_init.F compute_2d_dx_area).  The TKE
+    chain always runs in 4.8.0.  Returned: ``du/dv/dtheta/dqv/dqc/dqi/
+    exch_h/exch_m/tke/el`` (nz, ny, nx), ``hpbl/wstar/delta`` and the
+    scheme's ``u10``/``v10`` (ny, nx) float32, ``kpbl`` (ny, nx) int32.
+    """
+    columns = {"u": u, "v": v, "theta": theta, "qv": qv, "qc": qc,
+               "qi": qi, "p": p, "exner": exner, "dz": dz, "tke": tke}
+    if rthraten is not None:
+        columns["rthraten"] = rthraten
+    elif scu_mixing:
+        raise ValueError(
+            "shinhong_scu_mixing reads the radiation theta tendency "
+            "(bl_shinhong.F90 radsum, :783-787); pass rthraten")
+    shape = theta.shape
+    if len(shape) != 3:
+        raise ValueError(f"theta must have shape (nz, ny, nx), got {shape}")
+    nz, ny, nx = shape
+    if outside_vertical_bounds(nz, VERTICAL_LEVEL_BOUNDS):
+        raise refuse_vertical_levels(
+            "Shin-Hong PBL", VERTICAL_LEVEL_BOUNDS, nz,
+            breakage=(
+                "one CUDA thread owns a whole column and holds it in "
+                f"a global column workspace bounded by SHINHONG_KMAX={_KMAX} "
+                "(kernels/shinhong.cu), and the scheme's YSU-inherited "
+                "counter-gradient and entrainment indexing needs four levels "
+                "to exist."))
+    for name, arr in columns.items():
+        if not isinstance(arr, cp.ndarray) or arr.shape != shape:
+            raise ValueError(f"{name} must be a CuPy array with shape {shape}")
+        if arr.dtype != DTYPE or not arr.flags.c_contiguous:
+            raise ValueError(f"{name} must be C-contiguous float32")
+    if (not isinstance(p_interface, cp.ndarray)
+            or p_interface.shape != (nz + 1, ny, nx)
+            or p_interface.dtype != DTYPE
+            or not p_interface.flags.c_contiguous):
+        raise ValueError("p_interface must be C-contiguous float32 with shape "
+                         f"{(nz + 1, ny, nx)}")
+    surfaces = {"psfc": psfc, "znt": znt, "ust": ust, "hfx": hfx,
+                "qfx": qfx, "wspd": wspd, "br": br, "psim": psim,
+                "psih": psih, "xland": xland, "u10": u10, "v10": v10,
+                "corf": corf}
+    for name, arr in (("uoce", uoce), ("voce", voce)):
+        if arr is not None:
+            surfaces[name] = arr
+    if topo is not None:
+        surfaces["ctopo"], surfaces["ctopo2"] = topo
+    for name, arr in surfaces.items():
+        if (not isinstance(arr, cp.ndarray) or arr.shape != (ny, nx)
+                or arr.dtype != DTYPE or not arr.flags.c_contiguous):
+            raise ValueError(f"{name} must be a C-contiguous float32 CuPy "
+                             f"array with shape {(ny, nx)}")
+    if (uoce is None) != (voce is None):
+        raise ValueError("uoce and voce are passed together or not at all")
+    if not np.isfinite(dt) or dt <= 0.0:
+        raise ValueError(f"Shin-Hong requires a positive finite dt, got {dt}")
+    if not np.isfinite(dx) or dx <= 0.0:
+        raise ValueError(f"Shin-Hong requires a positive finite dx, got {dx}")
+
+    out = {name: cp.empty_like(theta) for name in _SH480_3D_FLOAT_OUTPUTS}
+    for name in _SH480_2D_FLOAT_OUTPUTS:
+        out[name] = cp.empty((ny, nx), dtype=DTYPE)
+    out["kpbl"] = cp.empty((ny, nx), dtype=cp.int32)
+    flags = shinhong480_flags(nonlocal_flux=nonlocal_flux,
+                              scu_mixing=scu_mixing,
+                              ke_dissipation=ke_dissipation)
+    ncol = ny * nx
+    kernel = get_kernel("shinhong_480", "shinhong480_column_topo" if topo
+                        is not None else "shinhong480_column")
+    tile = shinhong_tile_columns(kernel, ncol)
+    ws = cp.empty(shinhong_workspace_floats(nz, tile), dtype=DTYPE)
+    null = np.uintp(0)
+    topo_args = tuple(topo) if topo is not None else ()
+    for lo in range(0, ncol, tile):
+        blocks = (min(tile, ncol - lo) + _TPB - 1) // _TPB
+        kernel((blocks,), (_TPB,),
+               (u, v, theta, qv, qc, qi, p, p_interface, exner, dz, tke,
+                rthraten if rthraten is not None else null, psfc, znt, ust, hfx, qfx, wspd, br, psim, psih,
+                xland, u10, v10, corf,
+                uoce if uoce is not None else null,
+                voce if voce is not None else null,
+                out["du"], out["dv"], out["dtheta"], out["dqv"], out["dqc"],
+                out["dqi"], out["exch_h"], out["exch_m"], out["tke"],
+                out["el"], out["hpbl"], out["kpbl"], out["wstar"],
+                out["delta"], out["u10"], out["v10"],
+                DTYPE(dt), DTYPE(dx), np.int32(flags),
+                np.int32(nz), np.int32(ny), np.int32(nx),
+                ws, np.int32(nz + 2), np.int32(lo)) + topo_args)
+    return out
+
+
+_SH480_VALIDATED = _SH480_3D_FLOAT_OUTPUTS + _SH480_2D_FLOAT_OUTPUTS
+
+
+def invalid_shinhong480_outputs(
+        out: Mapping[str, cp.ndarray], status: cp.ndarray) -> tuple[str, ...]:
+    """Every non-finite :func:`launch_shinhong_480` float output, in order.
+
+    One device census over the bundle and one scalar readback, the same
+    cost as the 4.6.1 unit's :func:`invalid_shinhong_outputs`.
+    """
+    if (not isinstance(status, cp.ndarray) or status.shape != (1,)
+            or status.dtype != cp.uint32 or not status.flags.c_contiguous):
+        raise ValueError("Shin-Hong validation status must be a C-contiguous "
+                         "uint32 device array with shape (1,)")
+    status.fill(cp.uint32(0))
+    count_3d = out["du"].size
+    count_2d = out["hpbl"].size
+    blocks = (max(count_3d, count_2d) + _VALIDATE_TPB - 1) // _VALIDATE_TPB
+    kernel = get_kernel("shinhong_480", "shinhong480_validate_outputs")
+    kernel((blocks,), (_VALIDATE_TPB,),
+           tuple(out[name] for name in _SH480_VALIDATED)
+           + (status, np.int64(count_3d), np.int64(count_2d)))
+    invalid = int(status[0].item())
+    return tuple(name for bit, name in enumerate(_SH480_VALIDATED)
+                 if invalid & (1 << bit))

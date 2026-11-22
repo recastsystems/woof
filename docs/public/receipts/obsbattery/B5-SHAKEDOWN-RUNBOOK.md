@@ -8,7 +8,7 @@ committed and ADMITTED by every static gate, the qualification controls that
 need no forecast are measured, and the scoring command now exists and its
 reading half has been exercised against a real WRF v4.6.1 `wrfout`.
 
-Run in order. Steps 1-6 are the WOOF arm on the card; steps 7-10 are the WRF
+Run in order. Steps 1-6 are the WOOF-ArWen arm on the card; steps 7-10 are the WRF
 arm on a node and are deferred, not blocked.
 
 ---
@@ -113,11 +113,11 @@ spec section 2.4's 3-hourly plan):
 | staged HRRR | **~25-37 GB** |
 | free disk before starting | ≥ 80 GB |
 
-## 4. Assemble the one-domain tree, for the WRF arm, not the WOOF run
+## 4. Assemble the one-domain tree, for the WRF arm, not the WOOF-ArWen run
 
 For a single-domain case this step exists for steps 7-10: it publishes
 `wrfinput`/`wrfbdy` and the per-domain artifact with the canonical
-`surface/*` group.  Its product is **not** the WOOF run input (step 5 runs
+`surface/*` group.  Its product is **not** the WOOF-ArWen run input (step 5 runs
 from the root preparation's own prepared cache).  The manifest pair is the
 same one step 3b was given.
 
@@ -419,7 +419,7 @@ and `launch_arm.sh` beside the namelists are the WRF arm's.
 
 ## What the shakedown must answer before B6 can start
 
-1. Does the WOOF arm beat the measured persistence floor of **0.1598** beyond
+1. Does the WOOF-ArWen arm beat the measured persistence floor of **0.1598** beyond
    F03? A no indicts the case or the scoring first, not the model.
 2. Is the twin band non-degenerate? The one twin envelope this project ever
    built came out identically zero, and the convective 24 h window is expected

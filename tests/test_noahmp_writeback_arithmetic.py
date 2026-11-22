@@ -101,6 +101,8 @@ def _reference_write_back(fields, j, i, r, *, nsoil, dt) -> None:
 @requires_gpu
 @pytest.mark.parametrize("snow_mm,depth", [(0.0, 0.0), (60.0, 0.30)])
 def test_pinned_writeback_matches_previous_ufunc_order(snow_mm, depth, monkeypatch):
+    from test_noahmp_runtime import _host_layout_route
+    _host_layout_route(monkeypatch)  # the host-classified write-back is what it pins
     import cupy as cp
     from woof.core import noahmp_runtime as runtime
     from woof.core.dycore import step

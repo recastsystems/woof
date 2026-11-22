@@ -238,7 +238,7 @@ def load_boundary(path, *, expected_sha256=None):
     from . import moving_carrier_codec
     # The file hash runs beside the block inflation; nothing is unpickled until it matches the receipt.
     # THE COST THIS REMOVES: the hash and then the decode ran one after the other (7.4 s of a resumed
-    # storm-following segment's critical path, box-aws2x 2026-10-24).
+    # storm-following segment's critical path, on a two-card cloud machine, 2026-10-24).
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="hex-carrier-hash") as hasher:
         digest = hasher.submit(file_digest)
         with path.open('rb') as stream:

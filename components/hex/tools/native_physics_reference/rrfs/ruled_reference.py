@@ -39,10 +39,10 @@ INIT_BINARY = '8d0e8c69f39ab194a6574cba51ac9135499e4eed977ca193fa19cbca51481845'
 
 def authority(kind, binary_sha256):
     if not RULING.is_file():
-        raise ValueError('the 2026-10-14 07:45Z source-authority ruling record is not in this checkout; '
+        raise ValueError('the 2026-10-14 07:45Z source-authority record is not in this checkout; '
                          'set RRFS_SOURCE_AUTHORITY_RULING to the reference store copy')
     if sha(RULING) != 'b5b90b2290c44a1870a120330515a42c54b44b7ae4b986a9f3df0b4eb2a39fae':
-        raise ValueError('recorded owner ruling bytes changed')
+        raise ValueError('recorded source-authority record bytes changed')
     ruling = json.loads(RULING.read_text())
     if kind not in PATCHES or ruling['fork'] != PINS['fork'] or (
             ruling['verbatim'] != 'yes to both rrfs stuff'):

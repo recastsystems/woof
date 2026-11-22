@@ -5,13 +5,13 @@ capture over all 216 committed columns, with fzu PINNED from the oracle
 exactly as tests/test_gf_deep_parity.py pins it.
 
 WHY IT IS PINNED, AND WHAT CHANGED AT 2.7.0.  Through 2.6.5 gf.cu carried
-WOOF's earlier gamma, with its lgammaf, exp2f and expm1f helpers, which
+WOOF-ArWen's earlier gamma, with its lgammaf, exp2f and expm1f helpers, which
 returned glibc 2.39's tgammaf words, so the kernel's fzu WAS glibc's word
 and this gate could run the chain with no override anywhere, the one claim
 the CPU reference could not make.  That earlier gamma was this project's
 own work, as its replacement is; it is replaced and its helpers are gone
 with it, because nothing else called them.  gfk_tgamma is
-now WOOF's own CORRECTLY ROUNDED gamma: measured against a 113-bit oracle
+now WOOF-ArWen's own CORRECTLY ROUNDED gamma: measured against a 113-bit oracle
 over all 59,768,833 float32 of [0.25, 36] it is right on every one and
 glibc 2.39 is wrong on 39.44 per cent of them, worst 6 ULP.  So the kernel
 and WRF no longer agree on fzu, deliberately, and

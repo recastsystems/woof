@@ -27,14 +27,14 @@ same fields with the same names and the same running maximum.
 Defaults, per route.  The MPAS-physics routes write MPAS's own 2-5 km ``updraft_helicity_max`` in every run, so
 the ArWen-physics route writes the same field from here by default (``ARWEN_DEFAULT_NAMES``): every hex capability
 on every physics route.  THE BREAKAGE THIS PREVENTS (both-routes matrix, woof hex 0.4.14 candidate, 2026-11-06):
-the MPAS route rendered composite_reflectivity_uh, uh_2to5km and 1km_reflectivity_uh2to5km and the WOOF route rendered none
+the MPAS route rendered composite_reflectivity_uh, uh_2to5km and 1km_reflectivity_uh2to5km and the WOOF-ArWen route rendered none
 of them (global leg, 225 vs 207 maps).  ``WOOF_HEX_UH_LAYERS`` on (the door's ``--uh-layers on``) adds the 0-1/0-2/
-0-3 km layers on both routes; off writes none of these on the WOOF route (the MPAS routes keep MPAS's own 2-5 km)
+0-3 km layers on both routes; off writes none of these on the WOOF-ArWen route (the MPAS routes keep MPAS's own 2-5 km)
 and then nothing here is constructed and no kernel is compiled.  When armed: one kernel per step (plus the dycore's
 own vorticity solve where the step did not already form it), no host sync per step; one small device-to-host copy
 per history frame.
 
-Partitioned WOOF executors (the full-step LTS classes, one card or several, and same-host multi-card ranks) arm
+Partitioned WOOF-ArWen executors (the full-step LTS classes, one card or several, and same-host multi-card ranks) arm
 one set of layers per class or rank over its own local mesh (``attach_rank``), fold it after each of that class's
 or rank's steps (``rank_update``) and hand its words to the history capture (``rank_history_arrays``), whose owned
 blocks the executors already scatter to global cells by name (samehost_identity_v841.assemble_owned_arrays).  Each

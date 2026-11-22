@@ -109,12 +109,29 @@ def test_unreachable_once_falls_back_to_compile(estate, monkeypatch, capsys):
     assert all(p.select('missing', 'source', (), 'sm_120') == (None, 'pack_missing') for p in packs)
     assert len(attempts) == 1 and attempts[0][1]['timeout'] == 20
     lines = capsys.readouterr().err.splitlines()
+    # The one attempt announces itself (0.6.1: a fetch says one line before the bytes move), then the one warning.
+    assert len(lines) == 2 and lines[0].startswith(f'woof hex: fetching {name} (') and 'once' in lines[0]
+    lines = lines[1:]
     assert len(lines) == 1 and 'offline' in lines[0] and 'NVRTC' in lines[0]
     assert 'woof hex fetch-assets' in lines[0] and 'WOOF_HEX_ASSETS_FROM' in lines[0]
     assert 'Connection refused' in next(iter(assets._ATTEMPTS.values()))
 
 
-def test_offline_directory_has_no_network(estate, monkeypatch):
+def test_a_network_fetch_says_one_line_and_a_second_use_says_none(estate, server, capsys):
+    """THE BREAKAGE (0.6.0, a fresh install from the published files): the 221 MB kernel pack was fetched for 20 s with
+    no line in the terminal. A fetch names the file, its size, that it happens once, and where from."""
+    source, name, pins, identity = estate
+    assets.fetch_one(name, assets.load_pins())
+    said = [line for line in capsys.readouterr().err.splitlines() if line.startswith('woof hex: fetching ')]
+    assert len(said) == 1, said
+    assert name in said[0] and 'once' in said[0] and said[0].endswith('/' + name), said[0]
+    assert assets.fetch_size(pins['assets'][name]['bytes']) in said[0]
+    assets.fetch_one(name, assets.load_pins())
+    assert 'fetching' not in capsys.readouterr().err and server == ['/' + name]
+    assert assets.fetch_size(220_909_151) == '221 MB' and assets.fetch_size(1_552) == '2 kB'
+
+
+def test_offline_directory_has_no_network(estate, monkeypatch, capsys):
     source, name, pins, identity = estate
     no_network(monkeypatch)
     monkeypatch.setenv(assets.FROM_ENV, str(source))
@@ -122,6 +139,7 @@ def test_offline_directory_has_no_network(estate, monkeypatch):
     assert path == assets.asset_path(name, pins['assets'][name])
     receipt = json.loads((assets.cache_root() / 'assets/receipts' / (name + '.json')).read_text())
     assert receipt['source_dir'] == str(source) and 'url' not in receipt
+    assert 'fetching' not in capsys.readouterr().err   # a copy from a local folder is not announced as a download
 
 
 def test_first_use_off_never_fetches(estate, monkeypatch, capsys):

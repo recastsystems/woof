@@ -2,7 +2,7 @@
 
 Fixture references are words returned by native WRF v4.7.1 routines.  The
 port runners call the engine's production launch functions.  Theta has two
-representations: WRF couples theta minus 300 K; WOOF couples full theta.
+representations: WRF couples theta minus 300 K; WOOF-ArWen couples full theta.
 Both the native representation comparison and an explicitly labelled
 full-theta isolation call are retained, without an acceptance tolerance.
 """

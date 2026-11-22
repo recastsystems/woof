@@ -121,8 +121,14 @@ def stage_run_directory(run: ReplayRun, directory: Path) -> Path:
 WRF_461_REFERENCE_GENERATIONS = {
     "solar_generation": "wrf_461",
     "ysu_version": "wrf_461",
+    "shinhong_version": "wrf_461",
     "noahmp_snow_age": "wrf_461",
     "urban_water_balance": "wrf_471",
+    "ntu_version": "wrf_471",
+    "udm_version": "wrf_471",
+    "cu_gf_version": "wrf_461",
+    "gwdo_version": "wrf_471",
+    "windfarm_fitch_version": "wrf_471",
 }
 
 

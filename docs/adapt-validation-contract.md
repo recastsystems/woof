@@ -189,7 +189,7 @@ woof-mapped-inspect \
 ```
 
 Read `frames[*].fields[*].minimum` and `.maximum` and compare them
-against physical ranges. WOOF's named-source preflight applies the
+against physical ranges. WOOF-ArWen's named-source preflight applies the
 bounds below; **the generic mapped path does not apply them**, which is
 exactly why you should apply them by eye:
 
@@ -237,7 +237,7 @@ things by hand:
 2. **The far corner**: the axes are built as `lat1 + k*dy` and
    `lon1 + k*dx`, so the last cell is `lat1 + (ny-1)*dy` and
    `lon1 + (nx-1)*dx`. Confirm those against the published grid.
-   Nothing in WOOF cross-checks the endpoints, because `lat2`/`lon2`
+   Nothing in WOOF-ArWen cross-checks the endpoints, because `lat2`/`lon2`
    are not carried in the inventory contract.
 3. **Registration**, whether the product documents these as cell
    centres or cell edges, and whether a half-cell offset is implied.
@@ -323,7 +323,7 @@ rather than an immediate refusal.
 
 The emitted status is `runnable_mapping_not_stock_wrf_certified`.
 Runnable means the declared mapping and composition are executable by
-WOOF's mapped engine and that this exact GRIB inventory passed the
+WOOF-ArWen's mapped engine and that this exact GRIB inventory passed the
 ingest battery. Internally consistent with your descriptor, not
 physically validated, and not stock-WRF certified
 ([arbitrary-verified-adapters.md § Runnable is not certified](arbitrary-verified-adapters.md#runnable-is-not-certified)).

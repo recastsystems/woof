@@ -187,7 +187,7 @@ def card(monkeypatch):
     # The host's RAM too.  Since 2.8.6 go also budgets the preparation
     # against MemAvailable, so these card statements read the runner's
     # live free RAM: 2.9.12 pass be38e676 R5 refused the 600^2 streamed
-    # control for "3.21 GiB available of 114.00 GiB" of host RAM (a development machine
+    # control for "3.21 GiB available of 114.00 GiB" of host RAM (a shared host
     # under twenty Stage-1 parts and outside lanes), not for the card.
     # The host-RAM admission has its own tests (the A44 worker below).
     from woof.core import streaming

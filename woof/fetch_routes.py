@@ -134,7 +134,12 @@ ROUTE_TABLE_SHA256 = (
     # is supported.
     # Moved by feat/hrdps-source: the gem-hrdps and gem-rdps rows (ECCC MSC
     # Datamart, one object per variable and level).
-    "d3ec8ec864c133a12a3ca400d5d52c5d42a3ccfbcc01ab65f18295403c156a28"
+    # Moved by fix/2913-dwd-fetch-stall: opendata.dwd.de has a host_policy
+    # transfer row (a slow connection is asked again on a fresh one, and
+    # more files move at once while each one is slow).
+    # Moved by fix/2913-ecmwf-google-archive: Google's ECMWF open-data mirror
+    # is an archive on every ECMWF route (its 72 h retention was wrong).
+    "2fd1c9b388bd12edf409bf1bfc05de25b6abaa108a5eb4011003dfeaae28feca"
 )
 
 #: Sources whose acquisition predates the route table and keeps its own
@@ -179,7 +184,7 @@ def _load_table() -> Mapping[str, object]:
     schema = document.get("schema")
     if schema != ROUTE_TABLE_SCHEMA:
         raise ValueError(
-            f"{ROUTE_TABLE_NAME} declares schema {schema!r}; this WOOF "
+            f"{ROUTE_TABLE_NAME} declares schema {schema!r}; this WOOF-ArWen "
             f"reads {ROUTE_TABLE_SCHEMA!r}")
     return document
 
@@ -919,7 +924,7 @@ def _source_root_row(source_id: str, raw: Mapping[str, object]
                      ) -> Mapping[str, object]:
     """One refusal row's ``source_root`` layout, checked at load.
 
-    The layout is how a folder of bytes this WOOF cannot download binds
+    The layout is how a folder of bytes this WOOF-ArWen cannot download binds
     to the source's preparation: which files are the ordered inputs and
     which file each supplement role is.  A malformed row fails here, at
     import, rather than as a wrong binding on a user's folder.
@@ -1281,14 +1286,14 @@ def route_for(source: str) -> Route:
     if adapter.runnable:
         why = (
             "no acquisition route is registered for this source, so this "
-            f"WOOF has no way to download its bytes.  {adapter.source_id} "
+            f"WOOF-ArWen has no way to download its bytes.  {adapter.source_id} "
             "IS runnable: bring the files yourself and the prepared route "
             "reads them")
         remedy = f"  remedy: {local_input_remedy(adapter.source_id)}\n"
     else:
         why = (
             f"the registry row is not runnable ({adapter.status.value}); "
-            "nothing in this WOOF could read the bytes a download "
+            "nothing in this WOOF-ArWen could read the bytes a download "
             "produced")
         remedy = ""
     raise ValueError(
@@ -2967,7 +2972,10 @@ def run_plan(plan: FetchPlan, *, out: Path, force: bool = False,
 
     try:
         entries, receipt = fetch_pool.run_transfers(
-            jobs, workers=workers, on_admitted=_admitted, monitor=monitor)
+            jobs, workers=workers, on_admitted=_admitted, monitor=monitor,
+            # A host's table row may widen a default pool while it serves
+            # slowly; an asked-for --fetch-workers is kept exactly.
+            widen=file_workers is None)
     finally:
         monitor.close()
         counter.close()

@@ -52,6 +52,13 @@ from .cpu_budget import bind_thread_defaults as _bind_thread_defaults
 
 _bind_thread_defaults()
 
+# WOOF_HEX_PAIR_ADD=plain (the adjoint door's recordings): the plain pair add is installed over the forecast's fused
+# one here, so cuda_driver.py keeps the bytes the regional kernel set was minted on (pair_add_form.py says why).
+# With the switch unset or fused nothing is imported.
+from .pair_add_form import install_from_environment as _install_pair_add_form
+
+_install_pair_add_form()
+
 # Keep package metadata lightweight: importing ``woof.hex`` must not eagerly
 # import the full driver, SciPy regridder, or NetCDF output stack.
 COMPONENT_EVIDENCE: Mapping[str, str] = MappingProxyType(

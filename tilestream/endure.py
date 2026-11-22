@@ -67,7 +67,7 @@ measured: a 240-step call reported ``model 0.2 min`` at every one of its
 240 steps while the run really did advance to 60.2 minutes.  Nothing was
 wrong with the model; the caller had asked for one sweep of 240 steps rather
 than 240 sweeps of one.  This module drives ``stepper(state, cfg)`` once per
-model step, which is what WOOF's own run loops do, and the clock is live.
+model step, which is what WOOF-ArWen's own run loops do, and the clock is live.
 """
 from __future__ import annotations
 
@@ -307,7 +307,7 @@ def streamed_stepper(state, cfg, tile, nbuffers, geo_store, log):
     The ``build`` closure is what a ROUTE owns: the seam decides when a
     streamed domain is constructed and what it must satisfy, never how the
     store is filled or where the geography comes from.  This is the harness
-    version of the tile-state factory WOOF's real-data preparation still has
+    version of the tile-state factory WOOF-ArWen's real-data preparation still has
     to supply.
     """
     from woof.core import streaming

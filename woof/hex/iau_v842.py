@@ -581,3 +581,95 @@ def atm_add_tend_anal_incr(configs: IAUConfig, structs: Mapping[str, Any],
         kernels["iau_cells_correct" if configs.correct else "iau_cells"](((nl*nc+127)//128,),(128,),
             (np.int32(nl),np.int32(nc),np.int32(ncs),np.int32(ms-1),
              np.int32(me),np.int32(qv-1),wgt,rvord,*cells))
+
+
+
+# IAU-ALL, config_physics_mode='correct' only.  THE BREAKAGE THIS FIXES: hex's IAU (MPAS-A v8.4.2 form, Registry
+# tend_iau) added increments to the moist group only, so every other analysed state scalar an analysis carries
+# (cloud, rain, ice and graupel numbers, graupel volume, the aerosol numbers) never reached an IAU-started forecast:
+# it kept the background's numbers beside the analysed masses (measured: changing the nc/nwfa/nifa increments changed 0
+# output words).  Correct mode now adds each such increment in the form the moist group uses (mpas_atm_iau.F:248-285):
+# tend_scalars += wgt (rho_zz dq + q drho/zz).  Exact mode keeps MPAS's moist-only IAU word for word, and a run whose
+# increment file carries no other scalar launches nothing new (this module is separate, so the native kernels'
+# module and cache key are unchanged).
+_CUDA_EXTRA_SOURCE = CUDA_FTZ_HELPERS + r'''
+__device__ __forceinline__ float iau_mul(float a, float b) {
+    float v = __fmul_rn(a,b);
+    return (mpas_f32_magnitude_bits(v) >> 23) == 0u ? mpas_mul(a,b) : v;
+}
+__device__ __forceinline__ float iau_add(float a, float b) {
+    float v = __fadd_rn(a,b);
+    return (mpas_f32_magnitude_bits(v) >> 23) <= 24u ? mpas_add(a,b) : v;
+}
+__device__ __forceinline__ float iau_div(float a, float b) {
+    if (mpas_is_subnormal_f32(a) || mpas_is_subnormal_f32(b)) return mpas_div(a,b);
+    float v = __fdiv_rn(a,b);
+    return (mpas_f32_magnitude_bits(v) >> 23) == 0u ? mpas_div(a,b) : v;
+}
+// index[j]: zero-based state scalar slot of extra_amb[j]; the moist loop's arithmetic, one thread per cell/level.
+extern "C" __global__ void iau_scalars_extra(int nl, int nc, int solved, int nextra, const int *index,
+    float wgt, const float *zz, const float *rho_zz, const float *scalars, const float *rho_amb,
+    const float *extra_amb, float *tend_scalars) {
+    int p = blockDim.x * blockIdx.x + threadIdx.x;
+    if (p >= nl*nc || p%nc >= solved) return;
+    int stride = nl*nc;
+    for (int j=0; j<nextra; ++j) {
+        int s = index[j]*stride+p;
+        tend_scalars[s] = iau_add(tend_scalars[s], iau_mul(wgt, iau_add(
+            iau_mul(extra_amb[j*stride+p],rho_zz[p]),
+            iau_div(iau_mul(scalars[s],rho_amb[p]),zz[p]))));
+    }
+}
+'''
+
+
+def iau_extra_kernels(cache: Any) -> dict[str, Any]:
+    """The IAU-ALL kernel, compiled as iau_kernels compiles the native ones (its own module key)."""
+    import cupy as cp
+    from cupy.cuda import compiler
+    from .cuda_backend.compile_contract import NvrtcCompileCapture
+
+    options=_hex_numerics.options(("--std=c++17", "--fmad=false", "--ftz=false",
+             "--prec-div=true", "--prec-sqrt=true"))
+    key="hexcore.iau_v842.extra"
+    compiled_key="iau-extra:"+cache._module_key(_CUDA_EXTRA_SOURCE, options)
+    manifest=cache._compile_manifest
+    manifest.declare_module(key,source=_CUDA_EXTRA_SOURCE,requested_options=options,
+                            module_cache_key=compiled_key)
+    module=cache._modules.get(compiled_key)
+    if module is None:
+        with cp.cuda.Device(cache.capability.device_id):
+            with NvrtcCompileCapture() as capture:
+                binary,_=compiler.compile_using_nvrtc(_CUDA_EXTRA_SOURCE,options=options,
+                    arch=cp.cuda.Device().compute_capability)
+            evidence=capture.evidence(hashlib.sha256(_CUDA_EXTRA_SOURCE.encode()).hexdigest())
+            if evidence["status"]!="resolved":
+                raise RuntimeError("IAU extra NVRTC compiler flags were not captured")
+            module=cp.cuda.function.Module()
+            module.load(binary)
+        cache._modules[compiled_key]=module
+        manifest.record_effective_compile(key,evidence)
+    kernel=module.get_function("iau_scalars_extra")
+    manifest.record_kernel(key,"iau_scalars_extra")
+    return {"iau_scalars_extra": kernel}
+
+
+def atm_add_tend_anal_incr_extra(configs: IAUConfig, wgt: np.float32, *, nl: int, nc: int, ncs: int,
+                                 index: Any, extra_amb: Any, zz: Any, rho_zz: Any, scalars: Any,
+                                 rho_amb: Any, tend_scalars: Any, cache: Any) -> None:
+    """IAU-ALL: add the non-moist scalar increments with this step's weight (the weight
+    atm_add_tend_anal_incr used; correct mode only, so the window clock is not advanced twice)."""
+    if not configs.correct:
+        raise ValueError("non-moist IAU increments are the config_physics_mode='correct' path; exact mode is "
+                         "MPAS-A v8.4.2's moist-only IAU")
+    if wgt <= np.float32(1.0e-12) or not ncs or not nl:
+        return
+    nextra = int(index.shape[0])
+    if not nextra:
+        return
+    if tuple(extra_amb.shape) != (nextra, nl, nc):
+        raise ValueError("IAU extra increments differ from the resident cell/level shape")
+    kernels = iau_extra_kernels(cache)
+    kernels["iau_scalars_extra"](((nl*nc+127)//128,),(128,),
+        (np.int32(nl),np.int32(nc),np.int32(ncs),np.int32(nextra),index,wgt,zz,rho_zz,scalars,rho_amb,
+         extra_amb,tend_scalars))

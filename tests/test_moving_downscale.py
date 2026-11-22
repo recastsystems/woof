@@ -494,3 +494,168 @@ def test_only_windows_whose_start_the_grid_left_are_drawn_again(monkeypatch, tmp
         tmp_path, closing, "all", segments=still, parent_frames={},
         parent_first=None, ratio=3, nx=240, ny=240, scratch=scratch)
     assert built == [] and commands == []
+
+
+# ---------------------------------------------------------------------------
+# A moving grid cut from a compressed parent (2026-11-19: every moving grid
+# cut from a deflate-compressed history, the default history format, failed
+# at its first cut with "numpy dtype dtype('O') has no classic NetCDF
+# external type", and the run lost its moving grid.  The Rust reader reports
+# a NetCDF-4 frame's character Times as String, which the bridge maps to
+# numpy object, and _write_like declared the cut's Times with that type.)
+# ---------------------------------------------------------------------------
+
+_PARENT_FORMATS = ("NETCDF3_64BIT_OFFSET", "NETCDF4_CLASSIC", "NETCDF4")
+
+
+def _parent_frame(path, when, *, nx, ny, file_format, nz=2, xtime=0.0):
+    """A one-time history frame on the C grid, deflated unless classic."""
+    import netCDF4
+    import numpy as np
+
+    deflate = ({} if file_format.startswith("NETCDF3")
+               else {"zlib": True, "complevel": 1, "shuffle": True})
+    rng = np.random.default_rng(7)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with netCDF4.Dataset(path, "w", format=file_format) as ds:
+        for name, size in (("Time", None), ("DateStrLen", 19),
+                           ("west_east", nx), ("south_north", ny),
+                           ("west_east_stag", nx + 1),
+                           ("south_north_stag", ny + 1), ("bottom_top", nz)):
+            ds.createDimension(name, size)
+        ds.setncatts({"WEST-EAST_GRID_DIMENSION": np.int32(nx + 1),
+                      "SOUTH-NORTH_GRID_DIMENSION": np.int32(ny + 1),
+                      "DX": np.float32(3000.0), "DY": np.float32(3000.0),
+                      "TITLE": " OUTPUT FROM GPUWM"})
+        times = ds.createVariable("Times", "S1", ("Time", "DateStrLen"))
+        times[0, :] = netCDF4.stringtochar(
+            np.array([when.strftime("%Y-%m-%d_%H:%M:%S")], dtype="S19"))[0]
+        xt = ds.createVariable("XTIME", "f4", ("Time",))
+        xt.units = "minutes since 2026-11-18 20:00:00"
+        xt[0] = xtime
+        step = ds.createVariable("ITIMESTEP", "i4", ("Time",))
+        step[0] = 360
+        for name, dims, units in (
+                ("T2", ("Time", "south_north", "west_east"), "K"),
+                ("U", ("Time", "bottom_top", "south_north", "west_east_stag"),
+                 "m s-1"),
+                ("V", ("Time", "bottom_top", "south_north_stag", "west_east"),
+                 "m s-1")):
+            var = ds.createVariable(name, "f4", dims, **deflate)
+            var.units = units
+            var[0] = rng.random(tuple(len(ds.dimensions[d]) for d in dims[1:]),
+                                dtype=np.float32)
+    return path
+
+
+@pytest.mark.parametrize("file_format", _PARENT_FORMATS)
+def test_a_moving_cut_from_a_compressed_parent_writes_its_times_as_characters(
+        tmp_path, file_format):
+    import netCDF4
+    import numpy as np
+
+    from woof.moving_downscale import crop_frame
+
+    source = _parent_frame(tmp_path / "p" / "wrfout_d02_2026-11-18_21_00_00",
+                           datetime(2026, 11, 18, 21), nx=20, ny=16,
+                           file_format=file_format)
+    target = tmp_path / "cut" / source.name
+    target.parent.mkdir()
+    crop_frame(source, target, origin_i=0, origin_j=0, window_i=2,
+               window_j=3, nx=10, ny=8)
+    with netCDF4.Dataset(target) as cut, netCDF4.Dataset(source) as parent:
+        assert cut.file_format.startswith("NETCDF3")
+        assert cut["Times"].dtype == np.dtype("S1")
+        assert netCDF4.chartostring(cut["Times"][:])[0] == "2026-11-18_21:00:00"
+        assert np.array_equal(cut["T2"][0], parent["T2"][0, 3:11, 2:12])
+        assert np.array_equal(cut["U"][0], parent["U"][0, :, 3:11, 2:13])
+        assert np.array_equal(cut["V"][0], parent["V"][0, :, 3:12, 2:12])
+        assert cut["ITIMESTEP"].dtype == np.int32
+        assert int(cut["ITIMESTEP"][0]) == 360
+        assert cut["U"].units == "m s-1"
+        assert int(cut.getncattr("WEST-EAST_GRID_DIMENSION")) == 11
+        assert int(cut.getncattr("SOUTH-NORTH_GRID_DIMENSION")) == 9
+        assert list(cut.getncattr("GPUWM_MOVING_WINDOW")) == [2, 3, 10, 8]
+
+
+@pytest.mark.parametrize("file_format", _PARENT_FORMATS)
+def test_a_window_start_from_a_compressed_frame_writes_its_times_as_characters(
+        tmp_path, file_format):
+    import netCDF4
+    import numpy as np
+
+    from woof.moving_downscale import write_window_start
+
+    end = _parent_frame(tmp_path / "run" / "wrfout_d03_2026-11-18_22_00_00",
+                        datetime(2026, 11, 18, 22), nx=12, ny=12,
+                        file_format=file_format, xtime=120.0)
+    t2 = 280.0 + np.arange(144, dtype=np.float64).reshape(12, 12)
+    start = write_window_start(
+        end, tmp_path / "starts" / "wrfout_d03_2026-11-18_21_00_00",
+        when=datetime(2026, 11, 18, 21), values={"T2": t2})
+    with netCDF4.Dataset(start) as ds, netCDF4.Dataset(end) as closing:
+        assert ds.file_format.startswith("NETCDF3")
+        assert ds["Times"].dtype == np.dtype("S1")
+        assert netCDF4.chartostring(ds["Times"][:])[0] == "2026-11-18_21:00:00"
+        assert float(ds["XTIME"][0]) == 60.0
+        assert np.array_equal(ds["T2"][0], t2.astype(np.float32))
+        assert np.array_equal(ds["U"][0], closing["U"][0])
+        assert int(ds["ITIMESTEP"][0]) == 360
+
+
+def test_a_move_larger_than_the_grid_starts_cold_from_the_parent(tmp_path):
+    """A moving 1 km grid can jump 60 km at one move, and a 96-cell 333 m
+    grid inside it is 32 km across: the inner grid's next segment shares no
+    ground with its last.  That used to refuse ("leaves no ground shared")
+    and end the run without the grid.  Nothing can be carried, so the grid
+    keeps its cold start from the parent at the new place, and every cell
+    takes the parent's rain since the grid began, none of the old grid's."""
+    import json
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from woof.io.restart import _HEADER_KEY
+    from woof.offline_child_warm import _strip_mask, apply_warm_start
+    from woof.moving_downscale import reseeded_after
+
+    nx = ny = 96
+    header = {"config": {"nx": nx, "ny": ny, "nz": 50, "dx": 1000 / 3,
+                         "dy": 1000 / 3},
+              "valid_time": "2026-11-19T07:00:00Z"}
+    checkpoint = tmp_path / "wrfrst_d03.npz"
+    np.savez(checkpoint, **{
+        _HEADER_KEY: np.frombuffer(json.dumps(header).encode(), dtype=np.uint8),
+        "scratch/mp_rainnc": np.full((ny, nx), 7.0, dtype=np.float32),
+        "state/u": np.ones((50, ny, nx + 1), dtype=np.float32)})
+    parent_rain = np.arange(ny * nx, dtype=np.float32).reshape(ny, nx) / 100
+    strip = tmp_path / "strip-accumulations.npz"
+    np.savez(strip, mp_rainnc=parent_rain)
+    rain = np.zeros((ny, nx), dtype=np.float32)
+    child = SimpleNamespace(
+        existing_scratch=lambda slot: rain if slot == "mp_rainnc" else None)
+    cfg = SimpleNamespace(nx=nx, ny=ny, nz=50, dx=1000 / 3, dy=1000 / 3,
+                          grid_id=3, spec_zone=1, hypsometric_opt=2)
+
+    # 60 km of the 1 km parent is 60 parent cells, 180 cells of this grid.
+    receipt = apply_warm_start(child, cfg, SimpleNamespace(fields={}),
+                               checkpoint=checkpoint, shift=(180, 0),
+                               strip=strip)
+    assert receipt["start"] == "cold"
+    assert receipt["overlap_cells"] == 0
+    assert receipt["strip_cells"] == nx * ny
+    assert receipt["state_fields_stamped"] == 0
+    assert receipt["accumulators"]["mp_rainnc"] == {"overlap_cells": 0,
+                                                    "strip_cells": nx * ny}
+    np.testing.assert_array_equal(rain, parent_rain)
+    # The run's window starts count the same cells as reseeded.
+    assert reseeded_after([((10, 10), (70, 10))], (70, 10), nx=nx, ny=ny,
+                          ratio=3, ring=1).all()
+    # One cell short of the grid's width still shares ground and is not cold.
+    from woof.core.nest_relocation import Placement, plan_relocation
+    near = plan_relocation(
+        placement_from=Placement(grid_id=3, i_parent_start=97, j_parent_start=97),
+        placement_to=Placement(grid_id=3, i_parent_start=97 + 95,
+                               j_parent_start=97),
+        parent_grid_ratio=1, child_nx=nx, child_ny=ny)
+    assert not near.disjoint and not _strip_mask(near, (ny, nx)).all()

@@ -253,6 +253,7 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     "run.waves",  # pre-wave path at 'off'
     "run.waves_options",  # no wave options at ''
     "run.wtddt",  # groundwater runtime cadence at 30.0 minutes
+    "run.opt_snow_compact",  # WRF fixed snow-compaction C_bd at 1
     # Snow optics reads these on radiation steps, not during preparation.
     "run.snicar_snowshape_opt",  # existing shape default at 3
     "run.snicar_snowbc_intmix",  # existing mixing default at True
@@ -261,6 +262,12 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     "run.snicar_dust_ppm",  # no added dust at 0.0
     "run.snicar_ice_density",  # existing density at 900.0
     "run.snicar_bubble_radius_um",  # existing bubble radius at 1000.0
+    # Ground snow cover fraction is computed each land step, not at prep.
+    "run.opt_scf",  # Niu-Yang table SCF at 1
+    "run.snicar_fresh_grain_opt",  # existing fresh-grain ramp at 1
+    "run.snicar_lap_opt",  # no snow particles at 0
+    "run.snicar_lap_table",  # no table at ''
+    "run.snicar_lap_series",  # no series at ''
     # WRF port defaults: no new feature is selected by an old cache.
     "run.tracer_opt",  # pre-port path at 0
     "run.tracer_adv_opt",  # pre-port path at 1
@@ -285,7 +292,7 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     "run.vmove",  # pre-port path at 0.0
     "run.windfarm_wake_model",  # pre-port path at 2
     "run.windfarm_overlap_method",  # pre-port path at 4
-    "run.windfarm_induction",  # pre-port path at 0
+    "run.windfarm_induction",  # pre-port path at 0 (-1 resolves to it under wrf_471)
     "run.windfarm_deg",  # pre-port path at 0.0
     "run.tslist",  # pre-port path at ''
     "run.ts_buf_size",  # pre-port path at 200
@@ -523,6 +530,19 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     # keys above, its absence is tolerated at the RunConfig default, and an
     # exact-mode run (off) against an older header re-prepares.
     "run.hydrometeor_handover_numbers",
+    # SN1 (2.9.14), Noah-MP snowmelt reset: a step-time key; an older tree
+    # was prepared before it existed and preparation never reads it.
+    "run.noahmp_melt_reset_esat",
+    # MY1 (3.0.3), the MYNN v6.1 fixes, now on by default: a step-time key;
+    # a tree prepared while it defaulted off never recorded it, and
+    # preparation never reads it.
+    "run.mynn_fixes_v61",
+    # ML1 (3.0.3), MYNN BouLac downward length sign: a step-time key;
+    # preparation never reads it.
+    "run.mynn_boulac_down_sign",
+    # ML1's second key (3.0.3), the BouLac and k-epsilon PBL length sign:
+    # step-time; preparation never reads it.
+    "run.pbl_boulac_down_sign",
     # The New SAS knobs (cu_physics = 96 port), on the p3_backend argument
     # below: scheme-scoped (woof.config refuses a non-default value under
     # any other cumulus scheme), so a tree prepared before they existed
@@ -555,6 +575,12 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     # non-default value against an older header is refused, as it must be:
     # that tree has no orographic statistics.
     "run.topo_wind", "run.gwd_opt",
+    # WRF-480 L07/L08, on the same argument: kim_tofd adds VAR and
+    # gwdo_version = "wrf_480" adds ELVMAX to that static build; at their
+    # defaults (off, "wrf_471") it is the build every older tree carries,
+    # and the two WRF 4.8.0 KIM keys are read by the forecast's drag alone.
+    "run.kim_tofd", "run.tofd_factor",
+    "run.gwdo_version", "run.gwd_dx_factor", "run.gwd_if_nonhyd",
     # CLM lake off is the prescribed-water state in older prepared files.
     "run.sf_lake_physics", "run.use_lakedepth", "run.lakedepth_default", "run.lake_min_elev",
     # ---------------------------------------------------------------
@@ -613,9 +639,11 @@ DEFAULT_TOLERANT_IDENTITY_FIELDS = frozenset({
     # Noah-MP (ab60dc8ab):
     "run.dveg", "run.opt_crs", "run.opt_btr", "run.opt_run", "run.opt_sfc",
     "run.opt_frz", "run.opt_inf", "run.opt_rad", "run.opt_alb",
-    "run.opt_snf", "run.opt_tbot", "run.opt_stc", "run.opt_gla",
+    "run.opt_snf", "run.opt_tbot", "run.opt_stc", "run.opt_gla", "run.opt_tksno", "run.noahmp_snow_tinit",
     "run.opt_rsf", "run.opt_soil", "run.opt_pedo", "run.opt_crop",
     "run.opt_irr", "run.opt_irrm", "run.opt_infdv", "run.opt_tdrn",
+    # opt_runsrf/opt_runsub split (absent = 0 = the stock opt_run pair):
+    "run.opt_runsrf", "run.opt_runsub",
     "run.soiltstep", "run.noahmp_output", "run.noahmp_acc_dt",
     # RUC (6153ea505); flag_sm_adj is documented as not applied by
     # ingest/ruc_soil.py. Disabled stochastic consumers preserve old inputs:
@@ -936,7 +964,7 @@ INERT_DIAGNOSTIC_IDENTITY_FIELDS = frozenset(
 #: Entries are added deliberately, one per field, by whoever adds the
 #: field, per this module's schema-growth protocol.  Provenance:
 #: controller ruling 2026-08-03 under ArWen's standing delegation,
-#: recorded in docs/superpowers/receipts/les/
+#: recorded in docs/internal/receipts/les/
 #: INFLOW-GENERATOR-ACCEPTANCE-V2.md item 10.
 
 # Explicit SFIRE v4.7.1 controls. Fire state and smoke emissions are initialized
@@ -995,6 +1023,10 @@ SFIRE_PREPARATION_INERT_RUN_FIELDS = frozenset({
 RETIRED_INACTIVE_IDENTITY_FIELDS = {"run.fire_moisture_namelist": ""}
 
 PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
+    # The boundary hydrometeor envelope (fix/door-10) is read when the
+    # forecast SERVES the ring (lateral_bc._held_resident_interval), never
+    # while the tables are prepared: one prepared boundary serves any value.
+    "run.lbc_hydrometeor_envelope_km",
     # The slab snow switch is read by forecast physics only; preparation
     # writes the same initial snow fields under either value. It remains
     # part of the slab checkpoint identity.
@@ -1003,6 +1035,7 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     # initialization and boundary preparation never read these controls.
     # Runtime overrides retain the original config bytes and record changes.
     "run.wind_farm_scheme", "run.wind_farm_table", "run.wind_farm_max_dx_m", "run.wind_farms", "run.windfarm_tke_factor", "run.windfarm_ij",
+    "run.windfarm_fitch_version",
     # The per-run smoke-off sentence (woof/smoke_execution.py): launch
     # metadata for the receipts; chem_sets carries the physics it
     # describes, so one prepared bundle serves either value.  It rides the
@@ -1012,6 +1045,9 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     "run.smoke_off_reason",
     # Eclipse attenuation is evaluated at forecast UTC; preparation never reads it.
     "run.ra_sw_eclipse",
+    # Snow light-absorbing particles (clean-snicar-lap) are read by the
+    # Noah-MP radiation stage only; preparation never reads them.
+    "run.snicar_lap_opt", "run.snicar_lap_table", "run.snicar_lap_series",
     # The zero-layer sea ice model (woof/ocean/seaice) is seeded by the
     # forecast's initialize_physics from the restored surface state; nothing
     # under woof/ingest names it, so one prepared bundle serves either value.
@@ -1057,6 +1093,9 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     # Only the MYNN surface-layer column solver reads its generation;
     # preparation computes no surface exchange from it.
     "run.mynn_sfclay_variant",
+    "run.sf_mynn_sfcflux_land",
+    "run.sf_mynn_sfcflux_water",
+    "run.shalwater_z0",
     # MYNN's split number-species mixing keys select which of the PBL
     # solver's rates are coupled; preparation computes no PBL.
     "run.bl_mynn_mixaerosols",
@@ -1065,6 +1104,10 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     # calls only; prepared fields and boundary tables do not read them.
     "run.tempo_ml_for_bl_nc",
     "run.tempo_surface_emission_before",
+    # The TEMPO generation and its hail switch: read by the column kernel
+    # selection alone (woof/core/tempo_runtime.py).
+    "run.tempo_version",
+    "run.tempo_hailhyperaware",
     # The sixth-order filter form and its second factor are read only by
     # the forecast's fixed tendencies (core/dycore.py), and mp_zero_out
     # only after the forecast's microphysics call (core/microphysics.py);
@@ -1098,8 +1141,18 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     # every value.  Checkpoints still bind them (io/restart.py).
     "run.solar_generation",
     "run.ysu_version",
+    "run.cu_gf_version",
     "run.noahmp_snow_age",
     "run.urban_water_balance",
+    # WRF-480 L09: the Shin-Hong generation and its three WRF 4.8.0
+    # logicals select the PBL kernel alone (core/shinhong_generations.py).
+    "run.shinhong_version",
+    "run.shinhong_nonlocal_flux",
+    "run.shinhong_scu_mixing",
+    "run.shinhong_ke_dissipation",
+    # The NTU/UDM source generations select kernel statements alone.
+    "run.ntu_version",
+    "run.udm_version",
     "run.urban_ucm_generation",
     "run.urban_treeoption",
     "run.urban_ttscheme",
@@ -1252,6 +1305,11 @@ PREPARATION_INERT_RUN_FIELDS = SFIRE_PREPARATION_INERT_RUN_FIELDS | frozenset({
     "run.flashrate_factor", "run.iccg_method", "run.iccg_prescribed_num",
     "run.iccg_prescribed_den", "run.cellcount_method", "run.cldtop_adjustment",
     "run.do_radar_ref",
+    # WRF v4.8.0 dynamic lightning (dyn_lightning_option): its three scalars
+    # start at zero and carry no boundary data, so preparation writes the
+    # same state under every value.
+    "run.dyn_lightning_option", "run.coul_pos", "run.coul_neg", "run.coul_neu",
+    "run.j_pos", "run.j_neg", "run.j_neu",
     # WRF's one-dimensional ocean mixed layer (sf_ocean_physics and its
     # namelist values, 27c2bab6456): off by default and read only by the
     # forecast's surface step from the live state; nothing under
@@ -1362,6 +1420,23 @@ def effective_prepared_domain_config(document):
         run["radt"] = run["radt_minutes"]
     if run.get("cu_physics") == 0:
         run["cudt_minutes"] = 0.0
+    # The WIF selector pair is dead state outside the aerosol-aware
+    # Thompson family, exactly as ``cudt_minutes`` is with no cumulus
+    # scheme: preparation fills nwfa/nifa from the WIF climatology only
+    # for that family (woof/ingest/real.py) and specifies aerosol
+    # boundaries only for it (woof/boundary_fields.py), and the WRF
+    # importer drops both keys as inert for every other scheme.  Named
+    # breakage: a TEMPO TOML stating (aer_init_opt, wif_input_opt) =
+    # (1, 1) -- the HRRR recipe with mp_physics = "tempo" -- was refused
+    # by the HRRR route's round trip ("config 1 vs namelist 0") although
+    # both describe the same TEMPO forecast.
+    from woof.config import THOMPSON_AEROSOL_FAMILY
+    mp_physics = run.get("mp_physics")
+    if (isinstance(mp_physics, int) and not isinstance(mp_physics, bool)
+            and mp_physics not in THOMPSON_AEROSOL_FAMILY):
+        for key in ("aer_init_opt", "wif_input_opt"):
+            if key in run:
+                run[key] = 0
     # The historical radiation aggregate is a SPELLING, not a different
     # selection: woof/config.py documents ``ra_lw_physics = ra_sw_physics
     # = -1`` as preserving "the historical woof ra_physics aggregate

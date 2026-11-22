@@ -27,7 +27,7 @@ def convert(task):
     return dict(source=str(path),cf=str(nc),valid=row['valid'],max_wind_kt=float(row['wind'].max()*1.94384449),max_hydrometeor_path_kg_m2=float(column.max()))
 
 def main():
-    root,out=map(Path,sys.argv[1:3]);label=sys.argv[3] if len(sys.argv)>3 else "WOOF tc/hafs-init; GFS baseline";out.mkdir(exist_ok=True,parents=True);start=time.perf_counter()
+    root,out=map(Path,sys.argv[1:3]);label=sys.argv[3] if len(sys.argv)>3 else "WOOF-ArWen tc/hafs-init; GFS baseline";out.mkdir(exist_ok=True,parents=True);start=time.perf_counter()
     initial=datetime(2024,10,7,tzinfo=timezone.utc)
     files=list(root.glob('wrfout_d01_2024-10-07_00_00_00'))
     for p in sorted(root.glob('wrfout_d02_*')):
@@ -39,7 +39,7 @@ def main():
     for name,title,unit,levels in [('wind','10 m wind speed','kt',list(range(0,201,10))),('mslp','Mean sea level pressure','hPa',list(range(880,1021,5))),('hydrometeors','Resolved pressure-layer condensate','kg m-2',[0,.05,.2,.5,1,2,5,10,20,40])]:
         table.append(dict(names=[name],standard_names=[],product=name,title=title,default_units='1',display_units=unit,unit_factors={'1':1.},levels=levels))
     tablepath=out/'products.json';tablepath.write_text(json.dumps(table))
-    theme=out/'theme.json';theme.write_text(json.dumps(dict(extends='woof-light',text=dict(source_label=label,model_label='WOOF'))))
+    theme=out/'theme.json';theme.write_text(json.dumps(dict(extends='woof-light',text=dict(source_label=label,model_label='WOOF-ArWen'))))
     rings=out/'rings.json';rings.write_text(json.dumps({'rings':[{'lat':22.5,'lon':-93.4,'radii_km':[150,300],'color':'#101418','width':2,'segments':180}]}))
     renderer=rustwx.find_renderer()
     for row in rows:

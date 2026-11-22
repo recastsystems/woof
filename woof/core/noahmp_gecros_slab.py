@@ -12,16 +12,18 @@ STATE=tuple(f"gecros{k:02d}xy" for k in range(1,61))
 LABEL="native WRF 4.7.1 fails here; this fixes it, not bitwise to WRF"
 
 @lru_cache(None)
-def _module_on(device,profile):
-    from woof.core.noahmp_kernel_sources import compile_runtime_unit
+def _module_on(device,profile,melt_reset_esat=False):
+    from woof.core.noahmp_kernel_sources import compile_runtime_unit,runtime_unit,MELT_RESET_ESAT_DEFINE
     from woof.core.noahmp_vegeflux_gpu import _constant_tables,_copy_constant
-    m=compile_runtime_unit("noahmp_gecros",module_key="woof.core.noahmp_gecros:"+profile,atan_profile=profile)
+    # Correct-mode SN1 (woof/correct_mode.py) rides the same define.
+    options=(tuple(runtime_unit("noahmp_gecros",atan_profile=profile).options)+(MELT_RESET_ESAT_DEFINE,)) if melt_reset_esat else None
+    m=compile_runtime_unit("noahmp_gecros",module_key="woof.core.noahmp_gecros:"+profile+(":melt-reset-esat" if melt_reset_esat else ""),atan_profile=profile,options=options)
     for name,value in _constant_tables().items():_copy_constant(m,name,value)
     return m
 
-def module(profile="glibc_2_39"):
+def module(profile="glibc_2_39",melt_reset_esat=False):
     import cupy as cp
-    return _module_on(cp.cuda.runtime.getDevice(),profile)
+    return _module_on(cp.cuda.runtime.getDevice(),profile,bool(melt_reset_esat))
 
 def initialize(fields,params,latitude):
     import cupy as cp
@@ -39,7 +41,7 @@ def initialize(fields,params,latitude):
     if bool(cp.any((fields["cropcat"] > 0) & (cp.abs(lat.reshape(shape)) > 67))):
         raise ValueError(LABEL + ". Native GECROS ASTRO stops outside 67 degrees latitude; the selected crop geography crosses that limit.")
 
-def evaluate(fields,n,active,gs,extra,*,atan_profile="glibc_2_39"):
+def evaluate(fields,n,active,gs,extra,*,atan_profile="glibc_2_39",melt_reset_esat=False):
     import cupy as cp
     from woof.core import noahmp_flux_slab as f
     from woof.core import noahmp_vegeflux_gpu as v
@@ -49,7 +51,7 @@ def evaluate(fields,n,active,gs,extra,*,atan_profile="glibc_2_39"):
     copy_slab_slots(gx,[(k,extra[name])for k,name in enumerate(("julian","swdown","prcp","fb","croptype"))]+[(5,extra["sh2o"]),(9,extra["smcwlt"]),(13,fields.get("thair",fields["sfctmp"])),(14,fields.get("CZIL",cp.zeros(n,cp.float32)))])
     fsno=cp.ascontiguousarray(cp.broadcast_to(cp.asarray(fields.get("fsno",0),dtype=cp.float32),(n,)))
     stcopt=int(fields.get("opt_stc",1));crsopt=int(fields.get("opt_crs",1));sfcopt=int(fields.get("opt_sfc",1))
-    m=module(atan_profile)
+    m=module(atan_profile,melt_reset_esat)
     # Restore the missing call at the driver boundary. Warm active states pass
     # through without any arithmetic or lifecycle changes.
     if n:

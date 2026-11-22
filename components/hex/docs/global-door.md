@@ -1,8 +1,17 @@
 # Hex global: one command
 
 ```
-woof hex global --row global-60km --cycle 2026-10-11T12 --work-dir RUN
+woof fetch-geog      # once per machine: the geography every static needs
+woof hex global --row global-120km --cycle 2026-10-11T12 --work-dir RUN
 ```
+
+`--row` names any row of the table under *Rows*; the 120 km rows are the measured ones.
+
+The static stage builds the mesh's static on your machine, the published meshes' included, so it needs the
+geography archive. `woof fetch-geog` stages it once (with gpuwm 3.0.3: 16 datasets, about 2.5 GiB to download and
+about 31.3 GiB unpacked, by default into `~/.local/share/woof/WPS_GEOG`, where the static stage looks); `--geog DIR`
+names an archive you already have. Without either, the command stops at its static stage, exit 2, with "no geography
+root".
 
 `woof hex global` runs a whole global forecast from one row of
 `woof/hex/data/global-runs.v1.json` and one cycle. It composes the doors this
@@ -34,7 +43,7 @@ cached grid and static.
 
 The `mpas` arm is the hex default (0.4.6): MPAS-A's own suite for the mesh, from
 `src/hexcore/data/profiles/physics-default.v1.json`, at the forecast door's own
-step for that suite. `--physics-row arwen` runs WOOF physics (the arm every
+step for that suite. `--physics-row arwen` runs ArWen physics (the arm every
 row ran before 0.4.6, with its long-step cap).
 
 `--physics-row` swaps the physics arm of any row. A new resolution, mesh or
@@ -60,6 +69,19 @@ selects YSU (`woof.hex.global_door.default_step_cap`), so a bare
 `woof hex forecast` on these meshes takes 300 s on gpuwm 2.9.0 and says so on
 start; an explicit `--dt` or a namelist `config_dt` runs as given.
 
+TEMPO picked over an WOOF-route suite carries its own cap, 150 s
+(`microphysics_step_caps` in the table, `woof.hex.global_door.microphysics_step_cap`).
+The forecast door's default step takes it, and an explicit `--dt` above it
+stops before the run and says why. On the 120 km globe (GFS 2026-11-09 00Z),
+TEMPO over `arwen_mpas_column` at the mesh's 600 s step stopped within 40
+minutes; at 300 s its rain water reached 0.16 kg/kg after an hour and was
+still growing; at 150 s it ran 6 h with rain water under 0.6 g/kg and
+reflectivity under 39 dBZ. The likely cause, not yet measured, is that the
+WOOF-ArWen column steps TEMPO once over the whole model step where MPAS-A
+sub-steps its microphysics. The cap goes when the engine names the fix
+(`max_dt_retired_by_engine`). MPAS-A's own suites run TEMPO on the MPAS
+route and are not capped.
+
 Why: at long steps YSU puts single layers at the boundary-layer top that are
 5 to 25 K hotter than the layers above and below. On the 120 km globe over
 24 h that happened in 3.2 cells per frame at 600 s (worst +24 K), 0.5 at
@@ -84,7 +106,7 @@ that no layer loses more water than it holds (identity
 (`GPUWM_WRF_EXACT=1`) keeps upstream behaviour for both. With both bounds the
 `global-120km` row at its own 600 s step showed no hot layer below level 30
 over 24 h (13 with neither, 1 with the YSU bound alone), and its maps show the
-same weather as before. The WOOF arm's cap retires on such an engine. The
+same weather as before. The WOOF-ArWen arm's cap retires on such an engine. The
 Morrison arm runs Grell-Freitas instead of New Tiedtke and keeps its cap until
 its own row has been run at the long step on such an engine.
 
@@ -119,6 +141,21 @@ At the 300 s step (the YSU arms' cap) the same day's forecast took 133 s of
 door time on the same card with a warm kernel cache (288 steps); the 263 s
 above included the first run's kernel compilation.
 
+The same row and cycle on one RTX 5090 (32 GB), from a fresh install in an empty
+home with a geography archive named with `--geog` (a 0.6.1 build, 17 Nov 2026): 4
+minutes for the whole command (mesh 7 s, static 27 s, init 48 s, forecast 128 s
+with the prebuilt kernel pack fetched, products 13 s, export 17 s). The command
+returns when the export is done and its last line says that scoring is still
+running; the scorer then works on the CPU (about 9 minutes fetching the globe's
+surface-station list, once, at the archive's pace; then the 25 hourly report
+windows one at a time), and the scorecard's status leaves QUEUED when it ends.
+On a later pre-release build of 0.6.1, same row, cycle and card, the scorer
+ended 26 minutes after the command returned and the run folder was 13 GB; on
+the same build from a fresh `[gpu]` install, after `woof fetch-geog` and
+with no `--geog`, the command returned in 3 min 36 s with the mesh already
+cached from an earlier attempt (static 32 s, init 42 s, forecast 106 s,
+products 16 s, export 19 s).
+
 ## Export
 
 ```
@@ -140,7 +177,7 @@ and the last domain is the refined core at its own spacing (0.025 degrees for
 a 3 km core). Every file is a regular lat-lon grid, so each carries the 1-D
 coordinates `lat`, `lon`, `Time`, `bottom_top`, `bottom_top_stag` and
 `soil_layers_stag` as the single whole-sphere file did, and any of them can be
-a WOOF domain's parent; only a core no lat-lon box holds at its spacing (one
+a WOOF-ArWen domain's parent; only a core no lat-lon box holds at its spacing (one
 reaching a pole) keeps the refined-core maps' Lambert grid. The receipt's
 `stack` lists each grid. A 6 h zoom globe with a
 550 km, 3 km core wrote 3.1 GB this way in 32 s, where the whole sphere at the

@@ -102,8 +102,15 @@ from dataclasses import dataclass
 import numpy as np
 
 from woof.core import constants as c
-from woof.da.spread_repair import _xp as _module_for
 from woof.obs.goes_cwp import CLASS_CLEAR, CLASS_ICE, CLASS_LIQUID
+
+
+def _module_for(array):
+    """The array module (CuPy or NumPy) an array belongs to."""
+    if type(array).__module__.split(".")[0] == "cupy":
+        import cupy
+        return cupy
+    return np
 
 #: kg m-2 -> g m-2, the unit the packs and the gridded product both use.
 KG_TO_G = 1000.0

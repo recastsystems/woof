@@ -118,13 +118,13 @@ forecast skill or a bitwise full-model trajectory.
 The paired Rust maps at 10, 11 and 12 UTC preserve the same cool north,
 warm south and Gulf moisture patterns, with precipitation along the same
 southwest and coastal edges. At 12 UTC the observed-station temperature
-RMSE is 1.4437 K for WOOF and 1.4446 K for native. Both have a dewpoint
+RMSE is 1.4437 K for WOOF-ArWen and 1.4446 K for native. Both have a dewpoint
 bias near -2.43 K. The largest full-field temperature difference is
 2.19 degrees F, with a 99th percentile of 0.1996 degrees F. The maximum
 accumulated-rain difference is 0.0701 inch. No radar precipitation
 observations were checked. Across four frames per arm, the checked
 324,235,200 field words contain no nonfinite or fill values. SAS produces
-rain in the full forecast: final RAINC reaches 13.4235 mm in WOOF and
+rain in the full forecast: final RAINC reaches 13.4235 mm in WOOF-ArWen and
 13.4213 mm in native.
 
 The WRF v4.7.1 public source was checked before this integration. Its

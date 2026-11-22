@@ -367,7 +367,7 @@ def fire_counts(obj) -> dict:
 def run_resident(cfg, nsteps, *, boundaries, poison_step=None,
                  seed=SEED, warmup=1, observer="state", index=None,
                  value: float = float("nan")):
-    """The reference leg: one resident domain, WOOF's own ``dycore.step``.
+    """The reference leg: one resident domain, WOOF-ArWen's own ``dycore.step``.
 
     ``observer`` is accepted and must be ``"state"``: on a resident domain the
     state IS the forecast, so there is nothing to fold and reading the state is

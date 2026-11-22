@@ -74,7 +74,7 @@ consumer reads `surface_series.nc` directly and selects the latest record at
 or before the model clock. Keep this prepared file only while the proof uses it,
 then retain its receipt and delete it.
 
-The update lane completed the the reference GPU host proof using `2023-03-31T12`
+The surface update completed the reference GPU host proof using `2023-03-31T12`
 through `2023-04-10T12`, with 41 analyses against its registered native static.
 The consumer reports 1,440 steps and 11 daily frames, with integration taking
 515.024540165 seconds. All six maps were inspected. All 901,164 daily SST and
@@ -84,10 +84,10 @@ seconds. A fresh-process restart from six through twelve hours also passed
 bitwise. It also reports a passing static bridge build and 59 GPU surface
 tests, plus 581,948,715 C12 written numeric values with zero differences
 against native or base. These results were reported by the consumer and were
-not independently rerun by this lane. Consumer-relative receipts are
+not independently rerun here. Consumer-relative receipts are
 `n1out/ten-day-series.json`, `n1out/ten-day-final-receipt.json.gz`,
 `surface-proof/daily.json` and `delivery/REPORT.md`. The supplied producer receipt,
-exact forecast CLI and acceptance summary are mirrored in the lane's source
+exact forecast CLI and acceptance summary are mirrored in the source
 handoff. Full daily/final comparison receipts and the exact restart command
 were not included. This
 supersedes the earlier 00Z window and unpopulated
@@ -117,7 +117,7 @@ Pass the 12Z cycle explicitly: the already handed-off runner's optional cycle
 default remains the earlier 00Z example. Producer runtime, binary and format
 are unchanged; the workspace isolation change affects Cargo build layout only.
 The producer CLI module is
-`woof/hex/surface_series.py`; the update lane's reader locator is
+`woof/hex/surface_series.py`; the surface update's reader locator is
 `woof/hex/surface_series_reader.py`, avoiding a file ownership collision.
 
 If no matching GFS init already exists, the generic init door can prepare it
@@ -142,7 +142,7 @@ RAYON_NUM_THREADS=24 woof hex init-source --source gfs --cycle 2023-03-31T12 \
 The decoder wrapper selects the bundled parallel Rust decoder. The init command
 must use the full patched hex source or an installed version with the generic
 `init-source` door. These are reproducible handoff commands, not a claim that
-the reference GPU host preparation has run. The retained lane executable is x86-64 Linux with
+the reference GPU host preparation has run. The retained executable is x86-64 Linux with
 a maximum required GLIBC symbol version of 2.39; rebuild with the source recipe
 above on a node with an older C library. The portable source archive contains
 this crate, builder, direct runner, table and Vtables; the builder also needs
@@ -168,7 +168,7 @@ The run filename agreed with the surface-update consumer is `surface_series.nc`.
 A run window includes the initial timestamp and each cadence through its endpoint.
 An endpoint between cadence boundaries includes the next record to cover the full
 window. Choose a fresh output path for each invocation. The producer owns this
-writer; the surface-update lane owns the `rw-surface` C ABI reader package.
+writer; the surface update owns the `rw-surface` C ABI reader package.
 
 `cfs` is an init-source table row, with `Vtable.CFS` and the existing Rust
 `ncep-cdas-cfsv2` rules. It selects the NCEI CFSv2 operational pressure analysis,
@@ -220,7 +220,7 @@ history frames, and finite health checks throughout. Integration took
 sequential single-card runs from the manifest, with CUDA graphs disabled and
 the default fast numerics, using gpuwm 2.9.0 and CuPy 14.2.0.
 
-The lane retains exact commands, source-cycle/lead provenance, per-field hashes,
+The maintainers' records retain exact commands, source-cycle/lead provenance, per-field hashes,
 CPU/GPU samples and complete forecast receipts in `n1out/series-source-proofs.json`,
 `n1out/series-source-acceptance.json`, `n1out/source-proof-receipts/` and
 `receipts/source-acceptance-audit.json`. Prepared inputs, history frames, caches

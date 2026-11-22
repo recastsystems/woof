@@ -3,7 +3,7 @@
 :mod:`tilestream` can integrate a domain that does not fit on the card: the
 full domain lives in pinned host RAM and tiles of it are cycled through the
 GPU, bit-exact against a resident run.  Every one of those results was
-produced by ``tilestream``'s own stepping loop.  WOOF's real driver --
+produced by ``tilestream``'s own stepping loop.  WOOF-ArWen's real driver --
 :mod:`woof.core.model` for a domain tree, :func:`woof.runtime
 .integrate_prepared_case` for a single domain -- knew nothing about any of
 it, which meant a user could not turn it on.  This module is the seam that
@@ -77,7 +77,7 @@ WHERE A HISTORY FRAME COMES FROM, AND WHY THE ANSWER MOVED
 -----------------------------------------------------------
 ``attach`` COPIES the domain's carriers into the store and the sweep
 advances the store; the resident ``DomainState`` it was built from is never
-written again.  WOOF's three history call sites -- ``runtime
+written again.  WOOF-ArWen's three history call sites -- ``runtime
 .write_case_output``, ``runtime._submit_tree_history_frame`` and
 ``prepared_single_domain_forecast``'s ``history_handler`` -- all read that
 state, so a streamed run published a full forecast's worth of frames holding
@@ -2145,7 +2145,7 @@ class StreamedDomain:
         due step leaves the domain's REFL_10CM in the store, and it is also
         STASHED on the resident ``state`` on the way out, so that
         ``woof.core.refl.consume_refl_10cm(state)`` -- which is what all
-        three of WOOF's history call sites call, unchanged -- returns the
+        three of WOOF-ArWen's history call sites call, unchanged -- returns the
         domain field a streamed run computed instead of raising "no
         microphysics-time field is stashed".
         """
@@ -4761,7 +4761,7 @@ def attach(state, cfg, decision: StreamingDecision, *, tile_state_factory,
     """Move a prepared domain into a store and wrap it in a sweeper.
 
     ``state`` is the prepared, resident :class:`~woof.core.state.DomainState`
-    -- the one WOOF's preparation built and the one the health validator,
+    -- the one WOOF-ArWen's preparation built and the one the health validator,
     the output writer and the restart writer already know about.  Its
     carriers are copied into the store; with ``decision.store == "host"``
     that store is pinned host RAM, which is the point.
@@ -5620,9 +5620,9 @@ def _tile_terrain_drag_static(cfg, terrain):
     """
     import numpy as np
 
-    from woof.static.orographic import required_static_fields
+    from woof.static.orographic import required_static_fields_for
 
-    names = required_static_fields(cfg.topo_wind, cfg.gwd_opt)
+    names = required_static_fields_for(cfg)
     if not names:
         return None
     return {"HGT_M": terrain,
@@ -5673,7 +5673,7 @@ def _surface_tile_initialization_inputs(driver, cfg):
 
 def prepared_tile_state_factory(state, cfg, *, tables0=None, seed: int = 4242,
                                 warmup: int = 0):
-    """``tile_state_factory`` for a domain WOOF's preparation already built.
+    """``tile_state_factory`` for a domain WOOF-ArWen's preparation already built.
 
     :func:`attach` states the contract: the factory must build a state with
     THE SAME PHYSICS SELECTORS the domain was prepared with, carrying the
@@ -5762,9 +5762,19 @@ def prepared_tile_state_factory(state, cfg, *, tables0=None, seed: int = 4242,
                 twin = _tile_scheme(getattr(driver, attr, None), lat, lon)
                 if twin is not None:
                     extra[key] = twin
+        if (getattr(tile_cfg, "kim_tofd", False)
+                and int(getattr(tile_cfg, "sf_sfclay_physics", 0)) == 1):
+            # Named breakage: the tile geography gather fills the terrain-drag
+            # carrier, not the surface layer's VAR plane, so every tile would
+            # run kim_tofd on the neutral zeros below, i.e. with no form drag.
+            raise StreamingRefused(
+                "kim_tofd = .true. (WRF v4.8.0 revised MM5 form drag) is not "
+                "carried by streamed tiles yet: the tile geography gather has "
+                "no VAR plane for the surface layer; run it resident")
         if (int(getattr(tile_cfg, "topo_wind", 0))
                 or int(getattr(tile_cfg, "gwd_opt", 0))):
-            from woof.static.orographic import required_static_fields
+            from woof.static.orographic import (drag_static_fields,
+                                                gwdo_version_of)
 
             if getattr(driver, "terrain_drag", None) is None:
                 raise StreamingRefused(
@@ -5777,8 +5787,9 @@ def prepared_tile_state_factory(state, cfg, *, tables0=None, seed: int = 4242,
                                dtype=np.float32)
             extra["terrain_drag_static"] = {
                 "HGT_M": neutral,
-                **{name: neutral for name in required_static_fields(
-                    int(tile_cfg.topo_wind), int(tile_cfg.gwd_opt))}}
+                **{name: neutral for name in drag_static_fields(
+                    int(tile_cfg.topo_wind), int(tile_cfg.gwd_opt),
+                    gwdo_version_of(tile_cfg))}}
         tile, _drv = _harness.make_physics_state(
             tile_cfg, seed, geography=geo, start_time=start_time,
             coord=coord, **extra)

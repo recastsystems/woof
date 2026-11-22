@@ -68,7 +68,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     original = load(args.original)
     series = {"WRF original": rows("wrf_original", [f["reference"] for f in original["frames"]]),
-              "WOOF default": rows("arwen_default", [f["candidate"] for f in original["frames"]])}
+              "WOOF-ArWen default": rows("arwen_default", [f["candidate"] for f in original["frames"]])}
     sources = {args.original.name: sha(args.original)}
     default_tip = None
     if args.default_receipt:
@@ -102,9 +102,9 @@ def main():
         sources[args.corrected.name] = sha(args.corrected)
     if args.strict:
         strict = load(args.strict)
-        series["WOOF strict control"] = rows("arwen_strict", [f["candidate"] for f in strict["frames"]])
+        series["WOOF-ArWen strict control"] = rows("arwen_strict", [f["candidate"] for f in strict["frames"]])
         sources[args.strict.name] = sha(args.strict)
-    for side, label in (("reference", "WRF original"), ("candidate", "WOOF default")):
+    for side, label in (("reference", "WRF original"), ("candidate", "WOOF-ArWen default")):
         for prefix in ("sensible", "latent"):
             estimated = series[label][-1][f"cumulative_{prefix}_j_trapezoid"]
             native = original[f"{side}_integral"][f"{prefix}_heat_j_trapezoid"]
@@ -122,8 +122,8 @@ def main():
     import matplotlib.pyplot as plt
     plt.rcParams.update({"font.size": 11, "axes.spines.top": False, "axes.spines.right": False,
                          "axes.grid": True, "grid.alpha": 0.22})
-    colors = {"WRF original": "#2563eb", "WRF corrected": "#059669", "WOOF default": "#ea580c", "WOOF strict control": "#7c3aed"}
-    styles = {"WRF original": "-", "WRF corrected": "--", "WOOF default": "-", "WOOF strict control": ":"}
+    colors = {"WRF original": "#2563eb", "WRF corrected": "#059669", "WOOF-ArWen default": "#ea580c", "WOOF-ArWen strict control": "#7c3aed"}
+    styles = {"WRF original": "-", "WRF corrected": "--", "WOOF-ArWen default": "-", "WOOF-ArWen strict control": ":"}
 
     def figure(filename, panels, height):
         fig, axes = plt.subplots(len(panels) // 2, 2, figsize=(13.2, height), squeeze=False)
@@ -140,7 +140,7 @@ def main():
                  fontsize=11, va="top")
         handles, labels = axes.flat[0].get_legend_handles_labels()
         if default_tip:
-            labels = ["WOOF strict, earlier source" if label == "WOOF strict control" else label
+            labels = ["WOOF-ArWen strict, earlier source" if label == "WOOF-ArWen strict control" else label
                       for label in labels]
         fig.legend(handles, labels, loc="upper center", ncol=2,
                    bbox_to_anchor=(0.5, 1 - 0.83 / height), frameon=False)
@@ -158,20 +158,20 @@ def main():
             ("vertical_velocity_rms_m_s", 1.0, "RMS vertical velocity (m/s)"),
             ("theta_change_k", 1.0, "Mean potential temperature change (K)"),
             ("vapor_mass_change_kg", 1e-3, "Water vapor mass change (tonnes)")), 8.7)
-    caption = ("Time series from the 31 complete history frames of the compiled WRF ideal case and the ordinary WOOF run. "
-               "The original WRF case retains its source unchanged. WOOF uses the corrected atmosphere-aligned fire clock and follows native WRF at the open-boundary top row. "
+    caption = ("Time series from the 31 complete history frames of the compiled WRF ideal case and the ordinary WOOF-ArWen run. "
+               "The original WRF case retains its source unchanged. WOOF-ArWen uses the corrected atmosphere-aligned fire clock and follows native WRF at the open-boundary top row. "
                "The corrected WRF control applies that source fix in a separate copied reference. "
-               "WOOF transports dry potential temperature, while native WRF uses its moist-theta formulation. "
+               "WOOF-ArWen transports dry potential temperature, while native WRF uses its moist-theta formulation. "
                "Cumulative heat is a trapezoidal estimate at the stored 120-second cadence. "
                "The mass series includes open-boundary exchange. These are implementation comparisons; observed fire perimeters determine forecast skill.\n")
     if not args.corrected:
         caption += "The corrected native reference is still running and is not drawn in this version.\n"
     if args.strict:
-        caption += "The strict WOOF line is a separate arithmetic diagnostic and does not qualify the default path.\n"
+        caption += "The strict WOOF-ArWen line is a separate arithmetic diagnostic and does not qualify the default path.\n"
         if default_tip:
             caption += "The strict line retains the earlier source snapshot recorded in its own run receipt. It is not a strict execution of the later default source tip.\n"
     if default_tip:
-        caption += f"The qualified default WOOF source tip is {default_tip}.\n"
+        caption += f"The qualified default WOOF-ArWen source tip is {default_tip}.\n"
     if args.default_receipt and receipt["case_semantics"].get("native_tracer_opt") == 3:
         caption += ("The separately hashed qualification harness imports and transports native bulk smoke option 3. "
                     "Original WRF's first-column-only smoke insertion defect is reported separately; "

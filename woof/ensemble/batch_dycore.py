@@ -73,8 +73,7 @@ def _validate_configuration(state):
     return cfg
 
 
-def prepare_dry_step(state, *, layout_trial="none", advection_family=False,
-                     acoustic_fusion=False, acoustic_shared=False):
+def prepare_dry_step(state, *, layout_trial="none", advection_family=False):
     """Prepare one full acoustic RK3 step with no loop over advancing members.
 
     N=1 delegates the original DomainState driver. N>1 executes each numerical
@@ -89,10 +88,6 @@ def prepare_dry_step(state, *, layout_trial="none", advection_family=False,
         raise ValueError("layout_trial must be none, outermost or innermost")
     if advection_family and layout_trial == "none":
         raise ValueError("advection_family needs an explicit outermost or innermost trial")
-    if type(acoustic_fusion) is not bool:
-        raise TypeError("acoustic_fusion must be an explicit boolean trial selection")
-    if type(acoustic_shared) is not bool or (acoustic_shared and not acoustic_fusion):
-        raise ValueError("acoustic_shared requires the joined acoustic trial")
     cfg = _validate_configuration(state)
     from woof.core import dycore
     bound = tuple((name, id(array)) for name, array in state.storage.arrays.items())
@@ -121,10 +116,11 @@ def prepare_dry_step(state, *, layout_trial="none", advection_family=False,
         return single_step
 
     from woof.ensemble import batch_acoustic, batch_bigstep, batch_glue
+    # The packed separate acoustic launches are word-identical to single
+    # runs.  The joined Mu/W trial kernel that once sat beside them was not
+    # (18 of 52 device tests, w_pp 1 to 31 units in the last place on an RTX
+    # 4090), no route selected it, and it was removed.
     acoustic_substep_factory = batch_acoustic.prepare_acoustic_substep_launch
-    if acoustic_fusion:
-        from woof.ensemble.batch_acoustic_fusion import prepare_acoustic_substep_launch
-        acoustic_substep_factory = prepare_acoustic_substep_launch
     from woof.ensemble.batch_bookkeeping import prepare_bookkeeping
     from woof.ensemble.batch_diagnostics import prepare_update_diagnostics
     from woof.ensemble.batch_fluxes import prepare_couple_momentum, prepare_omega_columns
@@ -203,17 +199,6 @@ def prepare_dry_step(state, *, layout_trial="none", advection_family=False,
     if cfg.emdiv > 0 and mudf is None:
         raise BatchStateUnsupported("emdiv needs its planned acoustic_mudf backing")
     emdiv = batch_acoustic.prepare_emdiv_filter_launch(state, cfg, mudf) if mudf is not None else None
-    prepared_substeps = None
-    if acoustic_fusion:
-        # Coefficient values change by stage, but their admitted allocations
-        # remain fixed. Build source, audit the ABI and bind handles once.
-        coefficient_backings = tuple(state.existing_scratch(name) for name in (
-            "acoustic_c2a", "acoustic_a", "acoustic_alpha", "acoustic_gamma"))
-        if any(value is None for value in coefficient_backings):
-            raise BatchStateUnsupported("joined acoustic submission needs all four admitted coefficient backings")
-        prepared_substeps = tuple(acoustic_substep_factory(
-            state, cfg, dtau, coefficient_backings, mudf=mudf,
-            shared_intermediates=acoustic_shared) for _nsub, dtau in stages)
 
     def step():
         check_binding()
@@ -243,8 +228,7 @@ def prepare_dry_step(state, *, layout_trial="none", advection_family=False,
             coefficients = batch_acoustic.prepare_acoustic_coefficients(state, cfg, dtau)
             if mudf is not None and stage_index == 0:
                 mudf.fill(0)
-            substep = (prepared_substeps[stage_index] if prepared_substeps is not None
-                       else acoustic_substep_factory(state, cfg, dtau, coefficients, mudf=mudf))
+            substep = acoustic_substep_factory(state, cfg, dtau, coefficients, mudf=mudf)
             for substep_index in range(nsub):
                 if emdiv is not None:
                     emdiv()
@@ -255,7 +239,5 @@ def prepare_dry_step(state, *, layout_trial="none", advection_family=False,
         alias()
         advance_clock()
 
-    step.trial_receipt = {**trial_receipt, "acoustic_fusion_requested": acoustic_fusion,
-                         "acoustic_shared_requested": acoustic_shared,
-                         "acoustic_launches_prepared_once": prepared_substeps is not None}
+    step.trial_receipt = dict(trial_receipt)
     return step

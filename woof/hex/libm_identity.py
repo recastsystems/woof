@@ -8,7 +8,7 @@ real 112,676-cell parent's own float32 ``dcEdge`` -- 338,022 values, input
 SHA-256/16 ``689494c58c8c0c47`` on both boxes -- the two answers differ:
 
     box                                     dc2/12 vs correctly-rounded
-    the proving RTX 5090, glibc 2.43              207 of 338,022
+    an RTX 5090, glibc 2.43              207 of 338,022
     this Windows desktop, MSVC CRT           14 of 338,022
     the two boxes against EACH OTHER        215 of 338,022, all 1 ULP
 
@@ -115,7 +115,7 @@ def correctly_rounded_square_fingerprint(n: int = SCALAR_POW_PROBE_SIZE) -> str:
 KNOWN_SCALAR_POW_LIBMS: dict[str, dict[str, str]] = {
     "e8f06d91c151bfd8": {
         "libm": "GNU C Library (glibc) 2.43",
-        "measured_on": "the proving RTX 5090, Ubuntu, Linux 7.0.0-29-generic",
+        "measured_on": "an RTX 5090, Ubuntu, Linux 7.0.0-29-generic",
         "numpy": "2.3.5",
         "measured_date": "2026-08-27",
         "note": (
@@ -157,7 +157,7 @@ KNOWN_SCALAR_POW_LIBMS: dict[str, dict[str, str]] = {
             "answers differently on 220,001 of the 1,048,576 probe values "
             "(float32; the float64 kernel diverges too, 8,926 of 200,000 on "
             "the equivalence test's own values).  Cross-checked on a "
-            "no-AVX-512 Linux box the same day (the proving RTX 5090, Intel Core "
+            "no-AVX-512 Linux box the same day (an RTX 5090, Intel Core "
             "Ultra 7 270K, glibc 2.43, numpy 2.5.2): array == scalar there, "
             "both e8f06d91.  The correctly-rounded square control is "
             "d026ac1b6fd1ea85 on every box named here, which is what pins the "

@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 import json
 import math
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import subprocess
 import sys
@@ -50,7 +51,7 @@ def main():
     p.add_argument('--fingerprint-every', type=int, default=None)
     p.add_argument('--case-label', default='ops')
     a = p.parse_args()
-    cards = a.cards or len([c for c in os.environ.get('GPU_MUTEX_CARDS', '').replace(',', ' ').split() if c])
+    cards = a.cards or len([c for c in card_queue.granted() if c])
     if cards < 1:
         raise SystemExit('no cards: run through the host card queue with --cards N')
     profile = json.loads(a.case.read_text())
@@ -96,7 +97,7 @@ def main():
     cmd += [x for x in a.extra.split() if x]
     (run / 'command.json').write_text(json.dumps({
         'command': cmd, 'created_utc': datetime.now(timezone.utc).isoformat(),
-        'gil_enabled': sys._is_gil_enabled(), 'cards': env.get('GPU_MUTEX_CARDS'),
+        'gil_enabled': sys._is_gil_enabled(), 'cards': card_queue.get(card_queue.CARDS, None, env),
         'CUDA_VISIBLE_DEVICES': env.get('CUDA_VISIBLE_DEVICES'), 'hours': a.hours,
         'history_every_minutes': a.history_every_minutes,
         'schedule': 'door defaults unless the command names a value',

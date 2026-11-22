@@ -1,6 +1,6 @@
 """The any-point column store of a hex run: every output hour, from the converted lat-lon frames.
 
-Every run (WOOF and hex) writes the tiled compact column store for every output hour, so a
+Every run (WOOF-ArWen and hex) writes the tiled compact column store for every output hour, so a
 sounding at any point and any hour costs nothing extra. The store is rw-store version 2 (``RWSTORE2``, written by
 the engine's ``rw_soundings --columns`` through :func:`woof.soundings.write_columns`; an engine before 2.9.7 writes
 the same tiles as ``GPWMCOL1``, which every reader of the store also reads). It needs the 3-D fields, so it is

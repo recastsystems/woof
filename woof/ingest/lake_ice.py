@@ -43,8 +43,10 @@ side of the centre (one pixel at 1 km, a 3 x 3 window at 3 km).
 When no analysis can be read (offline, nothing posted for the date, a
 library that predates the reader) the run says so on stderr, names why,
 and keeps the forcing's ice -- per run, never as a changed default.
-``gfs_lake_ice = "wps"`` selects the forcing's ice outright (the WPS and
-real.exe identity arm).
+The analysis is asked for only when a domain of the tree has lake cells.
+``[ingest] gfs_lake_ice = "wps"`` (or ``woof go --lake-ice wps``) selects
+the forcing's ice outright (the WPS and real.exe identity arm) and asks
+for nothing; ``[case_data]`` still accepts the key.
 """
 from __future__ import annotations
 
@@ -390,9 +392,21 @@ def announce(receipt: Mapping[str, object], *, where: str) -> None:
         f"{receipt['frozen_by_snow_cover']} by snow cover over a lake its "
         f"water mask does not carry; {receipt['cells_newly_frozen']} were "
         f"open in the forcing); their skin temperature is at most "
-        f"{FROZEN_LAKE_SKIN_CAP_K} K.  [case_data] gfs_lake_ice = \"wps\" "
-        "keeps the forcing's lake ice instead.",
+        f"{FROZEN_LAKE_SKIN_CAP_K} K.  {WPS_SWITCH} keeps the forcing's "
+        "lake ice instead.",
         file=sys.stderr)
+
+
+#: The switch that selects ``wps`` on the GFS route, as the notes name it.
+#: It was "[case_data] gfs_lake_ice", which a `woof domain` GFS config does
+#: not carry and cannot carry without the ERA5 route's inputs (door item 7).
+WPS_SWITCH = ('[ingest] gfs_lake_ice = "wps" in the experiment config '
+              "(or woof go --lake-ice wps)")
+
+
+def announce_no_lakes(*, where: str) -> None:
+    print(f"note: lake ice: {where} has no land-use lake cells, so no "
+          "lake-ice analysis was requested for it.", file=sys.stderr)
 
 
 def announce_fallback(reason: str, *, where: str) -> None:
@@ -402,23 +416,81 @@ def announce_fallback(reason: str, *, where: str) -> None:
         "nearest-water search), so lakes the forcing does not resolve start "
         "as open water even if they are frozen.  Restore network access, or "
         f"put the analysis file in {default_cache_root()} (one folder per "
-        "source row of woof/data/surface_obs/lake-ice-sources.v1.toml).",
+        "source row of woof/data/surface_obs/lake-ice-sources.v1.toml), "
+        f"or set {WPS_SWITCH} to keep the forcing's ice without asking.",
         file=sys.stderr)
 
 
-@dataclass(frozen=True)
 class LakeIceProvider:
     """What a preparation carries to every domain it initializes.
 
-    ``observation`` is ``None`` when the choice is ``wps`` or when no
-    analysis could be read (``fallback`` then says why).  Children take the
-    root's provider through the input catalog, so a nest is frozen from
-    the same analysis on its own grid.
+    The analysis is acquired the first time a domain WITH LAKE CELLS asks
+    (:meth:`freeze`), once for the whole tree, so a nest is frozen from the
+    same analysis on its own grid.  A domain with no lake cells asks for
+    nothing.  Before this the analysis was downloaded at the start of
+    every observed-choice GFS preparation, lakes or none (door item 7).
+
+    ``observation`` is ``None`` when the choice is ``wps``, before any
+    domain with lakes has asked, or when no analysis could be read
+    (``fallback`` then says why).  A provider built with an
+    ``observation`` or a ``fallback`` is already resolved and never asks.
     """
 
-    choice: str
-    observation: ObservedLakeIce | None = None
-    fallback: str | None = None
+    def __init__(self, choice: str, observation: ObservedLakeIce | None = None,
+                 fallback: str | None = None, *,
+                 valid_time: datetime | None = None, where: str | None = None):
+        self.choice = choice
+        self._observation = observation
+        self._fallback = fallback
+        self._valid_time = valid_time
+        self._where = where
+        self._resolved = (choice == "wps" or valid_time is None
+                          or observation is not None or fallback is not None)
+        import threading
+        # Nests are prepared on a thread pool (woof.ingest.nest_init); the
+        # first domain with lakes acquires, the rest wait for its answer.
+        self._lock = threading.Lock()
+
+    def __deepcopy__(self, memo):
+        # One provider per tree by design: a copied catalog still shares the
+        # one analysis (and a lock cannot be copied).
+        return self
+
+    def __repr__(self) -> str:
+        return (f"LakeIceProvider(choice={self.choice!r}, "
+                f"observation={self._observation!r}, "
+                f"fallback={self._fallback!r})")
+
+    @property
+    def observation(self) -> ObservedLakeIce | None:
+        return self._observation
+
+    @property
+    def fallback(self) -> str | None:
+        return self._fallback
+
+    @property
+    def wants_analysis(self) -> bool:
+        """True when a grid with lake cells should call :meth:`freeze`."""
+        return self.choice != "wps"
+
+    def acquire(self) -> ObservedLakeIce | None:
+        """The analysis, acquired on the first call; ``None`` when unreadable."""
+        with self._lock:
+            if not self._resolved:
+                self._resolved = True
+                try:
+                    observation, attempts = acquire_observed_lake_ice(self._valid_time)
+                except (OSError, ValueError) as error:
+                    observation, attempts = None, [str(error)]
+                if observation is None:
+                    tried = ("; ".join(attempts[-4:]) if attempts
+                             else "no source row answered")
+                    self._fallback = f"none could be read ({tried})"
+                    announce_fallback(self._fallback, where=self._where)
+                else:
+                    self._observation = observation
+        return self._observation
 
     def identity(self) -> dict[str, object]:
         out: dict[str, object] = {"choice": self.choice}
@@ -434,9 +506,16 @@ class LakeIceProvider:
 
         Returns ``(fields, skin, receipt)``; with no observation ``fields``
         and ``skin`` come back unchanged and the receipt is the identity.
-        A read failure on this grid falls back loudly, for this grid only.
+        A grid with no lake cells asks for nothing and says so.  A read
+        failure on this grid falls back loudly, for this grid only.
         """
 
+        if self.wants_analysis and not np.asarray(lake_mask, dtype=bool).any():
+            announce_no_lakes(where=where)
+            return fields, skin, {"choice": self.choice, "lake_cells": 0,
+                                  "analysis": "not requested: no lake cells"}
+        if self.wants_analysis:
+            self.acquire()
         if self.observation is None:
             return fields, skin, self.identity()
         try:
@@ -453,7 +532,11 @@ class LakeIceProvider:
 
 def resolve_lake_ice_provider(choice: str, valid_time: datetime, *,
                               where: str) -> LakeIceProvider:
-    """Acquire the analysis a preparation's choice asks for, once."""
+    """The provider a preparation's choice asks for.
+
+    Nothing is downloaded here: the analysis is acquired once, by the first
+    domain of the tree that has lake cells (:meth:`LakeIceProvider.freeze`).
+    """
 
     if choice not in LAKE_ICE_CHOICES:
         raise ValueError(
@@ -461,13 +544,4 @@ def resolve_lake_ice_provider(choice: str, valid_time: datetime, *,
             + ", ".join(repr(value) for value in LAKE_ICE_CHOICES))
     if choice == "wps":
         return LakeIceProvider(choice)
-    try:
-        observation, attempts = acquire_observed_lake_ice(valid_time)
-    except (OSError, ValueError) as error:
-        observation, attempts = None, [str(error)]
-    if observation is None:
-        tried = "; ".join(attempts[-4:]) if attempts else "no source row answered"
-        reason = f"none could be read ({tried})"
-        announce_fallback(reason, where=where)
-        return LakeIceProvider(choice, fallback=reason)
-    return LakeIceProvider(choice, observation=observation)
+    return LakeIceProvider(choice, valid_time=valid_time, where=where)

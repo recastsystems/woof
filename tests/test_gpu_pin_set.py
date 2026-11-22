@@ -319,7 +319,7 @@ GREEN = _report([("tests/test_a.py", "test_pin", "passed", ""),
 
 
 def _probe(card=CARD, apps="", extra=""):
-    return (extra + "WOOF-CARD " + json.dumps(card) + "\nARWEN-SMI\nControl Card, 610.57.04\n"
+    return (extra + "WOOF-ArWen-CARD " + json.dumps(card) + "\nARWEN-SMI\nControl Card, 610.57.04\n"
             "ARWEN-APPS\n" + apps)
 
 
@@ -362,7 +362,7 @@ def drive(tmp_path, monkeypatch, *, xml=GREEN, child_exit=0, card_output=None,
                 rc, stdout = child_exit, remote + "/woof/__init__.py\npins ran\n" + sampler
             elif "ARWEN-CARD" in last:
                 stdout = probe
-            elif last.startswith("echo WOOF-APPS;"):
+            elif last.startswith("echo WOOF-ArWen-APPS;"):
                 answer = rechecks.pop(0) if len(rechecks) > 1 else (rechecks[0] if rechecks else "")
                 stdout = "ARWEN-APPS\n" + answer
         else:
@@ -471,7 +471,7 @@ def test_an_interpreter_without_a_toolkit_refuses_the_stage_naming_it(tmp_path, 
     toolkit answered the probe and the stage's first real run recorded every
     pin red with the same RuntimeError instead of refusing."""
     card = dict(CARD, compiles=False, nvrtc="unresolved")
-    output = _probe(card, extra="WOOF-CARD-NO-COMPILE RuntimeError: Failed to find CUDA headers. "
+    output = _probe(card, extra="WOOF-ArWen-CARD-NO-COMPILE RuntimeError: Failed to find CUDA headers. "
                                 "Please install the CUDA Toolkit or set CUDA_PATH\n")
     rc, receipt, calls = drive(tmp_path, monkeypatch, card_output=output)
     assert rc != 0
@@ -498,12 +498,12 @@ def test_a_card_shared_at_the_probe_is_waited_for_and_then_run(tmp_path, monkeyp
     assert receipt["card"]["other_compute_processes_at_probe"] == [OTHER]
     assert receipt["card"]["other_compute_processes"] == []
     assert receipt["card"]["idle_wait_seconds"] == 3 * gate.IDLE_POLL_SECONDS
-    rechecks = [c for c in calls if c[0] == "ssh" and c[-1].startswith("echo WOOF-APPS;")]
+    rechecks = [c for c in calls if c[0] == "ssh" and c[-1].startswith("echo WOOF-ArWen-APPS;")]
     assert len(rechecks) == 3
     # The pins ran only after the card was free.
     pytest_index = next(i for i, c in enumerate(calls) if c[0] == "ssh" and "-m pytest" in c[-1])
     assert all(i < pytest_index for i, c in enumerate(calls)
-               if c[0] == "ssh" and c[-1].startswith("echo WOOF-APPS;"))
+               if c[0] == "ssh" and c[-1].startswith("echo WOOF-ArWen-APPS;"))
 
 
 def test_a_card_still_shared_at_the_bound_refuses_the_stage(tmp_path, monkeypatch):
@@ -670,7 +670,7 @@ def _shapes():
     looking for the shape.
     """
     back = chr(92)
-    return ("/ho" + "me/account/work/card-stage",
+    return ("/ho" + "me/account/scratch/card-stage",
             "C:" + back + "Users" + back + "account" + back + "work" + back + "tree")
 
 

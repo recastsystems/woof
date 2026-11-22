@@ -191,9 +191,13 @@ def _ask(prompt: str, default: str | None, validate) -> str:
 
 
 def _validate_point(raw: str) -> None:
-    from woof.domain_wizard import _parse_point
+    from woof.domain_wizard import _parse_point, swapped_point_refusal
 
-    _parse_point(raw)
+    # The source is asked next, so only the pole case is asked here; the
+    # flags door asks the source's coverage too.
+    swapped = swapped_point_refusal(*_parse_point(raw), source=None)
+    if swapped is not None:
+        raise ValueError(swapped)
 
 
 def _validate_source(raw: str) -> None:

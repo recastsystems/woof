@@ -34,6 +34,17 @@ def validate_reference(path, source, valid):
         raise S2SError(f"analysis source, cycle or zero lead does not match {source} {valid}: {path}")
 
 
+def owned_init_complete(path):
+    """True when PATH and the receipt beside it record a finished init-source build (the receipt is written
+    last, atomically, and names the init it finished)."""
+    try:
+        receipt = json.loads((path.parent / "init-source-receipt.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return (path.is_file() and not receipt.get("failed")
+            and (receipt.get("init") or {}).get("path") == str(path))
+
+
 def weighted_metrics(xp, forecast, reference, weights):
     mask = xp.isfinite(forecast) & xp.isfinite(reference) & (weights > 0)
     count = int(mask.sum())
@@ -121,9 +132,14 @@ def verify_analyses(value, state, args, env):
         # ERA5 is keyless (ARCO) by default, so it is prepared like GFS.
         folder = work / "inits" / (f"analysis-{source}-" + valid.strftime("%Y%m%d%H"))
         path = folder / "init.nc"
-        if path.is_file():
+        if owned_init_complete(path):
             validate_reference(path, source, valid)
             return {**row, "path": str(path), "owned": True, "status": "ready"}
+        # THE BREAKAGE THIS PREVENTS (fit16-rows s2s2, verification host, 2026-11-07 05:50Z): the data disk filled while
+        # two ERA5 analysis inits were being written, leaving init.nc present beside a 0-byte receipt. The resume
+        # took the bare init.nc as finished and then refused the whole verify stage ("analysis requires its
+        # source receipt ... Expecting value"). An owned folder whose receipt does not record its finished init
+        # is an interrupted build, so it is rebuilt here like a missing one.
         argv = list(value["commands"]["init"])
         for flag, text in (("--source", source), ("--cycle", valid.strftime("%Y-%m-%dT%H")),
                            ("--out-dir", str(folder))):

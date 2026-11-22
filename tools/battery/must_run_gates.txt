@@ -155,8 +155,6 @@ tests/test_no_forecast_gate.py  needs bash and the gate script; skipped on a
 #                              Windows box with no bash on PATH.
 tests/test_remote_worker_linux.py  needs Linux /proc process ownership and POSIX process groups; runs on the hosted Linux CPU lane and skips on Windows.
 tests/test_remote_completion_transition.py  needs Linux pidfd ownership (os.pidfd_open and signal.pidfd_send_signal); it drives real wrapper and runner exits, so nothing restores it on Windows or macOS, and it runs on the hosted Linux CPU lane.
-tests/test_local_da_obs_tables.py  needs the shared observation-table package (arwen_global.obs_table), which no extra of this tree installs; the deck adapts that package's row type and operators, so nothing in a fresh clone restores it.
-tests/test_local_da_windows_status_publication.py  holds the Windows file-sharing contract of the status publication (os.name is nt); on every other platform the contract does not exist and the deck skips by name.
 tests/test_wrfout_unicode_recovery.py  holds the Windows contract for history files under folders with non-ASCII letters (os.name is nt), where NetCDF-C cannot open the path; on every other platform the path opens and the deck skips by name. tests/test_wrfout_native_validation.py sends a file through the same native route on any platform.
 
 # Independent met_em fixtures are generated locally; reading them needs native decode.
@@ -198,8 +196,8 @@ tests/test_mynn_mixlength2.py  needs a CUDA device for its CUDA column compariso
 # calibration refusal or are deselected by the leg's marker expression;
 # they are written down so their absence from
 # tools/battery/gpu_shard_files.txt is a statement.
-tests/test_ensemble_spp_runtime_gpu.py  needs a CUDA device and WOOF_TEST_RUNTIME_CASE_CONFIG (staged on a development machine); with both, its SPP member arm builds a public EnsembleRequest with stochastic controls, which the 2.8.5 calibration refusal (woof/ensemble/calibration_admission.py) refuses, so 1 of its 3 tests fails until that arm reaches the stochastic path through a door the refusal admits; it joins tools/battery/gpu_shard_files.txt SHARD 1w when it does.
-tests/test_ensemble_wrf_seed_labels_runtime_gpu.py  needs a CUDA device and WOOF_TEST_RUNTIME_CASE_CONFIG (staged on a development machine); with both, its 2 tests build a public EnsembleRequest with SPPT controls (one arm adds SKEBS), which the 2.8.5 calibration refusal (woof/ensemble/calibration_admission.py) refuses, so both fail until they reach the stochastic path through a door the refusal admits; it joins tools/battery/gpu_shard_files.txt SHARD 1w when they do.
+tests/test_ensemble_spp_runtime_gpu.py  needs a CUDA device and WOOF_TEST_RUNTIME_CASE_CONFIG (staged on the release node); with both, its SPP member arm builds a public EnsembleRequest with stochastic controls, which the 2.8.5 calibration refusal (woof/ensemble/calibration_admission.py) refuses, so 1 of its 3 tests fails until that arm reaches the stochastic path through a door the refusal admits; it joins tools/battery/gpu_shard_files.txt SHARD 1w when it does.
+tests/test_ensemble_wrf_seed_labels_runtime_gpu.py  needs a CUDA device and WOOF_TEST_RUNTIME_CASE_CONFIG (staged on the release node); with both, its 2 tests build a public EnsembleRequest with SPPT controls (one arm adds SKEBS), which the 2.8.5 calibration refusal (woof/ensemble/calibration_admission.py) refuses, so both fail until they reach the stochastic path through a door the refusal admits; it joins tools/battery/gpu_shard_files.txt SHARD 1w when they do.
 tests/test_ensemble_tiny_domain_gpu.py  needs a CUDA device and the staged May-1999 ERA5 case data with its reference bundle under GPUWM_CASE_DATA_ROOT, which is not staged on the release node; it is marked slow, so every battery leg's marker expression deselects it.
 
 # Module-level skips added on the 2.8.8 and 2.8.9 lines without an entry here
@@ -237,3 +235,9 @@ tests/test_pxlsm_wrf461_parity.py  needs a CUDA device and CuPy for the Pleim-Xi
 tests/test_qnse_fast_numerics.py  needs a CUDA device, and is skipped under GPUWM_WRF_EXACT=1 because it bounds the production (fast numerics) QNSE error against the native strict fixture; the default GPU leg runs it (c24f1adba49).
 tests/test_surface_fdda_gpu.py  needs a CUDA device and an explicit GPU test opt-in (WOOF_DOWNSCALE_GPU_TEST=1); a leased GPU leg runs the surface FDDA kernels (2e0e878fea4).
 tests/test_version_byte_proof.py  needs the built Rust history writer (woof.io.nc_writer_bridge, from tools/rustwx); a leg that builds or stages the bridges runs it (e68ccd91e73).
+# Module-level skips added on the 3.0.3 line without an entry here (declared by
+# the 3.0.3 docs pack): the Shin-Hong 4.8.0 replay, and two gates that need files
+# RELEASE-EXCLUDE.txt drops from the public snapshot.
+tests/test_shinhong480_replay_gpu.py  needs GPUWM_WRF_EXACT=1 set before import: it grades the WRF 4.8.0 Shin-Hong replay under the opt-in strict arithmetic only, which a default process never installs; the strict GPU leg runs it (0e7c9c9310).
+tests/test_seal_check.py  needs the release cut tooling (tools/release/cut/drivers/seal_check.py) and RELEASE-EXCLUDE.txt, which the public snapshot does not carry; every leg on the private tree runs it.
+tests/test_build_drops_release_excluded.py  needs RELEASE-EXCLUDE.txt, which the public snapshot does not carry (and with it nothing to drop); every leg on the private tree runs it.

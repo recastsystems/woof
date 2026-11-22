@@ -6,7 +6,7 @@ title prints that note, but a frame that also has a REFL_10CM volume was drawn f
 microphysics. The map read "incl. parameterised convection" with 1.2 % of a 2,700 km window above 10 dBZ against 27.4 %
 in the frame's own REFC, and a 3 km core read "No values to plot" under showers its rain map showed.
 
-The frame says what its REFC holds, so nothing here names a suite: a frame with no note (WRF, WOOF, a hex run with no
+The frame says what its REFC holds, so nothing here names a suite: a frame with no note (WRF, WOOF-ArWen, a hex run with no
 cumulus scheme) keeps drawing its volume.
 """
 import subprocess
@@ -94,7 +94,7 @@ def test_a_frame_with_no_volume_draws_refc_with_or_without_a_note(tmp_path):
 
 
 def test_the_arwen_route_writes_the_schemes_mean_rain_rate_since_its_last_snapshot():
-    """The WOOF route's frame carries a rate only with a scheme, so its map draws REFC only with a scheme."""
+    """The WOOF-ArWen route's frame carries a rate only with a scheme, so its map draws REFC only with a scheme."""
     owner = SimpleNamespace()
     seam = SimpleNamespace(_driver=SimpleNamespace(rainc=object()), elapsed_seconds=0.0)
     first = np.array([0.0, 1.0], np.float32)

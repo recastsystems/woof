@@ -1,0 +1,162 @@
+{
+  "platform": {
+    "nvrtc_build": "13.4.59",
+    "nvrtc_build_id": "CL-38657139",
+    "nvrtc_library_sha256": "5fc18c75a772c5fe0684d2a1bf3fa6ea964b6a71d0caaa828e5e1785dc16daba",
+    "cuda_driver_version": "13030",
+    "device_compute_capability": "120",
+    "cupy_version": "14.2.0",
+    "numpy_version": "2.5.3"
+  },
+  "strict": null,
+  "numerics": "strict",
+  "rows": {
+    "snow_papers": {
+      "sha256": "1352163f7a42109d3bfcd3ae8f96eced72153034bd597f811fda9548572f2923",
+      "functions": {
+        "snow_ad_probe": {
+          "max_threads_per_block": 640,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 0,
+          "num_regs": 90,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_column_probe": {
+          "max_threads_per_block": 640,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 960,
+          "num_regs": 94,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_forcing_pack": {
+          "max_threads_per_block": 1024,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 0,
+          "num_regs": 24,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_glacier_pack": {
+          "max_threads_per_block": 1024,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 0,
+          "num_regs": 28,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_papers_albedo": {
+          "max_threads_per_block": 384,
+          "shared_size_bytes": 9348,
+          "const_size_bytes": 128,
+          "local_size_bytes": 1136,
+          "num_regs": 140,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_papers_albedo_layers": {
+          "max_threads_per_block": 512,
+          "shared_size_bytes": 9348,
+          "const_size_bytes": 128,
+          "local_size_bytes": 1984,
+          "num_regs": 126,
+          "ptx_version": 120,
+          "binary_version": 120
+        }
+      },
+      "seconds": 0.18248169200023767
+    },
+    "snow_lap": {
+      "sha256": "1991d6f510748bd8468949550595a43c6bcc8622c94c435d24217d2d053701f5",
+      "functions": {
+        "snow_ad_probe": {
+          "max_threads_per_block": 640,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 0,
+          "num_regs": 90,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_column_probe": {
+          "max_threads_per_block": 640,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 960,
+          "num_regs": 94,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_forcing_pack": {
+          "max_threads_per_block": 1024,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 0,
+          "num_regs": 24,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_glacier_pack": {
+          "max_threads_per_block": 1024,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 0,
+          "num_regs": 28,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_lap_albedo": {
+          "max_threads_per_block": 512,
+          "shared_size_bytes": 9456,
+          "const_size_bytes": 128,
+          "local_size_bytes": 2096,
+          "num_regs": 124,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_lap_outflow": {
+          "max_threads_per_block": 1024,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 0,
+          "num_regs": 14,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_lap_probe": {
+          "max_threads_per_block": 1024,
+          "shared_size_bytes": 0,
+          "const_size_bytes": 128,
+          "local_size_bytes": 216,
+          "num_regs": 56,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_papers_albedo": {
+          "max_threads_per_block": 384,
+          "shared_size_bytes": 9348,
+          "const_size_bytes": 128,
+          "local_size_bytes": 1136,
+          "num_regs": 140,
+          "ptx_version": 120,
+          "binary_version": 120
+        },
+        "snow_papers_albedo_layers": {
+          "max_threads_per_block": 512,
+          "shared_size_bytes": 9348,
+          "const_size_bytes": 128,
+          "local_size_bytes": 1984,
+          "num_regs": 126,
+          "ptx_version": 120,
+          "binary_version": 120
+        }
+      },
+      "seconds": 154.8779780660002
+    }
+  }
+}

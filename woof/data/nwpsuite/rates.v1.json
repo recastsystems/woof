@@ -209,22 +209,6 @@
       "host_memory_mib": 245760
     },
     {
-      "id": "da-stock-solve",
-      "shape": "global-uniform",
-      "grid": "x1.655362",
-      "card_model": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
-      "cards": 0,
-      "build": "MPAS-JEDI-4.0.1",
-      "stepping_s_per_fh": null,
-      "all_in_s_per_fh": 0,
-      "startup_s": 543,
-      "peak_mib_per_card": 0,
-      "kind": "M",
-      "source": "gpuwm/data/nwpsuite/receipts.v1.json#stock-mpas-jedi-30km-cycling-2026-10-04",
-      "role": "da-solve",
-      "host_memory_mib": 245760
-    },
-    {
       "id": "products-standard",
       "shape": "global-uniform",
       "grid": "x1.655362",

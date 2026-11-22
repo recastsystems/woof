@@ -2,7 +2,7 @@
 //! the WRF synthetic fallback and writes the complete model species row.
 use std::{collections::BTreeMap, path::Path};
 use crate::error::{MpasError, MpasResult};
-use super::{emit::{Computed, write_init}, Lineage};
+use super::{emit::{Computed, write_init_declaring}, Lineage};
 
 pub fn analyzed_pair(path: &Path) -> MpasResult<bool> {
     let file=netcrust::File::open(path)?;
@@ -99,6 +99,24 @@ pub fn synthetic(heights: &[f32]) -> MpasResult<(Vec<f32>, Vec<f32>)> {
 }
 
 pub fn enrich(path: &Path, scalar_names: &[String], fields: Option<&Path>, reconcile_soil: bool) -> MpasResult<serde_json::Value> {
+    enrich_with_fill(path, scalar_names, &BTreeMap::new(), fields, reconcile_soil)
+}
+
+/// [`enrich`] with the door's own start values for species the file lacks.
+///
+/// `fill` maps a species of `scalar_names` to the uniform value it starts at when the init has no
+/// variable for it (the engine's source-absent contract: NSSL's CCN number starts at WRF's
+/// `ccn_conc`, every other absent moment at the allocation zero).  A species the file already
+/// carries is never touched, with or without a fill.
+pub fn enrich_with_fill(path: &Path, scalar_names: &[String], fill: &BTreeMap<String, f32>, fields: Option<&Path>, reconcile_soil: bool) -> MpasResult<serde_json::Value> {
+    for (name, value) in fill {
+        if !scalar_names.contains(name) {
+            return Err(MpasError::Refusal(format!("--scalar-fill names {name}, which --scalar-names does not list")));
+        }
+        if !value.is_finite() || *value < 0. {
+            return Err(MpasError::Refusal(format!("--scalar-fill {name} is non-finite or negative")));
+        }
+    }
     let file=netcrust::File::open(path)?;
     let dims=file.dimensions()?;
     let n=dims.iter().find(|d|d.name()=="nCells").unwrap().len();
@@ -106,6 +124,7 @@ pub fn enrich(path: &Path, scalar_names: &[String], fields: Option<&Path>, recon
     let vars=file.variables()?;
     let mut computed=BTreeMap::new();
     let mut soil_categories_reconciled = 0;
+    let mut created: Vec<String> = Vec::new();
     if reconcile_soil {
         let (categories, changed) = reconciled_categories(path)?;
         soil_categories_reconciled = changed;
@@ -120,7 +139,9 @@ pub fn enrich(path: &Path, scalar_names: &[String], fields: Option<&Path>, recon
     }
     for name in scalar_names {
         if !vars.iter().any(|v|v.name()==name) {
-            computed.insert(name.clone(),Computed::Floats(vec![0.;n*nz]));
+            let start = fill.get(name).copied().unwrap_or(0.);
+            computed.insert(name.clone(),Computed::Floats(vec![start;n*nz]));
+            created.push(name.clone());
         }
     }
     let mut source="analysis";
@@ -152,10 +173,12 @@ pub fn enrich(path: &Path, scalar_names: &[String], fields: Option<&Path>, recon
     let file_id=super::capsule_file_id(path).unwrap_or_else(||super::emit::mint_file_id(&path.display().to_string()));
     let parent_text=file.attribute("parent_id").and_then(|a|a.as_string().map(str::to_string)).unwrap_or_default();
     let parents:Vec<String>=parent_text.lines().filter(|s|!s.is_empty()).map(str::to_string).collect();
-    let ledger=write_init(&temp,path,computed,&file_id,&parents,"aerosol initialization",&Lineage::default())?;
+    let ledger=write_init_declaring(&temp,path,computed,scalar_names,&file_id,&parents,"aerosol initialization",&Lineage::default())?;
     drop(file);
     std::fs::rename(&temp,path)?;
-    Ok(serde_json::json!({"source":source,"cells":n,"levels":nz,"written":ledger.computed,"soil_categories_reconciled":soil_categories_reconciled}))
+    let filled: BTreeMap<&String, f32> = created.iter().filter_map(|name| fill.get(name).map(|v| (name, *v))).collect();
+    Ok(serde_json::json!({"source":source,"cells":n,"levels":nz,"written":ledger.computed,"soil_categories_reconciled":soil_categories_reconciled,
+        "species_created":created,"species_fill":filled}))
 }
 
 #[cfg(test)] mod tests {
@@ -185,5 +208,20 @@ pub fn enrich(path: &Path, scalar_names: &[String], fields: Option<&Path>, recon
         let (high,_)=synthetic(&[2500.,2550.,3500.,5000.]).unwrap();
         assert!(high[0]<w[0]);
         assert!(synthetic(&[0.,0.]).is_err());
+    }
+    #[test] fn a_fill_is_refused_before_the_file_is_opened() {
+        // A start value for a species nobody listed, or one no species can start at, is refused by
+        // name before the init is read: the path here does not exist and is never opened.
+        let nowhere=Path::new("/nonexistent/init.nc");
+        let names=vec!["qnn".to_string()];
+        let fill=|name:&str,value:f32| BTreeMap::from([(name.to_string(),value)]);
+        let unlisted=enrich_with_fill(nowhere,&names,&fill("qndrop",1.),None,false).unwrap_err().to_string();
+        assert!(unlisted.contains("qndrop") && unlisted.contains("--scalar-names"),"{unlisted}");
+        for bad in [f32::NAN,f32::INFINITY,-1.] {
+            let refused=enrich_with_fill(nowhere,&names,&fill("qnn",bad),None,false).unwrap_err().to_string();
+            assert!(refused.contains("qnn"),"{refused}");
+        }
+        // A good fill gets as far as the file itself.
+        assert!(!enrich_with_fill(nowhere,&names,&fill("qnn",4.0e8),None,false).unwrap_err().to_string().contains("--scalar-fill"));
     }
 }

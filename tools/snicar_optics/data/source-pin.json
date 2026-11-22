@@ -31,5 +31,110 @@
     "dust-ri.dat": "3ddcd7b7cab3997d0866c2bb2424b7bf7e53e976cd876baf5cd0d90b5d151a55",
     "solar.csv": "b48a6635ce398f7e0fa392150d68b5793ed7f2a65d9e2406bec7e6be9fb20954"
   },
-  "generated_sha256": "0e0a377955e78f6762d6d1a3318d9715fc8fffbd213b9645be88523e1fa2bce8"
+  "generated_sha256": "0e0a377955e78f6762d6d1a3318d9715fc8fffbd213b9645be88523e1fa2bce8",
+  "optical_sets": {
+    "status": "re-implemented from published descriptions, not bitwise to upstream",
+    "description": "Flanner et al. 2021 doi:10.5194/gmd-14-7673-2021 sections 3.1 and 3.3.3 describe the sets; numbers come from the original papers and data",
+    "ice": {
+      "1": {
+        "name": "Warren 1984",
+        "file": "ice-warren1984.yml",
+        "source": "refractiveindex.info commit c5c2f188e848453def5970e347399d653df2ffc2 database/data/main/H2O/nk/Warren-1984.yml",
+        "license": "CC0-1.0",
+        "table": "optics-ice-warren1984.bin",
+        "changes": "none; the Perovich and Govoni 1991 UV replacement Flanner 2021 describe is not applied"
+      },
+      "2": {
+        "name": "Warren and Brandt 2008",
+        "file": "ice.yml",
+        "table": "optics.bin",
+        "license": "CC0-1.0"
+      },
+      "3": {
+        "name": "Picard 2016 absorption on Warren and Brandt 2008",
+        "file": "ice-picard2016-alpha.csv",
+        "source": "https://tc.copernicus.org/articles/10/2655/2016/tc-10-2655-2016-supplement.pdf section 2 table",
+        "license": "CC-BY-3.0",
+        "table": "optics-ice-picard2016.bin",
+        "changes": "k=alpha*lambda/(4 pi) at the 51 tabulated 350-600 nm points with WB2008 n; WB2008 k replaced by the 350 nm value below 350 nm; WB2008 n,k above 600 nm"
+      }
+    },
+    "dust": {
+      "0": {
+        "name": "Zhang 2024 coarse-mode mean",
+        "density_kg_m3": 2500,
+        "license": "CC-BY-4.0"
+      },
+      "1": {
+        "name": "Saharan, Balkanski 2007 Table 2 S1 central hematite",
+        "volume_percent": {
+          "illite": 31.5,
+          "kaolinite": 24.0,
+          "montmorillonite": 23.0,
+          "quartz": 14.0,
+          "calcite": 6.0,
+          "hematite": 1.5
+        },
+        "mixing": "Bruggeman (Flanner 2021 eq. 20)",
+        "density_kg_m3": 2645,
+        "mineral_indices": "Zhang 2024 group indices (not the Scanza 2015 compilation)",
+        "license": "CC-BY-4.0"
+      },
+      "2": {
+        "name": "Colorado, Skiles 2017 Table 1",
+        "file": "dust-skiles2017.csv",
+        "density_kg_m3": 2600,
+        "license": "CC-BY-4.0",
+        "changes": "published Table 1 values (not the revised inversion Flanner 2021 describe); linear k between points; held constant below 0.35 and above 1.5 um"
+      },
+      "3": {
+        "name": "Greenland, Polashenski 2015 central scenario",
+        "volume_percent": {
+          "illite": 31.0,
+          "kaolinite": 15.2,
+          "montmorillonite": 7.3,
+          "quartz": 8.3,
+          "calcite": 35.4,
+          "hematite": 2.8
+        },
+        "volume_source": "Flanner 2021 section 3.3.3 (the GRL article was not retrievable from this host)",
+        "mixing": "Bruggeman",
+        "density_kg_m3": 2747,
+        "mineral_indices": "Zhang 2024 group indices",
+        "license": "CC-BY-4.0"
+      },
+      "size_distribution": "every set uses the in-table lognormal Re=1 um, sigma_g=1.5; the five size bins belong to the LAP deposition option",
+      "mineral_files": {
+        "source": "https://zenodo.org/records/14171144/files/GroupRefInd.tar.gz",
+        "archive_sha256": "e8ce79a2cee7dbf4350e7edef294869d53d27a3b8b0504473e51b10a9cf83073",
+        "members": {
+          "illite": "1All_Illite.dat",
+          "kaolinite": "2All_Kaolinite.dat",
+          "montmorillonite": "3All_Montmo.dat",
+          "quartz": "4All_Quartz.dat",
+          "calcite": "6All_Carbonate.dat",
+          "hematite": "8All_Hematite.dat"
+        },
+        "changes": "rows 0.18-5.3 um, first three columns, sorted, first of duplicate wavelengths kept"
+      },
+      "rows": "dust-rows.bin"
+    },
+    "sha256_inputs": {
+      "dust-skiles2017.csv": "1ba29f5f52398ad03cf1db811587f97fe31bc31b258ae032b2318270a1bc1282",
+      "ice-picard2016-alpha.csv": "0994b807b0bb5717de1538f19ca254f62ef6271808d794cc95cb77ec31bfed0a",
+      "ice-warren1984.yml": "d93ec8030ff7f3da0511f13d1a6da4e20f74b339853ca5d7e0f791e2caef8660",
+      "mineral-calcite.csv": "a339f4aee26a76d2f0a277aa8917b502464f215eb798dbfb11e9e73ff3af1b9f",
+      "mineral-hematite.csv": "26cb0947c929003be451718a84850d6b15d79e60c1c6bd5899e96f687b1c7301",
+      "mineral-illite.csv": "6ff38f0fbaf1b3e9b6410fd7c56ba127d4958c35cc5e6ed19ddfe3ff2188ed07",
+      "mineral-kaolinite.csv": "ea641184d2fd583e02ced27e5041afa6462a73c347c7c3a905ab9a744d40c69d",
+      "mineral-montmorillonite.csv": "837cdf920ae5f994d7948bbfe54279ab51c30a2e8bf44f833809d910e77252f6",
+      "mineral-quartz.csv": "4e74a49365ac1a8a6e50d2c3646ed32c28229efe6ec8b5d54a6722142b335bf0"
+    },
+    "generated_sha256": {
+      "optics-ice-warren1984.bin": "3b2addc46200f28e73fd8c8a7bdb6661633dfb51fc7c883cbcad64c1354e07da",
+      "optics-ice-picard2016.bin": "03467d49b19c79cc9341daef96a6d5dd6daaa11dbdaeeb71fe52fc566d783c01",
+      "dust-rows.bin": "6b9b928a8f3ba719d5694976c1cc3e020a77c99a09fb734ceb6a95fdad2df792"
+    },
+    "command": "cargo run --offline --release --manifest-path tools/rustwx/Cargo.toml -p static-fields --example snow-optics -- --variants tools/snicar_optics/data OUT_DIR (also regenerates optics.bin to its pinned digest)"
+  }
 }

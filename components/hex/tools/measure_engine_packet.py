@@ -30,7 +30,7 @@ def packet_identity(assets: Path, wheel: Path) -> tuple[str, str]:
     if (data.get("schema") != "arwen.publication-assets.v1"
             or data.get("status") != "PREPARED_NOT_PUBLISHED"
             or data.get("published") is not False
-            or github.get("repository") != "FahrenheitResearch/arwen"
+            or github.get("repository") not in {"recastsystems/arwen", "FahrenheitResearch/arwen"}
             or not re.fullmatch(r"\d+\.\d+\.\d+", version)
             or not re.fullmatch(r"[0-9a-f]{40}", commit)):
         raise SystemExit("packet assets do not identify a prepared public engine")
@@ -57,7 +57,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     version, commit = packet_identity(args.assets, args.wheel)
     origin = measurement._git(args.engine_tree, "remote", "get-url", "origin").removesuffix(".git")
-    if origin != "https://github.com/FahrenheitResearch/arwen":
+    if origin not in {"https://github.com/recastsystems/arwen", "https://github.com/FahrenheitResearch/arwen"}:
         raise SystemExit("packet source must be a clone of the public engine repository")
     manifest = measurement.shipped_manifest(measurement.MANIFEST_MODULE)
     source = repin.verify_engine_tree(args.engine_tree, commit, version, sorted(manifest))

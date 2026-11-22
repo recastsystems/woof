@@ -1,4 +1,4 @@
-"""Table-selected NOAA fork physics seam; existing MPAS/WOOF defaults stay separate."""
+"""Table-selected NOAA fork physics seam; existing MPAS/WOOF-ArWen defaults stay separate."""
 
 from .driver_rrfs import (
     Backend, DriverConfig, NativeDriverHooks, NativePoolArguments, PhysicsDriver,

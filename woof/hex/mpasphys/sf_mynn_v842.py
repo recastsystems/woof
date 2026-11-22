@@ -3,7 +3,7 @@
 Source: physics_mmm/sf_mynn.F90:1-2237 (MMM a4baf7f),
 physics_wrf/sf_mynn_pre.F:1-169, physics_wrf/module_sf_mynn.F:19-390,
 and mpas_atmphys_driver_sfclayer.F:352-796,839-1088 (MPAS f34984b).
-The original WOOF surface backend remains independently selectable.
+The original WOOF-ArWen surface backend remains independently selectable.
 """
 from __future__ import annotations
 

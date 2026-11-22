@@ -1,7 +1,7 @@
 """MPAS-A v8.4.2 ocean mixed layer, single precision, device resident.
 
 Port authority: pinned MPAS module_sf_oml.F:1-162 (whole module).
-No WOOF OML implementation is reused. Arrays retain MPAS pool names;
+No WOOF-ArWen OML implementation is reused. Arrays retain MPAS pool names;
 the driver accepts winds in (nVertLevels, nCells) order, either C or F layout.
 Only nCellsSolve is written. All math executes on CUDA; Python validates
 buffers and launches. The f4 slot table selects launch_slot.

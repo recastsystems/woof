@@ -471,6 +471,24 @@ def crop_frame(source: Path, target: Path, *, origin_i: int, origin_j: int,
             "window_in_frame": [i0, j0, nx, ny]}
 
 
+def _classic_dtype(variable) -> np.dtype:
+    """The classic type a parent variable is written as.
+
+    A character variable is ``S1`` whatever the reader calls it, as
+    :mod:`woof.core.dfi_output` writes it: the Rust reader reports a
+    NetCDF-4 frame's character ``Times`` as ``String``, which
+    :mod:`woof.netcdf_bridge` maps to numpy ``object``, and the classic
+    writer has no such type.  Breakage it prevents (2026-11-19): every
+    moving grid cut from a deflate-compressed parent history, the default
+    history format, failed at its first cut with "numpy dtype dtype('O')
+    has no classic NetCDF external type", and the run lost its moving grid.
+    """
+    if getattr(variable, "is_character", False):
+        return np.dtype("S1")
+    dtype = np.dtype(variable.dtype)
+    return np.dtype("S1") if dtype.kind in "OSU" else dtype
+
+
 def _write_like(dataset, target: Path, values, *, glob, attrs, sizes=None,
                 updates=None, overrides=None) -> None:
     """Every variable of ``dataset`` (raw stored ``values``) to ``target``.
@@ -504,7 +522,8 @@ def _write_like(dataset, target: Path, values, *, glob, attrs, sizes=None,
     varids = {}
     for name, variable in dataset.variables.items():
         varids[name] = schema.def_var(
-            name, variable.dtype, [dimids[d] for d in variable.dimensions])
+            name, _classic_dtype(variable),
+            [dimids[d] for d in variable.dimensions])
         for attr, value in attrs.get(name, {}).items():
             schema.put_var_attr(varids[name], attr, value)
     records = {name for name, variable in dataset.variables.items()
@@ -518,7 +537,7 @@ def _write_like(dataset, target: Path, values, *, glob, attrs, sizes=None,
                 array = np.asarray(values[name])
             else:
                 array = np.asarray(data).reshape(np.shape(values[name]))
-            dtype = variable.dtype
+            dtype = _classic_dtype(variable)
             if dtype.kind != "S":
                 array = array.astype(dtype)
             if name in records:

@@ -2452,7 +2452,7 @@ def test_bridge_two_ports_agree_where_aerosol_is_neutral_and_split_where_it_is_n
     aero-reduces-to-classic seeds nc at essentially Nt_c -- ``nc*rho`` is
     BITWISE ``100.0e6f`` at all 24 levels and ``nu_c = MIN(15,
     NINT(1000.E6/nc) + 2) = 12`` everywhere, which is exactly the constant
-    WOOF's frozen mp=8 kernels embed.  That is the whole point of the
+    WOOF-ArWen's frozen mp=8 kernels embed.  That is the whole point of the
     fixture: with the droplet number neutral, mp=28 must reduce to classic
     Thompson wherever the aerosol is not doing anything, and must NOT reduce
     to it where the aerosol IS the physics.  Both halves have to be asserted

@@ -143,10 +143,10 @@
         "smoke"
       ],
       "ops": [],
-      "from": "WOOF: the smoke row (fire PM2.5, the HRRR-Smoke tracer) joins the PM sums last, so a run with smoke and GOCART reports one PM2.5; WRF-Chem's sum_pm_gocart has no tracer terms, and with smoke absent or zero every WRF word is unchanged"
+      "from": "WOOF-ArWen: the smoke row (fire PM2.5, the HRRR-Smoke tracer) joins the PM sums last, so a run with smoke and GOCART reports one PM2.5; WRF-Chem's sum_pm_gocart has no tracer terms, and with smoke absent or zero every WRF word is unchanged"
     }
   ],
   "divide_by_alt": true,
   "column_scale": 1,
-  "provenance": "WRF v4.7.1 sum_pm_gocart and DESIGN section 8; the smoke term is WOOF's (declared in its term)"
+  "provenance": "WRF v4.7.1 sum_pm_gocart and DESIGN section 8; the smoke term is WOOF-ArWen's (declared in its term)"
 }

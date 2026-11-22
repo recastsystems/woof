@@ -3209,9 +3209,20 @@ def _settle_checkpoint(publisher) -> None:
 
 
 from woof.hydro.runtime import forecast_scope as _hydro_forecast_scope
+from woof.ingest.lake_state import skips_analysis_on_resume as _skips_lake_analysis_on_resume
+
+
+def _root_ring_hydrometeor_record(nodes):
+    """The root's :func:`woof.prepared_single_domain_forecast.
+    _ring_hydrometeor_record`; a nest's ring is its parent's, held by none."""
+    from woof.prepared_single_domain_forecast import _ring_hydrometeor_record
+
+    root = nodes[min(nodes)]
+    return _ring_hydrometeor_record(root.state, root.cfg.run)
 
 
 @_hydro_forecast_scope
+@_skips_lake_analysis_on_resume
 def run_prepared_tree(
     inputs: PreparedTreeInputs,
     *,
@@ -3268,6 +3279,12 @@ def run_prepared_tree(
     The receipt records both the configured horizon and the cycle endpoint.
 
     """
+    if restart is not None:
+        # A resume continues its checkpoint's TEMPO generation.
+        from dataclasses import replace as _replace_inputs
+        from woof.core.tempo import adopt_checkpoint_generation
+        inputs = _replace_inputs(inputs, experiment=adopt_checkpoint_generation(
+            inputs.experiment, restart))
 
     from woof.ensemble.runtime_context import current_session
     ensemble_session = current_session()
@@ -4350,6 +4367,10 @@ def run_prepared_tree(
             checkpoint, model,
             sealed_forcing_extension=sealed_forcing_extension)
         model._resumed = True
+        # The lakes now hold the checkpoint's fields, not the analysis
+        # bound when each driver was built (item 5 review).
+        from woof.ingest.lake_state import mark_restored
+        mark_restored(drivers.values(), checkpoint=checkpoint)
     elif getattr(initialization, "warm_start_clocks", None):
         # A WRF warm start (woof.wrfinput_forecast.WrfRestartInitialization):
         # the state and physics were restored from the wrfrst files above,
@@ -4359,6 +4380,9 @@ def run_prepared_tree(
         from woof.ingest.wrfrst import apply_warm_start_clock
         restart_info = apply_warm_start_clock(
             model, nodes, initialization.warm_start_clocks)
+        from woof.ingest.lake_state import mark_restored
+        mark_restored(drivers.values(), source="the WRF restart files (wrfrst)",
+                      checkpoint=None)
     # An initialization that acts once the tree is restored and its clocks
     # are open (the analysis door, woof.da.analysis_door: an increment added
     # at the analysis instant or forced over its window).  Here, after a
@@ -4784,6 +4808,10 @@ def run_prepared_tree(
                 and clock.ticks == model.schedule.clock.run_ticks
                 and not clock.restart_due()):
             restart_handler(model,clock.ticks)
+    # What the root's ring serves is recorded as each interval is held
+    # (lateral_bc._held_host_sides); this run's record starts empty.
+    from woof.ingest.lateral_bc import reset_hydrometeor_ring_ledger
+    reset_hydrometeor_ring_ledger()
     try:
         memory_watch.start()
         if already_complete:
@@ -5104,6 +5132,9 @@ def run_prepared_tree(
             "history": history,
         },
         "final_state_digest": final_digests,
+        # The root ring's lateral-boundary hydrometeors, as the single-domain
+        # record states them (None when its boundary carries vapour only).
+        "lateral_boundary_hydrometeors": _root_ring_hydrometeor_record(nodes),
         # The chem mass ledger per chem domain (woof/core/chem_driver.py),
         # present only on a chem run so every other receipt keeps its bytes.
         **({} if not (chem_ledgers := {
@@ -5258,6 +5289,15 @@ def run_prepared_tree(
     }
     if monthly_aerosol:
         report["monthly_aerosol"] = monthly_aerosol
+    # What each domain's lakes started from, and why (defect 5 of the
+    # 2026-11-12 runner list): keyed by domain, under its own name so a
+    # reader of the single-domain ``lake_initialization`` never meets a
+    # different shape there.
+    lakes = {f"d{int(gid):02d}": physics.lake_initialization_receipt
+             for gid, physics in drivers.items()
+             if getattr(physics, "lake_initialization_receipt", None) is not None}
+    if lakes:
+        report["lake_initialization_by_domain"] = lakes
     wind = {str(gid): physics.wind_farm.receipt() for gid, physics in drivers.items()
             if getattr(physics, "wind_farm", None) is not None}
     if wind:
@@ -5291,6 +5331,9 @@ def run_prepared_tree(
         atmosphere_steps=int(round(float(exp.run_seconds) / float(_parent_run.dt))))
     from woof.ocean.products import publish as _wave_products
     report["wave_products"] = _wave_products(_parent_physics,outdir=outdir)
+    # The ocean each domain ran, in words, every run (door item 6).
+    from woof.surface_ocean import domains_ocean_receipt
+    report["ocean"] = domains_ocean_receipt(domain.run for domain in exp.domains)
     report["hydro_products"] = _hydro_products(
         _parent_physics, _hydro_settings(), outdir=outdir, dx_m=float(_parent_run.dx))
     _atomic_json(evidence / "run-receipt.json", report)

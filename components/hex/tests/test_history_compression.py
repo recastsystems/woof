@@ -1,6 +1,6 @@
 """Which MPAS-route files are written lossless-compressed (woof.hex.history_compression).
 
-Ruling 2026-10-28: "Lossless compression is the default". History and diagnostics files that hold one output time
+Lossless compression is the default (2026-10-28). History and diagnostics files that hold one output time
 each are compressed; init/restart/LBC/da_state keep their PnetCDF container, and a file later records append to
 is never compressed (a compressed file is written whole).
 """

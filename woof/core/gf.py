@@ -8,7 +8,7 @@ The scheme itself is ``woof/core/kernels/gf.cu`` -- the whole of WRF
 v4.6.1's GFDRV per column, held at max_ulp 0 against the byte-frozen
 oracle by ``tests/test_gf_gfdrv_cuda.py`` with ``fzu`` PINNED from that
 capture.  ``fzu`` is pinned because gamma is a DELIBERATE DIVERGENCE from
-WRF since 2.7.0 -- WOOF's is correctly rounded and glibc's, which
+WRF since 2.7.0 -- WOOF-ArWen's is correctly rounded and glibc's, which
 gfortran binds WRF's ``gamma()`` intrinsic to, is not
 (docs/gf_gamma_known_delta.md).  THIS adapter does not pin: the shipped
 forecast computes the correctly rounded value, the three override slots
@@ -274,7 +274,9 @@ def is_native_gf_result(result, owner, state, cfg) -> bool:
     """Admit owned outputs only when provenance and layout match GF."""
     import cupy as cp
 
-    if (int(cfg.cu_physics) != 3 or type(owner) is not GrellFreitas
+    if (int(cfg.cu_physics) != 3
+            or (type(owner) is not GrellFreitas
+                and type(owner).__qualname__ != "GrellFreitasLi")
             or type(result) is not _native_result_type()
             or result._owner is not owner):
         return False

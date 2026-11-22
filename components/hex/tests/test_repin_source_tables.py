@@ -123,7 +123,7 @@ def test_engine_repin_rederives_the_contract_surface_from_the_pinned_bytes(tmp_p
 
 
 def test_the_repin_measures_and_writes_the_helper_set_row(tmp_path, monkeypatch):
-    """verify-final-hex item 1: the repin moved the manifest and not the helper rows,
+    """A release review of 0.4.0 found that the repin moved the manifest and not the helper rows,
     so every default forecast on the frozen 2.9.0 was refused at start."""
     import json
 

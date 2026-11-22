@@ -587,8 +587,10 @@ def test_a_throttling_aws_pin_keeps_the_other_mirrors_behind_it(aws_policy):
     now = cycle + timedelta(hours=14)
     for source, rungs in (("ecmwf-open-data-0p1", ["aws", "google", "ecmwf"]),
                           ("ecmwf-ens", ["aws", "google", "ecmwf"]),
-                          ("ecmwf-open-data", ["aws", "ecmwf"]),
-                          ("aifs", ["aws", "ecmwf"])):
+                          # 3.0.2: Google's mirror is the archive rung on every
+                          # ECMWF route (it keeps every cycle back to 2025-01).
+                          ("ecmwf-open-data", ["aws", "ecmwf", "google"]),
+                          ("aifs", ["aws", "ecmwf", "google"])):
         assert [r.name for r in fetch_endpoints.serving_ladder(
             source, cycle=cycle, now=now, throttle_fallthrough=True)] == rungs, source
         # Cycle and readiness questions stay on the pinned mirror.

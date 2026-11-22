@@ -1,7 +1,7 @@
 """Memory preflight: itemized estimator, scratch registry, N0 ``--alloc``.
 
 Phase-5 Task 11 (panel lane L4; folds robust-5), implementing architecture
-section E of docs/superpowers/specs/2026-07-16-phase5-nesting-architecture.md:
+section E of docs/internal/specs/2026-07-16-phase5-nesting-architecture.md:
 the all-resident four-domain decision is gated by an ENFORCED memory
 estimate -- ``woof check --alloc`` constructs every persistent device
 allocation for the experiment, runs zero steps, and reports the measured
@@ -95,7 +95,7 @@ from collections.abc import Iterable, Mapping
 import json
 import math
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -218,6 +218,14 @@ DEFAULT_FORCING_INTERVAL_SECONDS = 21600.0
 #: N0 ledger record names (woof/verify/nest_gates.py, F11 amendment).
 N0_GATE_METRICS = ("alloc_fits_wddm_budget", "alloc_measured_le_estimate",
                    "alloc_estimate_le_wddm_budget")
+
+
+def _snow_layers_selected(exp):
+    """clean-snicar-layers image (Toon solver) selected; spectra five-band mode
+    launches the default image twice and is priced with it."""
+    return any(dc.run.sf_surface_physics == 4 and dc.run.opt_alb == 3
+               and getattr(dc.run, "snicar_solver_opt", 1) != 1
+               for dc in exp.domains)
 
 
 def gate_display_name(metric: str, *, vram_gib: float | None = None) -> str:
@@ -1965,7 +1973,10 @@ def non_pool_basis(profile: "DeviceLocalMemoryProfile",
             _frames, selected_basis = selected_frames(
                 _noahmp_pricing_profile(exp, profile),
                 snow_papers=any(dc.run.sf_surface_physics == 4 and dc.run.opt_alb == 3
-                                for dc in exp.domains))
+                                for dc in exp.domains),
+                snow_layers=_snow_layers_selected(exp),
+            snow_lap=any(dc.run.sf_surface_physics == 4 and dc.run.opt_alb == 3
+                         and dc.run.snicar_lap_opt for dc in exp.domains))
             sentence = f"{sentence}; {selected_basis}"
     if exp is not None:
         # A module with no reading anywhere is priced, not refused, and
@@ -2647,6 +2658,15 @@ KERNEL_MAX_LOCAL_SIZE_BYTES: dict[str, int] = {
     # Production fast/strict images, sm_120, NVRTC 13.4.92, 2026-11-02.
     # tools/sfc_irr_seaice_wrf471/measure_frames.py records every export.
     "sfclay_dx2d": 0,
+    # WRF v4.8.0 kim_tofd unit (sfclay.cu + GPUWM_SFCLAY_TOFD), port/wrf-480 L07:
+    # 0 B fast and strict, RTX 5090 sm_120, NVRTC 13.3.33, 2026-11-09.
+    "sfclay_tofd": 0,
+    # 3.0.0 fold, production loaders, test host B sm_120 / NVRTC 13.4.92
+    # (kernel_frame_recordings): WRF v4.8.0 dynamic lightning and the Fitch
+    # 4.8.0 unit (32 B fast, 0 B strict).
+    "dyn_lightning": 0,
+    "wind_fitch_480": 32,
+
     "noah_ua": 224,
     "noah_mosaic_ua": 176,
     "noah_ua_sfcdiags": 0,
@@ -2665,6 +2685,10 @@ KERNEL_MAX_LOCAL_SIZE_BYTES: dict[str, int] = {
     # priced separately by shinhong_column_workspace_bytes.
     "shinhong": 0,
     "shinhong_validation": 0,
+    # The WRF 4.8.0 generation keeps the 4.6.1 unit's global column
+    # workspace (shinhong_column_workspace_bytes prices it); its exports
+    # read 0 local bytes (kernel_frame_recordings, test host A 2026-11-09).
+    "shinhong_480": 0,
     "smag2d": 0,
     # wrf_stress_output: production loader, NVRTC 13.4, sm_120, 2026-11-02.
     # evidence/port-dyn-options/sfs-output-frame.json: local_size_bytes=0.
@@ -3233,6 +3257,13 @@ CONDITIONAL_COLUMN_TIERED_FRAMES = {
 #: :data:`CHAINED_TRANSLATION_UNIT_FRAMES`, which cover these fragments
 #: as the translation units they actually launch in.
 UNMEASURED_KERNEL_MODULES = frozenset({
+    # 3.0.0 fold: two units that compile only composed.  MYNN-SFC b66187f
+    # needs the SL_* defines and mynn_libm.cuh its loader prepends
+    # (woof.core.mynnsfc_b66187f.module_source); read through that loader on
+    # test host B (NVRTC 13.4.92) at 184 B, mynnsfc_wrf_columns.  The SNICAR
+    # LAP unit is appended to snow_papers.cu (snow_papers._lap_module); read
+    # through it at 1,360 B, snow_lap_albedo.
+    "mynnsfc_b66187f", "snow_lap",
     # New Goddard (golden/ports-rad) sat here while its standalone compile
     # failed; it compiles alone now (read 2026-10-17 on test host B's RTX
     # 5090, sm_120, NVRTC 13.4.92: 43,664 B, its source default
@@ -3289,6 +3320,10 @@ UNMEASURED_KERNEL_MODULES = frozenset({
     # The drag unit borrows glibc helpers from the composed source in
     # woof.core.terrain_drag.module_source(); it cannot compile alone.
     "terrain_drag",
+    # WRF v4.8.0 gwd_opt = 1 follows terrain_drag.cu in its own unit
+    # (woof.core.terrain_drag.gwdo480_module_source()) and reuses its
+    # td_atan2f; priced as terrain_drag_gwdo480_composed.
+    "terrain_drag_gwdo480",
     # The GBM PBL calls gfk_exp/gfk_log/gfk_pow from glibc_flt32.cuh, which
     # woof.core.gbmpbl.module_source() composes in front of it; priced as
     # gbmpbl_composed.
@@ -3506,6 +3541,16 @@ CHAINED_TRANSLATION_UNIT_FRAMES: dict[str, ChainedTranslationUnitFrame] = {
         module="terrain_drag_composed",
         max_local_size_bytes=1184,
         covers=frozenset({"terrain_drag"})),
+    # WRF v4.8.0 gwd_opt = 1 (gwdo_version = "wrf_480"): the frozen unit's
+    # text plus terrain_drag_gwdo480.cu, loaded by
+    # woof.core.terrain_drag._gwdo480_module.  Its widest kernel is the
+    # GSL column it carries along (1,184 B); gwdo480_column itself reads
+    # the frame recorded in kernel_frame_recordings
+    # (CHAINED_UNITS_WITHOUT_A_PER_PLATFORM_ROW).
+    "terrain_drag_gwdo480_composed": ChainedTranslationUnitFrame(
+        module="terrain_drag_gwdo480_composed",
+        max_local_size_bytes=1184,
+        covers=frozenset({"terrain_drag_gwdo480"})),
     # The fork Thompson unit (thompson_version = "wrf_39_noaa", mp_physics
     # = 28, the HRRR and RAP doors' default): thompson_fork.cu +
     # thompson_fork_constants.cuh compiled by woof/core/thompson_fork.py.
@@ -4193,6 +4238,11 @@ def domain_kernel_modules(dc: DomainConfig, *,
         from woof.wrf_exact import ENABLED
         modules.discard("ysu")
         modules.add(ysu_kernel_selection(dc.run.ysu_version, strict=ENABLED)[0])
+    if (int(dc.run.bl_pbl_physics) == 11
+            and getattr(dc.run, "shinhong_version", "wrf_461") == "wrf_480"):
+        # The 4.8.0 unit carries its own output census.
+        modules.difference_update(("shinhong", "shinhong_validation"))
+        modules.add("shinhong_480")
     modules.update(_SHORTWAVE_ADDITIONAL_KERNEL_MODULES.get(
         radiation_scheme_ids(dc.run)[1], ()))
     modules.update(_urban_kernel_modules(dc.run, dc.grid_id))
@@ -4222,9 +4272,14 @@ def domain_kernel_modules(dc: DomainConfig, *,
         modules.add("noah_fractional")
         if int(dc.run.sf_sfclay_physics) == 1:
             modules.add("sfclay_dx2d")
+    if getattr(dc.run, "kim_tofd", False) and int(dc.run.sf_sfclay_physics) == 1:
+        modules.add("sfclay_tofd")   # WRF v4.8.0 KIM form drag (sfclay.py)
     if (int(getattr(dc.run, "topo_wind", 0) or 0)
             or int(getattr(dc.run, "gwd_opt", 0) or 0)):
         modules.add("terrain_drag_composed")
+    if (int(getattr(dc.run, "gwd_opt", 0) or 0) == 1
+            and getattr(dc.run, "gwdo_version", "wrf_480") == "wrf_480"):
+        modules.add("terrain_drag_gwdo480_composed")
     if dc.run.cu_physics == 1 and dc.run.kfeta_trigger != 1:
         modules.add(f"kf_trigger{dc.run.kfeta_trigger}")
     if int(getattr(dc.run, "grav_settling", 0) or 0):
@@ -4432,7 +4487,10 @@ def kernel_local_frame_bytes(
         extra, _basis = selected_frames(
             _noahmp_pricing_profile(exp, profile),
             snow_papers=any(dc.run.sf_surface_physics == 4 and dc.run.opt_alb == 3
-                            for dc in exp.domains))
+                            for dc in exp.domains),
+            snow_layers=_snow_layers_selected(exp),
+            snow_lap=any(dc.run.sf_surface_physics == 4 and dc.run.opt_alb == 3
+                         and dc.run.snicar_lap_opt for dc in exp.domains))
         for key, frame in extra.items():
             frames[key] = max(frames.get(key, 0), frame)
     if "noahmp_gecros" in modules:
@@ -5151,9 +5209,17 @@ def gf_column_workspace_bytes(
     -- a domain smaller than one tile never allocates a whole tile.
 
     Zero for every configuration that does not select ``cu_physics = 3``.
+
+    ``cu_physics = 3`` with ``cu_gf_version = 'gfl_873b414'`` (the default,
+    WRF v4.8.0's Grell-Freitas-Li) holds a different workspace: the lane
+    scratch of its persistent column launch, kept for the run and shared by
+    every domain on the card (woof.core.gfl_lanes.scratch_bytes, the formula
+    the launcher allocates from). Before 2026-11-09 a GFL run was priced as
+    GFDRV's tile workspace while it held up to 4 GiB.
     """
     from woof.core.gf import (
         GF_BLOCK, GF_TILE_BLOCKS_PER_SM, gf_workspace_floats)
+    from woof.core.gfl_lanes import scratch_bytes as gfl_scratch_bytes
 
     profile = MEASURED_LOCAL_MEMORY_PROFILE if profile is None else profile
     tile_cap = (profile.multiprocessor_count * GF_TILE_BLOCKS_PER_SM
@@ -5161,6 +5227,11 @@ def gf_column_workspace_bytes(
     worst = 0
     for dc in exp.domains:
         if int(dc.run.cu_physics) != 3:
+            continue
+        if getattr(dc.run, "cu_gf_version", "wrf_461") == "gfl_873b414":
+            worst = max(worst, gfl_scratch_bytes(
+                int(dc.run.nz), int(dc.run.nx) * int(dc.run.ny),
+                profile.multiprocessor_count))
             continue
         columns = min(int(dc.run.nx) * int(dc.run.ny), tile_cap)
         worst = max(worst, gf_workspace_floats(int(dc.run.nz), columns) * 4)
@@ -5910,7 +5981,8 @@ def physics_field_names_2d(cfg: RunConfig | None = None) -> tuple[str, ...]:
             NOAHMP_DIAGNOSTICS_2D, NOAHMP_STATE_2D, NOAHMP_STATE_INT_2D,
         )
         from woof.core.noahmp_runtime import state_fields_2d,diagnostic_fields_2d,state_int_fields_2d
-        union.update(dict.fromkeys(state_fields_2d(cfg.opt_run,cfg.dveg,cfg.opt_tdrn,cfg.opt_irr,cfg.opt_crop)))
+        from woof.core.noahmp_runoff_split import carrier_of as _runoff_carrier_of
+        union.update(dict.fromkeys(state_fields_2d(_runoff_carrier_of(cfg),cfg.dveg,cfg.opt_tdrn,cfg.opt_irr,cfg.opt_crop)))
         from woof.core.noahmp_soil_cadence import shapes as cadence_shapes
         union.update(cadence_shapes(cfg.soiltstep,(cfg.ny,cfg.nx)))
         from woof.core.noahmp_output import shapes as output_shapes
@@ -5919,6 +5991,11 @@ def physics_field_names_2d(cfg: RunConfig | None = None) -> tuple[str, ...]:
         union.update(soil_input_shapes(cfg.opt_soil,(cfg.ny,cfg.nx)))
         union.update(dict.fromkeys(state_int_fields_2d(cfg.opt_irr,cfg.opt_crop)))
         union.update(dict.fromkeys(diagnostic_fields_2d(cfg.dveg,cfg.opt_crop)))
+        if cfg.noahmp_wetland:
+            # Match initialize_physics: one carried store, two static maps
+            # and two diagnostics, each a resident float32 surface plane.
+            from woof.core.noahmp_wetland import STATE, STATIC, DIAGNOSTICS
+            union.update(dict.fromkeys((*STATE, *STATIC, *DIAGNOSTICS)))
         from woof.core.surface_forcing import SURFACE_PRECIPITATION_FIELDS
         union.update(dict.fromkeys(SURFACE_PRECIPITATION_FIELDS))
         union["coszen"] = None
@@ -6105,6 +6182,10 @@ def physics_array_shapes(cfg: RunConfig, *, cam_ozone: bool = False,
             from woof.core.mynn471_gpu import diagnostic_shapes
             for name, dims in diagnostic_shapes(cfg).items():
                 shapes[f"fields/{name}"] = dims
+        if cfg.bl_mynn_version == "wrf_480":
+            from woof.core.mynn480_gpu import diagnostic_shapes as diagnostic_shapes_480
+            for name, dims in diagnostic_shapes_480(cfg).items():
+                shapes[f"fields/{name}"] = dims
     if int(cfg.bl_pbl_physics) == 11:
         # Shin-Hong's Registry carriers TKE_PBL and EL_PBL (initialize_physics).
         shapes["fields/tke_pbl"] = (nz + 1, ny, nx)
@@ -6198,7 +6279,8 @@ def physics_array_shapes(cfg: RunConfig, *, cam_ozone: bool = False,
         shapes.update({"fields/"+name:shape for name,shape in cadence_shapes(cfg.soiltstep,(ny,nx)).items()})
         from woof.core.noahmp_output import shapes as output_shapes
         shapes.update({"fields/"+name:shape for name,shape in output_shapes(cfg.noahmp_output,(ny,nx)).items()})
-        if int(cfg.opt_run)==5:
+        from woof.core.noahmp_runoff_split import carrier_of as _runoff_carrier_of
+        if _runoff_carrier_of(cfg)==5:
             from woof.core.noahmp_groundwater_slab import shapes as groundwater_shapes
             shapes.update({"fields/"+name:shape for name,shape in groundwater_shapes((ny,nx)).items()})
         from woof.core.noahmp_soil_options import soil_input_shapes
@@ -6208,6 +6290,11 @@ def physics_array_shapes(cfg: RunConfig, *, cam_ozone: bool = False,
         if cfg.opt_alb == 3:
             from woof.core.snow_papers import STATE_FIELD, STATE_WORDS
             shapes[f"fields/{STATE_FIELD}"] = (STATE_WORDS, ny, nx)
+            if int(getattr(cfg, "snicar_lap_opt", 0) or 0):
+                from woof.core.snow_papers import (LAP_FIELD, LAP_WORDS,
+                    LAP_DEPOSITION_FIELD, LAP_DEPOSITION_WORDS)
+                shapes[f"fields/{LAP_FIELD}"] = (LAP_WORDS, ny, nx)
+                shapes[f"fields/{LAP_DEPOSITION_FIELD}"] = (LAP_DEPOSITION_WORDS, ny, nx)
         for name in NOAHMP_STATE_SNOWSOIL_3D:
             shapes[f"fields/{name}"] = (NSNOW + n_soil, ny, nx)
     if int(getattr(cfg, "sf_urban_physics", 0)) > 0:
@@ -8691,6 +8778,16 @@ SCRATCH_SLOT_LIFETIME_AUDIT = (
                "qdcn", "qtcn", "qccn", "qrcn", "qnin", "fi", "fs", "vi", "vs", "vg", "ai", "as_", "ag", "ah", "i3m",
                "qndrop", "qnr", "qni", "qns", "qng", "qnh", "qnn",
                "qvolg", "qvolh", "nc", "nn", "nwfa", "nifa",
+               # TEMPO's graupel volume (mp 900), Ferrier hi-res rime
+               # (mp 15), three-moment P3's sixth moment (mp 53) and the old
+               # Eta total condensate (mp 95).  MEASURED without "volg", on
+               # the 3.0.0 candidate: `woof domain --ladder 12-3` with
+               # microphysics tempo died with `KeyError: scratch slot
+               # 'nest_volg_bxs' has no lifetime audit row`, so no nested
+               # TEMPO run could be written by the front door.  The other
+               # three were found by walking every selector
+               # (tests/test_mynn_tke_advection.py).
+               "volg", "qrimef", "qzi", "qt",
                # MYNN TKE advection's scalar (nest_field_kinds appends it
                # when bl_pbl_physics=5 and bl_mynn_tkeadvect).  MEASURED
                # without it: every nested run with TKE advection on (the
@@ -9521,6 +9618,10 @@ _SHINHONG_OUTPUT_BUNDLE_SCHEMES = (11,)
 _SHINHONG_3D = ("du", "dv", "dtheta", "dqv", "dqc", "dqi",
                 "exch_h", "tke", "el")
 _SHINHONG_2D = ("hpbl", "kpbl", "wstar", "delta")
+#: launch_shinhong_480's roster (exch_m and the scheme's u10/v10 added).
+_SHINHONG480_3D = ("du", "dv", "dtheta", "dqv", "dqc", "dqi",
+                   "exch_h", "exch_m", "tke", "el")
+_SHINHONG480_2D = ("hpbl", "wstar", "delta", "u10", "v10", "kpbl")
 
 
 def shinhong_output_transient_shapes(
@@ -9538,8 +9639,12 @@ def shinhong_output_transient_shapes(
         return {}
     m = (cfg.nz, cfg.ny, cfg.nx)
     s2 = (cfg.ny, cfg.nx)
-    shapes = {f"shinhong_output/{name}": m for name in _SHINHONG_3D}
-    shapes.update({f"shinhong_output/{name}": s2 for name in _SHINHONG_2D})
+    if getattr(cfg, "shinhong_version", "wrf_461") == "wrf_480":
+        names3, names2 = _SHINHONG480_3D, _SHINHONG480_2D
+    else:
+        names3, names2 = _SHINHONG_3D, _SHINHONG_2D
+    shapes = {f"shinhong_output/{name}": m for name in names3}
+    shapes.update({f"shinhong_output/{name}": s2 for name in names2})
     return shapes
 
 
@@ -9761,7 +9866,7 @@ def noahmp_lsm_transient_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
         SLAB_TRANSIENT_BYTES_PER_COLUMN)
 
     columns = int(cfg.ny) * int(cfg.nx)
-    from woof.core.noahmp_surface_device import selected_options, parameter_bytes_per_row
+    from woof.core.noahmp_surface_device import device_route, parameter_bytes_per_row
     selected = ({
         # Fixed-capacity deferred glacier error codes; column rows are local.
         "noahmp_lsm/device_glacier_driver": (columns, 4),
@@ -9776,14 +9881,16 @@ def noahmp_lsm_transient_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
             (min(SLAB_COLUMN_CHUNK,columns), 2048)} if int(cfg.opt_crop) else {}),
         **({"noahmp_lsm/gecros_operands":
             (min(SLAB_COLUMN_CHUNK,columns), (60*3+15+30)*4)} if int(cfg.opt_crop)==2 else {}),
-        **({"noahmp_lsm/groundwater_operands":(columns,256)} if int(cfg.opt_run)==5 else {}),
+        **({"noahmp_lsm/groundwater_operands":(columns,256)} if __import__("woof.core.noahmp_runoff_split",fromlist=["carrier_of"]).carrier_of(cfg)==5 else {}),
         **({"noahmp_lsm/soil_option_operands":
             (min(SLAB_COLUMN_CHUNK,columns),256)} if int(cfg.opt_soil)!=1 else {}),
-    } if selected_options(cfg) else {})
+    } if device_route(cfg) else {})
     if cfg.opt_alb == 3:
         # Glacier's full-grid f32[n,56] pack, i32 IST, zero impurity,
         # f32[n,6] result and temporary operands. Land uses chunk rows.
         selected["noahmp_lsm/snow_papers_transients"] = (columns, 1024)
+        from woof.core.snicar_memory import option_transient_shapes
+        selected.update(option_transient_shapes(cfg))
     return {
         **selected,
         "noahmp_lsm/slab_chunk_transients":
@@ -9811,10 +9918,12 @@ def noahmp_lsm_cache_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
     from woof.core.noahmp_runtime import slab_cache_bytes_per_column
     from woof.core.noahmp_surface_device import (
         MAX_VEGETATION_CLASSES, MAX_SOIL_CLASSES,
-        selected_options, parameter_bytes_per_row)
+        device_route, parameter_bytes_per_row)
 
-    if selected_options(cfg):
+    if device_route(cfg):
+        from woof.core.snicar_memory import option_cache_shapes
         return {
+            **option_cache_shapes(cfg),
             **({"noahmp_lsm/snow_papers_optics": (283703, 4)}
                if cfg.opt_alb == 3 else {}),
             "noahmp_lsm/device_parameter_pool":
@@ -10116,6 +10225,15 @@ class ExperimentMemoryEstimate:
     # Table-selected hydro is priced outside the static RunConfig physics
     # roster. Missing owner hooks are explicit gaps in this same envelope.
     hydro_memory: dict | None = None
+    # The legacy RRTMG engine width priced for each domain when it is wider
+    # than one wave (estimate_experiment's card_free_bytes); () = one wave.
+    legacy_radiation_widths: tuple = ()
+    # Set only where the call can take a wider width on this card than the
+    # one priced above: that width for each domain, and the envelope at it.
+    # The price is what the forecast needs; this is what the process can
+    # come to hold, because the call widens into the room that is free.
+    legacy_radiation_take_widths: tuple = ()
+    legacy_radiation_take_envelope_bytes: int = 0
 
     @property
     def fixed_envelope_bytes(self) -> int:
@@ -11556,6 +11674,7 @@ def estimate_phases(exp: ExperimentConfig, *, source: str,
                     preparation_route: str | None = None,
                     urban_columns=None,
                     resident_forcing_intervals: int | None = None,
+                    alloc_budget_bytes: int | None = None,
                     ) -> PhaseMemoryEstimate:
     """Price every phase of ``exp`` and say which one binds the card.
 
@@ -11617,6 +11736,12 @@ def estimate_phases(exp: ExperimentConfig, *, source: str,
         vram_gib=vram_gib, profile=profile,
         boundary_species=source_boundary_species(boundary_source),
         urban_columns=urban_columns,
+        # The card the planner machine names prices the legacy RRTMG width
+        # the run takes there.
+        card_free_bytes=_machine_vram_bytes(machine),
+        # ...and a door with an allocation leg hands its budget over, so
+        # the width priced never fails a leg that one wave passes.
+        alloc_budget_bytes=alloc_budget_bytes,
         # The one-card residue bound, as the admission prices it.
         **single_card_residue_terms(exp))
     key = None if source is None else str(source).strip().lower()
@@ -11693,6 +11818,51 @@ def estimate_phases(exp: ExperimentConfig, *, source: str,
         host_ram_bytes=_machine_host_bytes(machine),
         boundary_source=boundary_source,
     )
+
+
+def _machine_vram_bytes(machine) -> int | None:
+    """A planner machine's free VRAM as a positive int, or ``None``."""
+    vram = getattr(machine, "vram_bytes", None)
+    if isinstance(vram, bool) or not isinstance(vram, int) or vram <= 0:
+        return None
+    return vram
+
+
+def legacy_take_note(estimate, free_bytes: int | None = None) -> str | None:
+    """One sentence where a legacy RRTMG call can take a wider engine width
+    on the card than the one priced, else ``None``.
+
+    Breakage it prevents: a reader packs a second job into the room the
+    price leaves, the first call widens into that room and the pool keeps
+    it (OKC on 11.40 GiB free: priced 7.59 GiB, held 10.40).
+
+    ``free_bytes`` is the card's free memory as the door read it.  Where
+    the envelope at the wider width is over it, the sentence names the
+    free memory and not the envelope: a process cannot hold more than the
+    card has, and the full HRRR recipe on a 96 GB card read "can come to
+    hold 95.67 GiB" beside "94.42 GiB free"."""
+    take = getattr(estimate, "legacy_radiation_take_widths", ()) or ()
+    if not any(take):
+        return None
+    priced = (getattr(estimate, "legacy_radiation_widths", ()) or ()) or (None,) * len(take)
+    rows = ", ".join(
+        f"d{d.grid_id:02d} {wide} columns per engine chunk where "
+        f"{f'{narrow} are' if narrow else 'one wave is'} priced"
+        for d, wide, narrow in zip(estimate.domains, take, priced)
+        if wide and wide != narrow)
+    take = estimate.legacy_radiation_take_envelope_bytes
+    if free_bytes is not None and take >= int(free_bytes):
+        return (f"legacy RRTMG widens into free memory: the price above is "
+                f"what the forecast needs, and on this card the call can take "
+                f"{rows}, so the process can come to fill the "
+                f"{int(free_bytes) / GIB:.2f} GiB this card has free and keeps "
+                f"it to the end of the run; place no other job beside it")
+    return (f"legacy RRTMG widens into free memory: the price above is what "
+            f"the forecast needs, and on this card the call can take {rows}, "
+            f"so the process can come to hold "
+            f"{estimate.legacy_radiation_take_envelope_bytes / GIB:.2f} GiB and "
+            f"keeps it to the end of the run; count the larger figure before "
+            f"placing another job beside it")
 
 
 def _machine_host_bytes(machine) -> int | None:
@@ -11810,6 +11980,8 @@ def estimate_experiment(
         tile_buffer: bool = False,
         lake_columns=None,
         pool_residue_cap_bytes: int | None = None,
+        card_free_bytes: int | None = None,
+        alloc_budget_bytes: int | None = None,
 ) -> ExperimentMemoryEstimate:
     """Sum the per-domain itemizations; count the lru_cache-shared
     k-distribution tables ONCE (rrtmgp.py:324/:436 -- baseline behavior,
@@ -11839,7 +12011,18 @@ def estimate_experiment(
 
     ``pool_residue_cap_bytes`` bounds the pool margin in bytes
     (:func:`forecast_pool_estimate_bytes`); the ranked road passes
-    :data:`RANK_POOL_RESIDUE_BOUND_BYTES` for its device ranks (A13)."""
+    :data:`RANK_POOL_RESIDUE_BOUND_BYTES` for its device ranks (A13).
+
+    ``card_free_bytes`` is the free VRAM of the card the forecast will run
+    on (a planner machine's ``vram_bytes``).  Given, a legacy RRTMG call is
+    priced at the engine width it takes there
+    (:func:`woof.core.rrtmg_legacy.legacy_wide_chunk_width`, asked with
+    those bytes less the non-pool and resident terms the forecast holds
+    beside the call); ``None`` prices the one-wave width, as before.
+
+    ``alloc_budget_bytes`` is the budget of a door's allocation leg (``woof
+    check``: the free bytes less its reserve).  Given, the legacy width is
+    also stepped down while the allocation estimate is over it."""
     column_chunk = (exp.column_chunk if column_chunk is None
                     else column_chunk)
     if (isinstance(column_chunk, bool)
@@ -11950,18 +12133,23 @@ def estimate_experiment(
         # card_local_memory_profile and this line did not.  A declared card
         # is not a measured one, and the conservative reference intercept
         # is what every other term in this function already gives it.
-        legacy_calls = tuple(
-            legacy_radiation_vram_bytes(
+        def legacy_terms(dc):
+            return dict(
                 ncol=dc.run.ny * dc.run.nx, nz=dc.run.nz,
-                p_top=exp.vertical.p_top, column_chunk=None,
+                p_top=exp.vertical.p_top,
                 longwave=radiation_scheme_ids(dc.run)[0] == 4,
                 shortwave=radiation_scheme_ids(dc.run)[1] == 4,
                 resident_threads=device_profile.resident_thread_capacity,
                 aer_opt=int(getattr(dc.run, "aer_opt", 0)),
                 chem_optics_rows=feedback_row_count(dc.run))
-            if (4 in radiation_scheme_ids(dc.run)
-                and rrtmg_variant(dc.run) == RRTMG_VARIANT_LEGACY) else 0
-            for dc in exp.domains)
+
+        def is_legacy(dc):
+            return (4 in radiation_scheme_ids(dc.run)
+                    and rrtmg_variant(dc.run) == RRTMG_VARIANT_LEGACY)
+
+        legacy_calls = tuple(
+            legacy_radiation_vram_bytes(column_chunk=None, **legacy_terms(dc))
+            if is_legacy(dc) else 0 for dc in exp.domains)
         legacy_envelope = max(legacy_calls, default=0)
     from woof.core.flg_radiation import flg_radiation_vram_bytes
     flg_storage = sum(flg_radiation_vram_bytes(dc.run.nx*dc.run.ny, dc.run.nz)
@@ -11972,7 +12160,7 @@ def estimate_experiment(
     nz = exp.domains[0].run.nz
     from woof.hydro.memory import forecast_plan
     hydro_plan = forecast_plan(exp)
-    return ExperimentMemoryEstimate(
+    estimate = ExperimentMemoryEstimate(
         hydro_memory=None if hydro_plan is None else hydro_plan.inventory(),
         domains=domains,
         k_tables_bytes=k_distribution_bytes() if uses_rrtmgp else 0,
@@ -12013,6 +12201,96 @@ def estimate_experiment(
                           if profile is None else profile)),
         physics_tables_bytes=experiment_thompson_coefficient_bytes(exp) + (sum(((n * 4 + 511) // 512) * 512 for n in (10789, 7501, 7501, 43, 17, 1)) if any(int(dc.run.mp_physics) == 95 for dc in exp.domains) else 0),
     )
+    if not uses_legacy or card_free_bytes is None:
+        return estimate
+    # THE WIDTH THE CALL TAKES ON THIS CARD.  A legacy call takes two or
+    # four waves when the card has room (rrtmg_legacy._wide_chunk), and the
+    # one-wave price above left that out: 2.00 GiB priced, 6.0 GiB live on
+    # the OKC met_em case on a 5090.  The call sees the card's free bytes
+    # less what the forecast already holds: the non-pool residency and the
+    # resident pool.
+    #
+    # A DOOR READS THE CARD THROUGH A CONTEXT OF ITS OWN.  The free figure a
+    # door measures is short by its own CUDA context, which the forecast
+    # finds free again; the rule is asked with that much added back.
+    # Measured on a 5090 (2026-11-12, a ballast leaving 10.60 GiB
+    # free): `woof check` read 10.11 GiB and the rule, asked with 10.11,
+    # answered two waves, while the forecast started with 10.60 and took
+    # four.
+    #
+    # THE PRICE IS THE NEED; THE TAKE IS RECORDED BESIDE IT.  Where the
+    # envelope at the width the call takes is over the card's whole-process
+    # budget, the price steps down to the widest width whose envelope fits,
+    # and to one wave when none does: that is what the forecast needs, and
+    # it fits.  Without this step a 12 GiB card the wizard had sized at
+    # 10.21 GiB was priced 11.51 GiB by the check of the same file.
+    #
+    # The call does NOT step down there.  Its rule (the priced transient
+    # plus 1 GiB inside the bytes free at the call) knows nothing of the
+    # envelope's margins, so it widens all the same and the pool keeps the
+    # blocks to the end of the run.  Measured, same card and case: with
+    # 11.40 GiB free the call took four waves and the process reached
+    # 10.40 GiB, where the stepped-down price is 7.59; with 10.60 GiB free
+    # it reached the same 10.40 and left 0.20 GiB.  So the estimate carries
+    # the width the call can take and the envelope at it
+    # (legacy_radiation_take_*), and the check prints both figures.
+    #
+    # NO LEG FAILS AT A WIDTH THE RUN ONLY TAKES FROM FREE MEMORY.  `woof
+    # check` has a second budget, its allocation leg's (the free bytes less
+    # the reserve), and on a large run that one is the tighter: retention
+    # is 3 % of the estimate.  Stepped down on the envelope alone, the full
+    # CONUS HRRR recipe on a 96 GB card (94.42 GiB free) was priced at two
+    # waves, 89.76 GiB against that leg's 88.97, and the check refused a
+    # forecast `woof go` admits and one wave fits
+    # (test_check_chained_forcing_slots).  A door that has such a leg hands
+    # its budget in, and the width steps down for either.
+    from woof.core.rrtmg_legacy import (
+        legacy_saturation_chunk, legacy_wide_chunk_width)
+    base = legacy_saturation_chunk(device_profile.resident_thread_capacity)
+    beside = estimate.envelope_intercept_bytes + estimate.resident_bytes
+    take_widths = tuple(
+        legacy_wide_chunk_width(
+            base=base, ncol_day=None,
+            free_bytes=max(0, int(card_free_bytes)
+                           + device_profile.cuda_context_bytes - beside),
+            **legacy_terms(dc)) if is_legacy(dc) else None
+        for dc in exp.domains)
+    budget = int(card_free_bytes) - EXTERNAL_MARGIN_BYTES
+
+    def at(widths):
+        calls = tuple(
+            legacy_radiation_vram_bytes(column_chunk=width, **legacy_terms(dc))
+            if width else call
+            for dc, width, call in zip(exp.domains, widths, legacy_calls))
+        return replace(
+            estimate,
+            workspace_bytes=(estimate.workspace_bytes if uses_rrtmgp
+                             else max(calls) + flg_storage),
+            legacy_call_peak_by_domain=calls if uses_rrtmgp else (),
+            legacy_radiation_widths=widths if any(widths) else ())
+
+    if not any(take_widths):
+        return estimate
+
+    def over(priced):
+        return (priced.peak_envelope_bytes > budget
+                or (alloc_budget_bytes is not None
+                    and priced.alloc_estimate_bytes > int(alloc_budget_bytes)))
+
+    take = at(take_widths)
+    widths, priced = take_widths, take
+    while any(widths) and over(priced):
+        # One factor narrower on every widened domain: 4 -> 2 -> one wave.
+        widths = tuple(
+            None if not width or width // 2 <= base else width // 2
+            for width in widths)
+        priced = at(widths)
+    if widths == take_widths or over(priced):
+        # The take is the price, or one wave does not fit either and the
+        # door refuses the one-wave price, as before.
+        return priced
+    return replace(priced, legacy_radiation_take_widths=take_widths,
+                   legacy_radiation_take_envelope_bytes=take.peak_envelope_bytes)
 
 
 def admission_estimate(exp: ExperimentConfig, *, machine=None, source=None,
@@ -12096,7 +12374,9 @@ def admission_estimate(exp: ExperimentConfig, *, machine=None, source=None,
             exp, column_chunk=exp.column_chunk,
             profile=getattr(machine, "device_profile", None),
             boundary_species=source_boundary_species(source),
-            urban_columns=urban_columns, **single_card_residue_terms(exp))
+            urban_columns=urban_columns,
+            card_free_bytes=_machine_vram_bytes(machine),
+            **single_card_residue_terms(exp))
 
 
 # ---------------------------------------------------------------------------
@@ -13857,7 +14137,122 @@ def target_capacity_source(sampled, target_hardware) -> str:
     return "measured on the selected GPU" if target_hardware else "measured"
 
 
+#: What a check priced at the narrowest MYNN width says; ``woof go``'s gate
+#: (:mod:`woof.go_cli`) says the same sentence, so the two read alike.
+MYNN_NARROWED_NOTE = (
+    "priced at the narrowest MYNN column width: the width the run would "
+    "pick does not fit, so the forecast walks the widest width that does "
+    "(speed, never bytes)")
+
+
+def declared_mynn_target(args) -> tuple[int, int] | None:
+    """``(total, free)`` bytes of the DECLARED card the MYNN width is priced
+    for, or ``None`` when no card is declared (or ``--alloc`` measures this
+    one).
+
+    Breakage (door item 3, 2026-11-12): a declared-budget check priced
+    MYNN's column workspace at the width THIS process would walk on the
+    card under the desk, or at the 98,304-column cap when it read none
+    (:func:`woof.core.mynn_pbl_scratch.choose_mynn_column_chunk`).  An
+    outside runner's ``woof check from_namelist.toml --free-gib 15.25
+    --vram-gib 15.92`` for a 470 x 370 x 49 MYNN forecast read no card,
+    priced 4.79 GiB of MYNN workspace where the 16 GB card walks 0.80, and
+    reported 17.86 GiB "EXCEEDS" for a run that then ran on that card.
+    The declared card is the one the report is about, as ``woof domain``
+    already prices it (:func:`woof.domain_wizard._sizing_phases`).
+    """
+    from woof.core.mynn_pbl_scratch import (
+        mynn_pricing_total_bytes, mynn_target_fit_active)
+
+    vram_gib = getattr(args, "vram_gib", None)
+    if (vram_gib is None or getattr(args, "alloc", False)
+            or mynn_target_fit_active()):
+        # ``woof domain``'s inline check already prices its own target.
+        return None
+    free_gib = getattr(args, "free_gib", None)
+    if free_gib is None:
+        free_gib = getattr(args, "budget_gib", None)
+    if free_gib is None:
+        return None
+    if not all(math.isfinite(float(v)) and float(v) > 0
+               for v in (vram_gib, free_gib)):
+        # Not a card: the check's own front door refuses the flag by name.
+        return None
+    measured = (getattr(args, "_shared_sizing_budget", None) is not None
+                or bool(getattr(args, "_target_hardware_supplied", False)))
+    total = mynn_pricing_total_bytes(float(vram_gib), measured=measured)
+    return total, int(min(float(free_gib), float(vram_gib)) * GIB)
+
+
+def narrow_mynn_fits(exp, phase_terms, envelope_budget) -> bool:
+    """Would this one-card resident forecast fit at the narrowest MYNN
+    width, where the width it would walk does not?  The test ``woof go``'s
+    gate and :func:`woof.core.streaming.admit_resident_road` apply."""
+    if (envelope_budget is None or len(getattr(exp, "domains", ()) or ()) != 1
+            or getattr(getattr(exp, "devices", None), "enabled", False)
+            or not mynn_width_adjustable(exp)):
+        return False
+    with required_mynn_pricing(exp):
+        narrow = estimate_phases(exp, **phase_terms)
+    return (not narrow.streamed_forecast
+            and narrow.peak_envelope_bytes <= int(envelope_budget))
+
+
+def _check_main_at_narrow_mynn(args, exp) -> int:
+    """Re-price the whole report at the narrowest MYNN width, and say so."""
+    from woof.core.mynn_pbl_scratch import (
+        MYNN_PBL_COLUMN_CHUNK_MINIMUM, resolve_mynn_column_chunk)
+
+    nz = next(int(dc.run.nz) for dc in exp.domains
+              if int(getattr(dc.run, "bl_pbl_physics", 0) or 0) == 5)
+    args._mynn_narrowed = {
+        "walked_width_columns": int(resolve_mynn_column_chunk(nz)),
+        "priced_width_columns": int(MYNN_PBL_COLUMN_CHUNK_MINIMUM),
+        "basis": MYNN_NARROWED_NOTE}
+    try:
+        with required_mynn_pricing(exp):
+            return _check_main(args)
+    finally:
+        args._mynn_narrowed = None
+
+
+def check_subject_tokens(args) -> list[str]:
+    """What the user checked, as command tokens: CONFIG, or ``--met-em DIR``.
+
+    The met_em door prices a TOML it resolves into a scratch directory; a
+    printed command or report naming that file names one that is gone.
+    """
+    met_em = getattr(args, "met_em", None)
+    return ["--met-em", str(met_em)] if met_em is not None else [str(args.config)]
+
+
+def check_subject(args) -> str:
+    """The checked input's path for the report: CONFIG or the met_em DIR."""
+    return check_subject_tokens(args)[-1]
+
+
+def check_subject_command(args) -> str:
+    return " ".join(check_subject_tokens(args))
+
+
 def check_main(args) -> int:
+    """``woof check CONFIG [--alloc]``: memory section of the preflight.
+
+    A declared card (``--vram-gib`` with ``--free-gib`` or ``--budget-gib``)
+    prices the MYNN column width that card walks, not the one this machine
+    would (:func:`declared_mynn_target`).
+    """
+    target = declared_mynn_target(args)
+    if target is None:
+        return _check_main(args)
+    from woof.core.mynn_pbl_scratch import mynn_pricing_memory
+
+    total, free = target
+    with mynn_pricing_memory(total_bytes=total, free_bytes=free):
+        return _check_main(args)
+
+
+def _check_main(args) -> int:
     """``woof check CONFIG [--alloc]``: memory section of the preflight.
 
     Exit codes: 0 = every requested leg measured and PASSED; 1 = a leg
@@ -13963,9 +14358,11 @@ def check_main(args) -> int:
     from woof.data_assets import companion_root
 
     companion_root()
-    _warn_unstaged_physics_tables(exp)
-    if prepared is None:
-        _warn_unmet_run_preparation(exp)
+    if getattr(args, "_mynn_narrowed", None) is None:
+        # Said once: a narrowed re-price (below) walks this far again.
+        _warn_unstaged_physics_tables(exp)
+        if prepared is None:
+            _warn_unmet_run_preparation(exp)
     # Declared-budget sizing is deliberately portable and needs no GPU.
     # A check of this machine must prove kernels can run before allocating
     # a forecast or claiming its measured memory budget is usable.
@@ -13979,7 +14376,7 @@ def check_main(args) -> int:
         readiness = {"status": checked.status, "detail": checked.detail,
                      "action": checked.action}
         if checked.status != "verified":
-            command = ["woof", "check", str(args.config), "--free-gib", "FREE_GIB",
+            command = ["woof", "check", *check_subject_tokens(args), "--free-gib", "FREE_GIB",
                        "--vram-gib", "CAPACITY_GIB"]
             if prepared is not None:
                 command += ["--prepared-root", str(prepared.prepared_root)]
@@ -14001,7 +14398,7 @@ def check_main(args) -> int:
                 required = {"status": "unavailable", "reason": str(error),
                             "budget_bytes": None, "memory_verdict": "unavailable"}
             if args.json:
-                print(json.dumps({"config": str(args.config),
+                print(json.dumps({"config": check_subject(args),
                                   "gpu_readiness": readiness,
                                   "required_memory": required,
                                   "cpu_planning": planning,
@@ -14413,8 +14810,8 @@ def check_main(args) -> int:
     host_geometry = None if prepared is not None else ingest_host_geometry(args)
     from woof.core.streaming import planner_machine
 
-    phases = estimate_phases(
-        exp, source=None if prepared is not None else ingest_source,
+    phase_terms = dict(
+        source=None if prepared is not None else ingest_source,
         column_chunk=chunk, boundary_source=priced_boundary_source,
         urban_columns=urban_columns,
         preparation_route=config_preparation_route(args.config),
@@ -14450,6 +14847,32 @@ def check_main(args) -> int:
         machine=(target_machine if target_hardware else
                  planner_machine(vram_bytes=free, name="woof check budget",
                                  device_profile=profile)))
+    if report is None and free is not None:
+        # THE ALLOCATION LEG'S BUDGET GOES IN TOO: the legacy RRTMG width
+        # priced below never fails that leg where one wave passes it (see
+        # estimate_experiment).
+        phase_terms["alloc_budget_bytes"] = reserve.budget_bytes(free)
+    phases = estimate_phases(exp, **phase_terms)
+    widths = getattr(phases.forecast, "legacy_radiation_widths", ()) or ()
+    take_widths = getattr(phases.forecast, "legacy_radiation_take_widths", ()) or ()
+    if report is None and (any(widths) or any(take_widths)):
+        # ONE LEGACY WIDTH ON THE PAGE.  The estimate above was priced
+        # before this card's free bytes were read, at the one-wave legacy
+        # RRTMG width; the envelope was priced at the width the call takes
+        # on this card.  The breakdown, the JSON and the allocation gate
+        # read the same width as the envelope, or the page shows 2.00 GiB
+        # of workspace under an envelope that holds 6.22.
+        estimate = replace(
+            estimate, workspace_bytes=phases.forecast.workspace_bytes,
+            legacy_call_peak_by_domain=phases.forecast.legacy_call_peak_by_domain,
+            legacy_radiation_widths=widths,
+            legacy_radiation_take_widths=take_widths,
+            legacy_radiation_take_envelope_bytes=(
+                phases.forecast.legacy_radiation_take_envelope_bytes))
+        gates = evaluate_alloc_gates(
+            measured_used_bytes=measured_used,
+            estimate_bytes=estimate.alloc_estimate_bytes,
+            measured_free_bytes=free, reserve=reserve)
     #: AN UNPRICED INGEST LANE COSTS THE INGEST SECTION, NOT THE PHASE
     #: ESTIMATE.  This used to be ``phases = None``, which threw away the
     #: streamed forecast term along with the ingest one -- and the streamed
@@ -14500,6 +14923,21 @@ def check_main(args) -> int:
     #: carry it whether or not anybody reads the text.
     envelope_over_budget = (envelope_budget is not None
                             and envelope > envelope_budget)
+    if (getattr(args, "_mynn_narrowed", None) is None and not args.alloc
+            and envelope_over_budget
+            and narrow_mynn_fits(exp, phase_terms, envelope_budget)):
+        # THE MYNN WIDTH IS A SPEED CHOICE (A3c), priced as the run's own
+        # resident door and ``woof go``'s gate price it: the width the run
+        # would walk does not fit, the narrowest does, and the run pins the
+        # widest that fits before it allocates.  Priced at the walked width
+        # here, a forecast the door admits was refused by its own check
+        # (door item 3, 2026-11-12).  The trigger is the ENVELOPE alone,
+        # as in ``admit_resident_road``: the run narrows on nothing else, so
+        # a check that also narrowed on the allocation-estimate leg priced a
+        # width the run would not walk and passed it (item 3 review).
+        return _check_main_at_narrow_mynn(args, exp)
+    if getattr(args, "_mynn_narrowed", None) is not None:
+        phase_verdict += "; " + MYNN_NARROWED_NOTE
     #: THE OTHER MEMORY.  Every figure above this line is device memory;
     #: the ingest phase also decodes the forcing into HOST RAM, holds two
     #: copies of it at once while the root case is prepared, and no door
@@ -14620,7 +15058,9 @@ def check_main(args) -> int:
             int(phases.streamed.peak_vram_bytes) <= envelope_budget)
     if args.json:
         payload = {
-            "config": str(args.config), "experiment": exp.name,
+            "config": check_subject(args), "experiment": exp.name,
+            **({} if getattr(args, "met_em", None) is None
+               else {"met_em": str(args.met_em)}),
             "output_disk": output_disk,
             "preprocess_backend": phases.preprocess_backend,
             "gpu_readiness": readiness,
@@ -14637,6 +15077,17 @@ def check_main(args) -> int:
             "k_tables_bytes": estimate.k_tables_bytes,
             "physics_tables_bytes": estimate.physics_tables_bytes,
             "workspace_bytes": estimate.workspace_bytes,
+            "legacy_radiation_widths": list(
+                getattr(estimate, "legacy_radiation_widths", ()) or ()),
+            # Present only where the call can take a wider width on this
+            # card than the one priced: the forecast needs the envelope,
+            # and the process can come to hold this much.
+            **({"legacy_radiation_take_widths":
+                    list(estimate.legacy_radiation_take_widths),
+                "legacy_radiation_take_envelope_bytes":
+                    estimate.legacy_radiation_take_envelope_bytes}
+               if any(getattr(estimate, "legacy_radiation_take_widths", ()) or ())
+               else {}),
             "scratch_arena_bytes": estimate.scratch_arena_bytes,
             "scratch_arena_request_bytes":
                 estimate.scratch_arena_request_bytes,
@@ -14737,6 +15188,11 @@ def check_main(args) -> int:
             # exit code.  "incomplete" is the state the reduction used to
             # have no name for.
             "memory_verdict": memory_gate_verdict(gates),
+            # The geography leg's refusal (exit 6), apart from the memory
+            # verdict: a wrapper that read every non-zero exit as "does
+            # not fit" reported a forecast that fits as one that does not
+            # (door item 3).  None when the leg passed or was not asked.
+            "geography_blocker": getattr(args, "_geography_blocker", None),
             "gates_evaluated": sum(
                 1 for metric in N0_GATE_METRICS if gates[metric] is not None),
             "gates_total": len(N0_GATE_METRICS),
@@ -14817,6 +15273,8 @@ def check_main(args) -> int:
         # otherwise while the printed line beside it said this, which is
         # one report giving two answers about one card (task 206).
         payload["phase_verdict"] = phase_verdict
+        if getattr(args, "_mynn_narrowed", None) is not None:
+            payload["mynn_column_width"] = dict(args._mynn_narrowed)
         if not ingest_priced:
             payload["ingest"] = None
             payload["ingest_not_priced_reason"] = ingest_note
@@ -14975,6 +15433,17 @@ def check_main(args) -> int:
               f"(saves {estimate.scratch_arena_saved_bytes / GIB:.2f} GiB); "
               f"dycore state {estimate.dycore_state_workspace_bytes / GIB:.2f} "
               f"GiB (saves {estimate.dycore_state_saved_bytes / GIB:.2f} GiB)")
+        steps_down = any(getattr(estimate, "legacy_radiation_take_widths", ()) or ())
+        for d, width in zip(estimate.domains,
+                            getattr(estimate, "legacy_radiation_widths", ()) or ()):
+            if width:
+                print(f"  d{d.grid_id:02d}: legacy RRTMG priced at {width} columns "
+                      f"per engine chunk, "
+                      + ("the widest width whose price fits this card's budget "
+                         "(the NOTE under BINDING PHASE names the width the "
+                         "call can take)" if steps_down else
+                         "the wide width the call takes when this card has "
+                         "the room"))
         print(f"  TIER 1  resident: {_format_bytes(estimate.resident_bytes)}"
               f"   subtotal (+workspace+transient peak): "
               f"{_format_bytes(estimate.subtotal_bytes)}")
@@ -15184,6 +15653,8 @@ def check_main(args) -> int:
         # produced it -- was withheld from exactly the configs whose
         # envelope the streaming replaced.
         print(f"  BINDING PHASE: {phase_verdict}.")
+        if legacy_take_note(estimate, free):
+            print(f"  NOTE: {legacy_take_note(estimate, free)}.")
         if streamed_alloc_gate:
             # The gate leg below prices this run as it will actually be
             # allocated, and it compares a different budget from the one
@@ -15321,7 +15792,7 @@ def check_main(args) -> int:
                   f"passing, and a verdict over the rest is not the verdict "
                   f"these three describe.{declared}")
             if not args.alloc:
-                print(f"  to measure them: woof check {args.config} --alloc "
+                print(f"  to measure them: woof check {check_subject_command(args)} --alloc "
                       f"(constructs every persistent allocation on the real "
                       f"card, runs zero steps, reports measured vs estimate)")
         if envelope_over_budget:
@@ -15501,6 +15972,10 @@ def check_main(args) -> int:
                   f"budget {_format_bytes(getattr(phases.streamed, 'host_budget_bytes', None)).strip()}")
         print(f"BINDING PHASE: {binding_phase} needs {envelope / GIB:.2f} GiB; "
               f"whole-process budget {_format_bytes(envelope_budget).strip()}")
+        if legacy_take_note(estimate, free):
+            print(f"NOTE: {legacy_take_note(estimate, free)}.")
+        if getattr(args, "_mynn_narrowed", None) is not None:
+            print(f"MYNN column width: {MYNN_NARROWED_NOTE}")
         if envelope_over_budget:
             print(f"WARNING: observed peak envelope {envelope / GIB:.2f} GiB exceeds the "
                   f"{envelope_budget / GIB:.2f} GiB budget.")
@@ -15644,7 +16119,7 @@ def check_main(args) -> int:
               "verified against.", file=sys.stderr)
         print(f"  remedy: declare the card this config is sized for and "
               f"re-run:\n"
-              f"    woof check {args.config} --budget-gib <N> "
+              f"    woof check {check_subject_command(args)} --budget-gib <N> "
               f"--vram-gib <card GiB>\n"
               f"  # this configuration's peak envelope is "
               f"{envelope / GIB:.2f} GiB; a budget at or above it "
@@ -15685,8 +16160,15 @@ def register_cli(subparsers) -> None:
              "budget; --alloc performs the enforced N0 allocation run")
     p.add_argument("config", type=Path, metavar="CONFIG", nargs="?",
                    help="experiment TOML (or legacy RunConfig TOML, "
-                        "wrapped as a one-domain experiment); omit only for "
-                        "woof check --json context-free box inventory")
+                        "wrapped as a one-domain experiment); omit only with "
+                        "--met-em DIR, or for woof check --json context-free "
+                        "box inventory")
+    p.add_argument("--met-em", type=Path, default=None, metavar="DIR",
+                   dest="met_em",
+                   help="price a WPS metgrid directory (met_em.d0*.nc and "
+                        "the producing namelist.input), the input of `woof "
+                        "run --met-em`, in place of CONFIG.  Reads no "
+                        "WPS_GEOG: the met_em files carry the static fields")
     p.add_argument("--prepared-root", type=Path, default=None, metavar="DIR",
                    help="verify prepared forecast inputs and price their "
                         "land cover and retained boundary tables; "

@@ -17,7 +17,7 @@ import pytest
 from woof.hex.fullstep_lts_classes import CLASS_MASK, SCRATCH_FLAG, macro_schedule, plan_macros, trajectory_plane
 from test_fullstep_lts_classes import plan_for
 
-gpu = pytest.mark.skipif(os.environ.get("HEX_LTS_GPU_TESTS") != "1", reason="requires explicit GPU mutex job")
+gpu = pytest.mark.skipif(os.environ.get("HEX_LTS_GPU_TESTS") != "1", reason="requires an explicit GPU job (HEX_LTS_GPU_TESTS=1)")
 
 
 def test_a_finer_class_ends_a_step_at_the_middle_and_end_of_every_coarser_step():

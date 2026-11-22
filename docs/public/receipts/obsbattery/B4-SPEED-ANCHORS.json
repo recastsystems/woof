@@ -26,7 +26,7 @@
     "wrf_v461_nodes_24rank": {
       "status": "unreceipted-controller-measurement",
       "measured": "2026-08-03, controller-side",
-      "evidence": "stated in the observation battery design spec, docs/superpowers/specs/2026-08-03-obs-verification-battery.md sections 0.1 and 8.1, which is in development checkouts only: the public export drops docs/superpowers/**. NO run receipt for it exists at this commit",
+      "evidence": "stated in the observation battery design spec, docs/internal/specs/2026-08-03-obs-verification-battery.md sections 0.1 and 8.1, which is in development checkouts only: the public export drops docs/internal/**. NO run receipt for it exists at this commit",
       "engine": "WRF v4.6.1, pinned campaign build",
       "host": "nodes 1/2",
       "ranks": 24,
@@ -37,7 +37,7 @@
     "arwen_5090_same_domain": {
       "status": "unreceipted-controller-measurement",
       "measured": "2026-08-03, controller-side",
-      "evidence": "stated in the observation battery design spec, docs/superpowers/specs/2026-08-03-obs-verification-battery.md sections 0.1 and 8.1, which is in development checkouts only: the public export drops docs/superpowers/**. NO run receipt for it exists at this commit",
+      "evidence": "stated in the observation battery design spec, docs/internal/specs/2026-08-03-obs-verification-battery.md sections 0.1 and 8.1, which is in development checkouts only: the public export drops docs/internal/**. NO run receipt for it exists at this commit",
       "engine": "gpuwm",
       "device": "RTX 5090",
       "cells": 15000000,

@@ -1,10 +1,15 @@
-"""The hex-to-WOOF parent route: a woof hex export frame decodes through the
+"""The hex-to-ArWen parent route: a woof hex export frame decodes through the
 packaged hex-global profile with no per-source code.
 
 The breakage this holds closed: before it, a hex frame had no 1-D coordinates,
 the NetCDF mapped route could not read half-level (interface) heights, and the
 closed derivation catalog had no theta-to-T or mixing-ratio-to-q entry, so no
-WOOF domain could take a hex run as its initial and boundary source.
+WOOF-ArWen domain could take a hex run as its initial and boundary source.
+
+And the column is the frame's own (the second breakage, 16 Nov 2026): the profile
+fixed 55 levels, so `woof hex add-nest` under a parent on NOAA's hrrrv5 suite
+(59 levels, 60 interfaces) stopped at the nest's prep with "geopotential_height
+requires N+1 finite interface heights".  Both counts decode, on both engines.
 """
 from __future__ import annotations
 
@@ -19,11 +24,13 @@ from woof import mapped_source as ms
 from woof.source_adapters import get_source_adapter
 from woof.source_authorities import packaged_authorities
 
-NZ, NY, NX, NSOIL = 55, 3, 4, 4
+NY, NX, NSOIL = 3, 4, 4
+#: The level counts woof hex parents write: 55 on the default suites, 59 on hrrrv5.
+PARENT_LEVELS = (55, 59)
 EPOCH_SECONDS = 1680285600  # 2023-03-31 18:00:00 UTC
 
 
-def _frame(path: Path, epoch: int = EPOCH_SECONDS) -> dict[str, np.ndarray]:
+def _frame(path: Path, epoch: int = EPOCH_SECONDS, NZ: int = 55) -> dict[str, np.ndarray]:
     rng = np.random.default_rng(7)
     k = np.arange(NZ, dtype=np.float64)[:, None, None]
     shape3 = (NZ, NY, NX)
@@ -97,21 +104,29 @@ def test_the_adapter_row_names_the_packaged_hex_profile():
     assert set(packaged_authorities("hex-history-netcdf-v1")) >= {"mapping", "composition", "provenance"}
 
 
-def test_a_hex_export_frame_decodes_to_the_canonical_state(tmp_path, monkeypatch):
+@pytest.mark.parametrize("engine", ["python", "rust"])
+@pytest.mark.parametrize("nz", PARENT_LEVELS)
+def test_a_hex_export_frame_decodes_to_the_canonical_state(tmp_path, monkeypatch, nz, engine):
     from woof.netcdf_bridge import find_netcdf_bin
     # The frame is read through the rw_netcdf bridge, as the door reads it; the Windows CPU partition of
     # public CI builds no natives (2.9.2 R7a route C: NetcdfBridgeMissing).
     if find_netcdf_bin() is None:
         pytest.skip("rw_netcdf is not built in this tree")
-    monkeypatch.setenv("GPUWM_MAPPED_ENGINE", "python")
+    if engine == "rust":
+        from woof.mapped_engine_bridge import find_engine
+        if find_engine() is None:
+            pytest.skip("the mapped engine is not built in this tree")
+    monkeypatch.setenv("GPUWM_MAPPED_ENGINE", engine)
     frame = tmp_path / "wrfout_d01_2023-03-31_18_00_00"
-    truth = _frame(frame)
+    truth = _frame(frame, NZ=nz)
     later = tmp_path / "wrfout_d01_2023-03-31_19_00_00"
-    _frame(later, EPOCH_SECONDS + 3600)
+    _frame(later, EPOCH_SECONDS + 3600, NZ=nz)
     mapping = packaged_authorities("hex-history-netcdf-v1")["mapping"]
     decoded, following = ms.decode_mapped_source(mapping, [frame, later])
     assert following.valid_time.isoformat() == "2023-03-31T19:00:00"
     fields = decoded.fields
+    # The whole column: every level the frame carries, none dropped from the top.
+    assert fields["air_temperature"].values.shape == (nz, NY, NX)
     # f32 storage of theta - 300 K and of the pressure is the only rounding.
     expected_t = truth["theta"] * (truth["pressure"] / 1.0e5) ** (2.0 / 7.0)
     np.testing.assert_allclose(fields["air_temperature"].values, expected_t, rtol=2e-6)
@@ -130,3 +145,29 @@ def test_a_hex_export_frame_decodes_to_the_canonical_state(tmp_path, monkeypatch
     for hidden in ("potential_temperature", "water_vapor_mixing_ratio", "interface_height",
                    "interface_vertical_velocity"):
         assert hidden not in fields
+
+
+def test_the_hex_profiles_take_the_column_from_the_frame():
+    """No hex-history profile declares a level ladder: the frame's own
+    bottom_top and bottom_top_stag coordinates are the column."""
+    import json
+
+    from woof.source_authorities import packaged_profile_family
+
+    for profile in packaged_profile_family("hex-history-netcdf-v1"):
+        mapping = json.loads(packaged_authorities(profile)["mapping"].read_text(encoding="utf-8"))
+        vertical = mapping["coordinates"]["vertical"]
+        assert "levels" not in vertical, profile
+        assert vertical["interface_levels"] == ms.INTERFACE_LEVELS_FROM_FILE, profile
+        assert "55" not in mapping["name"] and "55" not in mapping["target"]["name"], profile
+
+
+def test_from_file_interfaces_refuse_a_declared_ladder(tmp_path):
+    import json
+
+    mapping = json.loads(packaged_authorities("hex-history-netcdf-v1")["mapping"].read_text(encoding="utf-8"))
+    mapping["coordinates"]["vertical"]["levels"] = list(range(1, 56))
+    path = tmp_path / "mapping.json"
+    path.write_text(json.dumps(mapping), encoding="utf-8")
+    with pytest.raises(ValueError, match="from_file"):
+        ms.load_mapping(path)

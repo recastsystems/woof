@@ -53,7 +53,7 @@ model, not necessarily the same bits: WRF embeds build paths.
   cross-check.
 - `*_binaries.sha256`, per-run build identity, hashed on the node at run
   time.
-- `ARWEN-REALISATION-SPREAD.md`: WOOF's own run-to-run spread, n=18 at
+- `ARWEN-REALISATION-SPREAD.md`: WOOF-ArWen's own run-to-run spread, n=18 at
   100 m and n=9 at 50 m, against WRF's measured spread, and what those
   widths do to every precision claim on both sides. Its correction
   history is kept in place deliberately: where an earlier revision of the

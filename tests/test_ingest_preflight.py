@@ -568,8 +568,8 @@ def test_synthetic_preflight_sea_ice_snow_reaches_ice_surface_branch(
     midpoints = (np.arange(4) + 0.5) * 0.75
     expected_tslb = ((3.0 - midpoints) * soil.tsk[0, 1]
                      + midpoints * 271.4) / 3.0
-    np.testing.assert_array_equal(
-        soil.soil_temperature[:, 0, 1], expected_tslb)
+    np.testing.assert_allclose(
+        soil.soil_temperature[:, 0, 1], expected_tslb, rtol=2.5e-7, atol=0)  # REAL arithmetic, as real.exe
 
 
 def test_preflight_accepts_wrf_seaice_flag_values_for_init_repair(

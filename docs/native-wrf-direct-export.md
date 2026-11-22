@@ -148,11 +148,25 @@ the exact `wrf.exe` SHA-256 before and after execution, and requires both
 the completed end time, process status/timing, input and output hashes, and a
 finite stock-WRF history readback.
 
-Known v2 limitations are recorded in every output manifest.  Hydrometeor,
-vertical-wind, terrain-shadow, and perturbation-pressure lateral-boundary
-arrays remain zero at every interval.  This matches the current native
-prepared-cache policy but must be expanded before those boundary fields can be
-advertised as supported.
+Known v2 limitations are recorded in every output manifest.  Vertical-wind,
+terrain-shadow, and perturbation-pressure lateral-boundary arrays remain zero
+at every interval.
+
+Hydrometeor arrays (QCLOUD QRAIN QICE QSNOW QGRAUP and the paired number
+moments the contract declares) carry what a forecast's ring is fed when the
+prepared boundary carries them: the same function the forecast holds them with
+(`woof.ingest.lateral_bc.hold_ring_tables`), at the cache's own
+`lbc_hydrometeor_envelope_km` (default 25: the smaller of the two bracketing
+frames, eroded along the edge, zero tendency; 0: the linear table).  The key
+does not bind the prepared cache, so a forecast run against the same cache at
+another value is fed differently from this file; its run record
+(`lateral_boundary_hydrometeors`) states its own envelope.  The file's
+`GPUWM_LBC_HYDROMETEORS` global attribute, the manifest's `lbc_hydrometeors`
+block and its limitations say which arrays are carried and how.  Stock WRF
+reads them only with `&bdy_control have_bcs_moist = .true.` (and
+`have_bcs_scalar = .true.` for the numbers); at WRF's default `.false.` it
+ignores them (WRF `run/README.namelist`).  A boundary that carries water vapour
+only leaves them zero, and the attribute says they are not carried.
 
 ## Arbitrary-domain limits
 

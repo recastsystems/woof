@@ -23,8 +23,8 @@ independent hard blockers, both already measured elsewhere in this tree:
    `wif_input_opt = 0` and `mp_physics = 28`,
    `dyn_em/module_initialize_real.F:2734-2736` is a fatal error. There is no
    real-data WRF forecast to compare against without supplying a WIF aerosol
-   input stream, which WOOF has no ingest for.
-2. **There is no aerosol lateral boundary condition in WOOF.**
+   input stream, which WOOF-ArWen has no ingest for.
+2. **There is no aerosol lateral boundary condition in WOOF-ArWen.**
    `woof/ingest/lateral_bc.py` carries only `qv` from an external boundary
    snapshot; every other advected scalar (including `nc`, `nwfa`, `nifa`)
    takes WRF's `flow_dep_bdy` treatment, which is *zero on inflow*. Stock WRF
@@ -59,9 +59,9 @@ the hodograph removed.
 | thermal | 3 K, cos² inside the unit ellipsoid, 10 km radius, centre z = 1500 m, half-depth 1500 m | `module_initialize_ideal.F:1089-1120` |
 | lateral BC | `periodic_x = periodic_y = .true.` | - |
 | physics | microphysics ONLY: no radiation, no surface layer, no LSM, no PBL, no cumulus | - |
-| dissipation | `diff_opt=2, km_opt=4, c_s=0.25`; `diff_6th_opt=2, diff_6th_factor=0.12`; `khdif=kvdif=0` | WOOF implements WRF's `smag2d_km` |
+| dissipation | `diff_opt=2, km_opt=4, c_s=0.25`; `diff_6th_opt=2, diff_6th_factor=0.12`; `khdif=kvdif=0` | WOOF-ArWen implements WRF's `smag2d_km` |
 | damping | `damp_opt=3, zdamp=5000, dampcoef=0.2`, `w_damping=0` | WRF Registry defaults |
-| advection | `h_mom=5, v_mom=3, h_sca=5, v_sca=3`, `moist_adv_opt = scalar_adv_opt = 1` | matches WOOF's fixed orders |
+| advection | `h_mom=5, v_mom=3, h_sca=5, v_sca=3`, `moist_adv_opt = scalar_adv_opt = 1` | matches WOOF-ArWen's fixed orders |
 | acoustic | `epssm=0.1, smdiv=0.1, emdiv=0.01`, `non_hydrostatic` | WRF Registry defaults |
 | aerosol | neither model is given an aerosol field; both fill WRF's synthetic CCN/IN profile in their own `thompson_init` port | `module_mp_thompson.F:493-558` |
 
@@ -75,15 +75,15 @@ of self-interaction.
 
 ### 2.1 The initial condition is WRF's, not a transcription of it
 
-WOOF is initialised **from WRF's own `wrfinput_d01`**: the file `ideal.exe`
+WOOF-ArWen is initialised **from WRF's own `wrfinput_d01`**: the file `ideal.exe`
 writes. `tools/mp28_matched/run_arwen.py` reads `U/V/W/PH/PHB/T/T_INIT/MU/
 MUB/PB/ALB/ZNW/P_TOP` and every moisture and number species out of that file
-and installs them as WOOF's base state and prognostics. This removes the
+and installs them as WOOF-ArWen's base state and prognostics. This removes the
 initialisation from the comparison entirely: the two models' t = 0 states are
 the same numbers, to float32 storage.
 
 That is a deliberate strengthening over the alternative (each model building
-the state from the same analytic recipe), because WOOF's builders are
+the state from the same analytic recipe), because WOOF-ArWen's builders are
 *transcriptions* of WRF's initializer and a transcription difference would
 have entered the trajectory as if it were a microphysics difference.
 
@@ -97,26 +97,26 @@ the grid and the eta coordinate; the lateral boundary condition (periodic,
 so no boundary data exists in either); the physics selection (microphysics
 only); the advection orders; the dissipation and damping package and every
 one of its constants; the acoustic-step parameters; the moist coupling
-(`use_theta_m = 1` in WRF, `moist_cq` in WOOF: the same `cq` coupling);
+(`use_theta_m = 1` in WRF, `moist_cq` in WOOF-ArWen: the same `cq` coupling);
 and the aerosol initial condition, which both models synthesise from the same
 `thompson_init` profile constants rather than reading.
 
 **They do NOT correspond in, and this comparison cannot separate:**
 
-1. **The dycore is not the same code.** WOOF is an independent FP32 GPU
+1. **The dycore is not the same code.** WOOF-ArWen is an independent FP32 GPU
    implementation. It is `wrf-matched-run` on `mp_physics = 8`, which is what
    makes the difference-in-differences design of §4 possible, but a
    trajectory difference between the two models is not attributable to
    microphysics without that control.
 2. **Precision.** WRF here is a float32-storage / float32-arithmetic Fortran
-   build on x86-64 with `-ftree-vectorize`; WOOF is float32 on sm_120, which
+   build on x86-64 with `-ftree-vectorize`; WOOF-ArWen is float32 on sm_120, which
    **flushes float32 subnormals to zero in all arithmetic** and cannot be
    made not to. Divergence in a chaotic convective flow is expected and is
    not by itself evidence of a port defect.
 3. **The Thompson lookup tables are not byte-identical.** WRF computes
    `freezeH2O.dat`, `qr_acr_qg_V4.dat` and `qr_acr_qsV2.dat` at first run
    from its own compiled source; the values depend on the optimization flags.
-   WOOF ships tables built with `-O2 -fno-tree-vectorize` (the flag its
+   WOOF-ArWen ships tables built with `-O2 -fno-tree-vectorize` (the flag its
    column oracle pins); a stock WRF build uses `-O2 -ftree-vectorize
    -funroll-loops` and produces *different* files. §4 measures how much that
    alone is worth by running WRF both ways.
@@ -129,11 +129,11 @@ and the aerosol initial condition, which both models synthesise from the same
    here is evidence about the scheme's forecast behaviour in this regime and
    is not a general licence.
 5. **No observations are involved.** Nothing here says either model is
-   *right*. It says whether WOOF's mp=28 does what WRF's mp=28 does.
+   *right*. It says whether WOOF-ArWen's mp=28 does what WRF's mp=28 does.
 
 ## 4. The design: difference-in-differences, with two floors
 
-The quantity of interest is not "does WOOF's trajectory equal WRF's", at
+The quantity of interest is not "does WOOF-ArWen's trajectory equal WRF's", at
 2 km resolution in deep convection, no two distinct implementations hold a
 trajectory for two hours, and reporting their divergence would measure
 chaos, not the port. The quantity of interest is the **aerosol scheme's
@@ -148,15 +148,15 @@ Six runs, one initial condition per microphysics option:
 | `wrf-vec-mp28` | WRF v4.6.1 | same | 28 |
 | `wrf-novec-mp08` | WRF v4.6.1 | identical source, `-O2 -fno-tree-vectorize` | 8 |
 | `wrf-novec-mp28` | WRF v4.6.1 | same | 28 |
-| `arwen-mp08` | WOOF | CUDA / sm_120, FP32 | 8 |
-| `arwen-mp28` | WOOF | same | 28 |
+| `arwen-mp08` | WOOF-ArWen | CUDA / sm_120, FP32 | 8 |
+| `arwen-mp28` | WOOF-ArWen | same | 28 |
 
 This yields three quantities per metric `M` and time `t`:
 
-* **the signature** `Δ_X(M,t) = M_28(X,t) − M_8(X,t)` for `X ∈ {WRF, WOOF}`,
+* **the signature** `Δ_X(M,t) = M_28(X,t) − M_8(X,t)` for `X ∈ {WRF, WOOF-ArWen}`,
   what the aerosol scheme does to the forecast, in each model;
-* **the implementation floor** `F(M,t) = |M_8(WOOF,t) − M_8(WRF,t)|`: how
-  far apart the two models are on a scheme WOOF is already
+* **the implementation floor** `F(M,t) = |M_8(WOOF-ArWen,t) − M_8(WRF,t)|`: how
+  far apart the two models are on a scheme WOOF-ArWen is already
   `wrf-matched-run` on. Nothing about mp=28 can be demanded tighter than
   this;
 * **WRF's own ambiguity** `V(M,t) = |M(WRF-vec,t) − M(WRF-novec,t)|`: how
@@ -207,7 +207,7 @@ default, no new maturity tier) with this document populating
   disagreement on mp=8 at the same time. mp=28 shares the dycore with mp=8;
   a much larger disagreement is the microphysics and nothing else.
 * **V4: bounded and finite.** No non-finite value in any field of either
-  WOOF run; `nwfa` and `nifa` stay strictly inside WRF's terminal clamp band
+  WOOF-ArWen run; `nwfa` and `nifa` stay strictly inside WRF's terminal clamp band
   and show **no monotone depletion trend** (with periodic boundaries there is
   no sink but activation and scavenging, so a depletion trend would be a
   conservation defect).
@@ -225,7 +225,7 @@ document is the receipt.
 was made before `ideal.exe` had been run once at the case's real size.*
 
 **Scope correction, 2026-10-02.** The frozen design above describes the
-implementation and assumptions at registration. Since then WOOF has added
+implementation and assumptions at registration. Since then WOOF-ArWen has added
 WRF's monthly WIF aerosol climatology, specified-boundary supply of `nwfa` and
 `nifa`, and parent-to-child transport of those fields. A specified run without
 the dataset is refused unless the synthetic source is deliberately selected.
@@ -268,7 +268,7 @@ lane and are unchanged.
 
 `CCN_ACTIVATE.BIN` in WRF's `run/` is
 `f2b8d3916560f9046f89f8ac5f32c5292a1800498fd75301e422f147c82a3dbd`: the
-byte-identical file WOOF now ships, and the hash its loader pins.
+byte-identical file WOOF-ArWen now ships, and the hash its loader pins.
 
 **The Thompson lookup tables are build-dependent, and all three sets differ.**
 WRF computes `freezeH2O.dat`, `qr_acr_qg_V4.dat` and `qr_acr_qsV2.dat` at
@@ -278,29 +278,29 @@ first run from its own compiled source:
 |---|---|---|---|
 | build A | `c7a01fa7…` | `441bd836…` | `910fb31d…` |
 | build B | `a054a3a4…` | `bcef0ef3…` | `5e7438b6…` |
-| WOOF (pinned) | `c235d1ce…` | `89b77985…` | `47350be2…` |
+| WOOF-ArWen (pinned) | `c235d1ce…` | `89b77985…` | `47350be2…` |
 
 Three distinct table sets from the same physics source. Each model used its
 own throughout; no table was moved between them. This is a real term in the
 comparison and it is the reason build B exists.
 
-**WOOF.** Branch `development branch` at the design commit,
+**WOOF-ArWen.** Branch `development branch` at the design commit,
 CUDA/CuPy 14.1.1, Python 3.12.13, NVIDIA GeForce RTX 5090 (sm_120, no ECC).
 
 **Cost.** Each 600-step forecast: WRF build A 425 s (mp=8) / 490 s (mp=28)
-on one core; build B 700 s / 810 s. WOOF 24.0 s (mp=8) / 30.6 s (mp=28) on
+on one core; build B 700 s / 810 s. WOOF-ArWen 24.0 s (mp=8) / 30.6 s (mp=28) on
 one GPU. Everything in this document is under two hours of one node.
 
 ## 8. Screens that must pass before any number is read
 
-**Dual-run byte comparison (the 5090 has no ECC).** Every WOOF
+**Dual-run byte comparison (the 5090 has no ECC).** Every WOOF-ArWen
 configuration was run twice into separate directories. All 13 frames of both
 mp=8 runs and all 13 frames of both mp=28 runs are **byte-identical across
 every field**. No silent corruption.
 
 **t = 0 agreement, exactly zero in ten fields of thirteen, and 1e-8 in the
 other three, across the hydrometeor mixing ratios and the wind field this
-case integrates.** The normalised RMS difference between WOOF's t = 0
+case integrates.** The normalised RMS difference between WOOF-ArWen's t = 0
 read-back and WRF's state, read out of the comparison receipt rather than
 asserted, and re-measured per element under the certified ULP definition
 by the full-carrier digest over the successor gate's staged pair, where the
@@ -325,14 +325,14 @@ Both mechanisms are in `tools/mp28_matched/run_arwen.py` and neither is a
 transcription of WRF's initializer sneaking back in:
 
 * **`T`** is the only field that is split and recombined. WRF stores
-  `theta − 300`; WOOF stores an absolute base `thb` and a perturbation, so
+  `theta − 300`; WOOF-ArWen stores an absolute base `thb` and a perturbation, so
   `build_state` forms `thp = T + 300 − thb` and the frame writer forms
   `total_theta() − 300`. That round trip is exact in real arithmetic and
   costs one float32 rounding in each direction. It is identical for mp=8 and
   mp=28, which is why the number is the same in both columns.
 * **`QNWFA`/`QNIFA`** are read straight across from `wrfinput_d01`, and are
   then *overwritten*, in both models, by `thompson_init`'s synthetic profile:
-  WOOF's `microphysics_init_receipt` is
+  WOOF-ArWen's `microphysics_init_receipt` is
   `{'ccn': True, 'in': True}` (§8, and `evidence/arwen-mp28-a-run.json`).
   So what is being compared at t = 0 is not a copy against its source, it is
   **CUDA's evaluation of WRF's analytic CCN/IN profile against gfortran's**.
@@ -345,10 +345,10 @@ conclusion below. Publishing an exactness the receipt does not record would
 have been the kind of claim this document exists to avoid.
 
 The substance of §2.1 stands: the two models start from the same numbers to
-float32 storage in every field WOOF reads directly, and to float32 rounding
+float32 storage in every field WOOF-ArWen reads directly, and to float32 rounding
 in the three it does not.
 
-**The aerosol profile installed itself.** WOOF's
+**The aerosol profile installed itself.** WOOF-ArWen's
 `microphysics_init_receipt` is `{'ccn': True, 'in': True}` and the domain
 enters with mean `nwfa` = 5.5028e+07 kg⁻¹, peak 1.338e+08, mean `nifa` =
 5.4930e+05, i.e. WRF's synthetic `thompson_init` profile, not zeros and not
@@ -356,7 +356,7 @@ the clamp floors.
 
 ## 9. The verdict, as declared
 
-| condition | WOOF vs WRF (build A) | **CONTROL: WRF build B vs build A** |
+| condition | WOOF-ArWen vs WRF (build A) | **CONTROL: WRF build B vs build A** |
 |---|---|---|
 | **V1** sign agreement | **PASS**, 43/47 = 91.5% (threshold 90%) | PASS, 108/109 = 99.1% |
 | **V2** floor-calibrated magnitude | **PASS**, 9/9 rows | PASS, 9/9 rows |
@@ -378,16 +378,16 @@ declared covers M1–M4 *and* M8, which is 197 rows here (111 scalar M1–M4
 rows plus 86 M8 field-difference rows) and 195 in the control. Counted over
 all of them, the **median** mp28/mp8 disagreement ratio is **0.691** and
 **190 of 197** are ≤ 3; the control's median is **0.621** and 178 of 195 are
-≤ 3. Counted over the 111 scalar rows alone the WOOF median is **0.628**
+≤ 3. Counted over the 111 scalar rows alone the WOOF-ArWen median is **0.628**
 with 104 of 111 ≤ 3, against a control scalar median of **0.429**
 with 93 of 109 ≤ 3. Every one of the seven failures is a scalar row; not one M8 row
-fails. (An earlier draft printed the WOOF figures on the scalar subset
+fails. (An earlier draft printed the WOOF-ArWen figures on the scalar subset
 beside control figures on the full set: two different denominators in one
 sentence. Both are given here, matched.) In other words
-the median ratio is below one in both the WOOF comparison and the WRF
+the median ratio is below one in both the WOOF-ArWen comparison and the WRF
 control. Most rows are in the decorrelated regime; this ratio summary does
 not establish better agreement or overturn the failed worst-row condition.
-The seven WOOF failures are `rainnc_max`/`rainnc_sum` at t = 600 s (where mp=8
+The seven WOOF-ArWen failures are `rainnc_max`/`rainnc_sum` at t = 600 s (where mp=8
 rain is 5.8e-11 mm, so the ratio is a division by noise), `rainnc` at
 t = 1200 s (3.4–3.5×), `qi_max` at 4200 s (5.1×), `qs_max` at 5400 s (4.9×)
 and `w_max` at 5400 s (9.3×).
@@ -396,7 +396,7 @@ and `w_max` at 5400 s (9.3×).
 
 M8, the normalised RMS field difference `||A − W||₂ / ||W||₂`:
 
-| t (s) | WOOF−WRF `W` mp8 \| mp28 | WRF−WRF `W` mp8 \| mp28 | WOOF−WRF `QVAPOR` mp8 \| mp28 | WRF−WRF `QVAPOR` mp8 \| mp28 |
+| t (s) | WOOF-ArWen−WRF `W` mp8 \| mp28 | WRF−WRF `W` mp8 \| mp28 | WOOF-ArWen−WRF `QVAPOR` mp8 \| mp28 | WRF−WRF `QVAPOR` mp8 \| mp28 |
 |---|---|---|---|---|
 | 0 | 0.0000 \| 0.0000 | 0.0000 \| 0.0000 | 0.000000 \| 0.000000 | 0.000000 \| 0.000000 |
 | 600 | 0.0317 \| 0.0316 | 0.0010 \| 0.0010 | 0.000157 \| 0.000157 | 0.000002 \| 0.000002 |
@@ -413,14 +413,14 @@ M8, the normalised RMS field difference `||A − W||₂ / ||W||₂`:
 | 7200 | 3.2606 \| 1.5908 | 0.0460 \| 0.3109 | 0.014328 \| 0.014805 | 0.000356 \| 0.002290 |
 
 All thirteen history times, uncurated. An earlier draft printed ten of them;
-the three that were missing (4200, 6000, 6600) are the ones where WOOF's
+the three that were missing (4200, 6000, 6600) are the ones where WOOF-ArWen's
 mp=8 `W` difference is largest (5.05 at t = 6000 s) so their absence
 flattered the table. They are the same story the surrounding text tells: past
 saturation the number is a sample, not a measurement.
 
 Read this as a perturbation-growth experiment. A `W` difference of RMS ≳ 1
 means the two fields are unrelated: the updraft is in a different place.
-WOOF's initial difference from WRF (3.2% in `W` at t = 600 s) is about 30×
+WOOF-ArWen's initial difference from WRF (3.2% in `W` at t = 600 s) is about 30×
 WRF's own compiler-flag difference (0.10%), and it saturates by t = 3600 s.
 WRF's own perturbation, 30× smaller, has not saturated by t = 7200 s. Both
 grow with an e-folding time of order 10–15 minutes, which is what an
@@ -429,7 +429,7 @@ unsheared 2 km deep-convection case does.
 **The consequence for the metrics: after roughly t = 2400 s the two models
 are integrating different realisations of the same statistical problem, and
 every scalar comparison past that point is a comparison of two samples, not
-of two answers.** That shows directly in the floor: the WOOF–WRF mp=8
+of two answers.** That shows directly in the floor: the WOOF-ArWen–WRF mp=8
 disagreement in domain-total rainfall grows from 0.02 mm at t = 1200 s to
 4.9 mm at 1800 s, 226 mm at 3600 s and 656 mm at 5400 s, while WRF's own
 flag-to-flag disagreement in the same quantity is 3.6e-05, 0.056, 1.53 and
@@ -448,7 +448,7 @@ chaotic:
   | | t = 0 | t = 7200 s |
   |---|---|---|
   | WRF (build A) | 55028345.65 | 55087825.35 |
-  | WOOF | 55028345.45 | 55079394.66 |
+  | WOOF-ArWen | 55028345.45 | 55079394.66 |
 
   The two models agree on the domain aerosol budget to **1.530e-04 relative
   at t = 7200 s** (`nifa`, on the same basis, to 2.451e-04), and both show
@@ -462,7 +462,7 @@ chaotic:
 * **The sign of the aerosol effect.** Both models make mp=28 rain *more*
   than mp=8 at every output time, and both make mp=28 hold more cloud water
   aloft. WRF's Δ(domain-total rain) at t = 1800 s is +1.427 mm against
-  WOOF's +2.090 mm: same sign, ratio 1.46, while the trajectories are
+  WOOF-ArWen's +2.090 mm: same sign, ratio 1.46, while the trajectories are
   still correlated.
 
 ## 11. Short-window paired test: a post-hoc addition, labelled as such
@@ -473,13 +473,13 @@ regime where "matched trajectory" can mean what it says. Both models are
 started from the **same mature WRF state at t = 1800 s** (every
 microphysical process fully active, condensate and ice present everywhere the
 storm is) and run 50 steps (600 s). WRF reaches that state by running
-continuously from t = 0 and beginning history output at t = 1800 s; WOOF
+continuously from t = 0 and beginning history output at t = 1800 s; WOOF-ArWen
 reads that history frame as its initial condition. The statistic (M8) and the
 condition applied to it (V3) are the pre-declared ones; only the window is
 new, and it was chosen after the long run had been read. That is disclosed
 rather than hidden.
 
-Normalised RMS field difference, WOOF vs WRF build A, `mp=8 | mp=28`:
+Normalised RMS field difference, WOOF-ArWen vs WRF build A, `mp=8 | mp=28`:
 
 | steps | t (s) | `W` | `T` | `QVAPOR` | `QCLOUD` | `QICE` | `QNWFA` | `QNIFA` |
 |---|---|---|---|---|---|---|---|---|
@@ -498,7 +498,7 @@ under the 3× threshold, and the two rows above 1.5 are both `QNRAIN`: rain
 number, the field the aerosol scheme does *not* touch and the one whose
 mp=8 norm is smallest.
 
-The short-window WOOF runs were duplicated like the long ones, and the
+The short-window WOOF-ArWen runs were duplicated like the long ones, and the
 byte comparison was made rather than assumed: `sw-arwen-mp08` against
 `sw-arwen-mp08-b` and `sw-arwen-mp28` against `sw-arwen-mp28-b`, 11 frame
 files each, SHA-256 per file, **11/11 identical in both configurations**.
@@ -528,10 +528,10 @@ Three things are worth saying about this table.
    by a handful of strong cells; a small displacement of one cell moves the
    RMS a long way. It is reported unmassaged.
 
-`U`, `V`, `PH` and `MU` are absent from this table because the WOOF frame
+`U`, `V`, `PH` and `MU` are absent from this table because the WOOF-ArWen frame
 writer does not dump them; that is a gap in the instrumentation, not a
 result, and it is the one thing a repeat of this test should fix first.
-`RAINNC` is excluded as meaningless here: WOOF's accumulator restarts at
+`RAINNC` is excluded as meaningless here: WOOF-ArWen's accumulator restarts at
 zero while WRF's carries 1800 s of rain.
 
 ## 12. Verdict
@@ -560,7 +560,7 @@ bounds the *implementation floor*, and the short window measures the *port*.
 | V1 sign agreement | **43/47 = 91.5%** (control 99.1%); all four disagreements sit at the floor |
 | V2 floor-calibrated magnitude | **9/9 pass** |
 | V4 bounded, finite, no depletion | **0** non-finite, **0** bound violations, `nwfa`/`nifa` trending gently *up* |
-| domain aerosol budget over 2 h | WOOF and WRF agree to **1.530e-04 relative** |
+| domain aerosol budget over 2 h | WOOF-ArWen and WRF agree to **1.530e-04 relative** |
 | V3 on the short window (pre-decorrelation) | **PASS**, worst ratio **2.195** |
 | mp=28 vs mp=8 divergence rate | indistinguishable: 1.797e-2 vs 1.800e-2 in `W` at 5 steps |
 | median mp28/mp8 disagreement ratio, long run | **0.691** over all 197 V3 rows (**0.628** over the 111 scalar rows), against the control median 0.621; most rows are decorrelated, so a median below one is not evidence of better agreement |
@@ -577,7 +577,7 @@ published either way.
 
 ### What this establishes
 
-* WOOF's `mp_physics = 28` integrated on an idealized doubly periodic
+* WOOF-ArWen's `mp_physics = 28` integrated on an idealized doubly periodic
   warm-bubble domain, not real data, with
   transport of `nc`/`nwfa`/`nifa` and no boundary condition to hide behind,
   and it stayed finite, bounded and conservative for 600 steps.
@@ -628,7 +628,7 @@ distribution-relative successor both closed records prescribed,
 [`mp28-distribution-gate.md`](mp28-distribution-gate.md), ran under an
 owner-approved declaration and returned **HOLD** by its declared rule
 (its D1 median bound failed against the control on a newer toolchain,
-with every screen clean and WOOF's own distribution essentially
+with every screen clean and WOOF-ArWen's own distribution essentially
 unchanged). Per that declaration, §12's ship recommendation loses its
 short-window support: the post-hoc pass §12 leaned on has still never
 been converted into a pre-registered PASS, and that record now says so

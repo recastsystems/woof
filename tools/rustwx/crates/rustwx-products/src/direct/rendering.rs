@@ -45,6 +45,9 @@ pub(crate) fn direct_recipe_render_controls(
         || matches!(recipe.style, RenderStyle::WeatherCategorical)
     {
         (Some(LegendMode::Categories), None)
+    } else if matches!(recipe.style, RenderStyle::WeatherQpf) {
+        // One listed colour per band (`crate::qpf::qpf_inches_scale`).
+        (Some(crate::qpf::qpf_legend_mode()), None)
     } else if matches!(recipe.style, RenderStyle::WeatherVisibility) {
         (Some(LegendMode::Thresholds), Some(200.0))
     } else if matches!(recipe.style, RenderStyle::AirQualityPm25 | RenderStyle::AirQualityOzone | RenderStyle::WeatherSnowfall | RenderStyle::WeatherSnowDepthChange) || filled_selector.field == CanonicalField::SnowfallLiquidEquivalent {
@@ -212,6 +215,7 @@ pub(super) fn build_render_request(
     } else {
         request.contours = build_contour_layers(recipe, extracted, contour_layer_cache);
     }
+    request.contour_fills = build_contour_fill_layers(recipe, extracted);
     timing.contour_prepare_ms += contour_prepare_start.elapsed().as_millis();
     let barb_prepare_start = Instant::now();
     request.wind_streamlines = build_streamline_layers(
@@ -628,7 +632,9 @@ pub(crate) fn direct_fill_unit_conversion(
     } else if matches!(
         selector.field,
         CanonicalField::WindSpeed | CanonicalField::WindGust
-    ) {
+    ) || (recipe.style == RenderStyle::WeatherWindComponent
+        && matches!(selector.field, CanonicalField::UWind | CanonicalField::VWind))
+    {
         (UnitConvert::MsToKnots, Some("kt"))
     } else if selector.field == CanonicalField::TotalPrecipitation {
         if matches!(recipe.style, RenderStyle::WeatherQpf) {
@@ -717,9 +723,16 @@ pub(super) fn scale_for_filled_selector_in(
         (_, CanonicalField::WindSpeed, VerticalSelector::HeightAboveGroundMeters(10),
          ColorScale::Discrete(discrete)) => ColorScale::Discrete(
             crate::plot_design::fit_surface_wind_scale(discrete, values)),
-        (RenderStyle::WeatherTemperature, CanonicalField::Temperature, VerticalSelector::IsobaricHpa(_),
-         ColorScale::Discrete(discrete)) => ColorScale::Discrete(
-            crate::plot_design::fit_isobaric_temperature_scale(discrete, values)),
+        // A temperature fill's fixed ladder is fitted to its field by the
+        // fitted-scale table (data/fitted-scales.json): isobaric levels move
+        // onto a field outside the ladder; 2 m temperature on a small grid
+        // that spans only a band or two gets a finer ladder cut for it.
+        (RenderStyle::WeatherTemperature, _, _, ColorScale::Discrete(discrete)) => {
+            match crate::plot_design::fitted_scale_row(filled_selector) {
+                Some(row) => ColorScale::Discrete(crate::plot_design::fit_scale_to_field(discrete, values, row)),
+                None => ColorScale::Discrete(discrete),
+            }
+        }
         (_, _, _, scale) => scale,
     }
 }
@@ -834,6 +847,23 @@ fn build_contour_layers(
     )
     .into_iter()
     .collect()
+}
+
+/// The translucent fill under the recipe's contour overlay, where the
+/// overlay field has one (the UH overlays on reflectivity).
+fn build_contour_fill_layers(
+    recipe: &PlotRecipe,
+    extracted: &HashMap<FieldSelector, SelectedField2D>,
+) -> Vec<rustwx_render::ContourFillLayer> {
+    let Some(selector) = recipe.contours.as_ref().and_then(|spec| spec.selector) else {
+        return Vec::new();
+    };
+    let Some(field) = extracted.get(&selector) else {
+        return Vec::new();
+    };
+    crate::plot_design::operational_contour_fill_for_values(selector, &field.values)
+        .into_iter()
+        .collect()
 }
 
 fn cached_contour_layer(

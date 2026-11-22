@@ -4,7 +4,7 @@
 diagnosed PBLH, so a parent running ``bl_pbl_physics = 0`` has nothing
 to define it with and the generator refuses.  That is the mechanism's
 applicability boundary and it is ratified as G4 in
-``docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md``: ON at
+``docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md``: ON at
 the first LES domain under a PARAMETERIZED-turbulence parent, OFF below
 it, because a PBL-off parent is itself LES and its RESOLVED eddies
 already ARE the child's inflow turbulence.

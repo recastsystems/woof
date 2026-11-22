@@ -1,4 +1,4 @@
-"""The four legs, through WOOF's OWN single-domain run loop.
+"""The four legs, through WOOF-ArWen's OWN single-domain run loop.
 
 ``tilestream/test_restart_gate.py`` proved that a restart can be written from
 a pinned host store and read back into one: it drives ``run_tiled`` directly
@@ -181,7 +181,7 @@ def frugal_boundaries(cfg, *, seconds=test_join.BDY_SECONDS, seeds=(SEED,
     them, which at these extents is two complete 229-carrier domains resident
     at the same time -- 5.1 GiB at 448^2 before the run has allocated
     anything.  :class:`~woof.ingest.lateral_bc.StateBoundaryFrames` is
-    WOOF's own one-state-at-a-time accumulator and is element-for-element
+    WOOF-ArWen's own one-state-at-a-time accumulator and is element-for-element
     exact against the all-at-once builder, so this is the same forcing at half
     the peak.
     """

@@ -1237,6 +1237,13 @@ def preprocess_land_surface_soil(
             fields, no_source_land=soil_no_source_land, soil_type=soil_type,
             landmask=landmask, lake_mask=lake_mask)
     scheme = int(sf_surface_physics)
+    # Observed snow where an analysis covers the domain (SNODAS over CONUS,
+    # woof/data/snow/snow-analysis.v1.json), before any scheme reconciles
+    # SNOW/SNOWH: every forcing measured started the April pack at 1-43 % of
+    # SNOTEL's snow water (woof/ingest/snow_analysis.py).
+    from woof.ingest.snow_analysis import apply_snow_analysis
+    fields, snow_receipt = apply_snow_analysis(
+        fields, context=land_state, landmask=landmask, lake_mask=lake_mask)
     deep_receipt = None
     from woof.ingest.deep_soil_donor import has_deep_donor
     if has_deep_donor(soil_layer_contract):
@@ -1267,6 +1274,7 @@ def preprocess_land_surface_soil(
         receipt=land_receipt, landmask=landmask, lake_mask=lake_mask)
     if deep_receipt is not None:
         land_receipt = {**land_receipt, "deep_soil": deep_receipt}
+    land_receipt = {**land_receipt, "snow": snow_receipt}
     import dataclasses
     return dataclasses.replace(state, land_state=land_receipt)
 

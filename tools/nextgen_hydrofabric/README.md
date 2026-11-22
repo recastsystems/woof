@@ -49,7 +49,7 @@ topological rank wins deterministically. These are channel cells, not filled
 catchment labels.
 No DEM, terrain parameters or synthetic parent meteorology is generated here.
 
-For a prepared WOOF forecast, coupled-driver's `ParentGeometry` retains the
+For a prepared WOOF-ArWen forecast, coupled-driver's `ParentGeometry` retains the
 **executed** `ProjectedGrid`. During setup use:
 
 ```python

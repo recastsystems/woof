@@ -14,10 +14,17 @@ unavailable products in the standard-set manifest instead of inventing a field.
 For a strict request for just these maps, use the render door:
 
 ```sh
-woof hex render --history RUN/cuda-history.*.nc --mesh GRID.nc --init INIT.nc \
+woof hex render --history RUN/history.*.nc --mesh GRID.nc --init INIT.nc \
+  --simulation-start START \
   --window region:35,-130,6000,4000 --products ivt_column,ivt_vectors,isotherm_height_0c,925mb_height_winds,850mb_height_winds,250mb_height_winds,300mb_height_winds \
   --series --out PICTURES
 ```
+
+START is the run's start, `YYYY-MM-DD_HH:MM:SS`. Without it every frame is
+filed as lead 0, so the frames' pictures replace one another and one frame's
+set is kept. A forecast on the default MPAS route writes
+`history.*.nc`; on the WOOF-ArWen route (`--physics-suite arwen_mpas_column`) the
+frames are `RUN/cuda-history.*.nc`.
 
 IVT is the pressure integral of specific humidity times the earth-relative
 wind vector, divided by standard gravity (9.80665 m s-2). The renderer converts

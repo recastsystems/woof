@@ -666,13 +666,26 @@ _ERA5_ARCHIVE = ArchiveWindow(
      "https://confluence.ecmwf.int/spaces/CKB/pages/76414402/ERA5+data+documentation"),
     user_note="Recent dates are preliminary ERA5T; their publication time can vary.",
 )
-_GLOBAL_PGRB2_ARCHIVE = ArchiveWindow(
-    "s3", "2021-03-22T12",
-    "The current /atmos/ object layout starts at the 2021-03-22 12Z "
-    "implementation. Older archive objects use different paths; this is "
-    "a transport-layout boundary, not the start of the scientific record.",
-    ("https://www.emc.ncep.noaa.gov/emc/pages/numerical_forecast_systems/gfs/implementations.php",),
-)
+def _layout_windows(source: str) -> tuple[ArchiveWindow, ...]:
+    """One date-guidance window per host, from the dated layout table.
+
+    The oldest declared layout of each host is its first day, so the
+    calendar and the fetch read the same rows
+    (``rw-wps-archive-layouts.v1.json``).
+    """
+
+    rows = fetch_endpoints.archive_rows(source)
+    oldest = {}
+    for row in rows:
+        held = oldest.get(row["transport"])
+        if held is None or row["record_start"] < held["record_start"]:
+            oldest[row["transport"]] = row
+    return tuple(ArchiveWindow(
+        row["transport"], row["record_start"], row["why"],
+        tuple(row["documentation"]), user_note=row["license"])
+        for row in oldest.values())
+
+
 _HRRR_NATIVE_ARCHIVE = ArchiveWindow(
     "s3", "2014-07-30T18",
     "The archive's first day has the native and pressure companion f00 "
@@ -1249,12 +1262,7 @@ _ADAPTERS = (
         forecast_time_owner="gfs_forecast_hours",
         seed_fields=('air_pressure', 'air_temperature', 'eastward_wind',
                      'northward_wind', 'mean_sea_level_pressure'),
-        archives=tuple(ArchiveWindow(
-            row["transport"], row["record_start"], row["why"],
-            tuple(row["documentation"]), user_note=row["license"])
-            for row in fetch_endpoints.archive_rows("gfs")
-            if row is next(r for r in fetch_endpoints.archive_rows("gfs")
-                           if r["transport"] == row["transport"])),
+        archives=_layout_windows("gfs"),
         name="GFS (global, 0.25 degree)", aliases=("gfs-0p25", "gfs-0.25"),
         default_product="pgrb2.0p25", max_hour=384,
         upstream_ingest="full",
@@ -1348,7 +1356,7 @@ _ADAPTERS = (
         "gdas",
         record="analysis",
         forecast_time_owner="gdas_forecast_hours",
-        archives=(_GLOBAL_PGRB2_ARCHIVE,),
+        archives=_layout_windows("gdas"),
         name="GDAS analysis (0.25 degree)", aliases=("gdas-0p25", "gdas-0.25"),
         file_family="GRIB2",
         decoder=(
@@ -1917,7 +1925,7 @@ _ADAPTERS = (
             "Any NVIDIA Earth-2 model run through Earth2Studio whose output "
             "carries the 13-level z/t/u/v/q vocabulary -- FourCastNet 3, SFNO, "
             "Pangu, Aurora, FengWu, GraphCast, AIFS -- as the initial and "
-            "lateral boundary source of a WOOF domain, read straight from "
+            "lateral boundary source of a WOOF-ArWen domain, read straight from "
             "the file Earth2Studio's NetCDF4Backend writes (no reshaping).  "
             "Which models qualify, their weights and what the others need is "
             "woof/authorities/earth2-models.v1.json; `woof fetch --source "
@@ -2502,7 +2510,7 @@ _ADAPTERS = (
         upstream_ingest="declarative_mapping_v1_over_packaged_profile",
         status=AdapterStatus.RUNNABLE_NOT_CERTIFIED,
         field_mapping="packaged-rw-wps-hex-history-netcdf-v1",
-        level_mapping="55-mpas-model-level-to-explicit-wrf-eta-v1",
+        level_mapping="frame-mpas-model-levels-to-explicit-wrf-eta-v1",
         cadence_mapping="mapping-declared-uniform-series",
         stock_wrf_gate="live-unchanged-stock-wrf-gate-pending",
         runnable=True,
@@ -2522,12 +2530,14 @@ _ADAPTERS = (
         notes=(
             "A woof hex run (any mesh: the 60 km global row, a regional "
             "mesh, an ensemble member) as the initial and lateral boundary "
-            "source of a WOOF domain anywhere its export window covers. "
+            "source of a WOOF-ArWen domain anywhere its export window covers. "
             "Export the run with `woof hex export RUN --field-set full "
             "--window region-latlon:CLAT,CLON,W_KM,H_KM` (or global-mesh): "
             "those frames carry CF 1-D lat/lon/Time/level coordinates and "
             "the mass-grid earth winds this profile reads.  The mapping "
-            "decodes the 55 MPAS model levels directly (full pressure, "
+            "decodes the parent's own MPAS model levels directly, as many "
+            "as the frame carries (55 on the default suites, 59 on hrrrv5; "
+            "full pressure, "
             "heights from the init zgrid, T from theta with MPAS's kappa, "
             "q from the mixing ratio) with no pressure-level step.  SST is "
             "the water skin temperature, a named policy: hex carries no "

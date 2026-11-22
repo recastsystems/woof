@@ -182,7 +182,7 @@ what every in-tree reader uses.
 ### On Windows: read long paths
 
 Three folders plus a filename is around seventy characters, so a deep
-enough case root still passes the classic 260-character ceiling. WOOF
+enough case root still passes the classic 260-character ceiling. WOOF-ArWen
 writes those frames into the layout anyway rather than dropping them
 flat at the root, using the extended-length spelling
 (`woof.render_layout.fs_path`); `iter_rendered` reads them back.
@@ -434,7 +434,7 @@ leads:
   four.  A WRF history written with `nwp_diagnostics = 1` stores
   `WSPD10MAX`, the 10 m wind maximum reset at each write in the same
   way, and the wind windows fold it as they fold `UP_HELI_MAX`.  A
-  history without it, which is every WOOF run, gives the 10 m wind
+  history without it, which is every WOOF-ArWen run, gives the 10 m wind
   from `U10` and `V10`, instants, so the fold is the largest of the
   stored instants, labelled a lower bound.  Either way the frames must
   be evenly spaced from the window's start, and the frame at the start
@@ -453,7 +453,7 @@ and its windows on each whole hour.  Rendering only the whole-hour files
 of a sub-hourly run puts the store back on the whole-hour axis, where
 each maximum holds only the last interval before the hour; the strategy
 note on those windows says so.  On an hourly history with no stored
-10 m wind maximum (no `WSPD10MAX`, which no WOOF history writes) the
+10 m wind maximum (no `WSPD10MAX`, which no WOOF-ArWen history writes) the
 10 m wind maxima fold one top-of-hour speed per hour, so those pictures
 are titled as the largest hourly snapshot, not as a maximum, and their
 catalog detail says why.  A window that has the stored maximum at only

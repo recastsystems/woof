@@ -161,13 +161,13 @@ def test_every_radar_consumer_reads_the_regime_the_odim_gridder_writes():
     pack, but the reflectivity adapter and the heating builder each held an
     allow-list without it, so a European volume gridded with its clear air
     was refused by the filter, the precipitation analysis and the heating
-    builder alike and the documented European route ended at the file.  One
-    list now, owned by the adapter."""
-    from woof.da import obs_radar, radar_tten
+    builder alike and the documented European route ended at the file.  The
+    adapter went with the local data assimilation in gpuwm 3.0.3; the heating
+    builder reads exactly the regimes the superob writes."""
+    from woof.da import radar_tten
 
-    assert CLEAR_AIR_SOURCE_ODIM in obs_radar.CLEAR_AIR_SOURCES
-    assert set(obs_radar.CLEAR_AIR_SOURCES) == set(CLEAR_AIR_SOURCES)
-    assert radar_tten._CLEAR_AIR_SOURCES is obs_radar.CLEAR_AIR_SOURCES
+    assert CLEAR_AIR_SOURCE_ODIM in radar_tten._CLEAR_AIR_SOURCES
+    assert set(radar_tten._CLEAR_AIR_SOURCES) == set(CLEAR_AIR_SOURCES)
 
 
 def test_the_regime_is_chosen_by_the_pack_not_by_the_caller(tmp_path):

@@ -127,7 +127,7 @@ def crop(src_path, dst_path, i0, i1, j0, j1, *, grid_id: int = 2) -> Path:
 
     with netCDF4.Dataset(src_path) as ds:
         dx, dy = float(ds.DX), float(ds.DY)
-        title = str(getattr(ds, "TITLE", "WOOF"))
+        title = str(getattr(ds, "TITLE", "WOOF-ArWen"))
     writer = WrfoutWriter(dst_path, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy,
                           title=title, global_attrs=attrs,
                           field_schema=fields, soil_layers=soil)

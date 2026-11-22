@@ -6,7 +6,7 @@ writes an order of magnitude more bytes than its 12 km parent at the same
 cadence, and most of them are three-dimensional volumes nobody on that run
 is going to open.
 
-WRF's answer is `iofields_filename`. WOOF's is the `[output]` table, and
+WRF's answer is `iofields_filename`. WOOF-ArWen's is the `[output]` table, and
 it is a **selection over the inventory the run already produces** rather
 than a second inventory of its own.
 
@@ -21,7 +21,7 @@ lands in the file, in the same order, with the same header.
 ## The default writes everything
 
 `[output]` absent (or `preset = "full"` with no drop list) writes
-exactly what every WOOF release before this one wrote: same inventory,
+exactly what every WOOF-ArWen release before this one wrote: same inventory,
 same variable order, same global attributes, byte for byte. Trimming is
 something you ask for; it is never something a default does to you.
 
@@ -135,7 +135,7 @@ reflectivity products, which is what the next section is about.
 
 ## What it costs you in pictures, said before the run
 
-WOOF owns the render product catalog, so it can answer "which plots does
+WOOF-ArWen owns the render product catalog, so it can answer "which plots does
 this selection cost me?" at **config resolution** rather than three hours
 later in an empty render directory. One warning per domain, naming the
 product and the variable:
@@ -247,7 +247,7 @@ $ woof render --list-products out/run-*/wrfout/wrfout_d02_0*
 
 ## Where the vocabulary comes from
 
-The names `[output]` accepts are the union of WOOF's wrfout schema
+The names `[output]` accepts are the union of WOOF-ArWen's wrfout schema
 tables, the Registry-transcribed physics history rows
 (`woof/io/wrf_output_schema.py`) plus the writer's own metadata table,
 so a physics scheme that adds a history field joins the vocabulary with

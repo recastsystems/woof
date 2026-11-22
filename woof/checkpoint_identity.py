@@ -58,6 +58,14 @@ CAMPAIGN_IMPLICIT_RUN_KEYS = {
     # bytes, and 1 binds.  Named breakage: with it always present every
     # checkpoint digest, echo and public document moved (2.9.10 pass 2).
     "ghg_input": 0,
+    # Noah-MP snow compaction: option 1 (WRF fixed C_bd) is what every
+    # earlier checkpoint and public document ran, so it is absent there;
+    # option 2 (published-description C_bd(T_air, p_sfc)) binds by name.
+    "opt_snow_compact": 1,
+    # The lateral-boundary hydrometeor envelope (fix/door-10): 25 km is the
+    # constant every earlier run served with, so it is absent there; any
+    # other value (0 serves the linear table) binds.
+    "lbc_hydrometeor_envelope_km": 25.0,
     "cu_rad_feedback": False,
     "rrtmg_aer3_source": "operational_fork",
     # Disabled moving frames preserve all earlier document/restart identities.
@@ -69,6 +77,19 @@ CAMPAIGN_IMPLICIT_RUN_KEYS = {
     "sgfdda_interval_m": 180,
     "sgfdda_inname": "sgfdda_d<domain>",
     "io_form_sgfdda": 2,
+    # WRF v4.8.0 kim_tofd (revised MM5 form drag), off: absent, so every
+    # earlier header and document keeps its bytes; on, it binds.
+    "kim_tofd": False,
+    "tofd_factor": 0.003,
+    # Noah-MP scale-aware ground SCF: the Niu-Yang
+    # table default is absent, so every earlier checkpoint resumes and every
+    # public document keeps its bytes; opt_scf = 2 binds.
+    "opt_scf": 1,
+    # Noah-MP snow thermal conductivity: option 1
+    # (Yen 1965) is what every earlier checkpoint ran, so it is absent there.
+    # Named breakage: always present, every checkpoint digest, echo and public
+    # document moved (3.0.0 fold, test_chemistry_off_emitted_config_bytes...).
+    "opt_tksno": 1,
 }
 
 #: development branch: prognostic sea ice and its parameters are read only
@@ -117,13 +138,51 @@ def drop_capability_campaign_keys(values: dict) -> None:
         for name in ("snicar_snowshape_opt", "snicar_snowbc_intmix",
                      "snicar_snowdust_intmix", "snicar_bc_ppb",
                      "snicar_dust_ppm", "snicar_ice_density",
-                     "snicar_bubble_radius_um"):
+                     "snicar_bubble_radius_um", "snicar_fresh_grain_opt",
+                     "snicar_ice_ri_opt", "snicar_dust_optics_opt",
+                     "snicar_solarspec_opt", "snicar_bandnumber_opt",
+                     "snicar_solver_opt"):
             values.pop(name, None)
+    # The two optical-set controls bind only when selected: at their
+    # defaults every earlier option-3 checkpoint keeps its identity.
+    for name, default in (("snicar_ice_ri_opt", 2), ("snicar_dust_optics_opt", 0)):
+        if values.get(name, default) == default:
+            values.pop(name, None)
+    # The incident-spectrum controls joined after opt_alb=3 checkpoints
+    # existed; at their defaults (packaged G173, 480 bands) they are absent,
+    # so those checkpoints keep their configuration hash.
+    for name, default in (("snicar_solarspec_opt", 0), ("snicar_bandnumber_opt", 2)):
+        if values.get(name, default) == default:
+            values.pop(name, None)
+    if (int(values.get("sf_surface_physics", 0) or 0) != 4
+            or int(values.get("opt_alb", 2)) != 3
+            or int(values.get("snicar_lap_opt", 0) or 0) == 0):
+        # clean-snicar-lap: absent unless the LAP option is selected.
+        for name in ("snicar_lap_opt", "snicar_lap_table", "snicar_lap_series"):
+            values.pop(name, None)
+    # The Noah-MP snow-layer cold-start profile (tksno-winter) is read only by
+    # Noah-MP; 1 (layers at the skin) is what every earlier header ran, so it is
+    # absent there and while Noah-MP is off (io/restart.py ECHO_ABSENT_RUN_VALUES).
+    if (int(values.get("sf_surface_physics", 0) or 0) != 4
+            or int(values.get("noahmp_snow_tinit", 1) or 1) == 1):
+        values.pop("noahmp_snow_tinit", None)
+    # clean-snicar-layers: the solver choice binds only when selected; at
+    # its default it is absent, so opt_alb=3 identities keep their bytes.
+    if values.get("snicar_solver_opt", 1) == 1:
+        values.pop("snicar_solver_opt", None)
     drop_unread_mp_switches(values)
+    # The Noah-MP wetland option (Zhang 2022) did not exist in earlier
+    # configurations; off, keep every identity unchanged.
+    if not values.get("noahmp_wetland", 0):
+        values.pop("noahmp_wetland", None)
     # Only NTU reads its aerosol population selector. Earlier non-NTU
     # checkpoint and experiment identities contain no such key.
     if int(values.get("mp_physics", 0) or 0) != 56:
         values.pop("ntu_ccnty", None)
+    # The NTU/UDM source generations: absent while their scheme is off and
+    # at wrf_471, which every earlier header ran (woof.mp_generations).
+    from woof.mp_generations import drop_inactive as _drop_mp_generations
+    _drop_mp_generations(values)
     if int(values.get("mp_physics", 0) or 0) != 40 and values.get("aercu_opt", 0) == 0:
         values.pop("aercu_opt", None)
     # The QNSE-only switch did not exist in earlier configurations.
@@ -143,8 +202,15 @@ def drop_capability_campaign_keys(values: dict) -> None:
     drop_inert_afwa(values)
     # Newly admitted RUN5 alone reads WTDDT. Preserve earlier default
     # experiment and checkpoint bytes while binding every active cadence.
-    if int(values.get("sf_surface_physics",0)) != 4 or int(values.get("opt_run",3)) != 5:
+    from woof.core.noahmp_runoff_split import carrier_run as _runoff_carrier_run
+    if int(values.get("sf_surface_physics",0)) != 4 or _runoff_carrier_run(int(values.get("opt_run",3)),int(values.get("opt_runsub",0) or 0)) != 5:
         values.pop("wtddt",None)
+    # The opt_runsrf/opt_runsub split controls exist only for a split pair;
+    # RunConfig normalizes a stock pair to 0/0, which every earlier
+    # checkpoint and public experiment document already means.
+    for name in ("opt_runsrf", "opt_runsub"):
+        if not values.get(name, 0):
+            values.pop(name, None)
     # Only Noah-MP's papers-based snow optics reads these controls. Keeping
     # them in an inactive identity refuses checkpoints written before the
     # controls existed and changes default public experiment documents.
@@ -153,8 +219,20 @@ def drop_capability_campaign_keys(values: dict) -> None:
         for name in ("snicar_snowshape_opt", "snicar_snowbc_intmix",
                      "snicar_snowdust_intmix", "snicar_bc_ppb",
                      "snicar_dust_ppm", "snicar_ice_density",
-                     "snicar_bubble_radius_um"):
+                     "snicar_bubble_radius_um", "snicar_fresh_grain_opt"):
             values.pop(name, None)
+    if (int(values.get("sf_surface_physics", 0) or 0) != 4
+            or int(values.get("opt_alb", 2)) != 3
+            or int(values.get("snicar_lap_opt", 0) or 0) == 0):
+        # clean-snicar-lap: absent unless the LAP option is selected.
+        for name in ("snicar_lap_opt", "snicar_lap_table", "snicar_lap_series"):
+            values.pop(name, None)
+    # The Noah-MP snow-layer cold-start profile (tksno-winter) is read only by
+    # Noah-MP; 1 (layers at the skin) is what every earlier header ran, so it is
+    # absent there and while Noah-MP is off (io/restart.py ECHO_ABSENT_RUN_VALUES).
+    if (int(values.get("sf_surface_physics", 0) or 0) != 4
+            or int(values.get("noahmp_snow_tinit", 1) or 1) == 1):
+        values.pop("noahmp_snow_tinit", None)
     for name, default in CAMPAIGN_IMPLICIT_RUN_KEYS.items():
         if values.get(name, default) == default:
             values.pop(name, None)

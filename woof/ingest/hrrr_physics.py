@@ -428,7 +428,8 @@ def _seed_initial_cldfra(driver, state, cfg, met=None) -> None:
     cldfra[...] = values.astype(cldfra.dtype).reshape(cldfra.shape)
 
 
-def resolve_prepared_noah_surface(met, cfg, static, *, surface=None, soil_mesh=None):
+def resolve_prepared_noah_surface(met, cfg, static, *, surface=None, soil_mesh=None,
+                                  land_state=None):
     """The canonical Noah surface this state initializes its land model from.
 
     Two roads arrive here holding the same forecast, and they hold
@@ -513,7 +514,9 @@ def resolve_prepared_noah_surface(met, cfg, static, *, surface=None, soil_mesh=N
         deep_soil_temperature=static["SOILTEMP"], soil_mesh=soil_mesh,
         water_temperature=getattr(met, "water_temperature", None),
         water_temperature_policy=(getattr(met, "water_temperature_receipt", None)
-                                  or {}).get("policy"))
+                                  or {}).get("policy"),
+        # Where and when, for the observed snow analysis and soil donors.
+        land_state=land_state)
     return SimpleNamespace(fields=MappingProxyType(
         canonical_noah_surface(soil)),
         soil_texture_downscale=getattr(soil, "soil_texture_downscale", None),
@@ -545,8 +548,11 @@ def initialize_hrrr_physics(
             from woof.ingest.soil_downscale import soil_mesh_plan_from_case
             soil_mesh = soil_mesh_plan_from_case(
                 None, grid, source_grid=hrrr_source_grid())
+    from woof.ingest.land_state import land_state_context
     surface = resolve_prepared_noah_surface(
-        met, cfg, static, surface=surface, soil_mesh=soil_mesh)
+        met, cfg, static, surface=surface, soil_mesh=soil_mesh,
+        land_state=(None if surface is not None
+                    else land_state_context(grid, valid_time)))
     landuse_attrs = {
         name: attrs[name] for name in ("MMINLU", "ISWATER", "ISLAKE", "ISICE")
     }

@@ -6,6 +6,7 @@ name the old Git objects; candidate runs only consume those existing pins.
 """
 from datetime import datetime
 import hashlib
+import re
 import json
 from pathlib import Path
 import tomllib
@@ -110,9 +111,30 @@ def uh_layers_line(shared):
     return f"uh_layers = {1 if shared.get('nwp_diagnostics') == 1 else 0}\n"
 
 
+#: The table a GFS-route recipe gained after these parents were pinned: door
+#: item 7 (3.0.2) writes the lake-ice choice into [ingest], since such a file
+#: has no [case_data], the only table that carried it before.
+LAKE_ICE_TABLE = re.compile(
+    r'\n# Lake ice: [^\n]*\n\[ingest\]\ngfs_lake_ice = "observed"\n')
+
+
+def without_lake_ice_table(source, candidate):
+    from woof.runplan import prepares_on_gfs_route
+
+    found = LAKE_ICE_TABLE.findall(candidate)
+    if not prepares_on_gfs_route(source):
+        assert not found and "[ingest]" not in candidate
+        return candidate
+    assert len(found) == 1, candidate
+    assert tomllib.loads(candidate)["ingest"] == {"gfs_lake_ice": "observed"}
+    return LAKE_ICE_TABLE.sub("", candidate)
+
+
 def assert_old_recipe_bytes(parent, pins, source, candidate):
-    """The parent's recipe bytes, plus exactly the fork-generation lines and,
-    on RUC land, the RUC air cold-start line."""
+    """The parent's recipe bytes, plus exactly the fork-generation lines,
+    on RUC land the RUC air cold-start line, and on the GFS route the
+    lake-ice table."""
+    candidate = without_lake_ice_table(source, candidate)
     lines = candidate.splitlines(keepends=True)
     shared = tomllib.loads(candidate)["shared"]
     for line in FORK_GENERATION_LINES.get(source, ()):

@@ -87,7 +87,7 @@ def mpas_v842_selection(suite, land_surface):
     (mpas_atmphys_init_microphysics.F), so the suite needs nothing more from the init. The suite is still named
     in the receipt, as it is for an ArWen-route suite.
     THE BREAKAGE THIS RETIRES (hex parity run group 7, #28): the door refused the flag ("drop the flag"), so a
-    caller that names the suite for both the init and the forecast, as it does on the WOOF route, stopped.
+    caller that names the suite for both the init and the forecast, as it does on the WOOF-ArWen route, stopped.
     """
     from .errors import MpasPortError
     if land_surface == "ruc":
@@ -101,11 +101,50 @@ def mpas_v842_selection(suite, land_surface):
                 "species": "allocated by the forecast with the Registry defaults (mpas_atmphys_init_microphysics.F)"}}
 
 
-def init_selection(suite, land_surface, *, profile=None, pin_set=None):
+def source_absent_fill(names, mp_physics, assignments=None):
+    """The start value of each species in ``names`` that no analysis supplies and that does not start at zero.
+
+    The engine's own cold-start contract (``woof.ingest.microphysics_cold_start.source_absent_microphysics``, the
+    values a WOOF-ArWen regional run starts the same scheme from), read under the engine's default settings and the
+    run's own assignments.  NSSL two-moment's CCN number ``qnn`` starts at WRF's ``ccn_conc`` (start_em.F's fill);
+    every other absent moment of the schemes hex runs starts at the allocation zero and is not listed.  A scheme
+    the contract does not know starts every absent species at zero, as before this function existed.
+    """
+    import dataclasses
+    try:
+        from woof.config import RunConfig
+        from woof.ingest.microphysics_cold_start import source_absent_microphysics
+    except ImportError:
+        return {}
+    settings = {field.name: field.default for field in dataclasses.fields(RunConfig)
+                if field.default is not dataclasses.MISSING}
+    known = set(settings)
+    settings.update({key: value for key, value in dict(assignments or {}).items() if key in known})
+    settings["mp_physics"] = int(mp_physics)
+    try:
+        from types import SimpleNamespace
+        _, values = source_absent_microphysics(SimpleNamespace(**settings))
+    except ValueError:
+        return {}
+    return {name: float(value) for name, value in values.items() if name in names and float(value) != 0.0}
+
+
+def _scheme_start(selectors, engine_physics=None):
+    """``(species names, nonzero start values)`` of the microphysics a selector block names."""
+    from .species_row import species_row_for_scheme
+    row = species_row_for_scheme(selectors["config_microp_scheme"])
+    names = row.names()
+    return names, source_absent_fill(names, row.mp_physics, engine_physics)
+
+
+def init_selection(suite, land_surface, *, profile=None, pin_set=None, overrides=None):
     from .errors import MpasPortError
-    from .physics_suites import load_table, suite_row
+    from .physics_suites import DEFAULT_SUITE, load_table, suite_row
     from .species_row import species_row_for_scheme
     table = load_table()
+    overrides = [str(item) for item in overrides or ()]
+    if overrides and suite is None and profile is None:
+        suite = DEFAULT_SUITE  # the suite the forecast door gives choices named with no suite
     if profile is not None:
         row = table.get("experimental_profiles", {}).get(profile)
         if row is None or "initialization" not in row:
@@ -126,6 +165,20 @@ def init_selection(suite, land_surface, *, profile=None, pin_set=None):
     if suite not in known:
         raise MpasPortError(unknown_suite_refusal(suite, known))
     selectors = suite_row(suite)["selectors"]
+    if overrides:
+        # The run's single scheme choices over the suite, resolved exactly as the forecast door resolves them, so
+        # the init carries the species and the soil levels of the schemes the forecast will run.
+        from .physics_suites import parse_override, resolve_physics
+        resolved = resolve_physics(suite, [parse_override(item) for item in overrides])
+        selectors = resolved.selectors
+        carried = table["options"]["config_lsm_scheme"][selectors["config_lsm_scheme"]].get("carried") or {}
+        names, fill = _scheme_start(selectors, resolved.engine_physics)
+        required = table["options"]["config_microp_scheme"][selectors["config_microp_scheme"]].get("carried", {}).get("requires_aerosol_climatology", False)
+        return {"land_surface": land_surface or carried.get("land_surface_scheme", "noah"), "scalar_names": names,
+                "requires_climatology": required, "scalar_fill": fill,
+                "choices": {"suite": suite, "overrides": dict(resolved.overrides),
+                            "config_microp_scheme": selectors["config_microp_scheme"],
+                            "config_lsm_scheme": selectors["config_lsm_scheme"]}}
     land = table["options"]["config_lsm_scheme"][selectors["config_lsm_scheme"]]["carried"]["land_surface_scheme"]
     names = species_row_for_scheme(selectors["config_microp_scheme"]).names()
     required = table["options"]["config_microp_scheme"][selectors["config_microp_scheme"]].get("carried", {}).get("requires_aerosol_climatology", False)
@@ -160,6 +213,11 @@ def initialize_species(engine, output, selection, arguments):
     names = selection["scalar_names"]
     argv = [str(engine), "--augment-init", str(output), "--scalar-names", ",".join(names)]
     argv.extend(("--land-surface", selection["land_surface"]))
+    fill = selection.get("scalar_fill") or {}
+    if fill:
+        # Species the analysis cannot supply that do not start at zero (source_absent_fill): the engine creates
+        # each at its value where the init has no variable for it, and never touches one the init carries.
+        argv.extend(("--scalar-fill", ",".join(f"{name}={value!r}" for name, value in sorted(fill.items()))))
     fields_path = None
     resolution_receipt = None
     if "nwfa" in names:
@@ -233,12 +291,21 @@ def initialize_species(engine, output, selection, arguments):
         if fields_path is not None:
             shutil.rmtree(fields_path, ignore_errors=True)
     if completed.returncode:
-        raise ValueError("native physics initialization failed: " + completed.stderr)
+        hint = ""
+        if "no variable for" in completed.stderr:
+            # An rw_mpas_init from before scheme-pick inits (gpuwm 2.9.13 and earlier) creates only the species of
+            # the suites it knew, and refuses every other name in --scalar-names with this sentence.
+            hint = (f"  The installed rw_mpas_init ({engine}) predates inits for a microphysics picked over a "
+                    "suite: it creates only the species of the suites it shipped with.  Update woof to a release "
+                    "whose rw_mpas_init takes --scalar-fill")
+        raise ValueError("native physics initialization failed: " + completed.stderr.rstrip() + hint)
     receipt = json.loads(completed.stdout)
     receipt["resolution"] = resolution_receipt
     receipt["argv"] = argv
     if selection.get("profile"):
         receipt["profile"] = selection["profile"]
+    if selection.get("choices"):
+        receipt["choices"] = selection["choices"]
     return receipt
 
 
@@ -256,13 +323,22 @@ def prepare_forecast_init(init, destination, physics, start_time):
     from .species_row import species_row_for_scheme
     from .init_door import resolve_engine
     selectors = physics["selectors"]
-    land = load_table()["options"]["config_lsm_scheme"][selectors["config_lsm_scheme"]].get("carried")
+    # A selector the generic column seam runs straight from the engine's
+    # registry (``lin-mp2``, ``ssib``: its registry option id) has no row in
+    # the suite table at all.  THE BREAKAGE (hex 0.6.1; found by the option
+    # matrix of fork jacobbieker/woof PR 379): every such microphysics, and
+    # SSiB, stopped here with a bare KeyError before the forecast opened.  An
+    # absent row is an engine-only row, the same as a table row without a
+    # carried block.
+    options = load_table()["options"]
+    land = options["config_lsm_scheme"].get(selectors["config_lsm_scheme"], {}).get("carried")
     if land is None:
         return init, None
     names = species_row_for_scheme(selectors["config_microp_scheme"]).names()
     # Engine-only rows (including non-aerosol Thompson) have no legacy
     # carried block. Aerosol requirements remain explicit metadata, as for TEMPO.
-    required = load_table()["options"]["config_microp_scheme"][selectors["config_microp_scheme"]].get("carried", {}).get("requires_aerosol_climatology", False)
+    required = (options["config_microp_scheme"].get(selectors["config_microp_scheme"], {})
+                .get("carried", {}).get("requires_aerosol_climatology", False))
     synthetic_source = required and _synthetic_source(init)
     with Dataset(init) as ds:
         soil = len(ds.dimensions["nSoilLevels"])
@@ -345,7 +421,10 @@ def prepare_forecast_init(init, destination, physics, start_time):
     else:
         shutil.copyfile(init, destination)
     selection = {"land_surface": land["land_surface_scheme"], "scalar_names": names, "requires_climatology": required,
-                 "force_climatology": synthetic_source}
+                 "force_climatology": synthetic_source,
+                 "scalar_fill": source_absent_fill(
+                     names, species_row_for_scheme(selectors["config_microp_scheme"]).mp_physics,
+                     physics.get("engine_physics"))}
     receipt = initialize_species(engine, destination, selection,
         Namespace(start_time=start_time, wif_climatology=None))
     receipt.update(source_init=str(init), soil_levels=land["n_soil_levels"], replay_argv=replay)

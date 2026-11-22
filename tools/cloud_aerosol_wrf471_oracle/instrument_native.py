@@ -52,7 +52,7 @@ end interface
 u=-1
 seen=seen+1
 if (mod(seen,64)/=0.or.kept>=64) return
-call get_environment_variable('WOOF_CAPTURE_DIR',folder,status=status)
+call get_environment_variable('GPUWM_CAPTURE_DIR',folder,status=status)
 if (status/=0.or.len_trim(folder)==0) return
 kept=kept+1
 write(filename,'(a,a,i0,a,i0,a)') trim(folder),'/cloud-',lane_getpid(),'-',kept,'.bin'
@@ -93,7 +93,7 @@ interface
 end interface
 seen=seen+1
 if(mod(seen,64)/=0.or.kept>=64) return
-call get_environment_variable('WOOF_CAPTURE_DIR',folder,status=status)
+call get_environment_variable('GPUWM_CAPTURE_DIR',folder,status=status)
 if(status/=0.or.len_trim(folder)==0) return
 kept=kept+1
 write(filename,'(a,a,i0,a,i0,a)') trim(folder),'/farms-',lane_getpid(),'-',kept,'.bin'

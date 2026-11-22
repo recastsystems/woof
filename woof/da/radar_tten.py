@@ -208,12 +208,14 @@ SLAB_ATTRIBUTE = "_radar_tten_slab"
 #: WRF's Registry value, 10 K/s (``woof/config.py``, ``mp_tend_lim``).
 HRRR_MP_TEND_LIM = 0.07
 
-#: Clear-air regimes this module reads as "observed no echo"; the same
-#: allow-list, for the same reason, as the reflectivity adapter's
-#: (``woof/da/obs_radar.py``): a regime built from range-folded gates may
-#: be a storm, and reading it as clear would withhold heating from it.
-#: One list, owned by the adapter: a regime admitted there is admitted here.
-from woof.da.obs_radar import CLEAR_AIR_SOURCES as _CLEAR_AIR_SOURCES  # noqa: E402
+#: Clear-air regimes this module reads as "observed no echo": a regime built
+#: from range-folded gates may be a storm, and reading it as clear would
+#: withhold heating from it.  The list was owned by the reflectivity
+#: adapter of the local data assimilation until 3.0.3 removed that adapter;
+#: it is held here now, unchanged.
+_CLEAR_AIR_SOURCES = ("finite_below_floor",
+                      "below_threshold_and_finite_below_floor",
+                      "undetect_and_finite_below_floor")
 
 
 class RadarTtenError(ValueError):

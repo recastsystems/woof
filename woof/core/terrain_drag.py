@@ -20,9 +20,14 @@ Three WRF options, all off by default:
   on every domain or 0) adds orographic drag to the PBL momentum tendencies
   after the PBL scheme, at the PBL cadence (``module_pbl_driver.F:2129-2185``):
 
-  - 1 -- the KIM orographic gravity-wave drag with flow blocking (Choi and
-    Hong 2015; ``module_bl_gwdo.F`` -> ``bl_gwdo_run``), from VAR, CON,
-    OA1-4 and OL1-4: :func:`launch_gwdo`;
+  - 1 -- the KIM orographic gravity-wave drag with flow blocking
+    (``module_bl_gwdo.F`` -> ``bl_gwdo_run``), in two generations chosen by
+    ``gwdo_version``: ``"wrf_480"`` (the default) is WRF v4.8.0's revision
+    (Hong et al. 2025, Koo and Hong 2025, the nonhydrostatic factor of Xu
+    et al. 2024), which also reads ELVMAX, the maximum sub-grid orographic
+    height, and the ``gwd_dx_factor``/``gwd_if_nonhyd`` keys;
+    ``"wrf_471"`` is the WRF v4.6.1/v4.7.1 scheme (Choi and Hong 2015),
+    from VAR, CON, OA1-4 and OL1-4 alone: :func:`launch_gwdo`;
   - 3 -- the GSL drag suite (``module_bl_gwdo_gsl.F``): large-scale
     gravity-wave drag and flow blocking from the large-scale statistics
     (VARLS, CONLS, OA1LS-OA4LS, OL1LS-OL4LS), small-scale gravity-wave drag
@@ -51,16 +56,29 @@ import numpy as np
 
 from woof.static.orographic import (GSL_LS_FIELDS, GSL_SS_FIELDS,
                                     GWD_FIELDS, GWDO_FIELDS,
-                                    TOPO_WIND_FIELDS, required_static_fields)
+                                    TOPO_WIND_FIELDS, drag_static_fields,
+                                    gwd_fields, required_static_fields)
 
 #: WRF v4.7.1 topo_wind values and gwd_opt values ported here.
 TOPO_WIND_OPTIONS = (0, 1, 2)
 GWD_OPTIONS = (0, 1, 3)
+#: gwd_opt = 1 generations: WRF v4.8.0's revised KIM drag (the default) and
+#: the WRF v4.6.1/v4.7.1 scheme (bl_gwdo.F90 is byte-identical in the two).
+GWDO_VERSIONS = ("wrf_480", "wrf_471")
+DEFAULT_GWDO_VERSION = "wrf_480"
+#: WRF v4.8.0 Registry.EM_COMMON:2902-2903 defaults.
+DEFAULT_GWD_DX_FACTOR = 2.0
+DEFAULT_GWD_IF_NONHYD = True
 
 #: No FMA contraction (gfortran contracts nothing) and no flush to zero.
 MODULE_OPTIONS = ("-std=c++17", "-fmad=false", "--ftz=false")
 MODULE_KEY = "woof.core.terrain_drag:terrain_drag"
 _SOURCES = ("glibc_flt32.cuh", "glibc_trig_flt32.cuh", "terrain_drag.cu")
+#: WRF v4.8.0 gwd_opt = 1: its own module, the frozen unit's text followed
+#: by terrain_drag_gwdo480.cu (which reuses td_atan2f and the clamps), so the
+#: frozen module's source, options and image stay exactly as they were.
+GWDO480_MODULE_KEY = "woof.core.terrain_drag:gwdo480"
+_GWDO480_SOURCES = _SOURCES + ("terrain_drag_gwdo480.cu",)
 _BLOCK = 128
 _KMAX = 128
 #: A null device pointer for the kernels' optional diagnostic outputs.
@@ -77,13 +95,22 @@ _EP_1 = np.float32(_R_V / _R_D - np.float32(1.0))
 _PI = np.float32(3.141592653)
 
 
-def module_source() -> str:
-    """The exact source string NVRTC compiles."""
+def _compose(names) -> str:
     from woof.core.kernels import _preamble
 
     root = Path(__file__).parent / "kernels"
     return _preamble() + "".join(
-        (root / name).read_text(encoding="utf-8") for name in _SOURCES)
+        (root / name).read_text(encoding="utf-8") for name in names)
+
+
+def module_source() -> str:
+    """The exact source string NVRTC compiles."""
+    return _compose(_SOURCES)
+
+
+def gwdo480_module_source() -> str:
+    """The exact source string NVRTC compiles for WRF v4.8.0 gwd_opt = 1."""
+    return _compose(_GWDO480_SOURCES)
 
 
 @lru_cache(maxsize=None)
@@ -119,10 +146,62 @@ def _module(device: int):
     return module
 
 
+@lru_cache(maxsize=None)
+def _gwdo480_module(device: int):
+    """WRF v4.8.0 gwd_opt = 1, loaded exactly as :func:`_module` loads its
+    unit (NVRTC directly, -fmad=false and --ftz=false, one per device)."""
+    import cupy as cp
+    from woof import nvrtc_ptx_cache as compiler
+
+    from woof.certify.kernel_manifest import record_module
+    from woof.kernel_compile_notice import observe_module_compile
+
+    source = gwdo480_module_source()
+    with cp.cuda.Device(device), observe_module_compile(GWDO480_MODULE_KEY):
+        ptx, _ = compiler.compile_using_nvrtc(
+            source, MODULE_OPTIONS, None, "terrain_drag_gwdo480.cu")
+        module = cp.cuda.function.Module()
+        module.load(ptx.encode() if isinstance(ptx, str) else ptx)
+    record_module(GWDO480_MODULE_KEY, source=source, options=MODULE_OPTIONS,
+                  module=None)
+    return module
+
+
 def _kernel(name: str):
     import cupy as cp
 
     return _module(cp.cuda.Device().id).get_function(name)
+
+
+def _gwdo480_kernel():
+    import cupy as cp
+
+    return _gwdo480_module(cp.cuda.Device().id).get_function(
+        "gwdo480_column")
+
+
+def gwdo_options(*, gwdo_version=DEFAULT_GWDO_VERSION,
+                 dx_factor=DEFAULT_GWD_DX_FACTOR,
+                 if_nonhyd=DEFAULT_GWD_IF_NONHYD):
+    """``(gwdo_version, dx_factor, if_nonhyd)`` checked, or ValueError.
+
+    ``dx_factor`` must be finite and positive: the base stress divides by
+    dx_eff = dx_factor*dx, so 0 makes it infinite and a negative factor
+    reverses the drag.
+    """
+    if gwdo_version not in GWDO_VERSIONS:
+        raise ValueError(f"gwdo_version must be one of {GWDO_VERSIONS}, got "
+                         f"{gwdo_version!r}")
+    if isinstance(dx_factor, bool):
+        raise ValueError("gwd_dx_factor must be a number, got a bool")
+    factor = float(dx_factor)
+    if not np.isfinite(factor) or factor <= 0.0:
+        raise ValueError(
+            f"gwd_dx_factor = {dx_factor!r}: the KIM base stress divides by "
+            "gwd_dx_factor*dx, so it must be finite and positive")
+    if not isinstance(if_nonhyd, (bool, np.bool_)):
+        raise ValueError(f"gwd_if_nonhyd must be a bool, got {if_nonhyd!r}")
+    return gwdo_version, factor, bool(if_nonhyd)
 
 
 def _f32(xp, array, shape, name):
@@ -235,14 +314,36 @@ def _column_inputs(cp, atmosphere, nz, ny, nx):
 
 
 def launch_gwdo(atmosphere: Mapping[str, object], du, dv, *, var, con, oa,
-                ol, sina, cosa, dx: float, dt: float, diagnostics=None):
+                ol, sina, cosa, dx: float, dt: float, diagnostics=None,
+                gwdo_version: str = "wrf_471", omax=None,
+                dx_factor: float = DEFAULT_GWD_DX_FACTOR,
+                if_nonhyd: bool = DEFAULT_GWD_IF_NONHYD):
     """gwd_opt = 1: add WRF's KIM orographic drag to ``du``/``dv`` in place.
 
     ``atmosphere`` is the physics driver's phy_prep dict (mass-point winds,
     temperature, vapour, hydrostatic pressures, Exner, interface heights).
     ``oa``/``ol`` are the four directional planes each.  ``diagnostics``,
     when a dict, receives DTAUX3D, DTAUY3D, DUSFCG, DVSFCG.
+
+    ``gwdo_version = "wrf_471"`` (this function's default, so existing
+    callers keep the scheme they were proven on) runs WRF v4.6.1/v4.7.1's
+    scheme; ``"wrf_480"`` runs WRF v4.8.0's, which also reads ``omax``
+    (ELVMAX, (ny, nx), metres above sea level), ``dx_factor``
+    (gwd_dx_factor) and ``if_nonhyd`` (gwd_if_nonhyd).
     """
+    gwdo_version, dx_factor, if_nonhyd = gwdo_options(
+        gwdo_version=gwdo_version, dx_factor=dx_factor, if_nonhyd=if_nonhyd)
+    if gwdo_version == "wrf_480":
+        if omax is None:
+            raise ValueError(
+                "gwdo_version = 'wrf_480' reads ELVMAX (omax): without it "
+                "WRF v4.8.0 turns the drag off on every column (omax <= "
+                "50 m), so the field is required")
+        _launch_gwdo480(atmosphere, du, dv, var=var, con=con, oa=oa, ol=ol,
+                        omax=omax, sina=sina, cosa=cosa, dx=dx, dt=dt,
+                        dx_factor=dx_factor, if_nonhyd=if_nonhyd,
+                        diagnostics=diagnostics)
+        return
     import cupy as cp
 
     nz, ny, nx = du.shape
@@ -271,6 +372,47 @@ def launch_gwdo(atmosphere: Mapping[str, object], du, dv, *, var, con, oa,
          dtx if dtx is not None else _NULL, dty if dty is not None else _NULL,
          dsx if dsx is not None else _NULL, dsy if dsy is not None else _NULL,
          np.float32(dx), np.float32(dt), _G, _CP, _R_D, _EP_1, _PI,
+         np.int32(nz), np.int32(ny), np.int32(nx)))
+    if diagnostics is not None:
+        diagnostics.update(DTAUX3D=dtx, DTAUY3D=dty, DUSFCG=dsx, DVSFCG=dsy)
+
+
+def _launch_gwdo480(atmosphere, du, dv, *, var, con, oa, ol, omax, sina,
+                    cosa, dx, dt, dx_factor, if_nonhyd, diagnostics):
+    """WRF v4.8.0 gwd_opt = 1 (kernels/terrain_drag_gwdo480.cu)."""
+    import cupy as cp
+
+    nz, ny, nx = du.shape
+    if nz > _KMAX:
+        raise ValueError(f"gwd_opt = 1 holds a column of at most {_KMAX} "
+                         f"levels per thread, got {nz}")
+    if nz < 4:
+        # kgwdmax = nz/2 must reach kgwdmin = 2 for the reference level.
+        raise ValueError("gwd_opt = 1 (WRF v4.8.0) needs at least 4 levels, "
+                         f"got {nz}")
+    col = _column_inputs(cp, atmosphere, nz, ny, nx)
+    shape2 = (ny, nx)
+    oa4 = _stack4(cp, oa, shape2, "oa")
+    ol4 = _stack4(cp, ol, shape2, "ol")
+    dtx = dty = dsx = dsy = None
+    if diagnostics is not None:
+        dtx = cp.zeros((nz, ny, nx), dtype=cp.float32)
+        dty = cp.zeros((nz, ny, nx), dtype=cp.float32)
+        dsx = cp.zeros(shape2, dtype=cp.float32)
+        dsy = cp.zeros(shape2, dtype=cp.float32)
+    n = ny * nx
+    _gwdo480_kernel()(
+        ((n + _BLOCK - 1) // _BLOCK,), (_BLOCK,),
+        (col["u"], col["v"], col["temperature"], col["qv"], col["pressure"],
+         col["p_interface"], col["exner"], col["z"],
+         _f32(cp, var, shape2, "var"), _f32(cp, con, shape2, "con"),
+         oa4, ol4, _f32(cp, omax, shape2, "omax"),
+         _f32(cp, sina, shape2, "sina"), _f32(cp, cosa, shape2, "cosa"),
+         du, dv,
+         dtx if dtx is not None else _NULL, dty if dty is not None else _NULL,
+         dsx if dsx is not None else _NULL, dsy if dsy is not None else _NULL,
+         np.float32(dx), np.float32(dt), np.float32(dx_factor),
+         np.int32(1 if if_nonhyd else 0), _G, _CP, _R_D, _EP_1, _PI,
          np.int32(nz), np.int32(ny), np.int32(nx)))
     if diagnostics is not None:
         diagnostics.update(DTAUX3D=dtx, DTAUY3D=dty, DUSFCG=dsx, DVSFCG=dsy)
@@ -356,6 +498,10 @@ class TerrainDrag:
     ctopo2: object = None
     gwd: dict | None = None
     kpblmax: int | None = None
+    #: gwd_opt = 1 only: the generation and WRF v4.8.0's two keys.
+    gwdo_version: str = DEFAULT_GWDO_VERSION
+    gwd_dx_factor: float = DEFAULT_GWD_DX_FACTOR
+    gwd_if_nonhyd: bool = DEFAULT_GWD_IF_NONHYD
 
     def geography(self) -> dict:
         """Static device arrays that a tiled rank gathers column for column.
@@ -371,7 +517,8 @@ class TerrainDrag:
                            "terrain_drag/ctopo2": self.ctopo2})
         if self.gwd_opt:
             arrays.update({f"terrain_drag/gwd/{name}": self.gwd[name]
-                           for name in GWD_FIELDS[self.gwd_opt]})
+                           for name in gwd_fields(self.gwd_opt,
+                                                  self.gwdo_version)})
         return arrays
 
     def apply_gwd(self, atmosphere, du, dv, *, sina, cosa, xland, br, pblh,
@@ -386,7 +533,11 @@ class TerrainDrag:
             launch_gwdo(atmosphere, du, dv, var=g["VAR"], con=g["CON"],
                         oa=[g[f"OA{m}"] for m in range(1, 5)],
                         ol=[g[f"OL{m}"] for m in range(1, 5)],
-                        sina=sina, cosa=cosa, dx=dx, dt=dt)
+                        sina=sina, cosa=cosa, dx=dx, dt=dt,
+                        gwdo_version=self.gwdo_version,
+                        omax=g.get("ELVMAX"),
+                        dx_factor=self.gwd_dx_factor,
+                        if_nonhyd=self.gwd_if_nonhyd)
         elif self.gwd_opt == 3:
             g = self.gwd
             ls = {"var": g["VARLS"], "con": g["CONLS"],
@@ -402,7 +553,10 @@ class TerrainDrag:
 
 
 def build_terrain_drag(*, topo_wind: int, gwd_opt: int, static, ht, xland,
-                       znu) -> TerrainDrag | None:
+                       znu, gwdo_version: str = DEFAULT_GWDO_VERSION,
+                       gwd_dx_factor: float = DEFAULT_GWD_DX_FACTOR,
+                       gwd_if_nonhyd: bool = DEFAULT_GWD_IF_NONHYD
+                       ) -> TerrainDrag | None:
     """The domain's :class:`TerrainDrag`, or ``None`` with both options off.
 
     ``static`` maps the field names of :data:`TOPO_WIND_FIELDS` and
@@ -418,21 +572,27 @@ def build_terrain_drag(*, topo_wind: int, gwd_opt: int, static, ht, xland,
         raise ValueError(f"topo_wind must be one of {TOPO_WIND_OPTIONS}")
     if gwd_opt not in GWD_OPTIONS:
         raise ValueError(f"gwd_opt must be one of {GWD_OPTIONS}")
+    gwdo_version, gwd_dx_factor, gwd_if_nonhyd = gwdo_options(
+        gwdo_version=gwdo_version, dx_factor=gwd_dx_factor,
+        if_nonhyd=gwd_if_nonhyd)
     if topo_wind == 0 and gwd_opt == 0:
         return None
-    need = required_static_fields(topo_wind, gwd_opt)
+    need = drag_static_fields(topo_wind, gwd_opt, gwdo_version)
     have = static if static is not None else {}
     missing = [name for name in need if have.get(name) is None]
     if missing:
+        from woof.static.orographic import elvmax_missing_note
         raise ValueError(
             f"topo_wind = {topo_wind} / gwd_opt = {gwd_opt} need the static "
             f"field(s) {', '.join(missing)}, which this domain's prepared "
             "static data does not carry; prepare it again with the option "
             "set, so the static builder adds them from WPS_GEOG's "
-            "orographic datasets")
+            "orographic datasets" + elvmax_missing_note(missing))
     ht = cp.asarray(ht, dtype=cp.float32)
     ny, nx = ht.shape
-    drag = TerrainDrag(topo_wind=topo_wind, gwd_opt=gwd_opt)
+    drag = TerrainDrag(topo_wind=topo_wind, gwd_opt=gwd_opt,
+                       gwdo_version=gwdo_version, gwd_dx_factor=gwd_dx_factor,
+                       gwd_if_nonhyd=gwd_if_nonhyd)
     if topo_wind:
         drag.ctopo, drag.ctopo2, _ = topo_wind_coefficients(
             ht, xland, topo_wind=topo_wind,
@@ -440,7 +600,7 @@ def build_terrain_drag(*, topo_wind: int, gwd_opt: int, static, ht, xland,
             var2d=have.get("VAR") if topo_wind == 2 else None)
     if gwd_opt:
         drag.gwd = {name: _f32(cp, have[name], (ny, nx), name)
-                    for name in GWD_FIELDS[gwd_opt]}
+                    for name in gwd_fields(gwd_opt, gwdo_version)}
         if gwd_opt == 3:
             drag.kpblmax = gsl_kpblmax(cp.asnumpy(cp.asarray(znu)))
     return drag

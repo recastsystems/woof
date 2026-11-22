@@ -537,7 +537,7 @@ def main(argv=None) -> int:
                     help="hours between wrfout frames")
     ap.add_argument("--refl-slab", type=int, default=48)
     ap.add_argument("--wrfout", default="mg_wrfout")
-    ap.add_argument("--title", default="WOOF specified-BC decomposed run")
+    ap.add_argument("--title", default="WOOF-ArWen specified-BC decomposed run")
     args = ap.parse_args(argv)
     if args.stage == "gate":
         stage_gate(args)

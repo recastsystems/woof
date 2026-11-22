@@ -50,9 +50,6 @@ tests/test_nocturnal_radiation_guard.py
 tests/test_domain_wizard.py
 tests/test_go_chain.py
 tests/test_hrrr_prepared_background.py
-tests/test_da_nowcast_presets.py
-tests/test_da_nowcast.py
-tests/test_da_sweep.py
 tests/test_anisotropic_mixing_advisory.py
 # tests/test_anisotropic_mixing_w_stability.py is the third of the four
 # and is deliberately NOT on this list.  Every test in it is whole-module
@@ -78,7 +75,6 @@ tests/test_shipped_configs_mixing_stability.py
 
 tests/test_doctor.py
 tests/test_ftz_claim_consistency.py
-tests/test_letkf_osse.py
 tests/test_certification_capsule.py
 tests/test_package_data_coverage.py
 
@@ -557,8 +553,6 @@ tests/test_doctor_da_eigensolver.py
 # v1.2 integration seam; and the ensemble-product hardening.
 tests/test_obs_nexrad.py
 tests/test_obs_radar_grid.py
-tests/test_letkf.py
-tests/test_letkf_chunk_sizing.py
 tests/test_da_obsop.py
 tests/test_da_moments.py
 tests/test_v12_integration.py
@@ -1310,11 +1304,6 @@ tests/test_cycle_placement.py
 tests/test_cycle_port_package.py
 tests/test_cycle_receipt_ingestion.py
 tests/test_cycle_supervisor.py
-tests/test_da_external_baseline_score.py
-tests/test_da_member_pool_dispatch.py
-tests/test_da_nowcast_daemon_argv.py
-tests/test_da_structure_metrics.py
-tests/test_letkf_all_radar.py
 tests/test_mapped_nested_streaming.py
 tests/test_obs_allradar.py
 tests/test_obs_path_bundle10.py
@@ -1847,7 +1836,6 @@ tests/test_nest_feedback_reverse_edge.py
 # A181 (lane 281-child-acoustic-adaptation): the offline child and DA nested doors
 # take the acoustic adaptation, and checkpoints keep a parent's auto epssm.
 tests/test_child_acoustic_adaptation.py
-tests/test_da_nested_acoustic_adaptation.py
 # Fixed-clock and ensemble checkpoints preserve the automatic choice inherited
 # by downscale children; actual checkpoint serializers and the CLI are covered.
 tests/test_fixed_parent_acoustic_inheritance.py
@@ -2082,6 +2070,12 @@ tests/test_simulated_radar_resources.py
 # and NOTICE files required for redistribution.
 tests/test_licence_notices_ship.py
 
+# No public distribution carries a CC-BY-NC/ND, GPL/LGPL/AGPL or UCAR
+# no-sale file. Prevents a restricted data file (the four CC-BY-NC-SA-4.0
+# RFMIP reference results sat beside the shipped RRTMGP tables through
+# 2.7.x) reaching an Apache-2.0 wheel through a data/**/* glob.
+tests/test_shipped_licence_scan.py
+
 # MYNN option 2 and post-PBL scalar diffusion: prevent selecting option 1
 # at initialization, treating local diffusion as plume transport, or dropping
 # the nc/ni/nwfa/nifa tendency between the wrapper and RK3. WRF column
@@ -2206,11 +2200,9 @@ tests/test_ensemble_recipe_door.py
 # The batch kernel adapter and its packing.  The adapter rewrites CUDA text
 # under audits; these read the installed kernels on a CPU, so an audit that
 # went stale against a kernel edit fails here and not on a card nobody ran.
-# tests/test_ensemble_batch_acoustic_fusion_audit.py is that check for the
-# fusion trial, whose stale audit left 21 device tests red at the 2.8.5
-# staging tip.  The three files that also carry device rows are on
+# The fusion trial's audit file went with the trial (fix/305-f21-joined-muw).
+# The files that also carry device rows are on
 # tools/battery/gpu_shard_files.txt SHARD 1w and 1y for those.
-tests/test_ensemble_batch_acoustic_fusion_audit.py
 tests/test_ensemble_batch_kernel.py
 tests/test_ensemble_batch_advection_family_gpu.py
 tests/test_ensemble_batch_layout_trials_gpu.py
@@ -2572,7 +2564,6 @@ tests/test_wrfinput_theta_records.py
 # re-solve attached a window to conventional point batches holding whole-grid
 # indices, and the device LETKF refused every cycle with surface or conventional
 # point obs plus a gated zone; the gate tests cover the re-indexed crop.
-tests/test_velocity_dispersion_gate.py
 
 # lane/initial-boundary-head ba7b39372: a run started from a separate analysis
 # (--initial-inputs) begins its first boundary interval from its own start
@@ -2785,8 +2776,6 @@ tests/test_k_distribution_receipt_native.py
 # concurrent observation preparation, pinned static assets, streamed fetch tail).
 tests/test_rrtmg_sw_stream_order.py
 tests/test_ensemble_shared_composition.py
-tests/test_spd_da_fetch_contract.py
-tests/test_obs_prepare_parallel.py
 tests/test_static_asset_rust.py
 tests/test_fetch_stream_tail.py
 # FAST_SBM (mp_physics=30) CPU contracts: Fortran-stream fixtures and their hashes,
@@ -3030,5 +3019,24 @@ tests/test_mrf_port.py
 # card rows are in gpu_pin_set.txt.
 tests/test_gfs_pbl_integration.py
 tests/test_gfs_pbl_wrf461_parity.py
+# 3.0.3: the removed local-da door answers with one line (woof/removed_commands.py).
+tests/test_removed_commands.py
+# High-resolution terrain across 180 degrees (3.0.2, the dateline-window
+# fix carried from fix/dateline-highres-window).  The 3.0.2 packet's
+# verification record said the dateline equality test ran in this suite;
+# it was on no list, so no release leg ran it (found on the
+# 3.0.2 packet, 2026-11-14).  The dateline file needs static-fields and is
+# also on stage1_native_files.txt; the international file is native-free.
+tests/test_static_highres_dateline.py
+tests/test_static_highres_international.py
+# 3.0.3 docs pack.  The sealed 3.0.3 candidate's README installed woof==3.0.2
+# and its universal wheel carried 45 files RELEASE-EXCLUDE.txt keeps out of
+# the public tree (found on the candidate, 2026-11-15).  The
+# version-declaration gate now names every install pin and release link, the
+# build drops every export-excluded file, and the seal check refuses an
+# artifact that still carries one or a home-directory path.
+tests/test_release_bump_version.py
+tests/test_build_drops_release_excluded.py
+tests/test_seal_check.py
 tests/test_hex_mpas_route_imports.py
 tests/test_wheel_packed_data.py

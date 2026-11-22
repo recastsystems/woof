@@ -50,7 +50,7 @@ def update(state, cfg, *, is_restart=False, curr_secs2=None):
     """Sample the completed physics step, before advancing its clock.
 
     ``is_restart`` and ``curr_secs2`` expose the native routine's restart
-    call semantics for replay. WOOF checkpoints restore these arrays and
+    call semantics for replay. WOOF-ArWen checkpoints restore these arrays and
     the absolute clock and continue the same window, without restarting it.
     """
     if not cfg.output_diagnostics:

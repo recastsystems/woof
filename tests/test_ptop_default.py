@@ -175,8 +175,3 @@ def test_preflight_parameter_defaults(function_name):
     parameter = inspect.signature(function).parameters["p_top"]
     assert parameter.default == DEFAULT_PA
 
-
-def test_synthetic_cycle_template_carries_the_default():
-    from woof.da import synthetic_cycle
-    assert "p_top = 5000.0" in synthetic_cycle._BASE_TOML
-    assert "p_top = 10000.0" not in synthetic_cycle._BASE_TOML

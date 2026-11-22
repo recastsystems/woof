@@ -1,7 +1,7 @@
 # Untimed RRFS host-read census
 
 `launch.py` runs the real forecast CLI with CUPTI runtime/driver API callbacks and
-Python call-site stacks. Run only under the authorized GPU pool. Set
+Python call-site stacks. Run it with one CUDA card to itself. Set
 `RRFS_AUDIT_CUPTI` to the local `libcupti.so` and `RRFS_AUDIT_OUT` to a JSON receipt;
 set the standard run recipe's `LAUNCHER` to this directory's `launch.py`.
 `table.py receipt.json` prints per-step, per-operation driver counts.

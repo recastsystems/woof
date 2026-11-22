@@ -41,17 +41,62 @@ fn partitions(fields:&BTreeMap<String,Vec<f32>>,wet:&[i32])->Result<Vec<f32>> {
     }).collect();
     let mut result=Vec::with_capacity(wet.len()*16);for row in rows{result.extend_from_slice(&row?);}Ok(result)
 }
+/// Smallest inland lake (km2) and lake depth (m) that preparation makes water.
+const LAKE_MIN_AREA_KM2:f64=5000.;const LAKE_MIN_DEPTH_M:f64=1.;
+/// Inland lakes on a structured grid that carries the atmosphere's surface
+/// rows. A lake is a connected body of model water (fraction >= 0.5) that the
+/// ocean wave source does not cover and that touches no ocean wet cell. Its
+/// depth is the model's lake surface height minus the bed elevation (ETOPO
+/// 2022 holds lake beds, for example the Great Lakes). A lake starts from rest;
+/// where it meets the domain edge that edge is open and calm (the source has no
+/// lake waves), so no outside wave model is needed. Every lake
+/// found is logged with where it is and whether it was made water and why.
+fn lakes(grid:&Grid,bed:&[f64],hs:&[f32],ocean:&[i32])->(Vec<f32>,Vec<Value>){
+    let n=grid.len();let mut depth=vec![0f32;n];let mut rows=Vec::new();
+    let(Some(water),Some(height))=(&grid.water,&grid.height)else{return(depth,rows)};
+    let(nx,ny)=(grid.nx,grid.ny);
+    let candidate:Vec<bool>=(0..n).map(|i|water[i]>=0.5&&ocean[i]==0&&!hs[i].is_finite()).collect();
+    let neighbours=|i:usize|{let(x,y)=((i%nx) as i64,(i/nx) as i64);(-1i64..=1).flat_map(move|dy|(-1i64..=1).map(move|dx|(x+dx,y+dy))).filter(move|&(a,b)|(a,b)!=(x,y)&&a>=0&&b>=0&&a<nx as i64&&b<ny as i64).map(move|(a,b)|b as usize*nx+a as usize)};
+    let mut seen=vec![false;n];
+    for seed in 0..n{if !candidate[seed]||seen[seed]{continue;}
+        let mut cells=vec![seed];seen[seed]=true;let mut k=0;let mut touches_ocean=false;
+        while k<cells.len(){let i=cells[k];k+=1;for j in neighbours(i){if ocean[j]==1{touches_ocean=true;}if candidate[j]&&!seen[j]{seen[j]=true;cells.push(j);}}}
+        let area:f64=cells.iter().map(|&i|grid.area[i] as f64).sum::<f64>()/1e6;
+        let centre=|v:&[f32]|cells.iter().map(|&i|grid.area[i] as f64*v[i] as f64).sum::<f64>()/(area*1e6);
+        let lake_depth:Vec<f64>=cells.iter().map(|&i|height[i] as f64-bed[i]).collect();
+        let with_bed=lake_depth.iter().filter(|&&d|d>=LAKE_MIN_DEPTH_M).count();
+        let iced=cells.iter().filter(|&&i|grid.ice.as_ref().is_some_and(|v|v[i]>=0.5)).count();
+        let surface=cells.iter().map(|&i|height[i] as f64).sum::<f64>()/cells.len() as f64;
+        let mut row=json!({"centre_lat":centre(&grid.lat),"centre_lon":centre(&grid.lon),"cells":cells.len(),"area_km2":area,"surface_height_m":surface,"cells_with_bed_below_surface":with_bed});
+        let reason=if touches_ocean{Some("joined to water the ocean wave source covers; prepared as before")}
+            else if area<LAKE_MIN_AREA_KM2{Some("smaller than the 5000 km2 lake floor; left out")}
+            else if with_bed*2<cells.len(){Some("the depth source holds no lake bed below the model's lake surface here; left out, not water")}else{None};
+        if let Some(reason)=reason{row["water"]=false.into();row["reason"]=reason.into();}else{
+            let mut wet=0;let mut deepest:f64=0.;let mut total=0.;
+            for(c,&i)in cells.iter().enumerate(){let d=lake_depth[c];let frozen=grid.ice.as_ref().is_some_and(|v|v[i]>=0.5);
+                if d>=LAKE_MIN_DEPTH_M&&!frozen{depth[i]=d as f32;wet+=1;deepest=deepest.max(d);total+=d;}}
+            row["water"]=(wet>0).into();row["wet_cells"]=wet.into();row["iced_cells_left_dry"]=iced.into();
+            row["shallow_cells_left_dry"]=(cells.len()-with_bed).into();row["max_depth_m"]=deepest.into();row["mean_depth_m"]=(if wet>0{total/wet as f64}else{0.}).into();
+            row["start"]="from rest; a domain edge across it is open and calm".into();
+        }
+        println!("{}",json!({"lake":row}));rows.push(row);
+    }
+    (depth,rows)
+}
 pub fn run(r:&Value,out:&Path)->Result<Value>{
     if out.join("manifest.json").exists(){return Err("prepared manifest exists; use a fresh output or load it".into());}
-    let start=Instant::now();let grid=Grid::read(&r["grid"])?;let depth=grid.depth(&r["bathymetry"])?;let geometry_wall=start.elapsed().as_secs_f64();let table=source::fields(r)?;
+    let start=Instant::now();let grid=Grid::read(&r["grid"])?;let bed=grid.bed(&r["bathymetry"])?;let depth:Vec<f32>=bed.par_iter().map(|b|(-b).max(0.) as f32).collect();let geometry_wall=start.elapsed().as_secs_f64();let table=source::fields(r)?;
     let frames=r["frames"].as_array().ok_or("frames required")?;if frames.len()<2{return Err("prepared forcing/boundary need at least two valid times".into());}
     let times:Vec<i64>=frames.iter().map(|f|DateTime::parse_from_rfc3339(text(f,"valid")?).map(|v|v.timestamp()).map_err(|e|e.to_string().into())).collect::<Result<_>>()?;
     if times.windows(2).any(|w|w[1]<=w[0]){return Err("forcing times must strictly increase".into());}
     let radius=r["coast_fill_cells"].as_u64().unwrap_or(2) as usize;if radius>8{return Err("coast fill radius must be <=8 source cells".into());}
     let first=source::grib(Path::new(text(&frames[0],"wave")?),&table["wave"],&grid,radius)?;
-    let wet:Vec<i32>=(0..grid.len()).into_par_iter().map(|i|i32::from(depth[i]>0.&&first["hs"][i].is_finite())).collect();
-    let depth:Vec<f32>=depth.into_par_iter().enumerate().map(|(i,d)|if wet[i]==1{d}else{0.}).collect();
-    if !wet.contains(&1){return Err("no target ocean cells".into());}
+    let ocean:Vec<i32>=(0..grid.len()).into_par_iter().map(|i|i32::from(depth[i]>0.&&first["hs"][i].is_finite())).collect();
+    let(lake_depth,lake_rows)=lakes(&grid,&bed,&first["hs"],&ocean);
+    let lake:Vec<bool>=lake_depth.par_iter().map(|d|*d>0.).collect();
+    let wet:Vec<i32>=(0..grid.len()).into_par_iter().map(|i|i32::from(ocean[i]==1||lake[i])).collect();
+    let depth:Vec<f32>=depth.into_par_iter().enumerate().map(|(i,d)|if ocean[i]==1{d}else if lake[i]{lake_depth[i]}else{0.}).collect();
+    if !wet.contains(&1){return Err("no target ocean or lake cells".into());}
     let boundary:Vec<i32>=if let Some(v)=r["grid"]["boundary_cells"].as_array(){v.iter().map(|v|v.as_i64().ok_or("bad boundary index").and_then(|v|i32::try_from(v).map_err(|_|"boundary outside int32"))).collect::<std::result::Result<_,_>>()?}else if grid.kind=="points"{
         if let Some(name)=r["grid"]["boundary_index_variable"].as_str(){arrays::read_nc(Path::new(text(&r["grid"],"file")?),name)?.iter().map(|v|*v as i32).collect()}
         else if let Some(name)=r["grid"]["boundary_connectivity"].as_str(){let v=arrays::read_nc(Path::new(text(&r["grid"],"file")?),name)?;if v.len()%2!=0{return Err("boundary connectivity must have [edge,2] shape".into());}
@@ -110,6 +155,45 @@ pub fn run(r:&Value,out:&Path)->Result<Value>{
     a.insert("initial_partitions".into(),arrays::f32(out,"initial_partitions",&initial,&[n,4,4])?);
     a.insert("boundary_partitions".into(),arrays::f32(out,"boundary_partitions",&boundaries,&[frames.len(),boundary.len(),4,4])?);
     a.insert("u10_east".into(),arrays::f32(out,"u10_east",&winds_u,&[frames.len(),n])?);a.insert("v10_north".into(),arrays::f32(out,"v10_north",&winds_v,&[frames.len(),n])?);
-    let manifest=json!({"schema":"gpuwm.waves.prepared/v1","status":"complete","grid":{"kind":grid.kind,"ncell":n,"nx":grid.nx,"ny":grid.ny,"dx":grid.dx,"dy":grid.dy,"row_order":"same as target grid; latlon south to north, west to east","boundary_index_space":"full"},"arrays":a,"initial_valid_time":times[0],"times":times,"boundary_times":times,"forcing_times":times,"stations":stations,"excluded_stations":excluded_stations,"wet_cells":wet.iter().filter(|&&v|v==1).count(),"reference_frames":reference,"request":r,"parallelism":{"threads":rayon::current_num_threads(),"decode":"Rust parallel fields","regrid":"Rayon target cells"},"stages":{"geometry_seconds":geometry_wall,"fields_seconds":fields_wall,"frames":stage_times},"direction_convention":"FROM clockwise from true north","partition_kind_codes":{"windsea":0,"swell":1},"bathymetry_datum":"EGM2008","coast_fill_max_source_cells":radius});
+    let manifest=json!({"schema":"gpuwm.waves.prepared/v1","status":"complete","grid":{"kind":grid.kind,"ncell":n,"nx":grid.nx,"ny":grid.ny,"dx":grid.dx,"dy":grid.dy,"row_order":"same as target grid; latlon south to north, west to east","boundary_index_space":"full"},"arrays":a,"initial_valid_time":times[0],"times":times,"boundary_times":times,"forcing_times":times,"stations":stations,"excluded_stations":excluded_stations,"lakes":lake_rows,"wet_cells":wet.iter().filter(|&&v|v==1).count(),"reference_frames":reference,"request":r,"parallelism":{"threads":rayon::current_num_threads(),"decode":"Rust parallel fields","regrid":"Rayon target cells"},"stages":{"geometry_seconds":geometry_wall,"fields_seconds":fields_wall,"frames":stage_times},"direction_convention":"FROM clockwise from true north","partition_kind_codes":{"windsea":0,"swell":1},"bathymetry_datum":"EGM2008","coast_fill_max_source_cells":radius});
     fs::write(out.join("manifest.json"),serde_json::to_vec_pretty(&manifest)?)?;Ok(manifest)
+}
+#[cfg(test)]
+mod lake_tests {
+    use super::*;
+    // 12 x 6 cells of 30 km: a 4 x 4 lake (14,400 km2) at 183 m with a 100 m bed,
+    // a 2 x 2 lake (3,600 km2), and water joined to an ocean wet cell.
+    fn grid(water:Vec<f32>,ice:Option<Vec<f32>>)->Grid{let(nx,ny)=(12,6);let n=nx*ny;
+        Grid{lat:(0..n).map(|i|45.+(i/nx) as f32*0.27).collect(),lon:(0..n).map(|i|-88.+(i%nx) as f32*0.38).collect(),area:vec![9.0e8;n],cos:vec![1.;n],sin:vec![0.;n],mapfac:vec![1.;n],
+            nx,ny,kind:"curvilinear".into(),dx:30000.,dy:30000.,water:Some(water),height:Some(vec![183.;n]),ice}}
+    fn layout()->(Vec<f32>,Vec<f64>,Vec<i32>){let(nx,n)=(12,72);let mut water=vec![0f32;n];let mut bed=vec![300f64;n];let mut ocean=vec![0;n];
+        for y in 1..5{for x in 1..5{water[y*nx+x]=1.;bed[y*nx+x]=100.;}}
+        for y in 1..3{for x in 6..8{water[y*nx+x]=1.;bed[y*nx+x]=100.;}}
+        for y in 3..6{water[y*nx+10]=1.;bed[y*nx+10]=-50.;}ocean[5*nx+11]=1;(water,bed,ocean)}
+    #[test]
+    fn large_inland_lake_is_water_with_surface_minus_bed_depth(){
+        let(water,bed,ocean)=layout();let g=grid(water,None);let hs=vec![f32::NAN;72];
+        let(depth,rows)=lakes(&g,&bed,&hs,&ocean);
+        assert_eq!(rows.len(),3);
+        for y in 1..5{for x in 1..5{assert_eq!(depth[y*12+x],83.);}}
+        assert!(depth.iter().enumerate().all(|(i,d)|*d==0.||(i%12>=1&&i%12<5&&i/12>=1&&i/12<5)));
+        assert_eq!(rows.iter().filter(|r|r["water"]==true).count(),1);
+        assert!(rows.iter().any(|r|r["reason"].as_str().is_some_and(|s|s.contains("5000 km2"))));
+        assert!(rows.iter().any(|r|r["reason"].as_str().is_some_and(|s|s.contains("ocean wave source"))));
+    }
+    #[test]
+    fn lake_without_bed_below_surface_is_named_and_left_out(){
+        let(water,mut bed,ocean)=layout();for y in 1..5{for x in 1..5{bed[y*12+x]=190.;}}
+        let(depth,rows)=lakes(&grid(water,None),&bed,&vec![f32::NAN;72],&ocean);
+        assert!(depth.iter().all(|d|*d==0.));
+        assert!(rows.iter().any(|r|r["reason"].as_str().is_some_and(|s|s.contains("no lake bed"))&&r["area_km2"].as_f64()==Some(14400.)));
+    }
+    #[test]
+    fn iced_lake_cells_stay_dry_and_grids_without_surface_rows_are_unchanged(){
+        let(water,bed,ocean)=layout();let mut ice=vec![0f32;72];ice[12+1]=1.;
+        let(depth,_)=lakes(&grid(water,Some(ice)),&bed,&vec![f32::NAN;72],&ocean);
+        assert_eq!(depth[12+1],0.);assert_eq!(depth[12+2],83.);
+        let mut plain=grid(vec![0.;72],None);plain.water=None;plain.height=None;
+        let(depth,rows)=lakes(&plain,&bed,&vec![f32::NAN;72],&ocean);assert!(rows.is_empty()&&depth.iter().all(|d|*d==0.));
+    }
 }

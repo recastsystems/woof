@@ -1,6 +1,6 @@
 # Terrain grid preparation
 
-Original WOOF code, Apache-2.0. Raster decoding and projection reuse the
+Original WOOF-ArWen code, Apache-2.0. Raster decoding and projection reuse the
 existing MIT `static-fields` crate; its notice remains in `tools/rustwx/LICENSE`.
 No UCAR code, source, fixtures or ABI are used.
 

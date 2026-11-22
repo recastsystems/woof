@@ -56,7 +56,7 @@ capped family that differ only in their vapour column:
                                                           to every digit
 
 So a moist-vs-dry z_i difference is NOT a change in boundary-layer depth, and
-comparing a cloudy WOOF z_i against a clear WRF z_i (or the reverse) compares
+comparing a cloudy WOOF-ArWen z_i against a clear WRF z_i (or the reverse) compares
 two different heights while appearing to compare one quantity.  Both sides
 must reduce it identically, and any receipt quoting z_i for a cloudy case must
 say which of the two it means.  The inversion height in a cloudy case is not
@@ -191,9 +191,9 @@ def main():
             "lwp_kg_m2"]
     print("=== %s : both sides reduced by the SAME routine, %.0f-min window ==="
           % (label, win))
-    print("WOOF frames in window: %d   WRF frames in window: %d"
+    print("WOOF-ArWen frames in window: %d   WRF frames in window: %d"
           % (A["n_samples"], W["n_samples"]))
-    print("%-28s %14s %14s %12s" % ("metric", "WOOF", "WRF em_les", "rel diff"))
+    print("%-28s %14s %14s %12s" % ("metric", "WOOF-ArWen", "WRF em_les", "rel diff"))
     rows = {}
     for k in keys:
         a, w = A[k], W[k]

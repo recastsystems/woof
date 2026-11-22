@@ -48,30 +48,22 @@ class _StreamIntervals:
         return interval_seconds(stream.interval('input' if direction is Direction.INPUT else 'output')) or 0
 
 
-def native_rank_vertex_order(session):
-    """This rank's local vertices in a native MPAS rank's local order, the order its vertex loops scatter in.
+def _block_creator_order(voc, neo, cov, owned, ncell, nv, halo):
+    """Vertices in a native MPAS rank's local order (mpas_block_creator.F:269-456 with mpas_block_decomp.F:302-422).
 
-    The fork's helicity adds each cell's vertex terms in that order (mpas_convective_diagnostics.F:558-565), so
-    seam cells match native N ranks only when the gather follows it (one-card order: 20 seam cells differed at
-    f000 on 2 ranks, 2026-10-28). MPAS-Model-rrfs/src/framework/mpas_block_creator.F:269-456 with
-    mpas_block_decomp.F:302-422: the 0-halo vertices in first-appearance order over the owned cells (ascending
-    global id) and their verticesOnCell slots, those whose first nonzero cellsOnVertex entry is owned kept at the front
-    and the others written from the end, so reversed; then each halo layer's new vertices in first-appearance
-    order over that layer's cells in ascending global id (mpas_block_creator.F:604,738-942). Vertices no local
-    cell names come last. Vectorised: no per-cell host loop at startup.
+    ``voc`` (cells, maxEdges) and ``cov`` (vertices, degree) are zero-based; an index outside 0..ncell-1 (or
+    0..nv-1 for a vertex) names no local element. ``owned`` cells come first in ascending global id; ``halo`` is the
+    halo cells in native traversal order (layer, then global id). The 0-halo vertices in first-appearance order
+    over the owned cells and their verticesOnCell slots, those whose first valid cellsOnVertex entry is owned kept
+    at the front and the others written from the end, so reversed; then the halo's new vertices in first-appearance
+    order; vertices no local cell names come last. Vectorised: no per-cell host loop at startup.
     """
     import numpy as np
-    n, d = session.native, session.layout.dimensions
-    owned, ncell, nv = int(d['nCellsSolve']), int(d['nCells']), int(d['nVertices'])
-    voc = np.asarray(n.get_field('mesh', 'verticesOnCell'))[:, :ncell].astype(np.int64) - 1
-    neo = np.asarray(n.get_field('mesh', 'nEdgesOnCell'))[:ncell].astype(np.int64)
-    cov = np.asarray(n.get_field('mesh', 'cellsOnVertex'))
-    ids = np.asarray(n.get_field('mesh', 'indexToCellID'))[:ncell].astype(np.int64)
     seen = np.zeros(nv, dtype=bool)
 
     def first_appearance(cells):
-        slots = voc[:, cells].T                            # cell-major, then slot: native's loop order
-        valid = ((np.arange(voc.shape[0])[None, :] < neo[cells][:, None]) & (slots >= 0) & (slots < nv))
+        slots = voc[cells]                                 # cell-major, then slot: native's loop order
+        valid = ((np.arange(voc.shape[1])[None, :] < neo[cells][:, None]) & (slots >= 0) & (slots < nv))
         sequence = slots[valid]
         sequence = sequence[~seen[sequence]]
         _, at = np.unique(sequence, return_index=True)
@@ -79,20 +71,95 @@ def native_rank_vertex_order(session):
         seen[found] = True
         return found
     first = first_appearance(np.arange(owned))
-    ends = np.asarray(tuple(getattr(session.layout, 'halo_ends', {}).get('nCells', ())), dtype=np.int64)
-    halo = np.arange(owned, ncell, dtype=np.int64)
-    layer = np.searchsorted(ends, halo, side='right') if ends.size else np.zeros_like(halo)
-    tail = first_appearance(halo[np.lexsort((ids[halo], layer))])
+    tail = first_appearance(np.asarray(halo, dtype=np.int64))
     # Native mpas_block_decomp.F:593-600 (44c0849; also June fork) skips
     # zero neighbours before assigning ownership. Pools have already mapped
     # that file zero to nCells+1. c3-lam's first-slot shortcut reverses outer
     # vertices unnecessarily when their first neighbour is outside the cut.
-    adjacent = cov[:, first].astype(np.int64) - 1
+    adjacent = cov[first].T
     valid = (adjacent >= 0) & (adjacent < ncell)
     head = adjacent[np.argmax(valid, axis=0), np.arange(first.size)]
     mine = (head >= 0) & (head < owned)
-    order = np.concatenate((first[mine], first[~mine][::-1], tail, np.flatnonzero(~seen)))
+    return np.concatenate((first[mine], first[~mine][::-1], tail, np.flatnonzero(~seen)))
+
+
+def native_rank_vertex_order(session):
+    """This rank's local vertices in a native MPAS rank's local order, the order its vertex loops scatter in.
+
+    The fork's helicity adds each cell's vertex terms in that order (mpas_convective_diagnostics.F:558-565), so
+    seam cells match native N ranks only when the gather follows it (one-card order: 20 seam cells differed at
+    f000 on 2 ranks, 2026-10-28). See _block_creator_order; each halo layer's cells are taken in ascending global
+    id (mpas_block_creator.F:604,738-942).
+    """
+    import numpy as np
+    n, d = session.native, session.layout.dimensions
+    owned, ncell, nv = int(d['nCellsSolve']), int(d['nCells']), int(d['nVertices'])
+    voc = np.asarray(n.get_field('mesh', 'verticesOnCell'))[:, :ncell].astype(np.int64).T - 1
+    neo = np.asarray(n.get_field('mesh', 'nEdgesOnCell'))[:ncell].astype(np.int64)
+    cov = np.asarray(n.get_field('mesh', 'cellsOnVertex')).astype(np.int64).T - 1
+    ids = np.asarray(n.get_field('mesh', 'indexToCellID'))[:ncell].astype(np.int64)
+    ends = np.asarray(tuple(getattr(session.layout, 'halo_ends', {}).get('nCells', ())), dtype=np.int64)
+    halo = np.arange(owned, ncell, dtype=np.int64)
+    layer = np.searchsorted(ends, halo, side='right') if ends.size else np.zeros_like(halo)
+    order = _block_creator_order(voc, neo, cov, owned, ncell, nv, halo[np.lexsort((ids[halo], layer))])
     return session.device_pools.cp.asarray(order)
+
+
+def one_card_vertex_order(mesh, *, limited_area):
+    """The global mesh's vertices in the order one card's helicity gather adds them (ForkOutputDiagnostics.bind).
+
+    A limited-area cut on one card takes native's single-rank block-creator order (every cell owned, no halo); a
+    closed mesh on one card keeps file order (vertex_order None). ``mesh`` is the hexcore Mesh (canonical zero-based
+    connectivity, -1 for no element). Cached on the mesh: the ranks of one process share it.
+    """
+    import numpy as np
+    key = '_one_card_vertex_order_' + ('lam' if limited_area else 'closed')
+    held = getattr(mesh, '__dict__', {}).get(key)
+    if held is not None:
+        return held
+    nv = int(np.asarray(mesh.cellsOnVertex).shape[0])
+    if limited_area:
+        voc = np.asarray(mesh.verticesOnCell, dtype=np.int64)
+        neo = np.asarray(mesh.nEdgesOnCell, dtype=np.int64)
+        ncell = int(voc.shape[0])
+        order = _block_creator_order(voc, neo, np.asarray(mesh.cellsOnVertex, dtype=np.int64), ncell, ncell, nv,
+                                     np.zeros(0, dtype=np.int64))
+    else:
+        order = np.arange(nv, dtype=np.int64)
+    try:
+        setattr(mesh, key, order)
+    except Exception:  # noqa: BLE001 - a read-only mesh only loses the cache
+        pass
+    return order
+
+
+def one_card_rank_vertex_order(vertex_l2g, global_order):
+    """This rank's local vertices sorted by their place in one card's gather order (``global_order``, global ids).
+
+    Each cell then adds its vertex terms in the order one card adds them, so a rank's updraft helicity holds one
+    card's words at every cell, seam cells included.
+    """
+    import numpy as np
+    global_order = np.asarray(global_order, dtype=np.int64)
+    place = np.empty(global_order.size, dtype=np.int64)
+    place[global_order] = np.arange(global_order.size, dtype=np.int64)
+    return np.argsort(place[np.asarray(vertex_l2g, dtype=np.int64)], kind='stable').astype(np.int64)
+
+
+#: WOOF_HEX_UH_RANK_ORDER: the vertex order a same-host rank's helicity gather adds each cell's terms in.
+#: ``one-card`` (default, unset): one card's order, so N ranks write one card's updraft-helicity words. ``native``:
+#: a native MPAS rank's own local order, the proof mode against native RRFS-MPAS at the same rank count (whose seam
+#: cells differ in the last place from its own one-rank run, as hex's then do).
+UH_RANK_ORDER_WORD = 'WOOF_HEX_UH_RANK_ORDER'
+
+
+def uh_rank_order():
+    import os
+    value = os.environ.get(UH_RANK_ORDER_WORD, '').strip().lower() or 'one-card'
+    if value not in ('one-card', 'native'):
+        raise ValueError(f'{UH_RANK_ORDER_WORD} must be one-card or native (got {value!r}): a misspelt proof word '
+                         'would otherwise run the default order unseen')
+    return value
 
 
 class ForkOutputDiagnostics(ResidentOutputDiagnostics):
@@ -112,9 +179,23 @@ class ForkOutputDiagnostics(ResidentOutputDiagnostics):
             # rank order was already used, 12-18.
             self.convective.driver.vertex_order = native_rank_vertex_order(self.session)
         if self.halo is not None:
-            # A same-host rank gathers helicity in a native rank's vertex order (the proof bar is native at the
-            # same rank count), not the one-card order the shared base gives a rank.
-            self.convective.driver.vertex_order = native_rank_vertex_order(self.session)
+            # A same-host rank gathers helicity in one card's vertex order, so N ranks write one card's words.  THE
+            # BREAKAGE THIS FIXES: in a native rank's own order (the default until 20 Nov 2026) every seam cell added
+            # its vertex terms in another order than one card, and the updraft-helicity maxima and minima differed
+            # in the last place at the seams (about 1,300 of 12 million diag words a frame, 1 against 2 ranks,
+            # 15 Mar 2025 north Alabama 3 km circle): a box's 8 ranks wrote other UH words than one
+            # card. WOOF_HEX_UH_RANK_ORDER=native keeps a native rank's order (the native-N-ranks proof mode).
+            if uh_rank_order() == 'native':
+                self.convective.driver.vertex_order = native_rank_vertex_order(self.session)
+            else:
+                execution = self.halo.execution
+                source = getattr(execution.inputs[0], 'partition_source_mesh', None)
+                if source is None:
+                    raise ValueError("this rank's mesh does not name the global mesh it was cut from; one card's "
+                                     f"helicity order needs it ({UH_RANK_ORDER_WORD}=native runs without it)")
+                order = one_card_rank_vertex_order(execution.partition.vertex_l2g, one_card_vertex_order(
+                    source, limited_area=bool(self.session.layout.configs.get('config_apply_lbcs', False))))
+                self.convective.driver.vertex_order = self.session.device_pools.cp.asarray(order)
             ends = tuple(getattr(self.session.layout, 'halo_ends', {}).get('nCells', ()))
             owned = int(self.session.layout.dimensions['nCellsSolve'])
             # Native's w halo: layers 1 and 2 (the last layer end also holds deeper rings).

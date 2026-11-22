@@ -1,7 +1,7 @@
 """The JEDI file contract for RRFS v2 (stage H6, tier T1).
 
-RRFS v2's analysis is NOAA's MPAS-JEDI (RDASApp), unchanged, on CPU.  It and
-the model exchange ONE file, ``mpasout.nc``, in native MPAS form:
+The native MPAS-JEDI stream schema follows NOAA's RDASApp. The model and
+analysis exchange ``mpasout.nc`` in native MPAS form:
 
 * model -> JEDI: the 27 fields of the workflow's ``background`` stream
   (rrfs-workflow 85ea55c0 ``fix/stream_list/hrrrv5/stream_list.atmosphere.background``);
@@ -19,13 +19,11 @@ analysis's uncoupled fields exactly as upstream feeds them on a DA-cycling
 restart.
 
 What the file carries and where each field comes from is recorded per
-variable (``hex_provenance``) and in the sidecar receipt, because three of the
-27 are not produced by hex's current physics suite (see FIELD_ROLES).  The
-soil fields are a declared interim: hex's land model carries four Noah-MP
-layers and RRFS v2's namelist declares nine RUC levels, so the four layers are
-mapped onto the nine depths by :func:`interim_soil_levels` until hex carries
-nine soil levels of its own (stage H4a).  The mapping is labelled on the file,
-in the receipt and in this module, and never presented as RUC state.
+variable (``hex_provenance``) and in the sidecar receipt. Native RUC soil
+columns retain all nine levels without interpolation. The explicitly labelled
+four-to-nine interim remains available only for an actual four-layer land
+producer. TEMPO scalar fields come from that producer's native state; a
+six-species producer names any unprognosed extra slots as allocation defaults.
 """
 
 from __future__ import annotations
@@ -40,6 +38,8 @@ import tempfile
 from typing import Any, Mapping, Sequence
 
 import numpy as np
+
+from woof.hex.cycle.land_state import LAND_ATTRIBUTE, LAND_BY_NAME, LAND_FIELDS, LAND_SOURCES, RUC_WARM_MEMORY
 
 
 # -- NetCDF goes through the engine's Rust bridges --------------------------
@@ -98,8 +98,8 @@ DEFAULT_SCALAR_NAMES: tuple[str, ...] = ("qv", "qc", "qr", "qi", "qs", "qg")
 # the ``analysis`` stream INTO the existing mpasout.nc, and RDASApp's MPAS
 # cannot add a variable to an existing file: with any of these absent the
 # write fails ("MPAS IO Error: Undefined field", MPAS_stream_mgr_write
-# ierr=-3; MEASURED 2026-10-05).  Hex's WSM6 carries none of them,
-# so they are written as MPAS's allocation default 0 and named as absent.
+# ierr=-3; MEASURED 2026-10-05). TEMPO carries these natively. A
+# six-species producer instead writes allocation defaults, named as absent.
 RRFS_EXTRA_SCALARS: tuple[str, ...] = ("nc", "ni", "nr", "ng", "nifa", "nwfa", "volg")
 
 # RUC LSM's nine levels (metres below the surface).  RRFS v2 runs RUC with
@@ -153,8 +153,8 @@ FIELD_ROLES: dict[str, str] = {
     "scalars": "dycore", "surface_pressure": "dycore", "theta": "dycore",
     "u": "dycore", "uReconstructZonal": "dycore",
     "uReconstructMeridional": "dycore", "w": "dycore",
-    "skintemp": "physics", "smois": "physics (interim 4->9 mapping)",
-    "tslb": "physics (interim 4->9 mapping)", "u10": "physics",
+    "skintemp": "physics", "smois": "physics",
+    "tslb": "physics", "u10": "physics",
     "v10": "physics", "t2m": "physics", "q2": "physics",
     "refl10cm": "physics",
     "cldfrac": "physics if exported, else absent",
@@ -170,6 +170,9 @@ FIELD_ROLES: dict[str, str] = {
 
 _UNITS = {
     "cldfrac": ("unitless", "horizontal cloud fraction"),
+    "cldfrac_bl": ("unitless", "native MYNN parameterized cloud fraction"),
+    "qc_bl": ("kg kg^{-1}", "native MYNN parameterized cloud liquid mixing ratio"),
+    "qi_bl": ("kg kg^{-1}", "native MYNN parameterized cloud ice mixing ratio"),
     "lai": ("m^2 m^{-2}", "leaf area index"),
     "pressure_base": ("Pa", "Base state pressure"),
     "pressure_p": ("Pa", "Perturbation pressure"),
@@ -195,6 +198,8 @@ _UNITS = {
     "refl10cm": ("dBZ", "10 cm radar reflectivity"),
     "t2m": ("K", "2-meter temperature"),
     "q2": ("kg kg^{-1}", "2-meter specific humidity"),
+    "pblh": ("m", "Computed planetary boundary layer height above ground"),
+    "zgrid": ("m", "Fixed native interface height above mean sea level"),
 }
 _SCALAR_LONG = {
     "qv": "Water vapor mixing ratio", "qc": "Cloud water mixing ratio",
@@ -322,6 +327,7 @@ def assemble_background_fields(
     n_levels: int,
     soil_levels: int,
     valid: datetime,
+    require_native_land: bool = False,
 ) -> tuple[dict[str, np.ndarray], dict[str, str]]:
     """The 27 fields in hex's logical layout, plus one provenance line each.
 
@@ -426,6 +432,62 @@ def assemble_background_fields(
                 "absent: hex's current suite does not compute it; MPAS allocation default 0 (unused by conventional observation operators)",
                 shape,
             )
+    # SGS is a native state group, never a total-cloud or init fallback.
+    from .producer_cloud import MYNN_CLOUD_FIELDS
+    cloud_sources = []
+    for label, carrier in (("snapshot", snap), ("seam", seam_fields)):
+        hits = {name: next((key for key in (name, native) if key in carrier), None)
+                for name, native, _ in MYNN_CLOUD_FIELDS}
+        if not any(hits.values()):
+            continue
+        if not all(hits.values()):
+            raise ContractRefusal(f"incomplete native MYNN SGS cloud state in {label}")
+        values = {name: np.ascontiguousarray(
+            _orient(hit, carrier[hit], n_cells, n_levels), dtype=np.float32)
+                  for name, hit in hits.items()}
+        cloud_sources.append((label, hits, values))
+    if cloud_sources:
+        label, hits, values = cloud_sources[0]
+        for other_label, _, other_values in cloud_sources[1:]:
+            for name in values:
+                if (values[name].shape != other_values[name].shape or
+                        values[name].tobytes() != other_values[name].tobytes()):
+                    raise ContractRefusal(
+                        f"native MYNN SGS {name}: {label} and {other_label} disagree")
+        for name, value in values.items():
+            take(name, value,
+                 f"physics: native MYNN SGS field {hits[name]!r} from {label}", cell3)
+    # Native land memory shares the cycle/warm-start table. Only current
+    # physics exports enter this carrier; init-hour reservoirs are not a
+    # substitute for a live forecast's land state.
+    native_land = {"smois", "tslb", "skintemp", "t2m", "q2"}
+    # A producer whose own soil column is not the file's (four Noah-MP layers in a nine-level file) writes smois
+    # and tslb through the labelled interim mapping above and nothing else of its land memory: its other soil
+    # fields have no place on the file's levels, and the file carries no warm-land marker (write_background), so
+    # no warm start reads mapped soil as land state.  THE BREAKAGE THIS PREVENTS (hex 0.5.0 both-routes matrix,
+    # 2026-11-09): --jedi-background on the ArWen route's default land surface stopped at its first frame
+    # ("exported physics field 'smois' has shape (4, 1, nCells); expected ... (9, nCells)").
+    mapped = int(soil4_m.shape[0]) != int(soil_levels)
+    for name, keys in (() if mapped else LAND_SOURCES):
+        hit = next((key for key in keys if key in seam_fields), None)
+        if hit is None:
+            continue
+        soil = LAND_BY_NAME[name].like == "tslb"
+        levels = soil_levels if soil else n_levels
+        value = _orient(hit, seam_fields[hit], n_cells, levels)
+        take(name, value, f"physics: hex physics field {hit!r}",
+             (soil_levels, n_cells) if soil else (n_cells,))
+        native_land.add(name)
+    if require_native_land and not mapped:
+        required = {f.name for f in LAND_FIELDS if f.required}
+        if soil_levels == len(RUC_NINE_LEVEL_DEPTHS_M):
+            required.update(RUC_WARM_MEMORY)
+        missing_land = sorted(required - native_land)
+        if missing_land or soil4_m.shape[0] != soil_levels:
+            raise ContractRefusal(
+                f"incomplete native land background: missing live fields {missing_land}; "
+                f"native soil levels {soil4_m.shape[0]}, requested {soil_levels}; "
+                "refusing init-hour fallback or mapped warm soil")
     for name in RRFS_EXTRA_SCALARS:
         if name not in fields:
             take(
@@ -444,6 +506,31 @@ def assemble_background_fields(
     return fields, provenance
 
 
+def add_live_geometry(fields, provenance, *, pblh, zgrid, n_cells, n_levels):
+    """Publish committed PBL height and the run's fixed native interfaces.
+
+    YSU's hpbl interpolates layer heights integrated from metre-valued dz;
+    woof.core.physics copies it into fields/pblh. No init PBL is admitted.
+    The prepared vertical grid is already the exact FP32 runtime geometry.
+    """
+    for name, value, shape, source in (
+        ("pblh", pblh, (n_cells,),
+         "physics: committed live fields/pblh in metres AGL"),
+        ("zgrid", zgrid, (n_levels + 1, n_cells),
+         "geometry: exact prepared.vertical.zgrid, fixed native interfaces in metres MSL"),
+    ):
+        array = np.asarray(value)
+        # Regional runtime geometry may include its single garbage cell.
+        if array.shape == (*shape[:-1], n_cells + 1):
+            array = array[..., :n_cells]
+        if array.dtype != np.dtype("float32") or array.shape != shape:
+            raise ContractRefusal(f"{name}: exact FP32 {shape} required, got {array.dtype} {array.shape}")
+        if not np.all(np.isfinite(array)):
+            raise ContractRefusal(f"{name}: non-finite native publication")
+        fields[name] = np.ascontiguousarray(array)
+        provenance[name] = source
+
+
 def _strip(array: Any, n_cells: int, axis_from_end: int = 1) -> np.ndarray:
     data = np.asarray(array)
     if data.shape[-1] == n_cells + 1:
@@ -452,6 +539,10 @@ def _strip(array: Any, n_cells: int, axis_from_end: int = 1) -> np.ndarray:
 
 
 def _dims(name: str, shape: tuple[int, ...], n_cells: int, n_edges: int, n_levels: int, n_soil: int) -> tuple[str, ...]:
+    if name in LAND_BY_NAME and LAND_BY_NAME[name].like == "tslb":
+        if shape != (n_soil, n_cells):
+            raise ContractRefusal(f"{name}: native soil shape {shape} != {(n_soil, n_cells)}")
+        return ("Time", "nCells", "nSoilLevels")
     if shape == (n_cells,):
         return ("Time", "nCells")
     if shape == (n_levels, n_cells):
@@ -666,6 +757,11 @@ def write_background(
             "hex_soil_mapping": soil_mapping_label(provenance),
             "config_start_time": mpas_xtime(valid),
         }
+        native_land = [f.name for f in LAND_FIELDS if f.name in fields
+                       and provenance.get(f.name, "").startswith(("physics:", "native MPAS pool "))]
+        # Interim-mapped soil is never marked as warm land state (cycle.land_state.warm_land_fields reads the marker).
+        if native_land and soil_mapping_label(provenance) != INTERIM_SOIL_LABEL:
+            attributes[LAND_ATTRIBUTE] = json.dumps(native_land)
         attributes.update({key: str(value) for key, value in (global_attributes or {}).items()})
         for key, value in attributes.items():
             schema.put_global_attr(key, value)
@@ -677,6 +773,13 @@ def write_background(
             fixed.append((varid, values))
             field_hashes[name] = hashlib.sha256(values.tobytes()).hexdigest()
         ordered = [name for name in BACKGROUND_FIELDS if name != "scalars"]
+        ordered.extend(f.name for f in LAND_FIELDS if f.name in fields and f.name not in ordered)
+        from .producer_cloud import MYNN_CLOUD_FIELDS
+        cloud = tuple(public for public, _, _ in MYNN_CLOUD_FIELDS if public in fields)
+        if cloud and len(cloud) != len(MYNN_CLOUD_FIELDS):
+            raise ContractRefusal("incomplete native MYNN SGS cloud state at background write")
+        ordered.extend(cloud)
+        ordered.extend(name for name in ("pblh", "zgrid") if name in fields)
         species = list(scalar_names) + [
             name for name in RRFS_EXTRA_SCALARS if name in fields and name not in scalar_names
         ]
@@ -690,18 +793,22 @@ def write_background(
             # carry u = -0.0) would fail the no-observation round trip
             # bitwise while equal in value.  MEASURED 2026-10-05:
             # 89,624 u values on 2,758 edges, all -0.0 -> +0.0.
-            array = np.asarray(fields[name], dtype=np.float32) + np.float32(0.0)
+            array = np.asarray(fields[name], dtype=np.float32)
+            if name not in ("pblh", "zgrid"):
+                array = array + np.float32(0.0)
             dims = _dims(name, array.shape, n_cells, n_edges, n_levels, soil_levels)
+            if name == "zgrid":
+                dims = dims[1:]  # fixed geometry, never a time-dependent state
             varid = schema.def_var(name, "f4", tuple(dims_by_name[dim] for dim in dims))
             units, long_name = _UNITS.get(
-                name, (_SCALAR_UNITS.get(name, "kg kg^{-1}"), _SCALAR_LONG.get(name, name))
+                name, (LAND_BY_NAME[name].units if name in LAND_BY_NAME else _SCALAR_UNITS.get(name, "kg kg^{-1}"), _SCALAR_LONG.get(name, name))
             )
             schema.put_var_attr(varid, "units", units)
             schema.put_var_attr(varid, "long_name", long_name)
             schema.put_var_attr(varid, "hex_provenance", provenance[name])
             # One record in MPAS order: nCells or nEdges leading, levels fastest.
             payload = array if array.ndim == 1 else array.T
-            records.append((varid, np.ascontiguousarray(payload)))
+            (fixed if name == "zgrid" else records).append((varid, np.ascontiguousarray(payload)))
             field_hashes[name] = hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
         with schema.create(temporary) as writer:
             for varid, values in fixed:
@@ -874,7 +981,7 @@ def recouple_da_cycling(
     ``reference_formed`` forms the base state as atm_init_coupled_diagnostics does on a DA-cycling start
     (rtheta_base, exner_base and pressure_base from rho_base, theta_base and the model's zz), the base state a run
     whose own reference was formed that way holds (the MPAS suite route's loaders, cold_start); False reads the
-    init's stored words, as the WOOF route's run reference does.  THE BREAKAGE THIS FIXES (fix/hex-lam-da-v842):
+    init's stored words, as the WOOF-ArWen route's run reference does.  THE BREAKAGE THIS FIXES (fix/hex-lam-da-v842):
     every MPAS-suite --da-analysis on an init whose stored pressure_base is the init program's (the RRFS hrrrv5 ne3km
     init) was refused, "base state pressure_base differs from the run's own reference", though both name one state.
 

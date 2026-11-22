@@ -46,8 +46,9 @@ observation pairs, source hashes and pictures are retained in the private
 slab-ocean port delivery. Qualification does
 not establish prognostic sea ice, ice-sheet runoff or seasonal ocean skill.
 
-The installed duration-default path was then run for the complete same
-72 hours with `sf_ocean_physics` omitted. Preparation was regenerated from
+The duration-default path as it stood through 3.0.1, when an omitted
+`sf_ocean_physics` took option 2 for a run of 48 h or more, was then run for
+the complete same 72 hours with `sf_ocean_physics` omitted. Preparation was regenerated from
 the cached GFS inputs to preserve the exact-TOML source-manifest binding
 (215.34 s, 170% CPU on the test host). All 8,640 steps and 25 frames passed on the
 shared RTX 5090. Command wall was 599.078 s, model wall 588.922 s, sampled
@@ -56,5 +57,11 @@ duplicated in this second run. Its canonical final-state digest, covering
 206 arrays and scalar state, exactly matches the explicit-selection run:
 `bac09317e6e750c5d6978381d2f1a1ed1e906620c27c1cf704f71772f408e0a1`.
 The two shared-card walls have different contention and are not a speed
-comparison. Both runs used eager CUDA without CUDA graphs. The default
-policy retains an explicit option 0 opt-out and explicit option 1 Pollard.
+comparison. Both runs used eager CUDA without CUDA graphs.
+
+That default is gone. From 3.0.2 an omitted `sf_ocean_physics` is 0, no
+ocean model, at every run length (WRF's default; see [README.md](README.md)).
+The same omitted-key run on 3.0.2 keeps the input SST and does not reproduce
+the digest above; it was not repeated. This 72-hour forecast is reached by
+setting `sf_ocean_physics = 2`, the explicit-selection run measured first,
+and option 1 (Pollard) is chosen the same way.

@@ -406,7 +406,7 @@ BUNDLED_ARTIFACTS: tuple[BundledArtifact, ...] = (
         on_demand=True),
     BundledArtifact(
         "rw_waves_data", "executable", "tools/waves_data",
-        "GPUWM_RW_WAVES_DATA", "Spectral wave preparation, verification and products",
+        "WOOF_RW_WAVES_DATA", "Spectral wave preparation, verification and products",
         on_demand=True),
     BundledArtifact(
         "rw_waves_coupled_prepare", "executable", "tools/waves_data",

@@ -1,7 +1,7 @@
 """The moving start member is rotated from the premade family template, never generated on the start path.
 
 THE BREAKAGE THIS PREVENTS: every storm- and setup-following run generated its start mesh on the box before the
-first step (owner ruling 2026-10-23: premade meshes; production run_312c8803de02ae46 spent 940 s preparing the start
+first step (premade meshes; production run_312c8803de02ae46 spent 940 s preparing the start
 member on a new box). The template is keyed by its generator spec alone, so the image's prep store carries it.
 """
 import json

@@ -328,7 +328,7 @@ def test_sfclay_publishes_ustm_as_unconditional_registry_state():
     ``Registry.EM_COMMON:1954`` declares USTM ``ij misc 1 - r`` -- plain,
     unconditional, restart-carried state -- and ``module_surface_driver.F``
     passes it positionally to both MM5 schemes (:2073, :2127), so
-    ``PRESENT(USTM)`` is never false in an EM build.  WOOF's consumers read
+    ``PRESENT(USTM)`` is never false in an EM build.  WOOF-ArWen's consumers read
     ``fields["ustm"]`` (``dycore.py:970``, ``:1164``); publishing it from the
     scheme's own output set is what makes that read a computed value instead
     of an array nobody writes.

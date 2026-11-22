@@ -71,9 +71,8 @@ def test_dia_preserves_discrete_action_and_variance():
     wind = cp.full(m.depth.shape, 10, cp.float32)
     m._moments(wind, wind*0, wind, wind*0, 0)
     m.rate.fill(0)
-    m._launch("dia", m.nc*m.ns, (m.spectrum, m.rate, m.frequency, m.df,
-        m.depth, m.moments, m.i(m.nc), m.i(m.nf), m.i(m.nd),
-        m.f(math.log(m.spectral.ratio)), m.f(30)))
+    m.dia.launch(m.spectrum, m.rate, None, m.frequency, m.df, m.depth, m.moments, m.nc,
+                 dt=30, limited=True)
     energy = m.rate * m.df[None,None,:,None]
     action = energy / m.frequency[None,None,:,None]
     assert float(cp.sum(cp.abs(energy))) > 0

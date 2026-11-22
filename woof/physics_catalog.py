@@ -1,4 +1,4 @@
-"""What physics WOOF can run, what each choice means, and whether a mix runs.
+"""What physics WOOF-ArWen can run, what each choice means, and whether a mix runs.
 
 One engine-owned answer for every front end (``woof physics-catalog``,
 ``GET /api/physics`` and ``POST /api/physics/check`` in ``woof gui``, and

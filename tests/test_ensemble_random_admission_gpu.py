@@ -33,7 +33,8 @@ def _digest(state, driver, cp):
 def _build_case(arm, monkeypatch, *, soil_layers=9, microphysics=6):
     import test_ruc_runtime as fixture
     config = fixture.RunConfig
-    selected = {"cu_physics": 3}
+    # GF SPP consumes through GFDRV (WRF 4.8.0 GFL carries no SPP pattern).
+    selected = {"cu_physics": 3, "cu_gf_version": "wrf_461"}
     if arm.startswith("spp_"):
         selected[arm] = 1
     with monkeypatch.context() as patch:

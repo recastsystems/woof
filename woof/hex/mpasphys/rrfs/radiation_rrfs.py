@@ -372,6 +372,9 @@ def shortwave_slot(call):
     pin = pools["atm_input"]["pin"]
     ozone = diag["o3clim"][:,:nc] if options["o3input"] == 2 else engine.cp.empty((0,nc),engine.cp.float32)
     options.update(pin=pin,o3clim=ozone)
+    from ..mcica_seed_rule import held as _held_seed
+    # config_radt_mcica_seed = 'cell' only: the solve cells' global indices and the call's time step.
+    options["mcica_seed"] = _held_seed(call.options, lambda: mesh["indexToCellID"][:nc], call.itimestep)
     aerosols = {n:sounding[n][:,:nc] for n in ("nwfa","nifa","aerosol_qv") if n in sounding}
     if "ht" in sounding:
         aerosols["ht"] = sounding["ht"][:nc]
@@ -558,10 +561,13 @@ def longwave_slot(call):
     # THE BREAKAGE THIS PREVENTS: the default (True) built a dict of eight device slices for every column on
     # every LW call: about 1.0 s of host Python per call at 40,962 columns (x1.40962: LW 1,084 ms of a
     # 1,205 ms radiation call, its solver about 90 ms), growing with the column count.
+    from ..mcica_seed_rule import held as _held_seed
     result = lw.rrtmg_lwrad_device(*lw.radiation_lw_from_mpas(state),pools["rrtmg_lw_tables"],
         icloud=int(pools["icloud"]),julday=int(pools["julday"]),cldovrlp=overlap,idcor=idcor,
         has_reqc=int(flags["has_reqc"]),has_reqi=int(flags["has_reqi"]),has_reqs=int(flags["has_reqs"]),
-        o3input=o3input,pin=pin,ozone=ozone,retain_profiles=False)
+        o3input=o3input,pin=pin,ozone=ozone,retain_profiles=False,
+        # config_radt_mcica_seed = 'cell' only: the solve cells' global indices and the call's time step.
+        mcica_seed=_held_seed(config,lambda: pools["mesh"]["indexToCellID"][:nc],call.itimestep))
     out = lw.radiation_lw_to_mpas(result)
     for n in lw.FLUX_FIELDS:
         diag["olrtoa" if n=="olr" else n][:nc] = out[n]

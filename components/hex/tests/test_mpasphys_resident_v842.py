@@ -115,6 +115,8 @@ def test_resident_assembly_uses_level_two_mass_and_both_radiation_rates(monkeypa
     glue.session = SimpleNamespace(layout=SimpleNamespace(fields=fields))
     glue.assembler = SimpleNamespace(get_tend=assemble)
     glue.ncells, glue.dimensions, glue.invalid = 3, {'nEdgesSolve': 6}, None
+    # The external-tendency slot's inputs (woof.hex.ad.external_tendency): no slot is asked for, so none is built.
+    glue.cp, glue.cache, glue.names = np, None, ('qv',)
     glue.get_tend(SimpleNamespace(pools={'rk_step': 1, 'dynamics_substep': 1}))
     assert reads[0] == 'released-prepared'
     assert ('state', 'rho_zz', 2) in reads

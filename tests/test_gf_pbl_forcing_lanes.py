@@ -53,7 +53,7 @@ _TSK_K = 305.0
 _BASE_CONFIG = dict(
     nx=8, ny=8, nz=40, dx=12000.0, dy=12000.0, ztop=18000.0,
     dt=60.0, run_seconds=0.0, moist=True, mp_physics=10,
-    bldt=0.0, cu_physics=3, cudt_minutes=0.0)
+    bldt=0.0, cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=0.0)
 
 
 def _pbl_cases():

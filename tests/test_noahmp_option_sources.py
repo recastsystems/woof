@@ -16,7 +16,7 @@ from woof.core.noahmp_kernel_sources import runtime_unit
     ("noahmp_vegeflux", {"k_vegeflux_masked_stc3", "k_vegeflux_stc2", "k_vegeflux_masked_stc2", "k_vegeflux_crs2", "k_vegeflux_masked_crs2", "k_vegeflux_sfc2", "k_vegeflux_masked_sfc2"}),
     ("noahmp_leaves", {"noahmp_leaf_atm_selected", "noahmp_pedotransfer_sr2006", "noahmp_depth_soil_parameters", "noahmp_carbon_flux", "noahmp_crop_flux"}),
     ("noahmp_vegprecip", {"noahmp_phenology_input_lai", "noahmp_phenology_crop"}),
-    ("noahmp_water", {"k_water_selected", "k_irrigation_prefix", "k_groundwater_heads", "k_groundwater_lateral", "k_groundwater_update", "k_groundwater_cold_adjust", "k_groundwater_cold_river", "k_groundwater_cold_soil"}),
+    ("noahmp_water", {"k_water_selected", "k_irrigation_prefix", "k_groundwater_heads", "k_groundwater_lateral", "k_groundwater_update", "k_groundwater_cold_adjust", "k_groundwater_cold_river", "k_groundwater_cold_soil", "k_water_wetland"}),
     ("noahmp_thermal", {"noahmp_thermal_phasechange_frz2", "noahmp_thermal_tsnosoi_selected", "noahmp_energy_stc2_snow", "noahmp_tsnosoi_snow_papers"}),
 ])
 def test_selected_images_reuse_and_seal_the_default_and_extension(name, added):
@@ -82,7 +82,7 @@ def test_selected_parameter_trajectories_have_distinct_restart_seals():
                       dict(opt_rsf=3), dict(opt_rsf=4), dict(opt_btr=2),
                       dict(opt_btr=3), *(dict(opt_snf=v) for v in (2, 3, 4, 5)),
                       *(dict(dveg=v) for v in (1, 3)), dict(opt_inf=2),
-                      dict(opt_run=4), dict(opt_inf=2,opt_run=4), dict(opt_run=6), dict(opt_inf=2,opt_run=6), dict(opt_run=7), dict(opt_inf=2,opt_run=7), dict(opt_rad=2), dict(opt_rad=2,opt_alb=1), dict(opt_rad=1), dict(opt_rad=1,opt_alb=1), dict(opt_frz=2), dict(opt_frz=2,opt_inf=2), dict(opt_stc=2), dict(opt_tbot=1), dict(opt_stc=3,opt_tbot=1), dict(opt_stc=2,opt_tbot=1), dict(opt_crs=2), dict(opt_crs=2,opt_stc=2), dict(opt_sfc=2), dict(opt_sfc=2,opt_crs=2,opt_stc=2), *(dict(dveg=v) for v in (7,8,9)), *(dict(opt_run=v) for v in (1,2)), *(dict(opt_run=v,opt_inf=2) for v in (1,2)), dict(soiltstep=180.0), dict(opt_tdrn=1), dict(opt_tdrn=2), dict(opt_stc=3,tanh_profile="glibc_2_43"), dict(opt_stc=3,atan_profile="glibc_2_43"), *(dict(opt_run=8,opt_infdv=v) for v in (1,2,3))):
+                      dict(opt_run=4), dict(opt_inf=2,opt_run=4), dict(opt_run=6), dict(opt_inf=2,opt_run=6), dict(opt_run=7), dict(opt_inf=2,opt_run=7), dict(opt_rad=2), dict(opt_rad=2,opt_alb=1), dict(opt_rad=1), dict(opt_rad=1,opt_alb=1), dict(opt_frz=2), dict(opt_frz=2,opt_inf=2), dict(opt_stc=2), dict(opt_tbot=1), dict(opt_stc=3,opt_tbot=1), dict(opt_stc=2,opt_tbot=1), dict(opt_crs=2), dict(opt_crs=2,opt_stc=2), dict(opt_sfc=2), dict(opt_sfc=2,opt_crs=2,opt_stc=2), *(dict(dveg=v) for v in (7,8,9)), *(dict(opt_run=v) for v in (1,2)), *(dict(opt_run=v,opt_inf=2) for v in (1,2)), dict(soiltstep=180.0), dict(opt_tdrn=1), dict(opt_tdrn=2), dict(opt_stc=3,tanh_profile="glibc_2_43"), dict(opt_stc=3,atan_profile="glibc_2_43"), *(dict(opt_run=8,opt_infdv=v) for v in (1,2,3)), dict(opt_scf=2)):
         selected = NoahmpRuntimeParameters(bundle=default.bundle, **selection)
         record = seal(selected)
         assert record["declared_identity"]["tables"] == baseline["declared_identity"]["tables"]

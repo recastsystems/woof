@@ -18,7 +18,7 @@ by default through `physics_compat.implicit_runtime_switches`.
 A measured first-step budget at the first east U relaxation point gives
 the following coupled tendencies on RK stage 1:
 
-| Term | Compiled WRF | Previous WOOF |
+| Term | Compiled WRF | Previous WOOF-ArWen |
 | --- | ---: | ---: |
 | Horizontal advection | -21.24713898 | -21.24713707 |
 | Vertical advection | 0.23670197 | 0.23670197 |
@@ -35,7 +35,7 @@ the cause of the forecast discrepancy.
 
 Identical-input compiled replays separate the causes. On native input
 words the pressure-gradient replay reproduces the live WRF result.
-On WOOF input words it reproduces the larger force to within 0.003
+On WOOF-ArWen input words it reproduces the larger force to within 0.003
 coupled units. Replacing pressure alone accounts for 99.90 percent of the
 input-induced difference. A separate native-input control measures the
 omitted moisture correction as about 3.906 coupled units at this point.
@@ -45,7 +45,7 @@ The pressure rewrite comes from the declared precision choices in
 thickness residual, and `log1p` of a preserved pressure drop instead of
 the rounded pressure ratio. The actual prognostic and pressure carriers
 in this experiment are FP32. Those precision choices remain the default.
-The first refresh also precedes physics in WOOF, while WRF retains its
+The first refresh also precedes physics in WOOF-ArWen, while WRF retains its
 imported pressure until after the first acoustic stage.
 
 The six-hour comparison uses unchanged input files and the original

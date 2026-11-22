@@ -750,8 +750,8 @@ _SWITCHES_OUTSIDE_THE_SINGLE_DOMAIN_PRODUCT = frozenset({
     "dveg", "noahmp_acc_dt", "noahmp_output", "soiltstep",
     "opt_alb", "opt_btr", "opt_crop", "opt_crs", "opt_frz", "opt_gla",
     "opt_inf", "opt_infdv", "opt_irr", "opt_irrm", "opt_pedo", "opt_rad",
-    "opt_rsf", "opt_run", "opt_sfc", "opt_snf", "opt_soil", "opt_stc",
-    "opt_tbot", "opt_tdrn",
+    "opt_rsf", "opt_run", "opt_runsrf", "opt_runsub", "opt_sfc", "opt_snf", "opt_soil", "opt_stc",
+    "opt_tbot", "opt_tdrn", "opt_tksno",
     "nest_microphysics_transition",
 })
 
@@ -945,7 +945,7 @@ def identify_single_domain_profile(run_config) -> str | None:
     a printed command drifts into being wrong.
 
     Returns ``None`` when the config matches no profile exactly -- a
-    hand-authored suite, or a profile this WOOF does not ship -- which
+    hand-authored suite, or a profile this WOOF-ArWen does not ship -- which
     the caller must report rather than guess around.  Ambiguity cannot
     arise (no two profiles share a switch set), but if it ever did,
     ``None`` is the answer: two names for one config is not an answer.
@@ -2554,7 +2554,7 @@ def _experimental_reason(option) -> str | None:
     if isinstance(counterpart, Mapping) and counterpart.get("exists") is False:
         if counterpart.get("implementation_origin") == "upstream-port":
             return "experimental, upstream port with no WRF counterpart"
-        return "experimental, WOOF-original with no WRF counterpart"
+        return "experimental, WOOF-ArWen-original with no WRF counterpart"
     if option.get("maturity") == _EXPERIMENTAL_MATURITY:
         return "experimental, not WRF-verified"
     return None

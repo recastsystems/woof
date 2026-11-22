@@ -1429,7 +1429,7 @@ def test_terminal_apply_matches_wrfs_own_terminal_loop_on_every_fixture():
     sedimentation, then pass ``tau1_density`` here instead of
     ``entry_density``.  MEASURED: taken at that point it reproduces WRF's
     terminal ``rho(k)`` bitwise at 501 of the 504 levels (worst 1.2334e-07);
-    taken at the finalize call instead it is 5.39e-05 off, because WOOF's
+    taken at the finalize call instead it is 5.39e-05 off, because WOOF-ArWen's
     ``temperature`` keeps absorbing the melt/freeze cleanup's ``tten`` while
     WRF's ``temp(k)`` snapshot does not.
     """
@@ -1948,7 +1948,7 @@ def test_effective_radius_reduces_to_the_frozen_mp8_kernel_at_nt_c():
     CUDA's powf.  On this column they differ at 2 of 24 levels by exactly one
     float32 ulp, and it is the FROZEN kernel that misses the Fortran oracle
     there.  MP28_PORT_SPEC.md's tie-break -- already applied to
-    thompson_rslf/thompson_rsif -- is that the authority is WRF, not WOOF's
+    thompson_rslf/thompson_rsif -- is that the authority is WRF, not WOOF-ArWen's
     mp=8.  Both directions are asserted below so the divergence cannot grow
     or migrate unnoticed.
 

@@ -34,8 +34,8 @@ family, 8.0 K cap over 150 m with its base at 1500 m, qv 14.0 / 5.6
 g/kg stepping at the same 1500 m.  Provenance, the decider that selected
 it over the qv-12 fallback and over the 20 K cap probe, and the AC-CAP
 acceptance record (v1 and the v2 registered beside it) are in
-``docs/superpowers/receipts/les/MOIST-CASE-REFERENCE-SETTINGS.md`` §6 and
-``docs/superpowers/receipts/les/wrf-moist-capped-decider-2026-08-04.md``.
+``docs/internal/receipts/les/MOIST-CASE-REFERENCE-SETTINGS.md`` §6 and
+``docs/internal/receipts/les/wrf-moist-capped-decider-2026-08-04.md``.
 
 The oracle initialises from a WRF ``input_sounding`` asset.  This module
 reproduces that asset *exactly* -- see :func:`sounding_text`, pinned to
@@ -72,7 +72,7 @@ reduction it governs is implemented here in
                                                               to every digit
 
     So a moist-vs-dry z_i difference is NOT a change in boundary-layer
-    depth, and comparing a cloudy WOOF z_i against a clear WRF z_i (or
+    depth, and comparing a cloudy WOOF-ArWen z_i against a clear WRF z_i (or
     the reverse) compares two different heights while appearing to
     compare one quantity.  Both sides must reduce it identically, and any
     receipt quoting z_i for a cloudy case must say which of the two it

@@ -24,7 +24,7 @@ the source-specific data permission evidence with the preparation receipt.
 An unresolved dataset permission holds the affected case and its derived
 weights, without disabling generic forcing preparation on permitted inputs.
 
-Coupled forecasts use the existing WOOF Noah-MP atmosphere forcing and LSM
+Coupled forecasts use the existing WOOF-ArWen Noah-MP atmosphere forcing and LSM
 API. They require no external forcing packet, extra surface-forcing stage or
 separate PET calculation. The current NextGen coupling factory is
 `woof.hydro.noahowp.factory.prepare_exchange`: it consumes `runsrf`, `runsub`
@@ -99,7 +99,7 @@ dimension in any supported position; spatial order must match the weights.
 Catchment CSVs can declare an angle column with the same convention. Angles
 are instantaneous (`temporal="rate"`); missing angles fail preparation.
 The profile and input hashes seal the declared orientation. This does not
-derive angles from a projection or connect a WOOF parent rotation provider.
+derive angles from a projection or connect a WOOF-ArWen parent rotation provider.
 The default earth-relative rows do no rotation and retain their packet bytes.
 
 No missing humidity, radiation, rotation or meteorological fields are guessed. Relative humidity and
@@ -254,9 +254,9 @@ software/data provenance are in [CONFIGURATION.md](CONFIGURATION.md).
   (canonical name -> dotted attribute or dictionary key), `time_origin`, optional
   one or two `rain_accumulators` and explicit `rain_baseline="at_prepare"`; coupled only.
   Paths default to `state`; explicit `state.`, `physics.` and `components.` roots
-  resolve once at setup. Actual WOOF surface paths include `physics.fields.t2`,
+  resolve once at setup. Actual WOOF-ArWen surface paths include `physics.fields.t2`,
   `physics.fields.q2`, `physics.fields.psfc`, `physics.fields.glw` and
-  `physics.fields.swdown`. Set `humidity="mixing_ratio"` for WOOF `q2`:
+  `physics.fields.swdown`. Set `humidity="mixing_ratio"` for WOOF-ArWen `q2`:
   CUDA converts each cell with float64 `r/(1+r)` before CSR area weighting.
   The default remains canonical specific humidity. Wind inputs still require
   earth-relative m/s and explicit rotation provenance; names `u10`/`v10` alone

@@ -14,6 +14,7 @@ def collect(directory, receipt_directory=None, job_path=None, pipeline_exit=None
     root = Path(directory).resolve()
     source = root / 'hex/tree/src/hexcore/mpasphys/surface_update_v842.py'
     source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    unit = re.search(r'^SERVICE_UNIT = "([^"]+)"', source.read_text(), re.M).group(1)
     job_path = job_path or root / 'receipts/native-service-jobs-v7.json'
     job = json.loads(job_path.read_text())
     receipt_root = receipt_directory or root / 'receipts/native-service'
@@ -30,7 +31,7 @@ def collect(directory, receipt_directory=None, job_path=None, pipeline_exit=None
         counts = service.get('operations', {})
         if (row.get('process_count') != 1 or row.get('operation') != operation
                 or service.get('module_sha256') != source_sha or service.get('executed') is not True
-                or service.get('unit') != 'p25-surface-update' or service.get('backend') != 'hex-cuda'
+                or service.get('unit') != unit or service.get('backend') != 'hex-cuda'
                 or counts.get(operation) != 1 or set(counts) != set(operations) or sum(counts.values()) != 1
                 or row.get('native_library_sha256') != job['native_library_sha256']
                 or row.get('cuda_compiler') != 'direct NVRTC'

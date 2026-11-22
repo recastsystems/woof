@@ -6,7 +6,7 @@ only been measured against something weaker, and what has not been measured
 at all. Where a residual would not close, the measured number is printed
 rather than absorbed into a tolerance.
 
-The maturity label WOOF publishes for this option is
+The maturity label WOOF-ArWen publishes for this option is
 **`implemented-unverified`**. It is **not** `wrf-matched-run-candidate` and
 **not** `wrf-matched-run`, which older records spell `validation-candidate`
 and `model-validated`. Those are registry labels for WRF comparison
@@ -63,12 +63,12 @@ establish identity for every GPU or compiler.
 | Fortran | GNU Fortran 13.3.0, `-O2 -ffree-form -ffree-line-length-none`, baseline x86-64 (**no FMA instruction**) |
 | GPU | NVIDIA GeForce RTX 5090 (cc 12.0), CUDA runtime 13.0, cupy 14.1.1, nvrtc defaults (`--fmad=true`) |
 | host | Ubuntu 24.04.4 LTS on WSL2, Python 3.12.3, NumPy 2.5.1 |
-| aerosol table | `CCN_ACTIVATE.BIN`, 35,288 bytes, sha256 `f2b8d391…c82a3dbd`, **redistributed with WOOF** since 2026-08-01 (deviation D9i in `PROVENANCE.md`; it stays outside the classic mp=8 table set, §7) |
+| aerosol table | `CCN_ACTIVATE.BIN`, 35,288 bytes, sha256 `f2b8d391…c82a3dbd`, **redistributed with WOOF-ArWen** since 2026-08-01 (deviation D9i in `PROVENANCE.md`; it stays outside the classic mp=8 table set, §7) |
 | date of measurement | mostly 2026-08-01; sections 5 and 6.1 on 2026-09-28; wp08-freeze and the classic-path comparison on 2026-09-23; per-card rows and the stripped section 6.1 run on 2026-09-30; section 6.1 on 2026-10-05 (RTX 5090, test host 2: Ubuntu, Python 3.13, cupy 14.2.0, NumPy 2.5.3, NVRTC 13.4.92) |
 | §5 and §6.1 | re-measured 2026-09-28 on the same RTX 5090, now on Linux (Ubuntu, Python 3.12, cupy 14.2.0, NumPy 2.5.3), once on NVRTC 13.0.48 and once on 13.4.92: every value bitwise identical between the two |
 
 Arithmetic is float32 on the GPU and REAL(4) in the Fortran reference, which
-is the comparison that matters; the WOOF kernels raise selected
+is the comparison that matters; the WOOF-ArWen kernels raise selected
 sub-expressions to double exactly where WRF does and nowhere else.
 
 ---
@@ -81,9 +81,9 @@ a reader is entitled to discount the lower classes.
 | class | what it is | why it is weaker than the one above | how much of mp=28 rests on it |
 | --- | --- | --- | --- |
 | **A: committed WRF column fixtures** | A whole column stepped by unmodified `mp_gt_driver`, dumped to CSV, committed, SHA-256'd. The comparison is against WRF's own answer for the complete scheme. | - | 22 scenarios, each a 24-level column with a `before` and an `after` row (48 data rows × 22 numeric fields) plus a 10-field surface file. This is the gate the maturity label rests on. |
-| **B: committed scratch-driver Fortran output** | Fortran programs *written for this port* that call WRF's routines directly and tabulate intermediates or scalar functions. The physics is WRF's; the driver, the argument list and the choice of what to print are WOOF's. | A driver bug can make a wrong port look right, and there is no second implementation to catch it. Intermediate rates are also not something WRF itself ever exposes, so the "reference" has never been exercised by anyone else. | The five probe tables (`probe-activncloud.csv` and four siblings), the three per-kernel rate oracles and the five instrumented intermediate tables. |
+| **B: committed scratch-driver Fortran output** | Fortran programs *written for this port* that call WRF's routines directly and tabulate intermediates or scalar functions. The physics is WRF's; the driver, the argument list and the choice of what to print are WOOF-ArWen's. | A driver bug can make a wrong port look right, and there is no second implementation to catch it. Intermediate rates are also not something WRF itself ever exposes, so the "reference" has never been exercised by anyone else. | The five probe tables (`probe-activncloud.csv` and four siblings), the three per-kernel rate oracles and the five instrumented intermediate tables. |
 | **C: host NumPy transcription** | A Python re-reading of the WRF formula, compared against the CUDA kernel. | If the transcription is wrong, both sides are wrong the same way and the test is green. This class can only find CUDA/Python disagreements, never a misreading of WRF. | Bit-exactness gates on individual device helpers and several bound/monotonicity properties. |
-| **D: self-consistency, no external reference** | Runs, stays finite, stays inside WRF's own clamps, restores what it must restore. | It compares WOOF to WOOF. A scheme that is uniformly 20% wrong satisfies every one of these. | The whole of G4, the forecast smoke. Everything in §5. |
+| **D: self-consistency, no external reference** | Runs, stays finite, stays inside WRF's own clamps, restores what it must restore. | It compares WOOF-ArWen to WOOF-ArWen. A scheme that is uniformly 20% wrong satisfies every one of these. | The whole of G4, the forecast smoke. Everything in §5. |
 
 ---
 
@@ -269,7 +269,7 @@ mechanism it existed for was found and closed.
 Two production changes did it, both in mp=28-owned kernels, and one of them
 also cost a cell.
 
-* **WRF's sedimentation density is level-wise and WOOF's was not.** WRF
+* **WRF's sedimentation density is level-wise and WOOF-ArWen's was not.** WRF
   forms the working rain mass and number that sedimentation consumes
   **twice**: at `module_mp_thompson.F:3237-3238` from the `:3193` τ+1
   density, for every level with rain, and again at `:3568`/`:3570` from the
@@ -343,7 +343,7 @@ were never published; the registry, `PROVENANCE.md` and
 ### 3.4 What actually closed `aero-ice-koop`: the oracle harness, not a kernel
 
 This subsection exists because the alternative was to let a true sentence
-("`aero-ice-koop` is clean") carry a false implication ("WOOF fixed the
+("`aero-ice-koop` is clean") carry a false implication ("WOOF-ArWen fixed the
 homogeneous-freezing kernel"). It did not. **Nothing in
 `woof/core/kernels/` changed for this fixture.** What changed is the
 Fortran program that produces the reference answer.
@@ -364,7 +364,7 @@ it.)
 
 The consequence was not that the fixtures were "slightly warm". It was
 that the `(p, theta)` pair the harness handed `mp_gt_driver` could no
-longer be **inverted** on the WOOF side. A fixture records `p_pa` and
+longer be **inverted** on the WOOF-ArWen side. A fixture records `p_pa` and
 `temp_k`; the adapter must solve for the float32 `theta` that reproduces
 `temp_k` bitwise under `woof`'s own `RCP`. Two Exner constants 4774 ULP
 apart do not agree about whether that solve has a solution: **dozens of
@@ -431,7 +431,7 @@ anywhere in this document can be attributed to the reconstruction any more.
 Two things follow, and the second is the uncomfortable one:
 
 1. The port's advertised "largest genuine physics gap" was, for two
-   waves, an artifact of WOOF's own reference harness. Every publication
+   waves, an artifact of WOOF-ArWen's own reference harness. Every publication
    that quoted it (this page, `PHYSICS.md`, `PROVENANCE.md` and the
    registry warning) quoted a number produced against a yardstick that
    was not WRF's.
@@ -549,7 +549,7 @@ committed. The device helpers reproduce them exactly where the gates say
 "bitwise" and to a documented FP32 distance elsewhere.
 
 **Why this is class B and not class A.** `probe_aero_functions.F90` and its
-siblings are WOOF code. If one of them passes an argument WRF's own driver
+siblings are WOOF-ArWen code. If one of them passes an argument WRF's own driver
 would never pass (a `nifa` in per-kg where WRF uses per-m3, say) the probe
 and the kernel can agree perfectly and both be describing a call WRF never
 makes. Only the class A fixtures, which go through `mp_gt_driver`, are
@@ -621,7 +621,7 @@ longest mp=28 integration among this page's measurements. [PHYSICS.md](../PHYSIC
 reports later specified-domain runs of about 3.5 and 4 hours forced from
 the WIF climatology.
 
-**What this does not show.** Nothing here compares WOOF to WRF. A scheme
+**What this does not show.** Nothing here compares WOOF-ArWen to WRF. A scheme
 with a systematically wrong activation rate would satisfy every bullet
 above, for two hours, without a single violation. The bounds are WRF's, but
 they are *clamps*, not answers. Class D is a statement about robustness and
@@ -700,7 +700,7 @@ earlier revisions of this page published 0.457 and 0.336.
 ### 5.2 The specified-zone ring itself ends at exactly zero aerosol
 
 Sharper, and separate from §5.1, which is about the interior. WRF's clipped
-microphysics tiles never touch the `spec_zone` ring, and WOOF reproduces
+microphysics tiles never touch the `spec_zone` ring, and WOOF-ArWen reproduces
 that bit for bit (§5), so the terminal clamp that holds
 `nwfa >= 1.11e7 kg⁻¹` in the columns microphysics updates **does not run
 there**. The ring carries whatever `flow_dep_bdy` left, and with no aerosol
@@ -744,7 +744,7 @@ has measured about its own behaviour.
 WRF's `thompson_init` fills a *synthetic* CCN/IN profile whenever the
 aerosol arrays arrive unset: CCN at `module_mp_thompson.F:493-515`, ice
 nuclei at `:531-551`, and the surface emission `nwfa2d` derived from the
-filled surface value at `:510`. WOOF ports that fill as
+filled surface value at `:510`. WOOF-ArWen ports that fill as
 `woof.core.microphysics.microphysics_init`, gates it against WRF's own
 post-`thompson_init` snapshot, and **calls it once per domain** from
 `woof/core/physics.py::initialize_physics`: the seam where WRF's
@@ -892,7 +892,7 @@ the terminal apply's contraction, while four others got better.
 
 This section used to record that `woof/core/mynn_pbl.py` passed
 `flag_qnc`/`flag_qnwfa`/`flag_qnifa` as literal `False`, so WRF's
-`bl_mynn_mixscalars > 0` mixing had no WOOF counterpart and the divergence
+`bl_mynn_mixscalars > 0` mixing had no WOOF-ArWen counterpart and the divergence
 was latent rather than active.
 
 `bl_mynn_mixscalars` is now admitted at `{0, 1}` and implemented:
@@ -924,14 +924,14 @@ the schemes WRF would mix only in part (8, 9, 10, 16, 18, 50), because this
 port's solve runs all five species or none. The `bldt = 0` restart
 invariant binds the mixing case only.
 
-### 6.5 WOOF now runs the configuration `real.exe` admits: **D9a CLOSED**
+### 6.5 WOOF-ArWen now runs the configuration `real.exe` admits: **D9a CLOSED**
 
 This section used to say the opposite. `dyn_em/module_initialize_real.F:2734-2736`
-fatals with `wif_input_opt=0 but mp_physics=28`, and WOOF had no WIF ingest,
-so it ran the case WRF's initializer refuses and a WOOF mp=28 run was
+fatals with `wif_input_opt=0 but mp_physics=28`, and WOOF-ArWen had no WIF ingest,
+so it ran the case WRF's initializer refuses and a WOOF-ArWen mp=28 run was
 **not** directly comparable to a WIF-initialised WRF mp=28 run.
 
-That is no longer the configuration WOOF runs. `woof/ingest/wif_climatology.py`
+That is no longer the configuration WOOF-ArWen runs. `woof/ingest/wif_climatology.py`
 ports WRF's global monthly QNWFA/QNIFA climatology
 (`QNWFA_QNIFA_SIGMA_MONTHLY.dat`) (metgrid's `four_pt` horizontal
 interpolation, `real.exe`'s `monthly_interp_to_date` temporal weighting, and
@@ -1010,8 +1010,8 @@ regeneration caused, and the level-6 `qr` growth, which the contraction pin
 caused and which is published as grown rather than reverted) and one
 newly-published pair of residuals (`wp08-*`). It is recorded this way so
 the next reader can check the direction of travel rather than infer it,
-and so that a correction to WOOF's *measuring instrument* is never
-reported as a correction to WOOF's *physics*.
+and so that a correction to WOOF-ArWen's *measuring instrument* is never
+reported as a correction to WOOF-ArWen's *physics*.
 
 ---
 
@@ -1114,7 +1114,7 @@ audited and pinned in `_SKIP_SITES`.
 
 | condition | what stops being measured | how bad |
 | --- | --- | --- |
-| `CCN_ACTIVATE.BIN` absent (`_tables_or_skip`, 4 modules; two `skipif` markers in `test_thompson_aerosol_device_helpers.py`; one in `test_thompson_aerosol_contract.py`) | **every device gate for mp=28**, including all of class A | Severe, but **no longer expected to fire**: the asset ships with WOOF as of 2026-08-01 (deviation D9i, reversed), so a clean checkout can run the mp=28 device gates against WRF's column fixtures. The guards are kept as defence for a tree where the file was deleted or `WOOF_THOMPSON_CCN_ACTIVATE` points elsewhere. The skip names the one file rather than swallowing every load failure, so it can never be mistaken for a pass. |
+| `CCN_ACTIVATE.BIN` absent (`_tables_or_skip`, 4 modules; two `skipif` markers in `test_thompson_aerosol_device_helpers.py`; one in `test_thompson_aerosol_contract.py`) | **every device gate for mp=28**, including all of class A | Severe, but **no longer expected to fire**: the asset ships with WOOF-ArWen as of 2026-08-01 (deviation D9i, reversed), so a clean checkout can run the mp=28 device gates against WRF's column fixtures. The guards are kept as defence for a tree where the file was deleted or `WOOF_THOMPSON_CCN_ACTIVATE` points elsewhere. The skip names the one file rather than swallowing every load failure, so it can never be mistaken for a pass. |
 | no CUDA device (`_require_device`, `pytest.importorskip("cupy")`, and `conftest`'s automatic `gpu` marker) | every device gate | Expected. The host-only gates (call-graph order, guards, registry, namelist, contract parsing) still run and still fail closed. |
 | the arithmetic leg (`test_thompson_aerosol_adapter.py::test_reused_classic_launchers_receive_the_mp8_argument_shape_default` / `_strict`, since 2.9.1) | nothing: one of the pair runs on every leg | None. A default process runs 2.9.1's mp=8 adapter, which still calls the reused launchers, so `_default` compares the two adapters live; under `GPUWM_WRF_EXACT=1` mp=8 is the classic unit and `_strict` holds the pinned shape. |
 | fixture or scratch-oracle file absent (`test_thompson_aerosol_sed_gpu.py::test_embedded_seed_matches_the_committed_fixture`, one in `test_thompson_aerosol_device_helpers.py`) | individual bitwise cross-checks | Narrow. Each is a second opinion on something a class A fixture already covers. |

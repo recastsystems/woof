@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Refinement of the resolved/subgrid partition: WRF em_les beside WOOF.
+"""Refinement of the resolved/subgrid partition: WRF em_les beside WOOF-ArWen.
 
-WRF points are measured in this lane (200 m and 100 m). WOOF points are its
+WRF points are measured in this lane (200 m and 100 m). WOOF-ArWen points are its
 published figures at 100 m and 50 m (docs/public/LES.md:89-97). The two
 models' pairs are at different spacings, so this plots what each measured and
 does not interpolate between them.
@@ -44,7 +44,7 @@ def main():
         a.plot(wx, wy, "o-", color=W_COL, lw=2.0, ms=7,
                label="WRF em_les (this lane)")
         a.plot(axx, ayy, "s--", color=A_COL, lw=2.0, ms=7,
-               label="WOOF (published)")
+               label="WOOF-ArWen (published)")
         for x, y in zip(wx, wy):
             a.annotate("%.4f" % y, (x, y), textcoords="offset points",
                        xytext=(6, -12), fontsize=8, color=W_COL)

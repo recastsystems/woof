@@ -64,7 +64,7 @@ def test_the_shipped_table_has_the_five_resolutions_and_the_morrison_arm():
     rows = {row["id"]: row for row in table["rows"]}
     for km, mesh in ((120, "x1.40962"), (60, "x1.163842"), (30, "x1.655362"), (15, "x1.2621442"), (10, "x1.5898242")):
         assert rows[f"global-{km}km"]["mesh"] == mesh
-        # MPAS physics is the hex default (owner ruling 2026-10-25): the default rows take the mpas arm.
+        # MPAS physics is the hex default (2026-10-25): the default rows take the mpas arm.
         assert rows[f"global-{km}km"]["physics"] == "mpas"
         assert rows[f"global-{km}km-morrison"]["physics"] == "morrison"
     assert table["physics"]["mpas"] == {**table["physics"]["mpas"], "route": "mpas", "overrides": {}}
@@ -460,7 +460,7 @@ def _plan_for(tmp_path, row, *extra):
 
 
 def _arwen(row):
-    """The WOOF arm of a default row: MPAS physics is the hex default since 0.4.6, so the YSU cap tests name it."""
+    """The WOOF-ArWen arm of a default row: MPAS physics is the hex default since 0.4.6, so the YSU cap tests name it."""
     return [] if row.endswith("-morrison") else ["--physics-row", "arwen"]
 
 
@@ -646,3 +646,41 @@ def test_global_score_queues_or_reuses_a_measured_card(tmp_path, monkeypatch, ac
     assert global_door.run_global(args) == 0
     receipt = json.loads((Path(args.work_dir) / 'global-receipt.json').read_text())
     assert receipt['stages']['score']['status'] == state
+
+
+def test_tempo_on_the_arwen_route_takes_its_long_step_cap_until_the_engine_names_the_fix():
+    # TEMPO over arwen_mpas_column on the 120 km globe stopped at its 600 s step and grew at 300 s; 150 s
+    # stayed bounded (hex 0.5.0, ArWen-route microphysics picks, 2026-11-09).
+    from woof.hex.global_door import GlobalDoorError, load_table, microphysics_step_cap
+
+    table = load_table()
+    row = table["microphysics_step_caps"]["mp_tempo"]
+    tempo = {"config_microp_scheme": "mp_tempo", "config_pbl_scheme": "bl_ysu"}
+    mesh = {"dt_seconds": 600.0, "source": "mesh"}
+    capped = microphysics_step_cap(mesh, tempo, radiation_seconds=1800.0, engine=frozenset(), table=table)
+    assert capped["dt_seconds"] == 150.0 and capped["source"] == "physics cap"
+    assert capped["arm"] == "microphysics mp_tempo" and capped["mesh_dt_seconds"] == 600.0
+    assert capped["engine_lacks"] == sorted(row["max_dt_retired_by_engine"])
+    # Under the YSU arm's 300 s cap the TEMPO cap still binds.
+    ysu = {"dt_seconds": 300.0, "source": "physics cap", "arm": "arwen", "cap_seconds": 300.0,
+           "mesh_dt_seconds": 600.0}
+    under = microphysics_step_cap(ysu, tempo, radiation_seconds=1800.0, engine=frozenset(), table=table)
+    assert under["dt_seconds"] == 150.0 and under["under_arm"]["arm"] == "arwen"
+    assert under["mesh_dt_seconds"] == 600.0
+    # An explicit longer step is refused by name; one at or under the cap runs as given.
+    with pytest.raises(GlobalDoorError, match="mp_tempo on the WOOF-ArWen route at a 600 s step"):
+        microphysics_step_cap({"dt_seconds": 600.0, "source": "explicit"}, tempo, radiation_seconds=1800.0,
+                              engine=frozenset(), table=table)
+    for step in (150.0, 50.0):
+        assert microphysics_step_cap({"dt_seconds": step, "source": "explicit"}, tempo,
+                                     radiation_seconds=1800.0, engine=frozenset(),
+                                     table=table)["dt_seconds"] == step
+    # Another scheme, the MPAS route, or an engine that names the fix: left alone.
+    wsm6 = {"config_microp_scheme": "mp_wsm6"}
+    assert microphysics_step_cap(mesh, wsm6, radiation_seconds=1800.0, engine=frozenset(),
+                                 table=table)["dt_seconds"] == 600.0
+    assert microphysics_step_cap(mesh, tempo, radiation_seconds=1800.0, route="mpas", engine=frozenset(),
+                                 table=table)["dt_seconds"] == 600.0
+    fixed = frozenset(row["max_dt_retired_by_engine"])
+    retired = microphysics_step_cap(mesh, tempo, radiation_seconds=1800.0, engine=fixed, table=table)
+    assert retired["dt_seconds"] == 600.0 and retired["microphysics_cap_retired"]["scheme"] == "mp_tempo"

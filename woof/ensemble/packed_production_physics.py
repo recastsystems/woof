@@ -19,17 +19,34 @@ from woof.ensemble.batch_rrtmgp import _config_identity, _scalar
 
 
 _MYNN_SELECTOR_DEFAULTS = {"bl_mynn_version": "wrf_461",
-    "bl_mynn_gsd41_unsquared_qtke": False, "bl_mynn_cloud_tendency_form": "wrf_461"}
+    "bl_mynn_gsd41_unsquared_qtke": False, "bl_mynn_cloud_tendency_form": "wrf_461",
+    "mynn_fixes_v61": False, "mynn_boulac_down_sign": False}
 
 
 def _mynn_pbl_selectors(cfg):
     """Validate actual generation metadata before any packed member write."""
     from woof.ensemble.batch_mynn import _pbl_options
-    values = {name: getattr(cfg, name) for name in _MYNN_SELECTOR_DEFAULTS}
+    from woof.core.mynn_pbl_v61 import pbl_fixes_active
+    values = {name: getattr(cfg, name) for name in _MYNN_SELECTOR_DEFAULTS
+              if name not in ("mynn_fixes_v61", "mynn_boulac_down_sign")}
+    # The ordinary wrapper passes the v6.1 fixes only where they run
+    # (a configuration without the key ran without them).
+    values["mynn_fixes_v61"] = pbl_fixes_active(cfg)
+    # A RunConfig always carries the key; a configuration view made before it
+    # existed reads as off (the arithmetic it was made with).
+    # Correct-mode ML1 is handed to the wrapper only on the generations whose
+    # length kernels read it (woof/core/physics.py), so it is a selector of
+    # those forms only.
+    values["mynn_boulac_down_sign"] = bool(
+        getattr(cfg, "mynn_boulac_down_sign", False)
+        and values["bl_mynn_version"] in ("wrf_461", "gsd_41"))
     _pbl_options(values)
     if values["bl_mynn_version"] == "wrf_461":
-        # The ordinary wrapper omits all generation kwargs in this form.
-        values = dict(_MYNN_SELECTOR_DEFAULTS)
+        # The ordinary wrapper omits all generation kwargs in this form;
+        # MY1 and ML1 are passed when on.
+        values = {**_MYNN_SELECTOR_DEFAULTS,
+                  "mynn_fixes_v61": values["mynn_fixes_v61"],
+                  "mynn_boulac_down_sign": values["mynn_boulac_down_sign"]}
     return values
 
 

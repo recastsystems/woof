@@ -115,7 +115,7 @@ ANCHORS = {
 
 _DECLS = """      REAL:: rgvm, delta_tp, orho, lfus2
 
-!..WOOF real-column parity instrumentation: diagnostic-only locals.
+!..WOOF-ArWen real-column parity instrumentation: diagnostic-only locals.
       INTEGER, SAVE:: aa_u1, aa_u2, aa_u3, aa_u4, aa_u5
       LOGICAL, SAVE:: aa_open = .false.
       INTEGER:: aa_k
@@ -146,13 +146,13 @@ def _write_block(cp: str, unit: str) -> str:
         line += piece
     lines.append(line)
     body = "\n".join(lines)
-    return (f"!..WOOF parity instrumentation ({cp}): WRITE statements only.\n"
+    return (f"!..WOOF-ArWen parity instrumentation ({cp}): WRITE statements only.\n"
             "      do aa_k = kts, kte\n"
             f"{body}\n"
             "      enddo\n")
 
 
-_OPEN = """!..WOOF parity instrumentation: open the five streams once.
+_OPEN = """!..WOOF-ArWen parity instrumentation: open the five streams once.
       if (.not. aa_open) then
          open(newunit=aa_u1, file='wrf-cp1.bin', access='stream', &
               form='unformatted', status='replace', action='write')

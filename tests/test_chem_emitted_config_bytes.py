@@ -83,6 +83,17 @@ def test_public_emitted_config_bytes_match_independent_staging(
         for domain in exp.domains))
     assert all("hydrometeor_handover_numbers" not in domain["run"]
                for domain in experiment_config_document(exp)["domains"])
+    # Declared default corrections, 3.0.3: correct-mode MY1 (mynn_fixes_v61)
+    # and ML1 (mynn_boulac_down_sign) are on by default and written where a
+    # selected MYNN reads them; the baseline predates both.  The pinned bytes
+    # are read with both off, which the document omits.
+    exp = replace(exp, domains=tuple(replace(
+        domain, run=replace(domain.run, mynn_fixes_v61=False,
+                            mynn_boulac_down_sign=False))
+        for domain in exp.domains))
+    assert all(key not in domain["run"]
+               for domain in experiment_config_document(exp)["domains"]
+               for key in ("mynn_fixes_v61", "mynn_boulac_down_sign"))
     if inactive_nondefaults:
         exp = replace(exp, domains=tuple(replace(
             domain, run=replace(domain.run, chem_adv_opt=2, kemit=17,

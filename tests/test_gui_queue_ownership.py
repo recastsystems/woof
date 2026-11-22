@@ -48,7 +48,7 @@ from test_gui_server import FakeRunner, make_run
 
 @pytest.fixture()
 def owned(tmp_path):
-    owner = tmp_path / "gpu-mutex" / "OWNER"
+    owner = tmp_path / "card-queue" / "OWNER"
     owner.parent.mkdir()
     owner.write_text("", encoding="utf-8")
     server = build_server(tmp_path / "runs", port=0, runner=FakeRunner(), token="t" * 43)
@@ -321,7 +321,7 @@ def unloggable(request, tmp_path, monkeypatch):
     (the default), or the page's job record of the run."""
 
     step = getattr(request, "param", "commands-log")
-    owner = tmp_path / "gpu-mutex" / "OWNER"
+    owner = tmp_path / "card-queue" / "OWNER"
     owner.parent.mkdir()
     owner.write_text("", encoding="utf-8")
     runner = SleeperRunner()

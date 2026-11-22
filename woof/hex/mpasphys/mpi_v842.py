@@ -134,7 +134,9 @@ def round_sequence(config, species, *, regional=False):
         order=int(config.config_time_integration_order),
         acoustic_substeps=int(config.config_number_of_sub_steps),
         dynamics_splits=int(config.config_dynamics_split_steps))
-    width = limiter_species_per_pass(species) if species else 1
+    # GPUWM_HEX_LIMITER_BATCH widens this (speed_words); off: limiter_species_per_pass, as before.
+    from ..speed_words import schedule_species_per_pass
+    width = schedule_species_per_pass(species)
     sequence = expected_round_sequence(
         dynamics_splits=int(config.config_dynamics_split_steps),
         acoustic_steps=tuple(stage.acoustic_steps for stage in schedule.stages),

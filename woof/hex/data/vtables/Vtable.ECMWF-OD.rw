@@ -19,6 +19,7 @@ Param| Type |Level1|Level2| Name     | Units   | Description                    
  172 |  1   |      |      | LANDSEA  | 0/1 Flag| Land/Sea flag                            |  2  |  0  |  0  |  1  |
  141 |  1   |   0  |      | SNOW_EC  | m       |                                          |  0  |  1  | 254 |  1  |
      |  1   |   0  |      | SNOW     | kg m-2  | Water equivalent of accumulated snow     |     |     |     |     |
+  65 |  1   |   0  |      | SNOW     | kg m-2  | Snow water equivalent (GFS WEASD donor)  |  0  |  1  | 13  |  1  |
   31 |  1   |   0  |      | SEAICE   | fraction| Sea-ice area fraction                    | 10  |  2  |  0  |  1  |
  139 | 112  |   0  |   1  | ST000007 | K       | T of 0-7 cm ground layer                 |  2  |  3  | 18  | 151 |
  170 | 112  |   1  |   2  | ST007028 | K       | T of 7-28 cm ground layer                |  2  |  3  | 18  | 151 |
@@ -28,6 +29,14 @@ Param| Type |Level1|Level2| Name     | Units   | Description                    
   40 | 112  |   1  |   2  | SM007028 | fraction| Soil moisture of 7-28 cm ground layer    |  2  |  0  | 25  | 151 |
   41 | 112  |   2  |   3  | SM028100 | fraction| Soil moisture of 28-100 cm ground layer  |  2  |  0  | 25  | 151 |
   42 | 112  |   3  |   4  | SM100289 | fraction| Soil moisture of 100-289 cm ground layer |  2  |  0  | 25  | 151 |
+ 139 | 112  |   *  |      | ST000007 | K       | T of 0-7 cm ground layer (2024: st)      |  2  |  0  |  2  | 106 |
+ 170 | 112  |   *  |      | ST007028 | K       | T of 7-28 cm ground layer (2024: stl2)   | 192 | 128 | 170 | 106 |
+ 183 | 112  |   *  |      | ST028100 | K       | T of 28-100 cm ground layer (2024: stl3) | 192 | 128 | 183 | 106 |
+ 236 | 112  |   *  |      | ST100289 | K       | T of 100-289 cm layer (2024: stl4)       | 192 | 128 | 236 | 106 |
+  39 | 112  |   *  |      | SM000007 | fraction| Soil moisture 0-7 cm (2024: swvl1)       | 192 | 128 |  39 | 106 |
+  40 | 112  |   *  |      | SM007028 | fraction| Soil moisture 7-28 cm (2024: swvl2)      | 192 | 128 |  40 | 106 |
+  41 | 112  |   *  |      | SM028100 | fraction| Soil moisture 28-100 cm (2024: swvl3)    | 192 | 128 |  41 | 106 |
+  42 | 112  |   *  |      | SM100289 | fraction| Soil moisture 100-289 cm (2024: swvl4)   | 192 | 128 |  42 | 106 |
 -----+------+------+------+----------+---------+------------------------------------------+-----------------------+
 #  RW-WPS authored authority for ECMWF open-data GRIB2 (IFS oper and AIFS
 #  single, 0.25-degree lat-lon).  Authored from real 2026-08-16/17 00Z bytes
@@ -48,3 +57,15 @@ Param| Type |Level1|Level2| Name     | Units   | Description                    
 # SOILGEO is scratch. The blank SOILHGT selector declares the derived
 # SOILGEO / 9.81 output. Without that declaration the writer computes the
 # height but drops it, leaving the init's source terrain at zero.
+# 2024 soil names: before the 2024-11-12 12Z run ECMWF open data published the soil
+# column among the surface fields on depth surface 106 (st 2-0-2 at 0-0.07 m; stl2-4
+# and swvl1-4 in ECMWF's local discipline 192, table 128, depths 7, 28, 100 as
+# encoded), not as sot/vsw on surface 151. Read from the 2024-05-14 12Z f198 bytes
+# (grib2_inventory). Each parameter is one layer, so its level is matched by '*'.
+# A file carries one encoding or the other, never both.
+# Snow donor: ECMWF open data published no sd before the 2025-11-20 12Z run, and AIFS
+# publishes none; those rows add the same cycle's GFS WEASD (0-1-13, surface, kg m-2)
+# as a snow_donor input, decoded here straight to SNOW on its own GFS grid (the init
+# reads SNOW unmasked, record by record). Not doubled: the ncep-gfs doubling is a
+# map-source rule of GFS files, and the GRIB2 unit is already kg m-2. A file never
+# carries both: the IFS rows stop taking the donor when their own sd begins.

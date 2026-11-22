@@ -1,6 +1,6 @@
 # Security policy
 
-Only the latest released version of WOOF (currently the 1.0.x line) receives
+Only the latest released version of WOOF-ArWen (currently the 1.0.x line) receives
 security fixes; no longer-term security-fix window is promised yet. Report
 suspected path traversal, unsafe archive handling, manifest bypass,
 hash/identity confusion, malformed GRIB/NetCDF crashes, resource-exhaustion

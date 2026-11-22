@@ -1,6 +1,6 @@
 """Kernel numerics: ``fast`` (the default) or ``strict`` (the opt-in for bitwise identity to native MPAS-A).
 
-Owner ruling 2026-10-16: strict numerics is opt-in, never the default.
+Strict numerics is opt-in, never the default.
 
 ``strict``
     Every kernel compiles the way the bitwise proofs measured it: no FMA contraction (``--fmad=false``),

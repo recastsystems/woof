@@ -318,17 +318,17 @@ delivered tree; use the default sibling or point it elsewhere.
 ## When output exists but looks wrong
 
 That is not a refusal: it is chapter 3.3. Check the declared divergences
-before suspecting your run: on the default WOOF physics route, higher explicit
+before suspecting your run: on the default ArWen physics route, higher explicit
 rain, a condensate surplus and an upper-level warm drift are the declared,
 measured differences from native MPAS physics, with their referees named. The
 MPAS suites do not carry them. And chapter 6.4: reading the receipt's
 nonclaims tells you what the run never promised.
 
 **Precipitation needs its own paragraph, because the two referees disagree in
-sign and only one of them is the WOOF route's referee.** Against native
-MPAS-A the WOOF route's domain-mean precipitation runs about **15 % dry**: a
+sign and only one of them is the WOOF-ArWen route's referee.** Against native
+MPAS-A the WOOF-ArWen route's domain-mean precipitation runs about **15 % dry**: a
 global mean against another model's physics. Against observations, which is
-the verification of record for WOOF's physics, it is the other way round:
+the verification of record for WOOF-ArWen's physics, it is the other way round:
 scored on 2026-08-25 against NCEP/EMC Stage-IV hourly QPE over CONUS, the port
 is **wet in all four cases** (+0.0247 mm/h paired, 95 % [+0.0041, +0.0606]),
 and its frequency bias at 1 mm/h is above one in three of the four

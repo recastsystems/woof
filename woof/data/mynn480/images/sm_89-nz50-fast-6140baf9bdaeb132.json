@@ -1,0 +1,21 @@
+{
+  "source_sha256": "6140baf9bdaeb13278400dc554cc25264710fe5e1c34d380c4ff83eb3c3aafa5",
+  "image_sha256": "a579835c1dc382b0ad07914a5e287f9d228a11dc9511bdc3f56d36e26a19a1e6",
+  "mode": "fast",
+  "nz": 50,
+  "arch": "sm_89",
+  "command": [
+    "nvcc",
+    "--cubin",
+    "-std=c++17",
+    "-arch=sm_89",
+    "--ftz=false",
+    "--fmad=true",
+    "--prec-div=true",
+    "--prec-sqrt=true",
+    "--split-compile=4",
+    "sm_89-nz50-fast-6140baf9bdaeb132.cu",
+    "-o",
+    "sm_89-nz50-fast-6140baf9bdaeb132.cubin"
+  ]
+}

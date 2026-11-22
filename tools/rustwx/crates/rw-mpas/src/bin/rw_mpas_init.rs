@@ -65,7 +65,8 @@ fn usage() -> String {
         \x20                    (the WPS METGRID.TBL rule); no is MPAS-A v8.4.2 case 7 (unmasked)\n\n\
          Physics completion of an existing init (each mode stands alone):\n\
         \x20 --augment-init INIT.nc --scalar-names a,b [--aerosol-fields DIR]\n\
-        \x20                    [--land-surface noah|noahmp|ruc]\n\
+        \x20                    [--land-surface noah|noahmp|ruc] [--scalar-fill a=VALUE,b=VALUE]\n\
+        \x20                    (a listed species the init lacks is created at its fill, else zero)\n\
         \x20 --aerosol-status INIT.nc\n\
         \x20 --aerosol-target INIT.nc --target-dir DIR\n\
         \x20 DIR holds little-endian float32 files, cell-major.",
@@ -162,7 +163,16 @@ fn run() -> Result<String, String> {
         let fields = args.get_optional("aerosol-fields").map(PathBuf::from);
         let land = args.get_optional("land-surface").unwrap_or_else(||"noah".into());
         if !["noah", "noahmp", "ruc"].contains(&land.as_str()) { return Err("--land-surface takes noah, noahmp or ruc".into()); }
-        let receipt = rw_mpas::init::aerosol::enrich(PathBuf::from(path).as_path(), &names, fields.as_deref(), land != "noah").map_err(|e| e.to_string())?;
+        // NAME=VALUE pairs: the uniform start value of a listed species the init lacks.
+        let mut fill = std::collections::BTreeMap::new();
+        if let Some(text) = args.get_optional("scalar-fill") {
+            for pair in text.split(',') {
+                let (name, value) = pair.split_once('=').ok_or_else(|| format!("--scalar-fill takes NAME=VALUE pairs; got {pair:?}"))?;
+                let value: f32 = value.trim().parse().map_err(|_| format!("--scalar-fill {name}: {value:?} is not a number"))?;
+                fill.insert(name.trim().to_string(), value);
+            }
+        }
+        let receipt = rw_mpas::init::aerosol::enrich_with_fill(PathBuf::from(path).as_path(), &names, &fill, fields.as_deref(), land != "noah").map_err(|e| e.to_string())?;
         return serde_json::to_string_pretty(&receipt).map_err(|e| e.to_string());
     }
     if let Some(mode) = args.get_optional("mode") {

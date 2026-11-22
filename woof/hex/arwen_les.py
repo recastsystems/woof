@@ -1,4 +1,4 @@
-"""WOOF's surface and scalar contract for the resident MPAS LES closure."""
+"""WOOF-ArWen's surface and scalar contract for the resident MPAS LES closure."""
 
 from .species_row import SpeciesDeclaration, ENERGY, species_row_for_scheme as species_row_for_selector
 

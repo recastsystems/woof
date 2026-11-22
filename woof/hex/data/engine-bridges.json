@@ -10,7 +10,7 @@
   "reproducible": "Built by tools/build_engine_bridges.sh in the pinned image with sixteen Cargo jobs and eight release codegen units. All fourteen bundled files come from this complete build. Historical numerical measurements in individual rows describe their original inputs.",
   "platform": "manylinux_2_28_x86_64",
   "release_assets": {
-    "repository": "FahrenheitResearch/gpuwm-hex",
+    "repository": "recastsystems/gpuwm-hex",
     "tag": "engine-bridges-v0.4.12"
   },
   "bridges": {
@@ -135,25 +135,37 @@
       "built_source_rev": "5bf7ed8ca24e0b759c43f987c77fb70496405cf9"
     },
     "rw_mpas_mesh": {
-      "sha256": "d75045c6726b613e54094986f03f8ea237c70c145fc1536feae87c11eebfb84e",
-      "bytes": 5248760,
+      "sha256": "c4a859aa707178911a08bf990e57300b18cad7ec34d46d67c2dbc29655d8f04c",
+      "bytes": 5602016,
       "source": "tools/rustwx/crates/rw-mpas/src/bin/rw_mpas_mesh.rs",
-      "source_sha256": "0405874a708b47730d4d01ae37913d64bdd0445f72dbc078f7699b9596ab0ad4",
-      "gpuwm_source_rev": "5bf7ed8ca24e0b759c43f987c77fb70496405cf9",
-      "cargo_lock_sha256": "85f14d85e51df49cb1473ea6125567db5ecd109d0fbf7609b30bd8a7206dc1ae",
+      "source_sha256": "7c9af5346baa5b192ea42f580736742ce0af4a94530fa2849b8af0bfe18cb574",
+      "gpuwm_source_rev": "58b4c4b48a6775e8b3880a34389ee74d835b428f",
+      "cargo_lock_sha256": "946e453d80ac753d4b885bc0207aa988fa10e48c69cbcce44e1776bafa0cd4f2",
       "parallel_sources": {
-        "mesh/hull.rs": "d785c5d5bef32a8cc9f03bfd6766adbdc1a0be4e0240f4b9943ae856f6784caa",
-        "mesh/surgery.rs": "6cc49d1687f68a8fe2ebcdd358d73e0c200b1fc59fefa1764845365225ea9184",
-        "mesh/lloyd.rs": "e13aa76cf35fad809992c617b0478c85e7edf17f66bb0f3053fac65ed1faf303",
-        "mesh/hierarchy.rs": "8f5eb34065c7def7e1b52f3641801e44ca5c788534938769b0b7885cc526e967",
-        "mesh/derive.rs": "b118a00a4e5f7400e69b126926d5b6d31b371ad8f55d38479ce3a99f6dfc566e",
-        "mesh/validate.rs": "87176c0e0cbfe318e7ecaf9344e004a33c4548ca197c31e234a88c40c944da44",
-        "mesh/mod.rs": "8575c0c24dfea4b2f9b7409a31f07505a9b20f06db0aeb95d070079664af4ec9",
         "mesh/cull.rs": "7cfef0bd6afcf76f6c0798fbb15296bbb22736ad72a0c457daba1c040cd8a15c",
-        "mesh/density.rs": "fb41b38117f23ac8f5afdfe647963e008dd1de75bf059a486662f48872ab1b1c"
+        "mesh/density.rs": "dac56709fb7048aece9ce434add586c188cdacc5d4363c97b846bf977bb500e9",
+        "mesh/derive.rs": "b118a00a4e5f7400e69b126926d5b6d31b371ad8f55d38479ce3a99f6dfc566e",
+        "mesh/emit.rs": "704ddf57957abc38c70bce4a6bf9b270459f38380836af7bbe521d1f523fd893",
+        "mesh/footprint.rs": "21e4ce1d351eca52192b44f0bc938fdac8cdc380276407d06c4d0d599403e0df",
+        "mesh/geom.rs": "6c02ccfe362c972788a7a013ab2fa09c45f6b4d2d67b500d1ef754bf06cbaa88",
+        "mesh/gridread.rs": "ec41d74ac101f3c193d078aede6b56665d41450479eda67298a9278525e09cbe",
+        "mesh/hierarchy.rs": "52eae7c711a819e0f56cfb76947dcbbcab1d58161af387348b504c3a10ba9ef4",
+        "mesh/hull.rs": "34f9fbaa6bf3fc4776bf8d37e53d5544a8846ca534466d9a4ccf0dc85bf42028",
+        "mesh/icosa.rs": "c1f676b3484a6d3de56299ad0a4ec347e9290a94b80cdbafe9e4f45949d7f564",
+        "mesh/ladder_snap.rs": "33c2741b65575975279c63cf8885cef5dd83cfc83b03b6c6f56f914bf8507d4d",
+        "mesh/lloyd.rs": "be33a47f99ddaf51606e803dacc5ee31b10fbb4ad48d74155df95bcd0f4a7d6e",
+        "mesh/mod.rs": "63fab75d958d14304466504686402c7a86b8b9fe2bfe4ec5107623863baf4293",
+        "mesh/multigrid.rs": "e92f1625bd96f4b65f9b3bc1d3fa9fea7c693415e5877eaa14028a487248b242",
+        "mesh/order.rs": "2a86cf8da8b7ba243ce3b45d63e6cae6b29fcf3e8ea2d77392753b600b503a9f",
+        "mesh/polish.rs": "2262d6a294ce0b661a4d4ce7798c77219415cbbe11bbb4b01ca5bbfbf8d08de4",
+        "mesh/profile.rs": "eeadffc8c61eaecc01b909ff9555823ac2225e07c48c46780defd2996dc9a0aa",
+        "mesh/ramp.rs": "fe1113e3a6cef4d65c47e01322fa8b79b5ea3572369f083d7ac3071004ea42e2",
+        "mesh/surgery.rs": "66993493daf6820f54ddd918104371f0d68af62d506364d71e368da19d43dd7b",
+        "mesh/validate.rs": "92c044ac2ceddbb1cdcb5d820509765d747f4ec7eb34728af2e4d5e6be970494"
       },
-      "holds": "triangulation kept by Lawson repair and surgery edits, parallel region hull builds, parallel derive; rings start at their smallest neighbour, so --triangulation incremental (default) and rebuild write the same bytes on any thread count; --cull-provenance-grid compares each ring's active slots, not its padding (gpuwm 993858e1744 on development branch 3313936ffb2): a native static zeroes the slots past nEdgesOnCell and a grid repeats the last neighbour, so mesh-plan --point --generate refused the cut of its own halo static (unified-image check 2026-10-16); hex shapes study fixes (gpuwm fix/hex-shapes c3af564a53 on integrate/2.9.5, 2026-10-23): the steepness probes and the shell filter on every core (gpuwm e6d1c8260c; the 993858e1744 bridge sized a polygon on one thread, 40 to 126 s), a drain that leaves a stubborn surgery site is drained once more at the ship floor (a 100-vertex ellipse VR spec was refused), a binary32 provenance word matches under native init_atmosphere's f32(x)*f32(R) as well as f32(x*R), and --cull-mark-parent marks a static's cut on its grid (an NCAR native static could not be cut with its own grid); graded plateau top-up (gpuwm fix/graded-plateau-topup f14ffd8638, merged with c3af564a53 as 3c41c9c551, 2026-10-24): each refinement level reads what its plateau is owed on the parent (the interior parent cells' Voronoi areas), reserves it from the level count and tops the doubled plateau up by it, so a refined core holds its requested spacing (a 1 km core of 150 km on the 64 km ladder delivered 1.029 km and the same core at 300 km was refused at level 6, median 1.0209 against 1.0201; now 1.0081 and 1.0057); a mesh whose plateaus owe nothing keeps its geometry exactly (the 60 -> 15 and 80 -> 5 km zoom globes), only its receipt attribute changes",
-      "built_source_rev": "5bf7ed8ca24e0b759c43f987c77fb70496405cf9"
+      "holds": "triangulation kept by Lawson repair and surgery edits, parallel region hull builds, parallel derive; rings start at their smallest neighbour, so --triangulation incremental (default) and rebuild write the same bytes on any thread count; --cull-provenance-grid compares each ring's active slots, not its padding (gpuwm 993858e1744 on development branch 3313936ffb2): a native static zeroes the slots past nEdgesOnCell and a grid repeats the last neighbour, so mesh-plan --point --generate refused the cut of its own halo static (unified-image check 2026-10-16); hex shapes study fixes (gpuwm fix/hex-shapes c3af564a53 on integrate/2.9.5, 2026-10-23): the steepness probes and the shell filter on every core (gpuwm e6d1c8260c; the 993858e1744 bridge sized a polygon on one thread, 40 to 126 s), a drain that leaves a stubborn surgery site is drained once more at the ship floor (a 100-vertex ellipse VR spec was refused), a binary32 provenance word matches under native init_atmosphere's f32(x)*f32(R) as well as f32(x*R), and --cull-mark-parent marks a static's cut on its grid (an NCAR native static could not be cut with its own grid); graded plateau top-up (gpuwm fix/graded-plateau-topup f14ffd8638, merged with c3af564a53 as 3c41c9c551, 2026-10-24): each refinement level reads what its plateau is owed on the parent (the interior parent cells' Voronoi areas), reserves it from the level count and tops the doubled plateau up by it, so a refined core holds its requested spacing (a 1 km core of 150 km on the 64 km ladder delivered 1.029 km and the same core at 300 km was refused at level 6, median 1.0209 against 1.0201; now 1.0081 and 1.0057); a mesh whose plateaus owe nothing keeps its geometry exactly (the 60 -> 15 and 80 -> 5 km zoom globes), only its receipt attribute changes; geometry 2 and the default thread cap (0.6.2, gpuwm rel/hex062-mesh 58b4c4b48a on mesh/loose 95ddd81a3b): --geometry 2 grows the spacing by one rate per cell, builds every spacing as asked and hands out no mesh with an obtuse triangle (a 1.96 M-cell 3 km CONUS zoom globe that the 0.6.1 generator refused after 10 to 12 minutes a try is built in about 96 s with no four-edge cell); with RAYON_NUM_THREADS unset the pool is at most 32 threads (RW_MPAS_MESH_MAX_THREADS); with no --geometry word it writes the bytes the 0.6.1 generator wrote (mesh-check, 18 Nov 2026); built alone in the pinned image by the same cargo words as tools/build_engine_bridges.sh, its own release (release_tag) beside engine-bridges-v0.4.12",
+      "built_source_rev": "58b4c4b48a6775e8b3880a34389ee74d835b428f",
+      "release_tag": "engine-bridges-v0.6.2"
     }
   },
   "cargo_lock_sha256": "85f14d85e51df49cb1473ea6125567db5ecd109d0fbf7609b30bd8a7206dc1ae",
@@ -253,21 +265,30 @@
         "built_source_rev": "5bf7ed8ca24e0b759c43f987c77fb70496405cf9"
       },
       "rw_mpas_convert": {
-        "bytes": 4345616,
-        "sha256": "c38b6f950e7fc69793dee6c368737c768c4914af36590060c135d5f5b2d9e998",
+        "release_tag": "engine-bridges-v0.6.2",
+        "bytes": 4432808,
+        "sha256": "fccd17f8c0a7992c797b1897d0233971c1bdb384d5b53627b68046d3fa1f5524",
         "provenance": {
-          "bytes": 4345616,
+          "bytes": 4432808,
           "diag_stream_patch_sha256": "7fd2d1e21922db062f7f6466acb83d942e7061e6760fa27976cceb210fc70910",
-          "engine_source": "gpuwm 5bf7ed8ca24e0b759c43f987c77fb70496405cf9",
-          "engine_version_declaration_sha256": "b4f978905315d8983c42f97ddf6c97ec68d989034bc7dd1f720f0caaf6cbcba6",
+          "engine_fixes": {
+            "global-start-float32-pole": "f717cd5e2c9399e75e2233593547f58729f5dad9"
+          },
+          "engine_patches": {
+            "rw-mpas-hailcast-field": "gpuwm fix/hex-hailcast-render abc6b8ee49 (engine-patches/rw-mpas-hailcast-field.patch)"
+          },
+          "engine_source": "gpuwm f717cd5e2c9399e75e2233593547f58729f5dad9",
+          "engine_version_declaration_sha256": "24221489f4c4719eb8449a368272508a569a37c90cf844bf073c176b1973008d",
+          "hailcast_patch_sha256": "f7e183a949cec04e05664bb9c52732ec4c985695980cec5cd018414ee8a0ccd7",
           "invariants_patch_sha256": "77cc459b9d33e86026da30239b04888242392821b5d82173b6b9ef5e961a27d3",
           "patch_sha256": "8870109a9d7da253e2be9f928679c78fe235c2840ee994beb0b193823dd2445a",
-          "recipe_sha256": "cae5af857f8e696e7e9203da1f7cb4b9e1d29a214ed6f8bfcf0fdb0c8dc560c9",
+          "recipe_sha256": "bdb37f326cd6d084a711077d3ad610337f5ca97a7c9086468985685a285d911c",
           "schema": "gpuwm-hex.chemistry-converter-build/v1",
-          "sha256": "c38b6f950e7fc69793dee6c368737c768c4914af36590060c135d5f5b2d9e998"
+          "sha256": "fccd17f8c0a7992c797b1897d0233971c1bdb384d5b53627b68046d3fa1f5524"
         },
-        "gpuwm_source_rev": "5bf7ed8ca24e0b759c43f987c77fb70496405cf9",
-        "built_source_rev": "5bf7ed8ca24e0b759c43f987c77fb70496405cf9"
+        "gpuwm_source_rev": "f717cd5e2c9399e75e2233593547f58729f5dad9",
+        "cargo_lock_sha256": "946e453d80ac753d4b885bc0207aa988fa10e48c69cbcce44e1776bafa0cd4f2",
+        "built_source_rev": "f717cd5e2c9399e75e2233593547f58729f5dad9"
       }
     }
   },

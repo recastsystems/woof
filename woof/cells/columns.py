@@ -1,4 +1,4 @@
-"""WOOF history as columns: what one wrfout frame knows per grid column.
+"""WOOF-ArWen history as columns: what one wrfout frame knows per grid column.
 
 Everything ``woof cells`` samples -- reflectivity for titan, and the
 updraft, cloud, and thermodynamic attributes the catalog adds -- comes

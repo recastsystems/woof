@@ -20,8 +20,6 @@ from woof.obs.surface_networks import (DOMAIN_MARGIN_DEG, TABLE_SCHEMA,
                                         SurfaceNetwork, SurfaceNetworkError,
                                         SurfaceNetworkTable,
                                         networks_for_domain)
-from tools import da_recent_case
-from tools import da_recent_observations
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -74,16 +72,6 @@ def test_open_ocean_is_refused_by_name():
         networks_for_domain(*SOUTH_ATLANTIC)
 
 
-def test_open_ocean_is_refused_at_both_engine_doors():
-    with pytest.raises(SurfaceNetworkError,
-                       match="no ASOS network intersects the domain"):
-        da_recent_case.normalize_surface_networks(None, SOUTH_ATLANTIC)
-    with pytest.raises(SurfaceNetworkError,
-                       match="no ASOS network intersects the domain"):
-        da_recent_observations.case_surface_networks(
-            {"bbox": list(SOUTH_ATLANTIC)})
-
-
 def test_the_margin_offers_a_network_just_past_the_domain_edge():
     """A box ending short of a network extent still offers that network.
 
@@ -123,46 +111,10 @@ def test_a_margin_that_is_not_a_width_is_refused(margin):
         networks_for_domain(*IOWA, margin_deg=margin)
 
 
-def test_an_explicit_list_overrides_the_domain_default():
-    assert da_recent_case.normalize_surface_networks(
-        ["KS_ASOS", "OK_ASOS"], IOWA) == ["KS_ASOS", "OK_ASOS"]
-    assert da_recent_case.normalize_surface_networks(
-        "KS_ASOS, OK_ASOS", SOUTH_ATLANTIC) == ["KS_ASOS", "OK_ASOS"]
-    assert da_recent_observations.case_surface_networks(
-        {"bbox": list(SOUTH_ATLANTIC),
-         "surface_networks": ["KS_ASOS"]}) == ["KS_ASOS"]
-
-
-def test_no_networks_and_no_box_is_refused_rather_than_defaulted():
-    with pytest.raises(ValueError, match="domain box"):
-        da_recent_case.normalize_surface_networks(None)
-
-
 def _plan(bbox):
     return {"model_start_utc": "2026-10-03T21:00:00Z",
             "analysis_times_utc": ["2026-10-03T22:00:00Z"],
             "smoke_only": True, "bbox": list(bbox)}
-
-
-def test_the_authored_observation_case_defaults_from_its_own_bbox():
-    obs = da_recent_case.observation_config(_plan(IOWA), 3,
-                                            radar_sites=["KDMX", "KDVN"])
-    assert obs["surface_networks_basis"] == "domain-bbox"
-    assert obs["surface_networks"] == list(networks_for_domain(*IOWA))
-    assert "IA_ASOS" in obs["surface_networks"]
-
-
-def test_the_authored_observation_case_keeps_a_caller_list():
-    obs = da_recent_case.observation_config(
-        _plan(IOWA), 3, radar_sites=["KDMX", "KDVN"],
-        surface_networks=["IA_ASOS"])
-    assert obs["surface_networks_basis"] == "caller"
-    assert obs["surface_networks"] == ["IA_ASOS"]
-
-
-def test_an_observation_case_without_networks_resolves_from_its_bbox():
-    assert da_recent_observations.case_surface_networks(
-        {"bbox": list(IOWA)}) == list(networks_for_domain(*IOWA))
 
 
 def test_no_engine_code_carries_a_hard_coded_state_network_list():
@@ -186,10 +138,3 @@ def test_no_engine_code_carries_a_hard_coded_state_network_list():
                     offenders.append(f"{path.relative_to(REPO)}:{number}")
     assert not offenders, offenders
 
-
-def test_an_observation_case_without_a_radar_roster_is_refused():
-    """The sibling default: a fixed Gulf-coast radar roster stood in for a
-    missing one, so a domain elsewhere fetched radars that never see it."""
-
-    with pytest.raises(ValueError, match="radar sites must be named or discovered"):
-        da_recent_case.observation_config(_plan(IOWA), 3)

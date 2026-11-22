@@ -87,7 +87,7 @@ def test_node_contract_requires_actual_noah_target_coverage(depths):
     values = (280 + np.asarray(depths) * 3)[:, None, None]
     temperature, _ = _remap_declared_soil(values, values/1000, contract,
                                          tsk=np.array([[100.]]), deep=np.array([[400.]]))
-    np.testing.assert_allclose(temperature[:, 0, 0], 280 + NOAH_LAYER_MIDPOINTS_M*3, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(temperature[:, 0, 0], 280 + NOAH_LAYER_MIDPOINTS_M*3, rtol=2.5e-7, atol=0)  # REAL arithmetic, as real.exe
 
 
 @pytest.mark.parametrize("depths", [(0.1, 0.4, 1., 3.), (0., 0.1, 0.4, 1.)])
@@ -363,4 +363,4 @@ def test_fractional_seaice_selects_real_soil_column_and_preserves_default_bytes(
     np.testing.assert_array_equal(fractional.landmask,[[0,1,1]])
     depths=(np.arange(4)+.5)*.75
     expected=((3-depths)*268+depths*271.4)/3
-    np.testing.assert_allclose(fractional.soil_temperature[:,0,1],expected,rtol=0,atol=1e-12)
+    np.testing.assert_allclose(fractional.soil_temperature[:,0,1],expected,rtol=2.5e-7,atol=0)  # REAL arithmetic, as real.exe

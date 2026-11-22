@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Score BOTH sides with the same code, from raw profile arrays.
 
-The headline-number comparison (my WRF numbers vs WOOF's published numbers)
+The headline-number comparison (my WRF numbers vs WOOF-ArWen's published numbers)
 carries a confound: each side's numbers were produced by its own code with its
-own conventions. WOOF commits per-minute slab profiles alongside its receipts,
+own conventions. WOOF-ArWen commits per-minute slab profiles alongside its receipts,
 and this lane's scorer writes the same arrays, so both can be reduced by one
 identical routine. Any remaining difference is then the models, not the
 bookkeeping.
@@ -128,8 +128,8 @@ def main():
             "tke_res_max", "surface_resolved_frac", "surface_sgs_frac"]
     print("=== %s : both sides reduced by the SAME routine, %.0f-min window ==="
           % (label, win))
-    print("WOOF samples in window: %d" % A["n_samples"])
-    print("%-26s %14s %14s %12s" % ("metric", "WOOF", "WRF em_les", "rel diff"))
+    print("WOOF-ArWen samples in window: %d" % A["n_samples"])
+    print("%-26s %14s %14s %12s" % ("metric", "WOOF-ArWen", "WRF em_les", "rel diff"))
     rows = {}
     for k in keys:
         a, w = A[k], W[k]

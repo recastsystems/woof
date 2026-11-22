@@ -12,7 +12,7 @@ the loop that writes them -- and that loop is where this feature was broken.
 
 WHAT WAS BROKEN, AND WHY IT LOOKED FINE
 ---------------------------------------
-Three history call sites exist in WOOF and all three read the domain's
+Three history call sites exist in WOOF-ArWen and all three read the domain's
 resident :class:`~woof.core.state.DomainState`::
 
     woof/runtime.py:2156,2263        write_case_output(prepared, ...)
@@ -36,7 +36,7 @@ than asserted here.
 The second defect is one level down and is the reason the first one could not
 simply be papered over.  :meth:`tilestream.driver.TiledRun.sweep` documents
 ``step_kwargs`` as "forwarded verbatim to every tile's ``dycore.step`` ...
-WOOF's own loop passes ``refl_10cm_due`` through it, and it has to reach
+WOOF-ArWen's own loop passes ``refl_10cm_due`` through it, and it has to reach
 EVERY tile of a sweep" -- and the sweep called ``step(tiles[b], tile_cfg)``
 with the kwargs dropped on the floor.  ``refl_10cm_due=True`` therefore never
 reached a tile, no tile ever ran WRF's ``calc_refl10cm``, the ``refl_10cm``
@@ -261,7 +261,7 @@ def three_d(path: Path) -> tuple[str, ...]:
 # --------------------------------------------------------------------------
 
 def open_writer(cfg, outdir: Path, title="history-gate"):
-    """WOOF's own per-domain async writer, constructed identically for both
+    """WOOF-ArWen's own per-domain async writer, constructed identically for both
     legs so that a whole-file digest comparison is a comparison of the FRAME
     and of nothing else."""
     from woof.config import soil_layer_count
@@ -287,7 +287,7 @@ def frame_path(outdir: Path, index: int, valid) -> Path:
 def resident_leg(cfg, outdir: Path, *, boundaries, nsteps=NSTEPS,
                  history_every=HISTORY_EVERY, seed=tj.SEED,
                  reset_uh: bool = False) -> dict:
-    """One resident domain, WOOF's ``dycore.step``, WOOF's async writer.
+    """One resident domain, WOOF-ArWen's ``dycore.step``, WOOF-ArWen's async writer.
 
     The loop is :func:`woof.runtime.integrate_prepared_case`'s, reduced to
     the parts a history frame depends on: the ``refl_10cm_due`` predicate on
@@ -468,7 +468,7 @@ def _sweep_call_counts(run) -> dict:
 
 
 def _reset_uh(state) -> None:
-    """WOOF's own history-interval reset, called exactly where it is called.
+    """WOOF-ArWen's own history-interval reset, called exactly where it is called.
 
     ``reset_up_heli_max`` is what every publishing route runs immediately
     after a frame is durable; on a streamed domain it has to reach the
@@ -482,7 +482,7 @@ def _reset_uh(state) -> None:
 
 
 def _submit(writer, path, valid, state, stepper, *, source, refl) -> None:
-    """One history frame, through WOOF's own async writer.
+    """One history frame, through WOOF-ArWen's own async writer.
 
     ``source="store"`` is the production call: the frame comes from
     :meth:`woof.core.streaming.StreamedDomain.history_fields` and goes in
@@ -502,7 +502,7 @@ def _streamed_refl(stepper, state, cfg, refl_from: str):
 
     The ``"store"`` arm is deliberately ``consume_refl_10cm(state)`` and NOT
     a store lookup: that is the unmodified model function all three of
-    WOOF's history call sites already call, and the point of
+    WOOF-ArWen's history call sites already call, and the point of
     :meth:`StreamedDomain._stash_domain_refl` is that they keep working.  A
     store lookup here would test my own plumbing and leave the call sites
     untested.
@@ -702,7 +702,7 @@ def negative_frame_from_state(rung: str = "mp10", *, nsteps=NSTEPS,
     """THE CONTROL THAT MUST FIRE: write the frame from ``node.state``.
 
     This is not a hypothetical mistake, it is what every history call site in
-    WOOF does today.  Both halves are asserted: frame 1 must AGREE (the
+    WOOF-ArWen does today.  Both halves are asserted: frame 1 must AGREE (the
     cold-start frame is taken before any sweep, so a disagreement there would
     mean the run itself was broken and the control would be measuring the
     wrong thing), and every frame from 2 onward must differ on every 3-D

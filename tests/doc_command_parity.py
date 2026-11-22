@@ -170,9 +170,12 @@ def user_facing_docs() -> list[Path]:
     """The pages a user is expected to read.
 
     README, the top level of ``docs/``, and ``docs/public/`` -- and
-    deliberately NOT ``docs/superpowers/``, ``docs/ports/`` or
+    deliberately NOT ``docs/internal/``, ``docs/ports/`` or
     ``docs/public/validation/``, which are working records and may
-    legitimately quote a command as it stood on the day.
+    legitimately quote a command as it stood on the day.  The release
+    development records (``docs/X.Y.Z-development-record.md``) are the same
+    kind of page, kept verbatim: 2.7.5's quotes ``woof local-da``, which
+    3.0.3 removed.
     """
 
     import subprocess
@@ -188,5 +191,7 @@ def user_facing_docs() -> list[Path]:
         elif name.startswith("docs/public/") and name.count("/") == 2:
             found.append(REPO_ROOT / name)
         elif name.startswith("docs/") and name.count("/") == 1:
+            if name.endswith("-development-record.md"):
+                continue
             found.append(REPO_ROOT / name)
     return sorted(found)

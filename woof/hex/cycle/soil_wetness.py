@@ -154,7 +154,7 @@ def source_contract(map_sources, name=None):
 def validate_target_hydraulics(contract, land_surface):
     """Accept a land model only when this recipe carries its target anchors.
 
-    The WOOF Noah-MP route uses STAS and the same urban hydraulic override
+    The WOOF-ArWen Noah-MP route uses STAS and the same urban hydraulic override
     as Noah. Verify every anchor against the pinned engine tables rather
     than inferring compatibility from the four-layer geometry alone.
     """
@@ -376,7 +376,7 @@ def remap_deep_soil_levels(path, *, keep_above_m, source_model, source_id, land_
     written into the WPS box).  After the init, the levels deeper than
     ``keep_above_m`` hold that donor's moisture on Noah's hydraulics.  For a
     RUC init they are moved onto RUC's by relative wetness, cell by cell on
-    the init's own soil class -- the one formula and table WOOF's land-state
+    the init's own soil class -- the one formula and table WOOF-ArWen's land-state
     remap uses (``woof.ingest.land_state.soil_moisture_index_remap``); the
     source's own levels above are kept as published.  Noah to Noah is the
     identity and writes nothing.  Liquid water keeps its fraction of the

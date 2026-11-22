@@ -20,7 +20,7 @@ constants), and ``dqf_policy`` (the bridge's condemn mask, carried
 forward).  A consumer that reads this file and does not read those three
 cannot say how its observations were made.
 
-Both halves are WOOF's Rust, and this module imports no Python NetCDF
+Both halves are WOOF-ArWen's Rust, and this module imports no Python NetCDF
 library at all: :mod:`woof.obs.grid_product` writes the classic container
 and :mod:`woof.netcdf_bridge` decodes it back.  The radar twin keeps one
 netCDF4 read for its character variables; this product has none.

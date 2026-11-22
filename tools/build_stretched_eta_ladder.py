@@ -1,6 +1,6 @@
 """Build a surface-clustered eta ladder and score its boundary-layer levels.
 
-WOOF shares one vertical grid across every domain of a tree
+WOOF-ArWen shares one vertical grid across every domain of a tree
 (``woof/experiment.py:193`` rejects per-domain vertical keys), so an LES
 child runs its root's levels.  The shipped 49-level ladder puts only 18
 half levels below 1.7 km -- an effective dz of 96.7 m in the boundary

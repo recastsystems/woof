@@ -190,8 +190,17 @@ def omitted_use_theta_m(wrf_version) -> int:
 WRF_RELEASE_GENERATIONS = (
     ("solar_generation", (4, 8), "wrf_461"),
     ("ysu_version", (4, 8), "wrf_461"),
+    ("shinhong_version", (4, 8), "wrf_461"),
     ("urban_water_balance", (4, 8), "wrf_471"),
+    ("ntu_version", (4, 8), "wrf_471"),
+    ("udm_version", (4, 8), "wrf_471"),
     ("noahmp_snow_age", (4, 7), "wrf_461"),
+    # cu_physics=3: WRF 4.8 replaced GFDRV with Grell-Freitas-Li.
+    ("cu_gf_version", (4, 8), "wrf_461"),
+    # gwd_opt = 1: WRF 4.8 revised the KIM drag (reads ELVMAX).
+    ("gwdo_version", (4, 8), "wrf_471"),
+    # windfarm_opt = 1: WRF 4.8 turns the Fitch induction on and writes THRUST.
+    ("windfarm_fitch_version", (4, 8), "wrf_471"),
 )
 
 
@@ -415,7 +424,7 @@ class Substitution:
     """One ratified physics substitution applied by the importer.
 
     ``reason`` is set on a DECLARED DIVERGENCE: the WRF value is admitted
-    and WOOF integrates something else, for a stated reason the user must
+    and WOOF-ArWen integrates something else, for a stated reason the user must
     see (the terminal prints it, the receipt carries it).  A substitution
     without a reason is a package replacement, which the WRF doors refuse
     (:func:`woof.wrfinput_door.require_preserved_wrf_selectors`).
@@ -444,7 +453,7 @@ class DroppedKey:
 class FixedKey:
     """A namelist key validated against the single implemented value.
 
-    The key never reaches the emitted TOML because WOOF has exactly one
+    The key never reaches the emitted TOML because WOOF-ArWen has exactly one
     implemented behavior for it; the importer checked the supplied value
     against that pin and records the pin and its evidence here.  Any
     other value is a hard error, never a silent reinterpretation --
@@ -502,7 +511,7 @@ class SubstitutionReport:
     """Structured record of every non-1:1 importer decision.
 
     ``format`` renders the three explicit knob-parity sections --
-    translated / fixed-by-WOOF / not-implemented -- plus the
+    translated / fixed-by-ArWen / not-implemented -- plus the
     gpuwm-supplied-values footnote (the F2 never-silent last mile).
     ``notices`` carries scheme-generation statements the namelist itself
     cannot express (:data:`GF_SCHEME_GENERATION_NOTICE`): substitutions
@@ -562,7 +571,7 @@ class SubstitutionReport:
                 lines.append(f"  {entry.role} &{entry.section} {entry.key} = "
                              f"{entry.value}: {entry.reason}")
         if self.fixed:
-            lines.append("Fixed by WOOF (validated against the only "
+            lines.append("Fixed by WOOF-ArWen (validated against the only "
                          "implemented value):")
             for f in self.fixed:
                 values = ", ".join(str(v) for v in f.values)
@@ -744,6 +753,18 @@ _MP_MAP = {
     55: (55, "ISHMAEL", "ISHMAEL"),
     56: (56, "NTU multi-moment", "NTU multi-moment"),
     95: (95, "Eta Ferrier", "Eta Ferrier"),
+    # 900 IS NOT A WRF SELECTOR, for the same reason the bl_pbl_physics=900
+    # (SASE) row below is not one: it is woof's TEMPO id (WOOF id 900,
+    # woof.config "tempo"), and the HRRR route's namelist is GPUWM'S OWN
+    # FILE -- the route writes mp_physics = 900 into it from the TOML and
+    # reads it back through this map.  Named breakage: with no row, every
+    # TEMPO configuration on [fetch] source = "hrrr" was refused at its
+    # own emission ("&physics mp_physics = 900: no ratified woof
+    # mapping"), so TEMPO could not start from HRRR at all.  WRF v4.7+
+    # carries TEMPO as mp_physics = 88 behind a different namelist
+    # surface (tempo_aerosolaware / tempo_hailaware); that interface is
+    # not this row and is not claimed by it.
+    900: (900, "none (woof TEMPO id; no WRF selector)", "TEMPO"),
 }
 
 #: WRF's aerosol-aware-Thompson namelist surface, section -> key -> what
@@ -772,11 +793,11 @@ _MP28_AEROSOL_NAMELIST_KEYS: dict[str, dict[str, str]] = {
             "woof/core/mynn_pbl.py passes flag_qnc/flag_qnwfa/flag_qnifa "
             "as literal False.  WRF SILENTLY forces scalar_pblmix=1 under "
             "mp_physics=28 with use_aero_icbc "
-            "(share/module_check_a_mundo.F:2477-2495); WOOF refuses rather "
+            "(share/module_check_a_mundo.F:2477-2495); WOOF-ArWen refuses rather "
             "than accepting a value it would not honour",
         "wif_fire_emit":
             "no biomass-burning aerosol emission source "
-            "(Registry.EM_COMMON:2657); WOOF's only nwfa2d is "
+            "(Registry.EM_COMMON:2657); WOOF-ArWen's only nwfa2d is "
             "thompson_init's derived surface emission "
             "(phys/module_mp_thompson.F:510)",
         "wif_fire_inj":
@@ -784,9 +805,9 @@ _MP28_AEROSOL_NAMELIST_KEYS: dict[str, dict[str, str]] = {
             "(Registry.EM_COMMON:2659), for the same reason.  Refused even "
             "at its WRF Registry default of 1, because with no emission "
             "source there is no accurate value: 1 describes a vertical "
-            "distribution WOOF never performs",
+            "distribution WOOF-ArWen never performs",
         "dust_emis":
-            "no dust emission source (Registry.EM_COMMON:2591); WOOF's "
+            "no dust emission source (Registry.EM_COMMON:2591); WOOF-ArWen's "
             "nifa2d is identically zero, exactly as "
             "module_mp_thompson.F leaves it",
     },
@@ -992,17 +1013,15 @@ PERT_SAS_ARW_NOTE = (
 #: ``cugd_avedx`` != 1 beside cu_physics = 3, is a hard refusal at its
 #: consumption site in :func:`import_namelists`.
 GF_SCHEME_GENERATION_NOTICE = (
-    "cu_physics = 3 imports as the WRF v4.6.1 Grell-Freitas scheme "
-    "(pinned dicycle = 1 Bechtold diurnal-cycle closure, MSE-launched "
-    "k22 updraft origin searched from start_k22 = 2; "
-    "woof/core/kernels/gf.cu), NOT WRF v4.8.0's Grell-Freitas-Li. "
-    "v4.8.0 rebinds this same selector to GFL (prognostic cold pools, "
-    "G3-style subsidence spreading) with zero new namelist options and "
-    "zero changed defaults, so a v4.8.0-era namelist is "
-    "byte-indistinguishable at the Grell-Freitas option level and the "
-    "importer cannot detect which generation was meant.  It records "
-    "this notice on every Grell-Freitas import instead, so the "
-    "generation substitution is never silent.")
+    "cu_physics = 3 runs WRF v4.8.0's Grell-Freitas-Li (GFL 873b414, "
+    "cu_gf_version = 'gfl_873b414', woof/core/gfl.py) when the namelist "
+    "names WRF 4.8 or later, or no release; it runs the WRF v4.6.1/v4.7.1 "
+    "Grell-Freitas (GFDRV, cu_gf_version = 'wrf_461', "
+    "woof/core/kernels/gf.cu) when it names an earlier release "
+    "(--wrf-version, or the files' own TITLE on the WRF-file door).  The two "
+    "read the same namelist options with the same defaults, so the namelist "
+    "alone cannot say which was meant: name the release or set "
+    "cu_gf_version.  This notice is recorded on every Grell-Freitas import.")
 
 
 #: An omitted switch retains the existing forecast default. WRF 4.7.1
@@ -1015,6 +1034,17 @@ MYNN_MIXSCALARS_DEFAULT_NOTICE = (
     "solver; partial families, including Thompson qni, select the "
     "WRF 4.7.1 per-species solves. A scheme with no number species has "
     "WRF's no-op behavior.")
+
+
+#: The same omission read against WRF 4.8.0's own Registry, where the
+#: default is 0 again (Registry.EM_COMMON:2503) and number-species and
+#: aerosol mixing have their own keys (:2504-2505).
+MYNN_MIXSCALARS_DEFAULT_NOTICE_480 = (
+    "bl_mynn_mixscalars omitted: imported as 0, the WRF v4.8.0 Registry "
+    "default (Registry.EM_COMMON:2503). WRF 4.8.0 splits number-species "
+    "and aerosol mixing into bl_mynn_mixnumcon and bl_mynn_mixaerosols "
+    "(Registry defaults 0 and 1); an omitted pair imports as 0 and 0, the "
+    "engine defaults, so write bl_mynn_mixaerosols = 1 to mix qnwfa/qnifa.")
 
 
 #: The namelist groups the importer reads, by file.  Any other group is
@@ -1587,6 +1617,18 @@ PHYSICS_CHOICES: dict[str, tuple[tuple[int, ...], str]] = {
     "iz0tlnd": ((0, 1, 2),
      'must be 0 (standard CZIL), 1 (Chen-Zhang), or 2 (fixed CZIL '
      '0.1).'),
+    # WRF v4.8.0 MYNN-SFC (Registry.EM_COMMON:2512-2513,2649); read under
+    # mynn_sfclay_variant = "mynnsfc_b66187f", which refuses the values with
+    # no defined WRF answer by name (woof.core.mynnsfc_b66187f).
+    "sf_mynn_sfcflux_land": ((0, 1, 2, 3, 4),
+     'must be 0 or 1 (Zilitinkevich 1995), 2 (Yang 2008), 3 (Garratt '
+     '1992) or 4 (GFS).'),
+    "sf_mynn_sfcflux_water": ((0, 1, 2, 3, 4, 5),
+     'must be 0 (COARE 3.0), 1 (COARE 3.5), 2 (Davis z0, COARE 3.5 zt), '
+     '3 (Davis z0, Garratt zt), 4 (Taylor-Yelland z0, COARE 3.5 zt) or '
+     '5 (GFS).'),
+    "shalwater_z0": ((0, 1),
+     'must be 0 (off) or 1 (the shallow-water roughness blend).'),
     "opt_thcnd": ((1, 2),
      'must be 1 (Johansen soil thermal conductivity) or 2 '
      '(McCumber-Pielke).'),
@@ -1871,12 +1913,24 @@ def _expand_physics_suite(inp: dict, drop) -> list[NamelistDefault]:
          "setup_physics_suite does (share/module_check_a_mundo.F)")
     if suite == "none":
         return []
+    from woof.wrf_namelist_registry import active_reference
+    from woof.wrf_reference import (PHYSICS_SUITE_CHANGES_480,
+                                     PHYSICS_SUITE_LINES_480)
+    wrf480 = active_reference() == "4.8.0"
     table = WRF_PHYSICS_SUITES.get(suite)
     if table is None:
+        if wrf480:
+            raise _err("physics", "physics_suite", values,
+                       f"is not a WRF physics suite; WRF v4.8.0 knows "
+                       f"{sorted(WRF_PHYSICS_SUITES)} and 'none', and stops "
+                       "on any other name (share/module_check_a_mundo.F:"
+                       f"{PHYSICS_SUITE_LINES_480['unrecognized']})")
         raise _err("physics", "physics_suite", values,
                    f"is not a WRF physics suite; WRF v4.6.1 knows "
                    f"{sorted(WRF_PHYSICS_SUITES)} and 'none', and stops "
                    "on any other name (share/module_check_a_mundo.F:3148)")
+    if wrf480:
+        table = {**table, **PHYSICS_SUITE_CHANGES_480.get(suite, {})}
     recorded = []
     for key, suite_value in table.items():
         column = physics.get(key)
@@ -1889,9 +1943,161 @@ def _expand_physics_suite(inp: dict, drop) -> list[NamelistDefault]:
         recorded.append(NamelistDefault(
             "input", "physics", key, suite_value,
             f"physics_suite '{suite}' resolves -1 to {suite_value} "
-            "(WRF v4.6.1 share/module_check_a_mundo.F:"
-            f"{_WRF_PHYSICS_SUITE_LINES[suite]})"))
+            + (f"(WRF v4.8.0 share/module_check_a_mundo.F:"
+               f"{PHYSICS_SUITE_LINES_480[suite]})" if wrf480 else
+               "(WRF v4.6.1 share/module_check_a_mundo.F:"
+               f"{_WRF_PHYSICS_SUITE_LINES[suite]})")))
     return recorded
+
+
+def _consume_wrf480_vocabulary(inp: dict, drop, fix) -> None:
+    """Classify the keys WRF 4.8.0's Registry added, under its vocabulary.
+
+    Named breakage it prevents: a namelist written for WRF 4.8.0 carries
+    keys WRF 4.7.1 never declared (the Noah-MP runoff split, the MYNN and
+    TEMPO flags, &cordex), and the importer refused every one of them as
+    an unmapped key, even at the default wrf.exe 4.8.0 itself runs.  Under
+    the 4.7.1 vocabulary nothing here runs, so a 4.7.1 import keeps its
+    exact behaviour.  Under 4.8.0:
+
+    * ``opt_runsrf``/``opt_runsub`` map onto WOOF-ArWen's one v4.x Noah-MP
+      ``opt_run`` when they agree, and are refused by name when they do
+      not (split runoff is Noah-MP v5);
+    * ``&cordex`` is consumed while ``output_cordex`` is 0 and refused
+      otherwise;
+    * every key in :data:`woof.wrf_reference.WRF480_ONLY_KEYS` is
+      consumed at its WRF 4.8.0 Registry default, with what WOOF-ArWen does
+      with it, and refused by name, naming its port, at any other value.
+    """
+    from woof.wrf_namelist_registry import active_reference, wrf_namelist_keys
+    from woof.wrf_reference import (CORDEX_GROUP, CORDEX_SWITCH,
+                                     NOAHMP_RUNOFF_KEY, NOAHMP_RUNOFF_SPLIT,
+                                     NOAHMP_RUNOFF_SPLIT_OWNER,
+                                     WRF480_ONLY_KEYS, WRF480_PORTED_KEYS)
+    if active_reference() != "4.8.0":
+        from woof.wrf_namelist_registry import placement_note
+        for (section, key) in WRF480_PORTED_KEYS:
+            values = inp.get(section, {}).get(key)
+            if values is None:
+                continue
+            note = placement_note(section, key)
+            if note is None:
+                continue
+            raise _err(section, key, values,
+                       f"{note}: it is a WRF 4.8.0 key, which wrf.exe of "
+                       "that release fails its namelist read on; import "
+                       "the namelist as WRF 4.8.0 (--wrf-version 4.8.0) to "
+                       "run it")
+        for key in NOAHMP_RUNOFF_SPLIT:
+            values = inp.get("noah_mp", {}).get(key)
+            if values is not None:
+                raise _err("noah_mp", key, values,
+                           "a WRF 4.8.0 Noah-MP runoff key, which wrf.exe 4.7.1 "
+                           "fails its namelist read on; import the namelist as "
+                           "WRF 4.8.0 (--wrf-version 4.8.0) to run it")
+        return
+    from woof.namelist_contract import _registry_value
+    registry = wrf_namelist_keys()
+    trace = _TAKE_TRACE.get()
+    if trace is not None:
+        trace.update(WRF480_ONLY_KEYS)
+        trace.update(("noah_mp", key) for key in NOAHMP_RUNOFF_SPLIT)
+
+    def default(section, key):
+        return _registry_value(registry[(section, key)])
+
+    cordex = inp.get(CORDEX_GROUP)
+    if cordex is not None:
+        switch = cordex.get(CORDEX_SWITCH, [0])
+        if any(not _identity_matches(value, 0) for value in switch):
+            raise _err(CORDEX_GROUP, CORDEX_SWITCH, switch,
+                       "WRF 4.8.0 computes the CORDEX diagnostics only in a "
+                       "build with CORDEXDIAG set, which the default WRF "
+                       "build does not set and WOOF-ArWen does not carry; set it "
+                       "to 0")
+        for key, values in inp.pop(CORDEX_GROUP).items():
+            drop(CORDEX_GROUP, key, values,
+                 "WRF 4.8.0 CORDEX diagnostics control; inert with "
+                 "output_cordex = 0 (compiled only under CORDEXDIAG)")
+        if not cordex:
+            drop(CORDEX_GROUP, "*", [], "empty WRF 4.8.0 &cordex group")
+
+    noahmp = inp.get("noah_mp", {})
+    split = {key: noahmp.pop(key) for key in NOAHMP_RUNOFF_SPLIT
+             if key in noahmp}
+    if split:
+        resolved = {key: (_uniform("noah_mp", key, split[key])
+                          if key in split else default("noah_mp", key))
+                    for key in NOAHMP_RUNOFF_SPLIT}
+        surface, subsurface = (resolved[key] for key in NOAHMP_RUNOFF_SPLIT)
+        written = noahmp.get(NOAHMP_RUNOFF_KEY)
+        # 0 inherits opt_run (RunConfig.opt_runsrf/opt_runsub's own rule).
+        if written:
+            inherited = written[0]
+        else:
+            from woof.config import RunConfig as _RunConfig
+            inherited = _RunConfig.__dataclass_fields__[NOAHMP_RUNOFF_KEY].default
+        surface = inherited if surface == 0 else surface
+        subsurface = inherited if subsurface == 0 else subsurface
+        from woof.config import NOAHMP_OPTION_VALUES as _RUNOFF_VALUES
+        admitted = tuple(v for v in _RUNOFF_VALUES["opt_runsub"] if v)
+        if (type(surface) is not int or type(subsurface) is not int
+                or surface not in admitted or subsurface not in admitted):
+            raise NamelistRefusal(
+                f"&noah_mp opt_runsrf = {surface!r}, opt_runsub = "
+                f"{subsurface!r}: implemented runoff options are {admitted} "
+                "(0 inherits opt_run)",
+                [("noah_mp", key) for key in split])
+        if surface != subsurface:
+            # Separate surface and subsurface runoff: opt_run names the
+            # surface half and the subsurface half rides opt_runsub into
+            # the run (the split WATER kernel, written from published
+            # descriptions by {NOAHMP_RUNOFF_SPLIT_OWNER}).
+            if written is not None and any(value != surface for value in written):
+                raise NamelistRefusal(
+                    f"&noah_mp opt_run = {written!r} disagrees with opt_runsrf = "
+                    f"{surface!r}: name the surface runoff scheme once",
+                    [("noah_mp", NOAHMP_RUNOFF_KEY)]
+                    + [("noah_mp", key) for key in split])
+            for key, values in split.items():
+                fix("noah_mp", key, values,
+                    surface if key == NOAHMP_RUNOFF_SPLIT[0] else subsurface,
+                    "WRF 4.8.0 runoff split: opt_run carries the surface half, "
+                    "opt_runsub the subsurface half")
+            noahmp.setdefault(NOAHMP_RUNOFF_KEY, [surface])
+            noahmp["opt_runsub"] = [subsurface]
+            split = {}
+        if written is not None and any(value != surface for value in written):
+            raise NamelistRefusal(
+                f"&noah_mp opt_run = {written!r} disagrees with opt_runsrf/"
+                f"opt_runsub = {surface!r}: name the runoff scheme once",
+                [("noah_mp", NOAHMP_RUNOFF_KEY)]
+                + [("noah_mp", key) for key in split])
+        if split:
+            if written is not None and any(value != surface for value in written):
+                raise NamelistRefusal(
+                    f"&noah_mp opt_run = {written!r} disagrees with opt_runsrf/"
+                    f"opt_runsub = {surface!r}: name the runoff scheme once",
+                    [("noah_mp", NOAHMP_RUNOFF_KEY)]
+                    + [("noah_mp", key) for key in split])
+            for key, values in split.items():
+                fix("noah_mp", key, values, surface,
+                    "WRF 4.8.0 runoff split read as the v4.x Noah-MP opt_run "
+                    "both halves name")
+            noahmp.setdefault(NOAHMP_RUNOFF_KEY, [surface])
+
+    for (section, key), row in WRF480_ONLY_KEYS.items():
+        values = inp.get(section, {}).get(key)
+        if values is None:
+            continue
+        admitted = default(section, key)
+        if any(not _identity_matches(value, admitted) for value in values):
+            raise _err(section, key, values,
+                       f"{row['note']}; only the WRF 4.8.0 Registry default "
+                       f"{('.true.' if admitted else '.false.') if isinstance(admitted, bool) else admitted!r} imports until {row['owner']} "
+                       "ports it")
+        drop(section, key, inp[section].pop(key),
+             f"{row['note']} (at its WRF 4.8.0 Registry default)")
 
 
 def _wrf_domain_steps(root_step: Fraction, parent_id, tratio) -> list[Fraction]:
@@ -3146,7 +3352,29 @@ def _fixed_step_through_adaptive_clock(
     return step, count, factor
 
 
-def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
+def _translate_namelists(wps: dict, inp: dict, **options
+                         ) -> tuple[str, SubstitutionReport]:
+    """The translation, read against the WRF Registry its version names.
+
+    ``wrf_version`` chooses the vocabulary
+    (:func:`woof.wrf_reference.registry_reference_for_wrf_version`):
+    WRF 4.8.0's for a 4.8 release or a bare ``4``, WRF 4.7.1's for an older
+    release or the WRF 3 line.  It is held for this one translation, so
+    every placement note and every 4.8.0 key reads the same table.
+    """
+    from woof.wrf_namelist_registry import reset_reference, using_reference
+    from woof.wrf_reference import registry_reference_for_wrf_version
+
+    reference = registry_reference_for_wrf_version(
+        options.get("wrf_version", WRF_VERSION_DEFAULT))
+    token = using_reference(reference)
+    try:
+        return _translate_namelists_read(wps, inp, **options)
+    finally:
+        reset_reference(token)
+
+
+def _translate_namelists_read(wps: dict, inp: dict, *, wps_path: Path,
                          input_path: Path, name: str | None = None,
                          urban_ucm_generation: str | None = None,
                          urban_controls: Mapping[str, object] | None = None,
@@ -3285,6 +3513,7 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
     from woof.dfi_control import import_dfi
     dfi_import = import_dfi(inp,error=_err)
     chem_import = _consume_machinery_sections(inp, drop, substitutions, fix)
+    _consume_wrf480_vocabulary(inp, drop, fix)
 
     known_wps = set(WPS_SECTIONS)
     unknown = sorted(set(wps) - known_wps)
@@ -3348,7 +3577,12 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
         raise _err("diags","solar_diagnostics",solar_diagnostics,"must be 0 or 1")
     traditional=solar_diags.scalar("diag_nwp2",0)
     if traditional:
-        raise _err("diags","diag_nwp2",traditional,"pinned native WRF crashes before trad_fields: start_em.F deallocates dz8w at line 2004 and writes it at line 2107; no simplified substitute is admitted")
+        # WRF v4.7.1 start_em.F deallocates dz8w (line 2004) and then writes
+        # it for trad_fields (line 2107): native 4.7.1 strict exits 139 in
+        # start_domain_em with diag_nwp2=1.  WRF v4.8.0 moved the DEALLOCATE
+        # after trad_fields and runs it (the WRF 4.8.0 witness).  The
+        # remaining reason is ours: module_diag_trad_fields.F has no port.
+        raise _err("diags","diag_nwp2",traditional,"traditional fields (module_diag_trad_fields.F) are not ported to WOOF-ArWen yet; native WRF 4.7.1 itself crashes here (start_em.F deallocates dz8w at line 2004 and writes it at line 2107), WRF 4.8.0 fixed that; no simplified substitute is admitted")
     # The rest of &diags is the level-output reader's, which finishes it.
     tc = _Section("time_control", inp["time_control"], str(input_path))
     dm = _Section("domains", inp["domains"], str(input_path))
@@ -3841,7 +4075,7 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                 reason=(f"WRF v4.7.1 declares {key} in minutes "
                         "(registry.io_boilerplate) but its alarm setup "
                         f"(share/set_timekeeping_alarms.m4) reads only "
-                        f"{key}_d/_h/_m/_s, so wrf.exe ignores it; WOOF "
+                        f"{key}_d/_h/_m/_s, so wrf.exe ignores it; WOOF-ArWen "
                         "applies it as minutes where the _m entry is 0, the "
                         "rule WRF uses for history_interval.  Write "
                         f"{key}_m to get the same output from wrf.exe.")))
@@ -3988,21 +4222,35 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                 "derivation).")
         declared_parent_ids.add(grid_id)
 
+    # The WPS user guide defines &geogrid parent_id "for each nest" and
+    # asks for 1 on the coarsest domain; namelist generators write WRF's
+    # own head-grid spelling 0 there.  Both name the same head grid, so
+    # both are taken and 0 is booked as normalized to WPS's 1.  Any other
+    # value names an external parent the head grid cannot have (a shifted
+    # or misordered column), and is refused.
+    if geo_parent_id[0] not in (0, 1):
+        raise ValueError(
+            "WPS d01 parent_id must be 1 (WPS's spelling) or 0 (WRF's "
+            f"head-grid spelling), got {geo_parent_id[0]}: the head grid "
+            "cannot have an external parent.")
+    if geo_parent_id[0] == 0:
+        drop("geogrid", "parent_id (root)", [0],
+             "WPS's coarsest domain has no parent; WRF's head-grid "
+             "spelling 0 is normalized to WPS's 1")
+        geo_parent_id[0] = 1
     wps_root = {
-        "parent_id": geo_parent_id[0],
         "parent_grid_ratio": geo_ratio[0],
         "i_parent_start": geo_i[0],
         "j_parent_start": geo_j[0],
     }
     expected_wps_root = {
-        "parent_id": 1,
         "parent_grid_ratio": 1,
         "i_parent_start": 1,
         "j_parent_start": 1,
     }
     if wps_root != expected_wps_root:
         raise ValueError(
-            "WPS d01 root topology must use parent_id=1, "
+            "WPS d01 root topology must use "
             "parent_grid_ratio=1, i_parent_start=1, j_parent_start=1; "
             f"got {wps_root}.")
 
@@ -4353,7 +4601,7 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                     f"axis, which is {WIF_DATASET_LEVELS} sigma levels "
                     "(QNWFA_QNIFA_SIGMA_MONTHLY.dat, and WRF's Registry "
                     "default is the same 30); a different count describes "
-                    "a dataset WOOF has never decoded, and reinterpreting "
+                    "a dataset WOOF-ArWen has never decoded, and reinterpreting "
                     "it silently would interpolate the wrong column")
 
     ocean_profile_settings = {}
@@ -4877,6 +5125,22 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
             bl_mynn_tkeadvect = None
     scalar_pblmix = _optional_mynn_choice("scalar_pblmix")
     bl_mynn_mixscalars = _optional_mynn_choice("bl_mynn_mixscalars")
+    # WRF 4.8.0 declares the MYNN-EDMF split of number-species mixing
+    # (Registry.EM_COMMON:2504-2505); RunConfig carries both keys.  Under
+    # the 4.7.1 vocabulary they stay unmapped, as wrf.exe 4.7.1 fails on
+    # them.  0 is the engine default and keeps the configuration's bytes.
+    from woof.wrf_namelist_registry import active_reference
+    mynn_split = {}
+    if active_reference() == "4.8.0":
+        for key in ("bl_mynn_mixaerosols", "bl_mynn_mixnumcon"):
+            values = ph.take(key)
+            if values is None:
+                continue
+            if any(type(value) is not int or value not in (0, 1)
+                   for value in values):
+                raise _err("physics", key, values,
+                           "must be 0 (off) or 1 (mix that family in MYNN)")
+            mynn_split[key] = _uniform("physics", key, values) or None
     # Consume the physics key before ph.finish(); the per-domain
     # numerical emission below also retains the older dynamics alias.
     mynn_tke_budget_raw = ph.take("tke_budget")
@@ -4918,7 +5182,22 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
         "isftcflx", *PHYSICS_CHOICES["isftcflx"])
     iz0tlnd = _optional_scalar_int(
         "iz0tlnd", *PHYSICS_CHOICES["iz0tlnd"])
+    sf_mynn_sfcflux_land = _optional_scalar_int(
+        "sf_mynn_sfcflux_land", *PHYSICS_CHOICES["sf_mynn_sfcflux_land"])
+    sf_mynn_sfcflux_water = _optional_scalar_int(
+        "sf_mynn_sfcflux_water", *PHYSICS_CHOICES["sf_mynn_sfcflux_water"])
+    shalwater_z0 = _optional_scalar_int(
+        "shalwater_z0", *PHYSICS_CHOICES["shalwater_z0"])
+    # WRF v4.8.0 KIM turbulent orographic form drag (Registry.EM_COMMON
+    # kim_tofd .false., tofd_factor .003), read by the revised MM5 layer.
+    kim_tofd = _optional_scalar_bool("kim_tofd")
+    tofd_factor = _optional_scalar_float("tofd_factor")
     ua_phys = _optional_scalar_bool("ua_phys")
+    # WRF 4.8.0's Shin-Hong logicals (Registry.EM_COMMON, &physics, one
+    # value): mapped 1:1 onto the wrf_480 generation's RunConfig knobs.
+    shinhong_nonlocal_flux = _optional_scalar_bool("shinhong_nonlocal_flux")
+    shinhong_scu_mixing = _optional_scalar_bool("shinhong_scu_mixing")
+    shinhong_ke_dissipation = _optional_scalar_bool("shinhong_ke_dissipation")
     usemonalb = _optional_scalar_bool("usemonalb")
     rdlai2d = _optional_scalar_bool("rdlai2d")
     if operational_ruc_requested:
@@ -5079,6 +5358,7 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
     # byte-identical.
     topo_columns = {}
     terrain_drag_columns: dict[str, list[int]] = {}
+    gwdo_key_columns: dict[str, list] = {}
     for key in ("slope_rad", "topo_shading"):
         raw = ph.take(key)
         if raw is None:
@@ -5334,9 +5614,14 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
     _rap_aero_values = ph.take("use_rap_aero_icbc")
     analyzed_aerosol_imported = False
     if _rap_aero_values is not None:
-        if mp_physics not in THOMPSON_AEROSOL_FAMILY:
+        from woof.config import carries_aerosol_numbers
+        if not carries_aerosol_numbers(mp_physics):
+            # TEMPO carries nwfa/nifa as Thompson-aerosol does, so its
+            # request is not inert.  Named breakage: the HRRR route writes
+            # use_rap_aero_icbc for a TEMPO TOML that states it, and
+            # dropping it here refused that route's own round trip.
             drop("physics", "use_rap_aero_icbc", _rap_aero_values,
-                 "inert: analyzed water/ice-friendly aerosols require mp_physics=28")
+                 "inert: analyzed water/ice-friendly aerosols require a scheme carrying QNWFA/QNIFA (mp_physics=28 or TEMPO)")
         else:
             analyzed_aerosol_imported = bool(_uniform(
                 "physics", "use_rap_aero_icbc", list(_rap_aero_values)))
@@ -5493,7 +5778,9 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
     bl_pbl_col = [entry[0] for entry in bl_mapped]
     bl_pbl_physics, wrf_name, gp_name = bl_mapped[0]
     if bl_mynn_mixscalars is None and any(value == 5 for value in bl_pbl_col):
-        notices.append(MYNN_MIXSCALARS_DEFAULT_NOTICE)
+        notices.append(MYNN_MIXSCALARS_DEFAULT_NOTICE_480
+                       if active_reference() == "4.8.0"
+                       else MYNN_MIXSCALARS_DEFAULT_NOTICE)
     # WRF does not run the scalar_pblmix this namelist states under the
     # aerosol-aware Thompson scheme: share/module_check_a_mundo.F:2477-2495
     # (v4.6.1) resets it to 1 for mp_physics = 28 with use_aero_icbc or
@@ -5801,10 +6088,12 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                 f"{RRTMG_VARIANT_LEGACY} (rrtmg_variant="
                 f"'{RRTMG_VARIANT_LEGACY}') to run the exact RRTMG port "
                 "with the aerosol, or set aer_opt = 0.")
-        if aer_opt == 3 and mp_physics not in THOMPSON_AEROSOL_FAMILY:
+        from woof.config import carries_aerosol_numbers
+        if aer_opt == 3 and not carries_aerosol_numbers(mp_physics):
             raise _err(
                 "physics", "aer_opt", raw_aer_opt,
-                "aer_opt = 3 needs mp_physics = 28 (WRF gates the branch "
+                "aer_opt = 3 needs mp_physics = 28 or a scheme that carries "
+                "nwfa and nifa such as TEMPO (WRF gates the branch "
                 "on the water-friendly aerosol package, F_QNWFA); with "
                 f"mp_physics = {mp_physics} WRF runs zero aerosol under a "
                 "namelist claiming aerosol-aware radiation.")
@@ -6572,6 +6861,20 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                 drop("physics", key, lightning_values[key],
                      "inert: lightning_option = 0 reads no lightning control")
         lightning_values = {"do_radar_ref": radar_ref} if radar_ref else {}
+    # WRF v4.8.0 dynamic lightning (Registry/registry.dyn_light).
+    from woof.core.dyn_lightning import DYN_LIGHTNING_DEFAULTS
+    dyn_lightning_values = {key: _uniform("physics", key, ph.col(key, max_dom, default))
+                            for key, default in DYN_LIGHTNING_DEFAULTS.items()}
+    if dyn_lightning_values["dyn_lightning_option"] == 0:
+        for key, default in DYN_LIGHTNING_DEFAULTS.items():
+            if key != "dyn_lightning_option" and dyn_lightning_values[key] != default:
+                drop("physics", key, dyn_lightning_values[key],
+                     "inert: dyn_lightning_option = 0 reads no dynamic lightning control")
+        dyn_lightning_values = {}
+    num_light_periods = ph.take("num_light_periods")
+    if num_light_periods is not None:
+        drop("physics", "num_light_periods", num_light_periods,
+             "inert: no WRF v4.8.0 routine reads num_light_periods")
     co2tf_values = ph.take("co2tf")
     co2tf = 1 if co2tf_values is None else co2tf_values[0]
     any_gfdleta = any(99 in pair for pair in radiation_pairs)
@@ -6703,7 +7006,7 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
     windfarm_wake_col = [2] * max_dom
     windfarm_overlap_col = [4] * max_dom
     windfarm_deg_col = [0.0] * max_dom
-    windfarm_induction = 0
+    windfarm_induction = None  # absent: the selected Fitch pin's Registry default
     if any(windfarm_col):
         if any(option and pbl != 5 for option, pbl in zip(windfarm_col, bl_pbl_col)):
             raise _err("physics", "windfarm_opt", windfarm_col,
@@ -7189,6 +7492,39 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
     drop("dynamics", "gwd_diags", dyn.take("gwd_diags"),
          "output only: the gravity-wave-drag diagnostics (DTAUX3D, DUSFCG "
          "and the GSL components) are not written to history")
+    # WRF v4.8.0's two gwd_opt = 1 keys (Registry.EM_COMMON:2902-2903,
+    # max_domains, defaults 2. and .true.), read by woof's
+    # gwdo_version = "wrf_480" (woof.core.terrain_drag).
+    gwd_one = any(value == 1 for value in terrain_drag_columns.get(
+        "gwd_opt", [0]))
+    for key, default in (("gwd_dx_factor", 2.0), ("gwd_if_nonhyd", True)):
+        if key not in dyn.entries:
+            continue
+        values = dyn.registry_col(key, max_dom, default)
+        if key == "gwd_dx_factor":
+            bad = [v for v in values if isinstance(v, bool)
+                   or not isinstance(v, (int, float))
+                   or not math.isfinite(float(v)) or float(v) <= 0.0]
+            why = ("must be a finite positive number: the KIM base stress "
+                   "divides by gwd_dx_factor*dx")
+            values = [float(v) for v in values] if not bad else values
+        else:
+            bad = [v for v in values if not isinstance(v, bool)]
+            why = "must be .true. or .false."
+        if bad:
+            raise _err("dynamics", key, values, why)
+        if not gwd_one:
+            drop("dynamics", key, values,
+                 "inert: only gwd_opt = 1 (WRF v4.8.0's KIM drag) reads it")
+        else:
+            gwdo_key_columns[key] = values
+    # A namelist read as WRF 4.8.0 with gwd_opt = 1 asks for 4.8.0's revised
+    # KIM drag, which is what wrf.exe 4.8.0 runs; the engine default stays
+    # the 4.7.1 scheme until the static ELVMAX producer lands (RunConfig
+    # gwdo_version), so the import names the generation it read.
+    from woof.wrf_namelist_registry import active_reference as _gwd_reference
+    if gwd_one and _gwd_reference() == "4.8.0":
+        gwdo_key_columns["gwdo_version"] = ["wrf_480"] * max_dom
     # tke_adv_opt (Registry.EM_COMMON:2880, max_domains, default 1).  The
     # old rationale here -- "inert: no prognostic-TKE mixing scheme is
     # selectable (km_opt 1 and 4 only)" -- was falsified by km_opt=2, and
@@ -7807,6 +8143,10 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
         lines += ["aer_init_opt = 1",
                   f"wif_input_opt = {WIF_INPUT_OPT_CLIMATOLOGY}",
                   "use_rap_aero_icbc = true"]
+    elif analyzed_aerosol_imported and mp_physics not in THOMPSON_AEROSOL_FAMILY:
+        # mp28_aerosol_source is the Thompson-aerosol initializer's knob;
+        # TEMPO's analyzed numbers ride the shared number install.
+        lines += ["use_rap_aero_icbc = true"]
     elif analyzed_aerosol_imported:
         lines += ["use_rap_aero_icbc = true", "mp28_aerosol_source = \"analysis\""]
     if mp_physics in THOMPSON_AEROSOL_FAMILY and operational_thompson_defaults:
@@ -7858,6 +8198,8 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
         lines.append(f"{_topo_key} = {_topo_col[0]}")
     for _drag_key, _drag_col in terrain_drag_columns.items():
         lines.append(f"{_drag_key} = {_drag_col[0]}")
+    for _gwdo_key, _gwdo_col in gwdo_key_columns.items():
+        lines.append(f"{_gwdo_key} = {_fmt(_gwdo_col[0])}")
     if shadlen is not None:
         lines.append(f"shadlen = {_fmt(shadlen)}")
     lines += [
@@ -7934,6 +8276,11 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                        ("mp_tend_lim", mp_tend_lim),
                        ("ysu_topdown_pblmix", ysu_topdown_pblmix),
                        ("ysu_version", carried_selectors.get("ysu_version")),
+                       ("shinhong_version",
+                        carried_selectors.get("shinhong_version")),
+                       ("shinhong_nonlocal_flux", shinhong_nonlocal_flux),
+                       ("shinhong_scu_mixing", shinhong_scu_mixing),
+                       ("shinhong_ke_dissipation", shinhong_ke_dissipation),
                        ("ra_sw_eclipse", eclipse_sw[0]),
                        ("swint_opt", swint_opt),
                        ("ra_call_offset", ra_call_offset),
@@ -7947,6 +8294,7 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                        ("bl_mynn_tkeadvect", bl_mynn_tkeadvect),
                        ("scalar_pblmix", scalar_pblmix),
                        ("bl_mynn_mixscalars", bl_mynn_mixscalars),
+                       *mynn_split.items(),
                        ("mfshconv", mfshconv),
                        ("bl_mynn_version", bl_mynn_version),
                        ("bl_mynn_cloud_tendency_form", carried_selectors.get("bl_mynn_cloud_tendency_form")),
@@ -7954,6 +8302,11 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                        ("isfflx", isfflx),
                        ("isftcflx", isftcflx),
                        ("iz0tlnd", iz0tlnd),
+                       ("sf_mynn_sfcflux_land", sf_mynn_sfcflux_land),
+                       ("sf_mynn_sfcflux_water", sf_mynn_sfcflux_water),
+                       ("shalwater_z0", shalwater_z0),
+                       ("kim_tofd", kim_tofd),
+                       ("tofd_factor", tofd_factor),
                        ("usemonalb", usemonalb),
                        ("ua_phys", ua_phys),
                        ("rdlai2d", rdlai2d),
@@ -8005,6 +8358,8 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
     for key, value in hail_values.items():
         lines.append(f"{key} = {_fmt(value)}")
     for key, value in lightning_values.items():
+        lines.append(f"{key} = {_fmt(value)}")
+    for key, value in dyn_lightning_values.items():
         lines.append(f"{key} = {_fmt(value)}")
     for key, value in cam_options.items():
         lines.append(f"{key} = {_fmt(value)}")
@@ -8191,7 +8546,7 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
             lines.append("wind_farms = " + _toml_string(str((Path(wind_input_directory) if wind_input_directory is not None else Path(input_path).resolve().parent) / wind_file)))
             if windfarm_ij:
                 lines.append(f"windfarm_ij = {windfarm_ij}")
-            if windfarm_induction and windfarm_col[n] == 1:
+            if windfarm_induction is not None and windfarm_col[n] == 1:
                 lines.append(f"windfarm_induction = {windfarm_induction}")
             if windfarm_col[n] == 2:
                 lines.extend(['wind_farm_scheme = "mav"', f"windfarm_wake_model = {windfarm_wake_col[n]}",
@@ -8228,6 +8583,9 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
         for _drag_key, _drag_col in terrain_drag_columns.items():
             if _drag_col[n] != _drag_col[0]:
                 lines.append(f"{_drag_key} = {_drag_col[n]}")
+        for _gwdo_key, _gwdo_col in gwdo_key_columns.items():
+            if _gwdo_col[n] != _gwdo_col[0]:
+                lines.append(f"{_gwdo_key} = {_fmt(_gwdo_col[n])}")
         if level_columns[n]["p_lev_diags"] or level_columns[n]["z_lev_diags"]:
             for key, value in level_columns[n].items():
                 if value != level_columns[0][key]:

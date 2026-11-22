@@ -1,6 +1,6 @@
 # Scale-resolved spectral comparison
 
-WOOF has two deliberately separate spectral metric classes.
+WOOF-ArWen has two deliberately separate spectral metric classes.
 Comparisons with WRF support code verification; comparisons with observations
 support validation for the scored quantities. Each receipt must state whether
 its reference is another model or observations. Neither kind of comparison
@@ -29,7 +29,7 @@ The second class does **not** replace pointwise RMSE, FSS, object comparisons,
 conservation receipts, or the v1 chaos envelope. It answers a different
 question:
 
-> At which spatial scales does WOOF carry the same amount and kind of
+> At which spatial scales does WOOF-ArWen carry the same amount and kind of
 > structure as the reference field, and at which scales is the disagreement
 > amplitude, displacement, or numerical noise?
 
@@ -64,7 +64,7 @@ single wind RMSE.
 ## The arithmetic contract
 
 The regional comparison is intentionally not a global spherical-harmonic
-transform. Current WOOF domains are limited-area projected grids; treating the
+transform. Current WOOF-ArWen domains are limited-area projected grids; treating the
 unmodeled remainder of Earth as zero would create a boundary discontinuity and
 spectral leakage.
 
@@ -240,9 +240,9 @@ For a standard WRF horizontal wind, explicitly set U to `x` and V to `y`.
 For W, use `z` if the campaign intends mass-level vertical velocity. The
 choice is registration policy and must not be changed after seeing output.
 
-## Recommended first WOOF campaign
+## Recommended first WOOF-ArWen campaign
 
-Use matched WOOF/WRF history frames on the same grid and score these fields
+Use matched WOOF-ArWen/WRF history frames on the same grid and score these fields
 first:
 
 1. `T` at fixed model levels or pressure-interpolated common levels;
@@ -506,7 +506,7 @@ sides to preregistered pressure/height surfaces using one shared authority.
 
 The linked Spherical Harmonic Exponentials work inspired the broader
 scale-space direction, but no graphics reflectance code is copied here. A
-future global WOOF/MPAS parent can add a true spherical-harmonic backend under
+future global WOOF-ArWen/MPAS parent can add a true spherical-harmonic backend under
 a separate pin schema. It must not reinterpret these regional receipts.
 
 ### Power agreement is not forecast skill by itself

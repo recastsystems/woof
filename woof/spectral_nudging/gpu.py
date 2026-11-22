@@ -127,10 +127,12 @@ class SpectralNudger:
         stop = (None if self.config.gfdda_end_h is None else self.config.gfdda_end_h*3600.)
         past_end = stop is not None and elapsed >= stop
         if (not all(math.isfinite(v) for v in (elapsed, dt, start, end))
-                or not 0 < dt <= self.config.relaxation_seconds
+                or not 0 < dt
                 or start >= end or elapsed < start
                 or (not past_end and elapsed + dt > end)):
-            raise ValueError("forcing must bracket the step and 0 < dt <= relaxation_seconds")
+            raise ValueError("forcing must bracket the step and dt must be positive")
+        # Low-level callers bypass the experiment loader; same NUDGING_STEP_STRENGTH refusal.
+        self.config.check_step(dt)
         self.clock_metadata = (elapsed, dt, start, end)
 
     def _record(self):

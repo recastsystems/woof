@@ -93,6 +93,11 @@ def test_an_unmapped_key_names_where_wrf_declares_it(tmp_path):
     inp = _with(time_control=" gwd_opt = 0,\n")
     with pytest.raises(NamelistRefusal) as caught:
         _import(tmp_path, inp)
+    # A bare line reads WRF 4.8.0's Registry (woof.wrf_reference).
+    assert ("WRF v4.8.0 declares gwd_opt in &dynamics, not in "
+            "&time_control") in str(caught.value)
+    with pytest.raises(NamelistRefusal) as caught:
+        _import(tmp_path, inp, wrf_version="4.7.1")
     assert ("WRF v4.7.1 declares gwd_opt in &dynamics, not in "
             "&time_control") in str(caught.value)
 

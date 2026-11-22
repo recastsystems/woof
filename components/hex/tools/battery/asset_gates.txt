@@ -55,10 +55,10 @@ tests/test_mpasphys_table_resources_v842.py
 # MPAS v8.4.2 foundation: diagnostics against published native outputs
 tests/test_mpasphys_diagnostics_v842.py
 
-# p21-rad-shared: strict native oracle and Rust transport artifacts
+# strict native oracle and Rust transport artifacts
 tests/radshared_v842/test_oracle_words.py
 
-# p21-rad-shared: native tagged Rust transport fault controls
+# native tagged Rust transport fault controls
 tests/radshared_v842/test_native_tagged_transport.py
 # Register the pre-existing native-flux replay artifact test found by the tier audit.
 tests/test_identity_extend.py
@@ -69,10 +69,10 @@ tests/test_mpasphys_alarm_rrfs.py
 tests/test_mpasphys_integration_rrfs.py
 # o3-diag-convective: real f1 native tap CUDA module replay
 tests/test_mpas_convective_tap_v842.py
-# p3-thompson: strict native whole-column and actual ABI storage witnesses.
+# strict native whole-column and actual ABI storage witnesses.
 tests/test_thompson_v842.py
 tests/test_thompson_native_binding.py
-# p16-noah: whole strict native module, pinned source and written-word proof guards.
+# whole strict native module, pinned source and written-word proof guards.
 tests/test_noah_v842.py
 
 # r3-rrfs-dycore: full pinned native routines and Rust initialization bridges.
@@ -92,7 +92,7 @@ tests/test_streams_native_seek_v842.py
 tests/test_streams_native_tap_v842.py
 # d4-lam-identity: native tap boundary pool replay
 tests/test_regional_native_v842_tap.py
-# p17-noahmp: strict native IEEE oracles compile pinned MPAS source (through the build queue on a shared host).
+# strict native IEEE oracles compile pinned MPAS source (through the build queue on a shared host).
 
 # r4-rrfs-physics-driver: real pristine-native lifecycle and schedule
 tests/test_mpasphys_lifecycle_rrfs.py

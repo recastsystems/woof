@@ -218,9 +218,11 @@ fn windowed_render_request_uses_modern_map_chrome() {
         render_request.visual_mode,
         ProductVisualMode::FilledMeteorology
     );
+    // Rain draws one listed colour per band (`crate::qpf::qpf_inches_scale`
+    // names the breakage the smooth ramp over the linear palette caused).
     assert_eq!(
         render_request.legend.mode,
-        rustwx_render::LegendMode::SmoothRamp
+        rustwx_render::LegendMode::Thresholds
     );
     assert!(render_request.domain_frame.is_some());
     assert!(render_request.projected_domain.is_some());

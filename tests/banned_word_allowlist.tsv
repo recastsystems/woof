@@ -8,13 +8,6 @@ woof/core/kernels/	15	CUDA translation units whose digests tests/test_mp8_frozen
 tests/data/aigefs_member_hybrid/aigefs_member_demo.toml	1	a prepared-tree run-control document; two bytes of prose once moved its length and broke every cross-source stage receipt
 tests/data/oracles/noahmp/	4	Noah-MP oracle provenance receipts, moved from woof/data in 2.8.7 with their bytes, which record the fixture and harness digests the oracle tests check
 tests/data/oracles/ntiedtke/nt-aliasing-audit.txt	3	the New Tiedtke aliasing-audit receipt, moved from woof/data in 2.8.6 with its bytes, parsed line by line by tests/test_ntiedtke_aliasing_audit.py
-tests/test_da_nowcast.py	1	asserts the emitted DA receipt key that earlier receipts carry
-tools/da_background_ab/build_plan.py	1	emits the DA plan receipt key that readers of earlier receipts depend on
-tools/da_cycle_plan.py	1	emits the DA plan receipt key that readers of earlier receipts depend on
-tools/da_nowcast.py	3	emits the nowcast receipt key that readers of earlier receipts depend on
-tools/da_nowcast_auto.py	2	emits the nowcast receipt key that readers of earlier receipts depend on
-tools/da_nowcast_launcher.py	1	emits the nowcast receipt key that readers of earlier receipts depend on
-tools/da_scorecard.py	5	writes and reads the campaign receipt key that receipts from earlier releases carry
 tools/gf_wrf461_oracle/	7	oracle harness sources whose sha256 tests/data/oracles/gf/oracle-sha256sums.txt records (run_cup_gf.F90, pow_probe.F90); the README beside them is not pinned and is reworded
 tools/noahmp_wrf461_oracle/	3	oracle harness scripts whose sha the provenance receipts under tests/data/oracles/noahmp record
 tools/ntiedtke_wrf461_oracle/	2	oracle harness script and transcribed body whose digests the ntiedtke oracle tests record

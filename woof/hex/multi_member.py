@@ -14,6 +14,7 @@ import errno
 import hashlib
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import shutil
 import sys
@@ -409,7 +410,7 @@ def serial_netcdf():
                     changes.append((module, name, original))
                     setattr(module, name, replacement)
         for name, module in tuple(sys.modules.items()):
-            if module is None or not name.startswith(("hexcore.", "woof.")):
+            if module is None or not name.startswith(("woof.hex.", "woof.")):
                 continue
             for attr, value in tuple(vars(module).items()):
                 if id(value) in replacements:
@@ -420,7 +421,7 @@ def serial_netcdf():
         reverse = {id(value): original for _module, _name, original in changes
                    for value in [replacements.get(id(original))] if value is not None}
         for name, module in tuple(sys.modules.items()):
-            if module is not None and name.startswith(("hexcore.", "woof.")):
+            if module is not None and name.startswith(("woof.hex.", "woof.")):
                 for attr, value in tuple(vars(module).items()):
                     if id(value) in reverse:
                         setattr(module, attr, reverse[id(value)])
@@ -457,7 +458,7 @@ def roster_requests(arguments, door):
 def roster_members(arguments, door):
     """Each roster record as the member's own forecast arguments: ``[(run_id, namespace)]``.
 
-    Shared by the WOOF roster (``roster_requests``) and the MPAS suite roster (``run_suite_members``), so both
+    Shared by the WOOF-ArWen roster (``roster_requests``) and the MPAS suite roster (``run_suite_members``), so both
     routes read the same records the same way.
     """
     records = json.loads(Path(arguments.members).read_text(encoding="utf-8"))
@@ -605,7 +606,7 @@ def suite_route(arguments, door) -> bool:
     """Whether the roster's shared flags name an MPAS suite route (``--physics-suite``, its namelist, or
     ``--physics-backend mpasphys``), decided by the same ``native_route`` a one-member forecast takes.
 
-    THE BREAKAGE THIS PREVENTS: a roster (``global --members``, ``s2s``) went straight to the WOOF column
+    THE BREAKAGE THIS PREVENTS: a roster (``global --members``, ``s2s``) went straight to the WOOF-ArWen column
     seam (``resolve_request`` -> ``physics_suites.resolve_physics``), so ``--forecast-arg=--physics-suite=
     convection_permitting`` was refused in 0.5 s ("config_radt_cld_scheme='cld_fraction' is refused") while the
     same flags on one member ran the MPAS port.
@@ -642,6 +643,40 @@ def argv_physics_route(argv) -> str:
         return "mpas"
 
 
+def argv_physics_suite(argv) -> str | None:
+    """The MPAS suite a forecast-door argv runs, or None (the WOOF-ArWen route, or an argv the door would refuse).
+
+    For the planners beside :func:`argv_physics_route`: a member is priced from its suite's own measured whole
+    runs where the suite has them (``device_admission.route_peak_rows``).  THE BREAKAGE THIS PREVENTS (hex 0.5.0):
+    an hrrrv5 member was priced from the convection_permitting curve, 72.6 GB for a 30 km run that peaks 86.8 GB."""
+    import argparse
+
+    from . import forecast_door, physics_default
+
+    tokens = [str(token) for token in argv or ()]
+    if tokens and tokens[0] == "forecast":
+        tokens = tokens[1:]
+    parser = argparse.ArgumentParser(add_help=False)
+    forecast_door.add_forecast_arguments(parser)
+    try:
+        arguments, _unknown = parser.parse_known_args(tokens)
+        physics_default.apply(arguments)
+        return member_suite(arguments, forecast_door)
+    except (Exception, SystemExit):
+        return None
+
+
+def member_suite(arguments, door) -> str | None:
+    """The MPAS suite one member's forecast flags name (the same ``native_route`` the forecast takes), or None."""
+    from .mpasphys.forecast_v842 import native_route
+
+    try:
+        config, _text = native_route(arguments, default_mode=getattr(door, "PHYSICS_MODE_DEFAULT", "correct"))
+    except ValueError:
+        return None
+    return None if config is None else getattr(config, "suite", None)
+
+
 def _member_cells(member) -> int:
     from .mesh_rows import _dimensions
 
@@ -656,13 +691,13 @@ def admit_suite_group(members, gate) -> dict | None:
     """Refuse an MPAS-suite group the card cannot hold, before any member starts (U-H4).
 
     Each member is charged the MPAS route's own floor (``device_admission.route_required_free_bytes``) plus its
-    stochastic arrays, through the same ``admit_co_tenancy`` the WOOF roster decides on, so a group that does not
+    stochastic arrays, through the same ``admit_co_tenancy`` the WOOF-ArWen roster decides on, so a group that does not
     fit is refused with "co-tenancy refuses" and the ensemble door splits it.  THE BREAKAGE IT PREVENTS: this
     roster started every member at once with no memory decision; at 30 km two MPAS members per RTX PRO 6000 ran
     out of memory ~3 min in.  A single member is not decided here: the one-member door admits it as it always has.
     The card is read in a child process (``global_ensemble._probe_cards``), so this process opens no CUDA context
     on the card its members need; behind a card gate the decision is the card's capacity (the group before may
-    still hold it), as in the WOOF roster.  None when one member, or when no card can be read here."""
+    still hold it), as in the WOOF-ArWen roster.  None when one member, or when no card can be read here."""
     if len(members) < 2:
         return None
     from . import forecast_door as door
@@ -687,7 +722,7 @@ def admit_suite_group(members, gate) -> dict | None:
     margin = None if headroom is None else int(round(float(headroom) * door.MIB))
     from .device_admission import mpas_member_increment_bytes, route_required_free_bytes
 
-    solo = route_required_free_bytes(cells, model, margin, route="mpas")
+    solo = route_required_free_bytes(cells, model, margin, route="mpas", suite=member_suite(first, door))
     # Members after the first cost the measured increment, not a whole solo price (both-routes RED 2).
     increment = mpas_member_increment_bytes(cells, levels)
     if increment is not None:
@@ -731,8 +766,8 @@ def run_suite_members(arguments, door, root, scratch):
     """A roster on the MPAS suite route: every member runs the one-member MPAS route, all at once on this card.
 
     Each member is its own process (the MPAS route keeps process-wide framework state, so members cannot share
-    one interpreter the way the WOOF roster's private modules do) started together, so the group is co-resident
-    on the card exactly as the WOOF roster's group is.  The card gate (``woof.hex.card_handoff``) is held by this
+    one interpreter the way the WOOF-ArWen roster's private modules do) started together, so the group is co-resident
+    on the card exactly as the WOOF-ArWen roster's group is.  The card gate (``woof.hex.card_handoff``) is held by this
     process for the group, so the ensemble door's pipelining still sees one group per card.  A member writes the
     same history, receipts and products a one-member ``forecast --physics-suite`` run writes, in
     ``<out>/<run_id>``; its log is ``<out>/<run_id>.log``.
@@ -837,7 +872,7 @@ def _run_members(arguments, door, root, scratch, admit_co_tenancy):
     result = {"schema": "gpuwm-hex.multi-member/v1", "status": "incomplete",
               "admission": admission, "mesh_binding": bind_receipt,
               "default_enabled": False, "members": []}
-    physical_card = os.environ.get("GPU_MUTEX_CARDS", "").split(",")[0]
+    physical_card = card_queue.get(card_queue.CARDS).split(",")[0]
     if not physical_card.isdecimal():
         physical_card = str(door.time_ledger.card_index())
     card = int(physical_card) if physical_card.isdecimal() else None

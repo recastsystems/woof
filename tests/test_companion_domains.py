@@ -816,6 +816,13 @@ def test_every_option_carries_the_registrys_own_couplings():
                              # old Eta Ferrier (3.0 port) carries its own
                              # conditional refusal as well.
                              ("microphysics", "etanew-mp95"),
+                             # UDM and MAD-WRF carry theirs from 3.0.2: the
+                             # builder wrote the RTE+RRTMGP rule before the
+                             # passes that rewrite both options whole, so
+                             # they shipped without it and plan review
+                             # called them launchable where the run refused.
+                             ("microphysics", "udm-mp27"),
+                             ("microphysics", "madwrf-mp96"),
                              ("land_surface", "ssib"),
                              ("cumulus", "betts-miller-janjic"),
                              ("turbulence", "sms-3dtke")} | {

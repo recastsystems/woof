@@ -19,7 +19,8 @@ records which tree ran it (`repo` in `forecast-receipt.json`).
 
 **Local time stepping stays selectable and stays off by default on every
 mesh class.** On the limited-area culls the doors make it is inert by
-construction (one class, history byte-identical to the default run), and
+construction (one class, history byte-identical to the option-off run on the
+same schedule: RK3, six acoustic sub-steps, no FCT limiter), and
 when an interface is forced into the interior to see what the option would
 do if it had a coarse class, the step gets 7 % slower, not faster, and the
 fields move. Nothing here is a tuning problem; the reasons are structural.

@@ -13,8 +13,10 @@ Uncached observations remain pending for the explicit online arrival command.
 The run's `verification.json` lists every discovered valid hour, native receipts
 and pending reasons. Source failures leave the physical forecast verdict unchanged.
 
-The finish hook writes no console output, so a blocked downstream stdout pipe
-cannot trap a daemon printer at interpreter shutdown.
+The finish hook itself writes no console output, so a blocked downstream stdout
+pipe cannot trap a daemon printer at interpreter shutdown. After the hook has
+returned, the run capsule prints one `verification:` line to stderr (see below);
+a closed stream does not fail the finished run.
 
 `verification-background.json` records the queue token, worker PID, local-only
 mode, phase and retry command. `verification-background.log` is the worker log.
@@ -102,11 +104,20 @@ their existing bytes and skipping repeated rows. It formats native results and
 does not pool or recalculate scores. A receipt with no observed events reports
 that status rather than claiming a winner.
 
-Run plans accept `run_options.verify_visuals = false`; `woof go` accepts
-`--no-verify-visuals`. `WOOF_VERIFY_VISUALS=0` disables the finish hook for direct
+Run plans accept `run_options.verify_visuals = false`; `woof go`, `woof sim` and
+`woof run` accept `--no-verify-visuals`. `WOOF_VERIFY_VISUALS=0` disables the finish hook for direct
 runner calls. OFF performs no verification filesystem, network or worker-spawn work and does
 not change the run configuration or physics. The explicit arrival command
 always performs the requested verification.
+
+When it is on, a finished forecast prints one `verification:` line saying what the
+hook did. The step is a detached CPU process and uses no card. It can end a little
+after the forecast process exits; the line names its process and the switch. It
+runs for a forecast whose hours are all still ahead of the clock too: it makes the
+raw history's compact verification inputs and releases the `.keep` lease, and
+those hours stay pending for the arrival command. `--no-verify-visuals` on
+`woof go`, `woof sim` or `woof run` skips it, and then the raw history is not
+made compact.
 
 The installed native artifacts are `rw_verify`, `rw_compare`, `rw_asos` and
 `rw_mrms`. Explicit binary overrides use `WOOF_RW_VERIFY`, `WOOF_RW_COMPARE`,

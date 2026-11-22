@@ -285,10 +285,7 @@
             "properties": {
               "method": {
                 "enum": [
-                  "none",
-                  "jedi-3denvar",
-                  "jedi-letkf",
-                  "local-da"
+                  "none"
                 ]
               },
               "mode": {
@@ -668,10 +665,7 @@
           "properties": {
             "method": {
               "enum": [
-                "none",
-                "jedi-3denvar",
-                "jedi-letkf",
-                "local-da"
+                "none"
               ]
             },
             "mode": {

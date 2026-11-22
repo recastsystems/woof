@@ -16,6 +16,7 @@ from woof.backend import compilation_target as _compilation_target
 from woof.hex import numerics as _hex_numerics
 
 from dataclasses import dataclass
+import threading
 from functools import lru_cache
 from hashlib import sha256
 from typing import Any, Mapping
@@ -620,11 +621,18 @@ class NewTiedtkeV842:
         # conflates signed zeros, but they produce different native words.
         # Cache the actual argument word, including its NaN sign/payload.
         dt_word = int(np.float32(dt).view(np.uint32))
-        key = (cp.cuda.Device().id, ncol, nz, dt_word, stepcu, initflag)
-        cached = self._cached.get(key[:3])
+        # The slot is per card AND per host thread: same-host ranks run as threads of one process share this
+        # instance (the slot launcher is cached on the constants), and two co-tenant rank threads on one card with
+        # the same column count got ONE pipeline workspace, used by both at once. THE BREAKAGE THIS PREVENTS: 4
+        # rank threads on one card (3 of them 4,239 owned columns on a 30 km cut, 2 of them 90,573 on 12 km CONUS)
+        # stopped with "wind reconstruction failed geometry validation: the mesh geometry differs from its sealed
+        # copy" at step 3 / step 8 with New Tiedtke on, and ran clean with it off (18 Nov 2026). A rank process
+        # (one thread a card) keeps one slot, as before.
+        key = (cp.cuda.Device().id, threading.get_ident(), ncol, nz, dt_word, stepcu, initflag)
+        cached = self._cached.get(key[:4])
         if cached is None or cached[0] != key:
             cached = (key, _pipeline(ncol, nz, dt, stepcu, initflag, self.constants))
-            self._cached[key[:3]] = cached
+            self._cached[key[:4]] = cached
         p = cached[1]
         p.stages._llo3_mask.fill(0)
         p.stages._geom_report.fill(-1)

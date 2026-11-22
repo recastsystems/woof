@@ -53,7 +53,7 @@ first thing a consumer should read.
 
 Which library moves the bytes
 -----------------------------
-Both halves are WOOF's Rust on the bare default.  The file is WRITTEN by the
+Both halves are WOOF-ArWen's Rust on the bare default.  The file is WRITTEN by the
 classic writer at ``tools/rustwx/crates/netcdf-writer`` through
 :mod:`woof.obs.grid_product`, in the CDF-5 container;
 ``WOOF_OBS_GRID_WRITER=python`` reaches the netCDF4/HDF5 writer this schema
@@ -1109,7 +1109,7 @@ def _float32_coordinates_agree(stored, computed, *,
     on different math libraries), and where the two straddle a float32
     rounding midpoint they round one float32 step apart.  One step of the
     stored value is therefore the allowance: under two metres anywhere on
-    the globe, so a grid displaced by one cell of any spacing WOOF runs
+    the globe, so a grid displaced by one cell of any spacing WOOF-ArWen runs
     is outside it.
     """
 

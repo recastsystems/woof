@@ -1,9 +1,9 @@
 # Determinism, and what the no-ECC dual-run screen detects
 
-Consumer GeForce cards have no ECC memory. WOOF's answer to that is
+Consumer GeForce cards have no ECC memory. WOOF-ArWen's answer to that is
 running the same forecast twice and comparing the bytes. This page
 states exactly what that comparison detects and what it does not,
-because the difference bounds what you may conclude from a WOOF
+because the difference bounds what you may conclude from a WOOF-ArWen
 result.
 
 Short version: **dual-run byte comparison is a transient-fault screen
@@ -95,22 +95,22 @@ what section 1 says it means.
 | Physical GPU (model, SM version, and (for a same-card screen) the same UUID) | Reduction tile sizing and math-library results are architecture properties (subnormal handling follows the compiled instruction, so the toolkit and CuPy rows below are what pin it) |
 | Driver version | Owns JIT/PTX translation and runtime behaviour |
 | CUDA toolkit / NVRTC used to compile kernels | Kernels are compiled at runtime; a different NVRTC is a different compiled image |
-| CuPy version, and `CUPY_ACCELERATORS` | Owns the reduction and scan implementations WOOF calls (below) |
+| CuPy version, and `CUPY_ACCELERATORS` | Owns the reduction and scan implementations WOOF-ArWen calls (below) |
 | NumPy version | Owns host reductions and ufunc code generation |
 | netCDF4 / HDF5 versions | Own `wrfout` byte serialization and layout |
-| WOOF version and git commit | The code and the packaged kernels |
+| WOOF-ArWen version and git commit | The code and the packaged kernels |
 | Configuration file bytes | `woof run` records this as `config_digest` |
 | Every input artifact's bytes | Section 5 |
 | Runner route and I/O mode | `woof run` and the prepared-runner tools sample different things |
 | Output and diagnostic mode, history cadence, checkpoint cadence | These change what is computed and when it is observed |
 
-WOOF does not pin these for you. The distribution declares dependency
+WOOF-ArWen does not pin these for you. The distribution declares dependency
 *lower bounds* (`numpy>=2.0`, `netCDF4>=1.6`, `cupy-cuda12x>=13.0`), not
 exact versions, and ships no lockfile. If you intend to use the dual-run
 screen, pin the stack yourself (an exact-version environment file, a
 container image, or both) and record what you pinned beside the result.
 
-What WOOF records automatically today: the supervised `woof run` route
+What WOOF-ArWen records automatically today: the supervised `woof run` route
 computes a SHA-256 config digest and per-input hashes before the worker
 starts, and passes the GPU UUID, GPU name, and driver version to it.
 Those input hashes and that GPU identity are written to a durable
@@ -126,7 +126,7 @@ with their SHA-256. Section 7.
 ### Three mechanisms that make the pin set necessary
 
 These are the specific reasons "same answer on a different stack" is not
-promised. Each is a property of WOOF as built, not a hypothetical.
+promised. Each is a property of WOOF-ArWen as built, not a hypothetical.
 
 1. **Library-owned reduction order.** The RRTMGP solar-spectrum
    normalization uses a NumPy float64 sum on the host, an order that
@@ -150,7 +150,7 @@ promised. Each is a property of WOOF as built, not a hypothetical.
    with `-fmad=false`.)
 3. **FP32 subnormal flushing.** Subnormal handling is a property of
    the compile route rather than of the device, and the mitigations
-   WOOF applies are per-route. See
+   WOOF-ArWen applies are per-route. See
    [HARDWARE.md § FP32, subnormals, and GPU-model caveats](HARDWARE.md#fp32-subnormals-and-gpu-model-caveats)
    and the per-scheme records in [PHYSICS.md](PHYSICS.md).
 

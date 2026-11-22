@@ -28,6 +28,7 @@ members = [
     "crates/rw-fetch",
     "crates/rw-fieldcmp",
     "crates/rw-host-memory",
+    "crates/rw-http",
     "crates/rw-ingest",
     "crates/rw-isobaric",
     "crates/rw-libm",

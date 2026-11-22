@@ -331,6 +331,10 @@ class TopoShortwave:
         xtime = F(float(state.elapsed_seconds) / 60.0)
         radt = F(effective_radt_minutes(cfg))
         generation = getattr(cfg, "solar_generation", "wrf_480")
+        if generation == "wrf_480":
+            from woof.core.solar import radiation_calendar
+            julian, xtime, gmt = radiation_calendar(
+                self.start_time, float(state.elapsed_seconds))
         from woof.wrf_exact import ENABLED as _strict
         if _strict and generation == "wrf_461":
             # The same rounded solar words consumed by strict legacy

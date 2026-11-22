@@ -298,13 +298,13 @@ SETS = {
     GL: ("GOCART-lite: GOCART_SIMPLE without DMS and MSA (no DMS seawater "
          "source row) and without the unspeciated P25/P10 (no anthropogenic "
          "PM row); 15 species.", None,
-         "WOOF's default GOCART (DESIGN 1.4); a subset of chem_opt=300"),
+         "WOOF-ArWen's default GOCART (DESIGN 1.4); a subset of chem_opt=300"),
     DU: ("Dust only: the five GOCART dust bins (chem_opt=401).", 401,
          "registry.chem:4031 package dust chem_opt==401"),
     GP: ("GOCART primary aerosols: dust, sea salt, BC and OC with no sulfur "
          "rows, so no oxidant source (and no keyed download) is needed; 13 "
          "species.", None,
-         "WOOF subset of chem_opt=300 for runs without an oxidant source "
+         "WOOF-ArWen subset of chem_opt=300 for runs without an oxidant source "
          "(DESIGN 6.4: 'the user can run gocart_lite minus the sulfur rows')"),
 }
 for name, (desc, opt, prov) in SETS.items():

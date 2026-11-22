@@ -436,7 +436,10 @@ def test_a_remedy_label_names_exactly_the_edit_its_remedy_settings_makes(
     # SBU-YLin adds its RRTMGP cloud-optics remedy. Measured across all rows.
     # The union also includes SSiB and NTU legacy cloud-optics remedies.
     # Eta MP95 adds its native legacy cloud-optics remedy to the union.
-    assert checked == 24
+    # UDM (mp27) and MAD-WRF (mp96) add theirs in 3.0.2: the builder wrote
+    # their rules before the passes that rewrite both options whole, so
+    # they had none and plan review called them launchable on RTE+RRTMGP.
+    assert checked == 26
 
 
 def test_the_builder_refuses_a_remedy_label_that_promises_a_second_edit(

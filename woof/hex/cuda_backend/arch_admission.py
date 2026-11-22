@@ -228,14 +228,14 @@ PERFORMANCE_RATIO_CEILINGS: Mapping[str, Mapping[str, object]] = MappingProxyTyp
                 "ceiling": 1.75,
                 "basis": (
                     "set from the RECORDED sm_86 deviation, not a fresh "
-                    "calibration: the desktop RTX 3080 measured 1.471975x "
+                    "calibration: an RTX 3080 measured 1.471975x "
                     "and 1.565028x at transport.transport_edge_values "
                     "(bitwise identity held; evidence/sm86-tier-20260825/"
                     "contract/perf-control-stability-sm86.json, STATE.md "
                     "section 8) while the four other benchmarks passed at "
                     "1.25.  1.75 covers the top recorded reading with the "
                     "recorded run-to-run spread (~0.093) as headroom; a "
-                    "fresh multi-run calibration on the 3080 is the named "
+                    "fresh multi-run calibration on an RTX 3080 is the named "
                     "follow-up that replaces this basis"
                 ),
             }
@@ -244,7 +244,7 @@ PERFORMANCE_RATIO_CEILINGS: Mapping[str, Mapping[str, object]] = MappingProxyTyp
             {
                 "ceiling": 1.55,
                 "basis": (
-                    "a cross-process calibration on the RTX 4090 (the "
+                    "a cross-process calibration on an RTX 4090 (the "
                     "calibration receipt perf-calibration-sm89.json in a "
                     "calibration/ folder of the evidence this row pins): "
                     "200 readings of the "

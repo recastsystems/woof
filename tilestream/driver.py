@@ -1136,7 +1136,7 @@ class TiledRun:
     the tile buffers, their streams, the ring arena, each buffer's geography
     and boundary occupancy, and the domain clock -- and :meth:`sweep`
     advances the store by one model step (or ``nsteps`` of them).  The split
-    exists because WOOF's own run loop has to BE the loop: woof.core.model
+    exists because WOOF-ArWen's own run loop has to BE the loop: woof.core.model
     and woof.runtime decide when output, restart, diagnostics and nest
     coupling happen, and a streaming mode that owned the time loop could only
     ever be a parallel universe beside the model, never a mode of it.
@@ -2839,7 +2839,7 @@ class TiledRun:
         """Advance the store by ``nsteps`` model steps, in place.
 
         ``step_kwargs`` is forwarded verbatim to every tile's
-        ``dycore.step``.  WOOF's own loop passes ``refl_10cm_due``
+        ``dycore.step``.  WOOF-ArWen's own loop passes ``refl_10cm_due``
         through it, and it has to reach EVERY tile of a sweep: it
         decides whether the step stages REFL_10CM for the frame
         that is about to be written, and a tile that staged it

@@ -1,6 +1,6 @@
 """SASE-L1 CPU authority tests (evidence-ladder stages 1-2).
 
-Spec: docs/superpowers/specs/2026-07-20-sase-design.md.  Everything here
+Spec: docs/internal/specs/2026-07-20-sase-design.md.  Everything here
 is FP64 NumPy; no GPU marker appears in this file by design.
 """
 from __future__ import annotations
@@ -2530,7 +2530,7 @@ def test_dissipation_length_blend_les_and_rans_limits():
     form changes from the linear f*delta + (1-f)*lb to the GEOMETRIC
     delta**f * lb**(1-f) -- this assertion is the linear formula's own
     pin and re-pins WITH the formulation (registered deliberate re-pin,
-    .superpowers/sdd/yolo-lake-mechanism.md section 5).  The ENDPOINTS
+    docs/internal/sdd/yolo-lake-mechanism.md section 5).  The ENDPOINTS
     are the amendment's bitwise contract and are asserted against the
     PRE-CHANGE formula values: f = 1 must reproduce the lb=None (v0)
     path BITWISE (delta**1.0 * lb**0.0 = delta*1.0 == delta, exactly
@@ -5995,7 +5995,7 @@ def test_ekman_balance_column_red_drag_off_unbounded_drift():
 # S3-9: geometric dissipation-length blend -- water-surface
 # jet-decoupling fixture (F-Y1 Lake Michigan over-coupling; authority
 # module docstring, S3-9 section; mechanism + amendment spec in
-# .superpowers/sdd/yolo-lake-mechanism.md)
+# docs/internal/sdd/yolo-lake-mechanism.md)
 # ---------------------------------------------------------------------------
 
 
@@ -6377,7 +6377,7 @@ def _g2b_recs(e_mean_by_third, emax_last_slope, ratio_last_slope,
 
 # ---------------------------------------------------------------------------
 # S3-11a surface scalar-flux deposit (authority seam; G-LAKE root cause
-# .superpowers/sdd/lake-momentum-root-cause.md -- adversarially verified,
+# docs/internal/sdd/lake-momentum-root-cause.md -- adversarially verified,
 # zero refutations; module docstring, S3-11a section)
 # ---------------------------------------------------------------------------
 
@@ -7469,7 +7469,7 @@ def test_m1_seam_contract_and_ledger_closure(monkeypatch):
 # the frozen S4-3 G-M3 amendment: "spec amendment for moist master-length
 # limb, NEVER constant adjustment").  Formulation + the discretization
 # derivation: woof/verify/sase_ref.py module docstring (SASE-M1b section).
-# Evidence: .superpowers/sdd/sase-m1-residual.md -- M1 confined the
+# Evidence: docs/internal/sdd/sase-m1-residual.md -- M1 confined the
 # amplifier but cleared the Sc deck at K_h ~1e2 m2/s (deck p50 74-120,
 # p90 136-150; reference class 3-40) because in a saturated moist-UNSTABLE
 # layer N^2_m < 0 leaves l_s inactive and the master length falls back to
@@ -7939,7 +7939,7 @@ def test_m1b_les_inert(monkeypatch):
 # S4-4: M2 conditional venting limb (authority; SASE-M spec section 4).
 # Formulation + derivations: woof/verify/sase_ref.py module docstring
 # (SASE-M2 section) and the plume_vent_flux docstring.  Evidence base:
-# .superpowers/sdd/sase-m1-residual.md (the S4-3d-confirmed sizing: LE
+# docs/internal/sdd/sase-m1-residual.md (the S4-3d-confirmed sizing: LE
 # 0.6-2.28 kW/m2 conditional, roots 0.2-0.5 km, neg-H lobe 0.24-0.97 km,
 # peak transport 1.2-2.0 km, hard NB termination of the 1.9-2.7 km tail),
 # sase-m-target-envelope.md (export bound + supply rates),
@@ -7949,7 +7949,7 @@ def test_m1b_les_inert(monkeypatch):
 # ---------------------------------------------------------------------------
 
 # S4-4 ROUND-6 RE-PIN (design doc SASE-M2 amendment "the export ratio is
-# not an independent criterion", coordinator ruling).  The M2 amplitude
+# not an independent criterion", project decision).  The M2 amplitude
 # acceptance quantity is ONE number written two ways.  Before this round
 # the two ways were two independent literals whose rails did not agree
 # ([0.7, 1.1]e-4 maps to ratio [0.35533, 0.55838]; [0.4, 0.6] maps to
@@ -10088,7 +10088,7 @@ def test_m2_termination_tracks_prescribed_lid():
     height constant and never the true capping layer.
 
     REWRITTEN per S4-4 REVIEW FINDING Important-2, AMENDED round-3
-    (coordinator ruling, design doc SASE-M2 amendment "discrete C9
+    (project decision, design doc SASE-M2 amendment "discrete C9
     reading"): termination is bounded by k_lid = (the deck's own robust
     top + 1) + 1 -- one cell FURTHER than the pre-round-3 k_top + 1 --
     because the entrainment-zone cell (the deck's own top + 1) is now
@@ -10178,7 +10178,7 @@ def test_m2_termination_grid_consistency():
     """GRID CONSISTENCY (S4-4 REVIEW FINDING Important-2, binding
     constraint (b): "coarse-grid deposit allocation must converge to
     the fine-grid limit on the same physical column"), AMENDED round-3
-    (coordinator ruling, design doc SASE-M2 amendment).  The deck
+    (project decision, design doc SASE-M2 amendment).  The deck
     fixture pair (same z_base/z_lid/z_invtop/dth_inv, only the grid
     resolution ``dz`` changed via the S4-4-review nz/dz keywords on
     :func:`_vent_deck_args`) is exactly this test.
@@ -11805,7 +11805,7 @@ def test_experimental_sentence_names_the_scheme_and_does_not_block():
     # so.  A table-bound runtime -- which IS a WRF scheme -- still gets
     # "not WRF-verified"; the control below pins that.
     assert status["sentence"] == (
-        "physics: SASE PBL: experimental, WOOF-original with no WRF "
+        "physics: SASE PBL: experimental, WOOF-ArWen-original with no WRF "
         "counterpart -- the run continues.")
     assert status["experimental_components"] == ["SASE PBL"]
     # The one word the sentence must NOT contain.  "supported" promises a
@@ -12081,7 +12081,7 @@ def test_the_go_banner_prints_the_clause_the_page_quotes(tmp_path):
     path.write_text(_documented_toml(), encoding="utf-8")
 
     clause = go_cli._physics_words({"config": str(path)})
-    assert clause == ("SASE PBL: EXPERIMENTAL, WOOF-original with no "
+    assert clause == ("SASE PBL: EXPERIMENTAL, WOOF-ArWen-original with no "
                       "WRF counterpart")
 
     # The page must quote a `go:` line that really ends in that clause.
@@ -12117,7 +12117,7 @@ def test_both_forecast_runners_print_the_same_experimental_sentence():
     from woof import physics_compat, prepared_domain_tree_forecast
 
     cfg = _labelled_cfg()
-    expected = ("physics: SASE PBL: experimental, WOOF-original with "
+    expected = ("physics: SASE PBL: experimental, WOOF-ArWen-original with "
                 "no WRF counterpart -- the run continues.")
 
     # The shared builder, and the single-domain surface that reads it.
@@ -12188,7 +12188,7 @@ def test_the_tree_runner_emits_the_sentence_from_its_own_main(
     ]) == 0
 
     line = ("prepared tree: physics: SASE PBL: experimental, "
-            "WOOF-original with no WRF counterpart "
+            "WOOF-ArWen-original with no WRF counterpart "
             "-- the run continues.")
     captured = capsys.readouterr()
     assert captured.err.splitlines().count(line) == 1

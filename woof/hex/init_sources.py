@@ -18,7 +18,7 @@ The path is the same for all of them:
 
 There is no branch on a source id anywhere in this module.  Adding a model
 is a table row and, when its parameter codes are new, a Vtable: the
-arbitrary acceptance test (a project ruling, 2026-08-16).  A row may declare
+arbitrary acceptance test (2026-08-16).  A row may declare
 ``status: refused`` with a ``refusal`` sentence when its bytes cannot travel
 this path; asking for it refuses with that sentence.
 """
@@ -86,7 +86,11 @@ _CYCLES_REFUSED_KEYS = {"from", "until", "refusal"}
 _TC_COMPOSITION_KEYS = {"profile", "use_spechumd", "in_band_supplement_role", "mapping_fields",
                         "surface_policy", "about"}
 _PRODUCT_KEYS = {"role", "transport", "filename", "url", "index", "cds", "codec", "fields", "reason", "fetch_args",
-                 "id", "expand", "remap", "streams", "request"}
+                 "id", "expand", "remap", "streams", "request", "until"}
+#: A product's ``until`` (``YYYY-MM-DDTHH``, optional): the product is planned only for cycles before that one, a
+#: companion standing in for a field its publisher did not publish yet.  THE BREAKAGE THIS PREVENTS: ECMWF open data
+#: carried no snow (sd) before the 2025-11-20 12Z run, so every IFS start before it began with no snow anywhere; the
+#: ifs rows take the same cycle's GFS snow until then and their own sd from then on (one SNOW record, never two).
 _REMAP_KEYS = {"tool", "mesh_cells", "centre", "target", "coordinates", "about"}
 _REMAP_METHODS = {"idw4", "surface-idw4", "nearest", "soil-nearest", "seaice-nearest"}
 _CODECS = {"bz2"}
@@ -96,6 +100,11 @@ _INDEX_FORMATS = {"ecmwf-jsonl", "ncep-idx"}
 #: product's own ``streams`` says otherwise (open-data hosts that throttle
 #: bursts answer 503 Slow Down, which the retry ladder absorbs).
 DEFAULT_STREAMS = 3
+#: Objects :func:`acquire` fetches at once when each arrives on one stream (a row codec such as bz2, no index): DWD's
+#: ICON open data is about 120 bz2 objects a lead. THE BREAKAGE THIS PREVENTS (measured 2026-11-13): ICON's objects
+#: came one after another at 0.4-0.6 MB/s each, 992 s for one lead, so a hex region's hourly boundaries from ICON
+#: took hours; 8 at once moved 2.7 MB/s from the same host (16 at once, 2.9 MB/s).
+SINGLE_STREAM_OBJECTS_AT_ONCE = 8
 # The inference runner derives its Torch/BLAS pools from CPU affinity, ignoring
 # OMP_NUM_THREADS. Bound its child affinity so a container exposing more CPUs
 # than its allocation cannot create hundreds of competing loader threads.
@@ -274,6 +283,8 @@ def validate_row(row: dict[str, Any]) -> None:
             _refuse(f"{row['id']}: codec {product['codec']!r} is not one of {sorted(_CODECS)}")
         if product.get("expand") is not None and product["expand"] not in row.get("sets", {}):
             _refuse(f"{row['id']}: product expands over set {product['expand']!r}, which the row does not declare")
+        if "until" in product:
+            _table_cycle(row["id"], "products.until", product["until"])
         if product.get("remap") is not None:
             if "remap" not in row:
                 _refuse(f"{row['id']}: a product declares a remap but the row declares no remap stage")
@@ -283,6 +294,9 @@ def validate_row(row: dict[str, Any]) -> None:
             if len(str(product["remap"].get("selector", "")).split(",")) != 7:
                 _refuse(f"{row['id']}: a remap selector is seven comma-separated values (discipline, "
                         "category, parameter, first level type and value, second level type and value)")
+            if product["remap"].get("lead") not in (None, "{lead}"):
+                _refuse(f"{row['id']}: a remap lead is \"{{lead}}\" (the record carries the endpoint's forecast "
+                        "hour) or absent (a time-invariant record, lead 0)")
         index = product.get("index")
         if index is not None and index.get("format") not in _INDEX_FORMATS:
             _refuse(f"{row['id']}: index format {index.get('format')!r} is not one of {sorted(_INDEX_FORMATS)}")
@@ -514,14 +528,21 @@ def _validate_ladders(row_id: str, forecast: dict[str, Any]) -> None:
     posted and failed later as a missing object. The first entry whose ``cycle_hours`` holds the cycle's
     hour (or is null) decides. ``interval_hours`` is a spacing every ladder posts; a boundary series takes the
     finest spacing the ladder posts over its window (:func:`boundary_step`), not ``interval_hours``.
+
+    ``until`` (``YYYY-MM-DDTHH``, optional): the ladder holds only for cycles before that one, a publisher's past
+    range. THE BREAKAGE IT PREVENTS: ECMWF's 00/12 UTC runs reached 240 h and its 06/18 UTC runs 90 h before the
+    2024-11-12 06Z run, so a 2024 IFS region ending past f240 planned on the 360 h ladder and failed on a rented box
+    with HTTP 404 at its first boundary file past f240.
     """
     ladders = forecast["ladders"]
     if not isinstance(ladders, list) or not ladders:
         _refuse(f"{row_id}: forecast.ladders must be a non-empty list")
     top = 0
     for ladder in ladders:
-        if not isinstance(ladder, dict) or set(ladder) - {"cycle_hours", "steps"}:
-            _refuse(f"{row_id}: a forecast ladder declares only cycle_hours and steps")
+        if not isinstance(ladder, dict) or set(ladder) - {"cycle_hours", "steps", "until"}:
+            _refuse(f"{row_id}: a forecast ladder declares only cycle_hours, steps and until")
+        if "until" in ladder:
+            _table_cycle(row_id, "forecast.ladders.until", ladder["until"])
         hours = ladder.get("cycle_hours")
         if hours is not None and (not isinstance(hours, list) or not hours
                                   or any(type(h) is not int or not 0 <= h <= 23 for h in hours)):
@@ -541,18 +562,40 @@ def _validate_ladders(row_id: str, forecast: dict[str, Any]) -> None:
         _refuse(f"{row_id}: forecast.max_hours {forecast['max_hours']} differs from the ladders' last lead {top}")
 
 
-def _lead_posted(forecast: dict[str, Any], cycle_hour: int, lead_hours: int) -> bool:
-    ladders = forecast.get("ladders")
-    if not ladders:
+def ladder_for(forecast: dict[str, Any], cycle: "int | datetime | Cycle") -> dict[str, Any] | None:
+    """The ladder that decides a cycle's leads: the first whose ``cycle_hours`` holds the cycle's hour (or is null)
+    and, for a ladder with ``until``, whose cycle is before it. ``cycle`` may be the cycle itself or only its UTC hour;
+    an hour alone skips the dated ladders (the publisher's current range)."""
+    when = cycle.when if isinstance(cycle, Cycle) else cycle
+    hour = when.hour if isinstance(when, datetime) else int(when)
+    if isinstance(when, datetime) and when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    for ladder in forecast.get("ladders") or ():
+        if ladder.get("cycle_hours") is not None and hour not in ladder["cycle_hours"]:
+            continue
+        if "until" in ladder and not (isinstance(when, datetime)
+                                      and when < _table_cycle("forecast", "ladders.until", ladder["until"])):
+            continue
+        return ladder
+    return None
+
+
+def ladder_words(ladder: dict[str, Any]) -> str:
+    """A ladder in words: "every 3 h to f144, then every 6 h to f240"."""
+    return ", then ".join(f"every {every} h to f{until:03d}" for until, every in ladder["steps"])
+
+
+def _lead_posted(forecast: dict[str, Any], cycle_hour: "int | datetime", lead_hours: int) -> bool:
+    if not forecast.get("ladders"):
         return lead_hours <= forecast["max_hours"] and lead_hours % forecast["interval_hours"] == 0
-    for ladder in ladders:
-        if ladder.get("cycle_hours") is None or cycle_hour in ladder["cycle_hours"]:
-            start = 0
-            for until, every in ladder["steps"]:
-                if lead_hours <= until:
-                    return (lead_hours - start) % every == 0
-                start = until
-            return False
+    ladder = ladder_for(forecast, cycle_hour)
+    if ladder is None:
+        return False
+    start = 0
+    for until, every in ladder["steps"]:
+        if lead_hours <= until:
+            return (lead_hours - start) % every == 0
+        start = until
     return False
 
 
@@ -585,7 +628,8 @@ def boundary_step(forecast: dict[str, Any], cycle_hour: int, lead_hours: int, ho
     for step in candidates:
         if whole and hours % step:
             continue
-        if all(_lead_posted(forecast, int(cycle_hour), lead) for lead in boundary_leads(lead_hours, hours, step)):
+        cycle = cycle_hour if isinstance(cycle_hour, (datetime, Cycle)) else int(cycle_hour)
+        if all(_lead_posted(forecast, cycle, lead) for lead in boundary_leads(lead_hours, hours, step)):
             return step
     return 0
 
@@ -595,12 +639,17 @@ def template_context(cycle: Cycle, row: dict[str, Any], member: int | None, lead
     if lead_hours < 0:
         _refuse("forecast lead must be nonnegative")
     forecast = row.get("forecast", {})
-    if lead_hours and (not forecast or not _lead_posted(forecast, cycle.when.hour, lead_hours)):
-        ladder = (f"ladders {forecast['ladders']}" if forecast.get("ladders") else
+    if lead_hours and (not forecast or not _lead_posted(forecast, cycle.when, lead_hours)):
+        # The ladder that holds for THIS cycle, in words (a dated ladder is the publisher's past range: IFS 00/12 UTC
+        # runs stopped at f240 before 2024-11-12 06Z).
+        chosen = ladder_for(forecast, cycle) if forecast.get("ladders") else None
+        ladder = (ladder_words(chosen) + (f" (its range before the {chosen['until']} UTC run)"
+                                           if "until" in chosen else "") if chosen else
+                  f"ladders {forecast['ladders']}" if forecast.get("ladders") else
                   f"every {forecast['interval_hours']} h to {forecast['max_hours']} h" if forecast else
                   "no forecast hours (an analysis source)")
-        _refuse(f"{row['id']}: lead {lead_hours} is outside the row's forecast cadence/range: a "
-                f"{cycle.when.hour:02d} UTC cycle posts {ladder}")
+        _refuse(f"{row['id']}: lead {lead_hours} is outside the row's forecast cadence/range: the "
+                f"{cycle.when:%Y-%m-%d %H} UTC cycle posts {ladder}")
     valid = cycle.when + timedelta(hours=lead_hours)
     context: dict[str, Any] = {
         "lead": lead_hours, "valid_yyyymmddhh": valid.strftime("%Y%m%d%H"),
@@ -697,6 +746,8 @@ def plan_products(row: dict[str, Any], cycle: Cycle, member: int | None, lead_ho
     plans = []
     expanded = []
     for product in (row.get("forecast", {}).get("products", row["products"]) if lead_hours else row["products"]):
+        if "until" in product and cycle.when >= _table_cycle(row["id"], "products.until", product["until"]):
+            continue  # the publisher's own field from that cycle on (_PRODUCT_KEYS, ``until``)
         entries = row.get("sets", {}).get(product["expand"], []) if product.get("expand") else [{}]
         for entry in entries:
             expanded.append((product, {**base_context, **entry}))
@@ -744,6 +795,16 @@ def plan_products(row: dict[str, Any], cycle: Cycle, member: int | None, lead_ho
 # acquisition
 # ---------------------------------------------------------------------------
 _RETRY_STATUS = {429, 500, 502, 503, 504}
+#: The answers by which an archive asks for a lower request rate: 429, and 503 as S3 gives its "SlowDown".
+_THROTTLE_STATUS = {429, 503}
+#: A read that is told to slow down keeps trying this many times (the usual backoff, at most 30 s apart: about 18
+#: minutes), where any other failure keeps the caller's count.  A caller that probes an address with fewer than
+#: ten attempts keeps its own count for both.  THE BREAKAGE THIS PREVENTS (front-door runs of the 0.6.0 candidate,
+#: 2026-11-15): the public ECMWF archive answered SlowDown to about three requests in four for an evening; a 2024
+#: IFS region reads an index and several byte ranges of three files, each needing ten answers in a row to fail, so
+#: every start was refused after 5 to 11 minutes with "could not be read after 10 attempts (HTTP Error 503)" on
+#: objects that were there.
+FETCH_THROTTLE_ATTEMPTS = 40
 _USER_AGENT = "gpuwm-hex-init-source/1"
 
 #: Every https read of every row (index, record ranges, whole objects, the HEAD that sizes them) goes through
@@ -911,6 +972,8 @@ def _hedged(url: str, *, sink_factory, method: str = "GET", headers: dict[str, s
     started = 0
     hedges = 0
     failures = 0
+    throttles = 0
+    patience = max(attempts, FETCH_THROTTLE_ATTEMPTS) if attempts >= 10 else attempts
     last_error: BaseException | None = None
     delay = 2.0
     poll = max(0.05, min(1.0, FETCH_STALL_SECONDS / 4.0))
@@ -953,9 +1016,15 @@ def _hedged(url: str, *, sink_factory, method: str = "GET", headers: dict[str, s
             _refuse(f"{url} answered HTTP {error.code}; the product is not published at that address")
         failures += 1
         last_error = error
-        if failures >= attempts:
+        if isinstance(error, urllib.error.HTTPError) and error.code in _THROTTLE_STATUS:
+            throttles += 1
+            if throttles == attempts and patience > attempts:   # said once, when the usual count would have given up
+                print(f"init-source: {_host(url)} keeps answering HTTP {error.code} (slow down) for "
+                      f"{url.rsplit('/', 1)[-1]}; still trying, up to {patience} times, at most 30 s apart",
+                      file=sys.stderr, flush=True)
+        if failures - throttles >= attempts or throttles >= patience:
             _end_race(race, live)
-            _refuse(f"{url} could not be read after {attempts} attempts ({last_error}); no partial product is kept")
+            _refuse(f"{url} could not be read after {failures} attempts ({last_error}); no partial product is kept")
         if not live:
             time.sleep(delay)
             delay = min(delay * 1.6, 30.0)
@@ -1065,6 +1134,28 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _moment_words(moment: datetime, now: datetime) -> str:
+    """``03:30Z`` on the day of ``now``, ``2026-11-20 03:30Z`` on any other.
+
+    THE BREAKAGE THIS PREVENTS (gpuwm 3.0.3 candidate check, 2026-11-15, the same door in WOOF-ArWen): a cycle typed
+    five days ahead was answered "usually posts around 03:30Z, and it is 16:00Z", which reads as later today."""
+
+    return f"{moment:%H:%M}Z" if moment.date() == now.date() else f"{moment:%Y-%m-%d %H:%M}Z"
+
+
+def _span_words(span: timedelta) -> str:
+    """A wait in words: ``4 d 11 h``, ``5 h 20 min``, ``40 min`` (days to the nearest hour)."""
+
+    minutes = max(0, int(round(span.total_seconds() / 60.0)))
+    if minutes >= 24 * 60:
+        days, hours = divmod(int(round(minutes / 60.0)), 24)
+        return f"{days} d {hours} h"
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours} h {minutes} min" if minutes else f"{hours} h"
+    return f"{minutes} min"
+
+
 def _host(url: str) -> str:
     return (re.match(r"https?://([^/]+)", url) or [None, url])[1]
 
@@ -1091,8 +1182,9 @@ def _ladder(plan: ProductPlan, pairs: list[tuple[str, str | None]], fetch, now: 
             code = re.search(r"answered HTTP (\d+)", text)
             said.append(f"{_host(data_url)}: {'HTTP ' + code.group(1) if code else text}")
     due = datetime.fromisoformat(plan.due_utc) if plan.due_utc else None
-    when = (f" It is not posted yet: this cycle usually posts around {due:%H:%M}Z (posting lag {plan.lag_minutes:g} min), "
-            f"and it is {now:%H:%M}Z." if due and due > now else "")
+    when = (f" It is not posted yet: this cycle usually posts around {_moment_words(due, now)} (posting lag "
+            f"{plan.lag_minutes:g} min), and it is {_moment_words(now, now)}: {_span_words(due - now)} from now."
+            if due and due > now else "")
     _refuse(f"{plan.label or plan.filename}: no address has it ({'; '.join(said)}).{when}")
     raise AssertionError("unreachable")
 
@@ -1250,8 +1342,8 @@ def acquire(plans: list[ProductPlan], dest: Path, cycle: Cycle, *, staged: list[
     """Every product as a local file, with how it got here and its digest."""
 
     dest.mkdir(parents=True, exist_ok=True)
-    out = []
-    for plan in plans:
+
+    def one(plan: ProductPlan) -> dict[str, Any]:
         target = dest / plan.filename
         how: dict[str, Any]
         found = next((directory / plan.filename for directory in staged
@@ -1298,11 +1390,19 @@ def acquire(plans: list[ProductPlan], dest: Path, cycle: Cycle, *, staged: list[
                 how = {**how, "stalls_hedged": hedged}
         if target.stat().st_size == 0:
             _refuse(f"{target} is empty; an empty product decodes to missing fields")
-        out.append({"role": plan.role, "file": str(target), "bytes": target.stat().st_size,
-                    "sha256": _sha256_file(target), "url": how.get("url", plan.url), "transport": plan.transport,
-                    "fields": plan.fields, "reason": plan.reason, "id": plan.product_id,
-                    "remap": plan.remap, **how})
-    return out
+        return {"role": plan.role, "file": str(target), "bytes": target.stat().st_size,
+                "sha256": _sha256_file(target), "url": how.get("url", plan.url), "transport": plan.transport,
+                "fields": plan.fields, "reason": plan.reason, "id": plan.product_id,
+                "remap": plan.remap, **how}
+
+    # Objects that each come on one stream go several at once (SINGLE_STREAM_OBJECTS_AT_ONCE); every other product
+    # keeps its own parallel range streams and goes one after another. The receipt keeps the plans' order.
+    single = [plan for plan in plans if plan.transport == "https" and plan.codec is not None and plan.index_url is None]
+    done: dict[int, dict[str, Any]] = {}
+    if len(single) > 1:
+        with ThreadPoolExecutor(max_workers=min(len(single), SINGLE_STREAM_OBJECTS_AT_ONCE)) as pool:
+            done = dict(zip(map(id, single), pool.map(one, single)))
+    return [done[id(plan)] if id(plan) in done else one(plan) for plan in plans]
 
 
 # ---------------------------------------------------------------------------
@@ -1323,7 +1423,13 @@ def remap(row: dict[str, Any], products: list[dict[str, Any]], cycle: Cycle, out
     The mesh's own coordinate and land-fraction records build one plan; each
     declared record is then remapped with the method its row names.  The
     tool refuses a record whose grid identity, centre, reference time,
-    parameter or level disagrees with what the row declared.
+    lead, parameter or level disagrees with what the row declared.
+
+    ``cycle`` is the SOURCE cycle, the records' reference time. A product's lead is its remap block's ``lead``
+    (``"{lead}"`` in the row: the endpoint's forecast hour); a time-invariant record declares none (lead 0).
+    THE BREAKAGE THIS PREVENTS (2026-11-13, every hex region from ICON): every job was stamped with the init's
+    valid time and lead 0, so gdt101_remap could read only ICON's step 0, and a region from ICON had no
+    boundaries at all.
     """
 
     spec = row["remap"]
@@ -1350,8 +1456,9 @@ def remap(row: dict[str, Any], products: list[dict[str, Any]], cycle: Cycle, out
         if not product.get("remap"):
             continue
         output = work / "out" / Path(product["file"]).name
+        lead_seconds = str(int(product["remap"].get("lead") or 0) * 3600)
         jobs.append("\t".join([product["file"], str(output), *product["remap"]["selector"].split(","),
-                               product["remap"]["method"], stamp, "0"]))
+                               product["remap"]["method"], stamp, lead_seconds]))
         outputs.append(str(output))
     (work / "jobs.tsv").write_text("\n".join(jobs) + "\n", encoding="utf-8")
     completed = subprocess.run([str(remapper), "apply", str(plan), str(work / "jobs.tsv")],
@@ -1731,9 +1838,10 @@ def init_argv(table: dict[str, Any], row: dict[str, Any], *, met: Path, grid: Pa
               vertical_spec: Path, out: Path, cycle: Cycle) -> list[str]:
     switches = table["run_switches"]
     first_guess = row["first_guess"]
+    vertical = ["--vertical-spec", str(vertical_spec)] if vertical_spec is not None else []
     return [
         "init", "--met", str(met), "--grid", str(grid), "--static", str(static),
-        "--vertical-spec", str(vertical_spec), "--out", str(out), "--start-time", cycle.start_time,
+        *vertical, "--out", str(out), "--start-time", cycle.start_time,
         "--nfglevels", str(first_guess["nfglevels"]),
         "--nfgsoillevels", str(first_guess["nfgsoillevels"]),
         "--use-spechumd", first_guess["use_spechumd"],
@@ -1835,6 +1943,8 @@ def add_init_source_parser(commands: Any) -> None:
     parser.add_argument("--source", help="source id or alias (see --list)")
     parser.add_argument("--physics-profile", help="profile initialization row, including verified monthly aerosols")
     parser.add_argument("--physics-suite", help="suite initialization row")
+    parser.add_argument("--physics", action="append", default=None, metavar="KEY=VALUE",
+                        help="a single scheme choice over a WOOF-ArWen-route suite, repeatable; passed to the init")
     parser.add_argument("--soil-remap", choices=("auto", "on", "off"), default="auto",
                         help="table-selected cold soil conversion: auto (default) applies it where its contract "
                              "holds and otherwise keeps the source's own soil, naming why; on refuses instead; off "
@@ -1875,6 +1985,10 @@ def add_init_source_parser(commands: Any) -> None:
     parser.add_argument("--boundary-cycle", metavar="YYYY-MM-DDTHH",
                         help="for a named blend: outside source cycle, with its lead counted to the start")
     parser.add_argument("--blend-core", type=_blend_core, metavar="LAT,LON,KM")
+    parser.add_argument("--outside-init", type=Path, default=None, metavar="INIT.nc",
+                        help="for a named blend on a limited-area mesh (conus3km): the whole mesh's init, already "
+                             "built with its boundaries by the regional or deck producer, used as the outside half "
+                             "instead of running the outside row; the inside half is cut from its vertical grid")
     parser.set_defaults(handler=run_init_source_command)
 
 
@@ -2022,8 +2136,12 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
             receipt["cold_soil_remap_off"] = soil_off_reason
         receipt["stage_seconds"] = stages
         receipt["seconds"] = round(time.time() - started, 3)
-        (out_dir / "init-source-receipt.json").write_text(
-            json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        # Written whole or not at all (temporary file, then rename): a full disk once left a 0-byte receipt
+        # beside a finished-looking init.nc (fit16-rows s2s2, 2026-11-07), which every reader then refused.
+        final = out_dir / "init-source-receipt.json"
+        partial = final.with_name(final.name + ".part")
+        partial.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        partial.replace(final)
 
     prior = _decoded_receipt(out_dir, receipt) if getattr(arguments, "from_decoded", False) else None
     if prior is not None:
@@ -2077,7 +2195,7 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
                   if product not in donors and product not in companions] if not generation else []
         if row.get("remap"):
             t0 = time.time()
-            receipt["remap"] = remap(row, receipt["products"], cycle, out_dir, remapper)
+            receipt["remap"] = remap(row, receipt["products"], source_cycle, out_dir, remapper)
             inputs = receipt["remap"].pop("outputs")
             stages["remap"] = round(time.time() - t0, 3)
         t0 = time.time()
@@ -2119,7 +2237,13 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
         if arguments.stop_after == "decode":
             write_receipt()
             return 0
-    for flag in ("grid", "static", "vertical_spec"):
+    from .physics_default import init_producer
+    suite = getattr(arguments, "physics_suite", None)
+    # A suite with its own producer (hrrrv5, rrfs_*) builds its vertical grid from its producer row and never
+    # reads a vertical spec; asking for one made every hrrrv5 init-source (and the hrrr-gfs blend's outside
+    # half on conus3km) refuse for a file it would not open.
+    needed = ("grid", "static") if suite and init_producer(suite) else ("grid", "static", "vertical_spec")
+    for flag in needed:
         if getattr(arguments, flag) is None:
             _refuse(f"--{flag.replace('_', '-')} is required to build the init")
     init = out_dir / "init.nc"
@@ -2129,6 +2253,8 @@ def run_init_source_command(arguments: argparse.Namespace) -> int:
     for name in ("physics_suite", "physics_profile"):
         if getattr(arguments, name, None):
             argv += ["--" + name.replace("_", "-"), getattr(arguments, name)]
+    for override in getattr(arguments, "physics", None) or ():
+        argv += ["--physics", str(override)]
     argv += ["--soil-remap", getattr(arguments, "soil_remap", "auto")]
     argv += cold_soil_init_flags(receipt["products"], soil_policy, getattr(arguments, "soil_remap", "auto"))
     argv += surface_input_init_flags(receipt.get("surface_input"))

@@ -1,0 +1,106 @@
+{
+ "tool": "tools/kernel_ptx_identity/compare.py",
+ "trees": [
+  "base302",
+  "ml1"
+ ],
+ "nvrtc_version": [
+  13,
+  0
+ ],
+ "assembly": "gpuwm.core.kernels.module_source(name) in a child process per tree; GPUWM_WRF_EXACT* removed, CUDA_VISIBLE_DEVICES empty",
+ "compile": "gpuwm.nvrtc_cache_key.compile_program(source, options + (-arch=<arch>,), target=ptx)",
+ "option_sets": {
+  "load_module": [
+   "-std=c++17"
+  ],
+  "rawmodule": [
+   "-std=c++17",
+   "-ftz=true"
+  ]
+ },
+ "archs": [
+  "compute_89",
+  "compute_120"
+ ],
+ "modules": {
+  "mynn_pbl": {
+   "file_sha256": {
+    "base302": "0a3cc76ddc7fbdfc9b59d8db1c1365746cc4fd649a1bd7b7ae30c6e455643ba0",
+    "ml1": "17c4f8c5abb445b2213382c609bfa96ddae9d1c965b28d237b607d9b8b95c58c"
+   },
+   "assembled_source_sha256": {
+    "base302": "cf6678981492e29c5d58e8c269f6cf247d5b00118cffa47e97d71014cd471342",
+    "ml1": "ec6cc52fd9fd9456c8d0a0b16d00b6318b8381d4d9eb784bd96ca58976965455"
+   },
+   "entries": [
+    "mynn_condensation_default_columns",
+    "mynn_denormal_probe",
+    "mynn_dmp_mf_columns",
+    "mynn_driver_diss_heat_columns",
+    "mynn_driver_exchange_columns",
+    "mynn_driver_prep_columns",
+    "mynn_driver_surface_columns",
+    "mynn_glibc_libm_probe",
+    "mynn_glibc_libm_probe2",
+    "mynn_initialize_default_columns",
+    "mynn_level2_pairs",
+    "mynn_mixlength_default_columns",
+    "mynn_pblh_scale_columns",
+    "mynn_predict_default_columns",
+    "mynn_stfunc_probe",
+    "mynn_tendencies_columns",
+    "mynn_turbulence_default_interfaces",
+    "mynn_wrapper_from_specific",
+    "mynn_wrapper_to_specific"
+   ],
+   "funcs": [],
+   "readings": {
+    "load_module | compute_89": {
+     "ptx_identical": true,
+     "ptx_sha256": {
+      "base302": "0e7133ac7b6369b3b4ee587b586371ee32b8b19f3866bc9e02606dc905ca2019",
+      "ml1": "0e7133ac7b6369b3b4ee587b586371ee32b8b19f3866bc9e02606dc905ca2019"
+     },
+     "entry_compared": 19,
+     "entry_different": [],
+     "func_compared": 0,
+     "func_different": []
+    },
+    "load_module | compute_120": {
+     "ptx_identical": true,
+     "ptx_sha256": {
+      "base302": "462ee80806278607e095f9663549ccaa8dac8881c8519be8b285c72a401b0524",
+      "ml1": "462ee80806278607e095f9663549ccaa8dac8881c8519be8b285c72a401b0524"
+     },
+     "entry_compared": 19,
+     "entry_different": [],
+     "func_compared": 0,
+     "func_different": []
+    },
+    "rawmodule | compute_89": {
+     "ptx_identical": true,
+     "ptx_sha256": {
+      "base302": "144429cae083973a6d92a9c854baa9102918501958f087dc91ead59b9a8ab681",
+      "ml1": "144429cae083973a6d92a9c854baa9102918501958f087dc91ead59b9a8ab681"
+     },
+     "entry_compared": 19,
+     "entry_different": [],
+     "func_compared": 0,
+     "func_different": []
+    },
+    "rawmodule | compute_120": {
+     "ptx_identical": true,
+     "ptx_sha256": {
+      "base302": "37941c4ee2d61490d5af2100460ab3a9d0d4d55773bd2f6eb7cda97d807bb80c",
+      "ml1": "37941c4ee2d61490d5af2100460ab3a9d0d4d55773bd2f6eb7cda97d807bb80c"
+     },
+     "entry_compared": 19,
+     "entry_different": [],
+     "func_compared": 0,
+     "func_different": []
+    }
+   }
+  }
+ }
+}

@@ -79,7 +79,7 @@ record count and the contract version.  The column names are
 identification enough.
 
 WHAT IT IS NOT.  It is not the GFDL vortex tracker and does not
-reproduce its centre-finding; it is WOOF's own tracker, reported.  WRF
+reproduce its centre-finding; it is WOOF-ArWen's own tracker, reported.  WRF
 writes no track file at all -- its moving nest prints a centre to
 ``rsl.out``, and the decks in that ecosystem come from the GFDL tracker
 as post-processing -- so there is no Fortran oracle behind this output

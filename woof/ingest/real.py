@@ -2644,6 +2644,49 @@ def _cap_stratospheric_qv(qv, pressure, *, column_workers=1):
     return output
 
 
+def relative_humidity_to_specific_humidity(temperature, pressure,
+                                           relative_humidity, *,
+                                           column_workers=1):
+    """Specific humidity (kg kg-1) from RH (%), temperature (K), pressure (Pa).
+
+    The quantity real.exe forms from a source that carries RH and no
+    SPECHUMD, written as the specific humidity the FLAG_SH lane takes, so
+    an RH source on ANY pressure field (isobaric or model levels) enters
+    the one specific-humidity path that already reads a 3-D pressure.
+
+    It is WRF's own ``rh_to_mxrat1`` (module_initialize_real.F, called at
+    :1122 when neither FLAG_QV nor FLAG_SH is set, with the Registry
+    defaults ``rh2qv_method = 1`` and ``rh2qv_wrt_liquid = .true.``):
+    RH clipped to 0..100, the Bolton (1980) liquid-water saturation vapour
+    pressure ``6.112 exp(17.67 (T - 273.15) / (T - 29.65))`` hPa reduced
+    by RH, ``qv = 0.622 e / (p - e)`` with the routine's own local
+    ``EPS = 0.622``, floored at 1e-6 and set to 1e-6 where ``e >= p``, and
+    the routine's stratospheric cap (``p < qv_max_p_safe`` and ``qv >
+    qv_max_flag`` give ``qv_max_value``) -- the expressions
+    :func:`_saturation_mixing_ratio` and :func:`_cap_stratospheric_qv`
+    already evaluate for the RH lane -- then ``q = qv / (1 + qv)``.  So
+    the source vapour the moisture integral reads (integ_moist on
+    ``qv_gc``) is real.exe's.
+
+    The FLAG_SH lane converts it back with ``qv = q / (1 - q)`` and
+    re-diagnoses RH from that ``qv`` with the same Bolton relation
+    (:func:`_mixing_ratio_to_relative_humidity`, real.exe :1144-1167), so
+    the RH it interpolates is the clipped RH real.exe interpolates
+    (``rh_to_mxrat1`` clips ``rh_gc`` in place, :7404-7410), to float32
+    rounding.  It differs only where the floor or the cap moved qv: RH 0
+    comes back as the near-zero RH of 1e-6, and a capped level above
+    100 hPa comes back as the RH of 3e-6 where real.exe keeps the RH it
+    judged "probably missing" (the routine's own comment).  Both are
+    stratospheric or bone-dry vapour of a few parts per million.
+    """
+    mixing_ratio = _cap_stratospheric_qv(
+        _saturation_mixing_ratio(
+            temperature, pressure, relative_humidity,
+            column_workers=column_workers),
+        pressure, column_workers=column_workers)
+    return mixing_ratio / (1.0 + mixing_ratio)
+
+
 #: The overlapping-parabolic operator's undershoot envelope for a source
 #: this process did not map itself: WPS's own SPECHUMD, gated to 0..0.1
 #: upstream, mapped by metgrid into a met_em file.  It is
@@ -6194,6 +6237,16 @@ def initialize_real(snapshot: HorizontalSnapshot, cfg: RunConfig,
             if effective_mode(cfg) != "diagnose":
                 _warn_synthetic_aerosol_fallback(
                     _source_choice, wif_resolution)
+    from woof.boundary_fields import tempo_analyzed_aerosol_boundaries
+    if tempo_analyzed_aerosol_boundaries(cfg) and not (
+            decoded_numbers and {"nwfa", "nifa"} <= set(number_moments)):
+        # The mp=28 route's rule, for TEMPO: use_rap_aero_icbc promises the
+        # analysis's aerosol numbers on every initial and boundary frame.
+        raise ValueError(
+            "use_rap_aero_icbc under TEMPO requires QNWFA and QNIFA on every "
+            "initial and boundary frame; this frame carries "
+            + (", ".join(sorted(n.upper() for n in number_moments)) or "no number fields")
+            + "; TEMPO's own aerosol initialization would change the requested forcing")
     # Install supplied moments after the explicit source-absent MP8/28
     # branches. The analysis must never be overwritten by their zero policy.
     if decoded_numbers:

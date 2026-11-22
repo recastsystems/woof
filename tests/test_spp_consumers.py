@@ -239,7 +239,13 @@ def test_spp_specializations_leave_default_compiler_sources_frozen():
             # 6d79b6e9c5d adds MYNN_GSD41-only DMP cloud-base outputs and
             # GRIMS diagnostics, off in the default string. Previously
             # 1f5e6f64.
-            "mynn_pbl": 'cf6678981492e29c5d58e8c269f6cf247d5b00118cffa47e97d71014cd471342',
+            # RE-PINNED for 3.0.3, synchronized with test_mp8_frozen:
+            # correct-mode ML1 adds the BouLac downward-length sign under
+            # MYNN_BOULAC_DOWN_SIGN only, off in the default string (the
+            # default PTX is byte-identical to 3.0.2: tools/kernel_ptx_identity/
+            # receipts/mynn-boulac-down-sign-ml1-default.json). Previously
+            # cf667898.
+            "mynn_pbl": 'ec6cc52fd9fd9456c8d0a0b16d00b6318b8381d4d9eb784bd96ca58976965455',
             # Match test_mp8_frozen's accepted staging source: selectable
             # GSL WRF 3.9 stability solver plus explicitly rounded ordinary
             # mynn_table interpolation. The SPP construction remains inert

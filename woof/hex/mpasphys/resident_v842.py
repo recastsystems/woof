@@ -29,12 +29,15 @@ TARGET = dict(microphysics='mp_thompson', convection='cu_grell_freitas',
 #: mp_thompson_aerosols (its native init_thompson_aerosols_forMPAS is ported in framework_init_v842),
 #: plus Kessler, the original Tiedtke and Kain-Fritsch (its cloud lifetime, update_convection_step1, is
 #: ResidentPhysicsGlue.update_convection_step1; nca = -100 and LUTAB are framework_init_v842/the slot's loader).
-#: Each was proven bitwise to native over 24 h on this glue before it entered the table.
+#: Each was proven bitwise to native over 24 h on this glue before it entered the table, except bl_kim_gwdo
+#: (MPAS PR #1409, which no MPAS release carries yet): module replay against native MMM 63c806d + PR #1409,
+#: 0 of 2,807,088 words different, plus one scored whole forecast (2026-11-09).
 RESIDENT_SCHEMES = dict(
     microphysics=('mp_thompson', 'mp_thompson_aerosols', 'mp_wsm6', 'mp_kessler'),
     convection=('cu_grell_freitas', 'cu_ntiedtke', 'cu_tiedtke', 'cu_kain_fritsch'),
     pbl=('bl_mynn', 'bl_ysu'),
-    gwdo=('bl_ysu_gwdo',),
+    # bl_kim_gwdo (MPAS PR #1409) runs the v8.4.2 YSU slot's resident binding (kim_gwdo_2026.bind_forecast).
+    gwdo=('bl_ysu_gwdo', 'bl_kim_gwdo'),
     radiation_lw=('rrtmg_lw',),
     radiation_sw=('rrtmg_sw',),
     cloudiness=('cld_fraction',),
@@ -163,10 +166,43 @@ def ported_route_refusal(config):
         return None
     options = getattr(config, 'options', None) or {}
     suite = str(options.get('config_physics_suite', '') or 'this selection')
+    choices = gpu_choices(config)
+    advice = ('. '.join(f'With the other choices of this run, {slot} runs on the GPU as '
+                        + ' or '.join(f'--physics {selector}={scheme}' for scheme in schemes)
+                        for slot, (selector, schemes) in choices.items())
+              or 'Choose a resident scheme for that slot')
     return (f'MPAS physics suite {suite} is not runnable without the native MPAS library: '
             + '; '.join(gaps) + '. Without it the run would stop before step 1 (MPAS framework '
-            'operation has no Python implementation: mpas_to_physics). Choose a resident scheme for '
-            'that slot, or run --physics-suite convection_permitting.')
+            'operation has no Python implementation: mpas_to_physics). ' + advice
+            + ', or run --physics-suite convection_permitting.')
+
+
+def gpu_choices(config):
+    """Per refused slot, its namelist selector and the schemes that run on the GPU with every other choice kept.
+
+    A v8.4.2 row admits slot by slot (RESIDENT_SCHEMES); an RRFS row admits whole selections (its route-table
+    targets), so a slot's choices there are the targets that agree with the run on every other slot.  A slot whose
+    choice is admitted, or that no admitted selection can mend alone, is left out.
+    """
+    from .route_table import resident_targets, route_row
+    selectors = dict(getattr(config, 'selectors', None) or {})
+    slots = route_row(config).get('slots', {})
+    found = {}
+    if getattr(config, 'table_key', 'mpasphys_v842') == 'mpasphys_v842':
+        for slot, scheme in selectors.items():
+            allowed = RESIDENT_SCHEMES.get(slot, ())
+            if config.active(slot) and scheme not in allowed and allowed:
+                found[slot] = list(allowed)
+    else:
+        overrides = _profile_selectors(config)
+        targets = [dict(target, **overrides) for target in resident_targets(config)]
+        for slot, scheme in selectors.items():
+            mended = [target[slot] for target in targets if slot in target and all(
+                selectors.get(other) == want for other, want in target.items() if other != slot)]
+            if mended and scheme not in mended:
+                found[slot] = list(dict.fromkeys(mended))
+    return {slot: (str(slots.get(slot, {}).get('selector', 'config_' + slot + '_scheme')), schemes)
+            for slot, schemes in found.items()}
 
 
 @lru_cache(maxsize=1)
@@ -392,7 +428,7 @@ class ResidentPhysicsGlue:
         # closed-sphere geometry indexes that endpoint as column nCellsSolve, one past the tendency arrays.
         # THE BREAKAGE THIS PREVENTS: on an MPAS-suite LTS class the PBL edge projection read whatever followed
         # rublten/rvblten in device memory into those edges' momentum tendency, and the first step of some class
-        # was refused by the dycore validation flag at time 0 (3 of 3 storm-following moving segments on box L
+        # was refused by the dycore validation flag at time 0 (3 of 3 storm-following moving segments on a rented machine
         # and on an RTX 4090 host; every class with 0x7F-filled fresh pool blocks: 1,159 edges of the rate-4
         # class at |tend| ~ 3e36, MPAS-ROUTE-SPEED-2026-10-24).  Such edges take the regional geometry's zero
         # garbage column: half their one real cell's tendency, native's tend_toEdges word.
@@ -567,6 +603,10 @@ class ResidentPhysicsGlue:
                  and (row['pool_name'].endswith('ten')
                       or row['pool_name'] in ('rthratenlw', 'rthratensw'))}
         rates.update(getattr(self, 'local_rates', {}))
+        from ..ad import external_tendency
+        rates = external_tendency.rates_for(self, rates, cp=self.cp, cache=self.cache, mass=mass, provider=p,
+                                            qv_index=list(self.names).index('qv'), dt=getattr(call, 'dt', None),
+                                            time_seconds=getattr(call, 'time_seconds', None))
         out = self.assembler.get_tend(mass=mass, mass_edge=p.field('diag', 'rho_edge'),
             theta_m=p.field('state', 'theta_m'), scalars=p.field('state', 'scalars'),
             tendencies=rates, n_cells_solve=self.ncells,

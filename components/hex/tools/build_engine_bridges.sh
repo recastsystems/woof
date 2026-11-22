@@ -27,7 +27,7 @@
 # (WOOF_HEX_ENGINE_BRIDGES) or builds them itself from a woof source that
 # carries both (GPUWM_HEX_ENGINE_SOURCE).
 #
-# THE BREAKAGE THIS PREVENTS (release readiness B5, coordinator 2026-10-14): the
+# THE BREAKAGE THIS PREVENTS (release readiness B5, 2026-10-14): the
 # init door needs rw_mpas_geometry speaking hex-vertical-v1 (woof 47c68434e) and
 # the stream I/O needs rw_mpas_stream; no released engine carries either (the
 # frozen 2.9.0 bridge lacks hex-vertical-v1, and rw_mpas_stream was only ever a

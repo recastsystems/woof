@@ -151,8 +151,8 @@ def test_the_fetch_refusal_does_not_call_a_runnable_row_unrunnable():
     its bytes and a preparation reaches rc 0 -- but its bytes come from
     a Copernicus CDS request woof does not broker.  The fetch door's
     fallback answered that with "the registry row is not runnable ...
-    nothing in this WOOF could read the bytes a download produced",
-    which is a false statement of cause: this WOOF reads them fine, it
+    nothing in this WOOF-ArWen could read the bytes a download produced",
+    which is a false statement of cause: this WOOF-ArWen reads them fine, it
     just cannot go and get them.  A reader who believes it stops.
     """
 

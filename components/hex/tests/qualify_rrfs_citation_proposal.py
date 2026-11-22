@@ -54,7 +54,7 @@ def main():
     assert existing == existing_after, 'proposal changed existing release inventory'
     fork = [r for r in after if r['citation'].startswith('MPAS-Model-rrfs/')]
     assert fork and all('error' not in row and row['release'].startswith('RRFS ') for row in fork)
-    ref = baseline['Path'](__import__('os').environ.get('MPAS_REF') or str(baseline['Path'](__import__('os').environ.get('MPAS_LANES', '.'))/'ref/MPAS-Model-v8.4.2'))
+    ref = baseline['Path'](__import__('os').environ.get('MPAS_REF') or str(baseline['Path'](__import__('os').environ.get('HEX_REFERENCE_ROOT', '.'))/'ref/MPAS-Model-v8.4.2'))
     prior_errors = baseline['check_campaign_citations'](tree/'src/hexcore', ref)
     proposed_errors = proposal['check_campaign_citations'](tree/'src/hexcore', ref)
     assert set(proposed_errors).issubset(prior_errors), 'proposal introduced an audit refusal'

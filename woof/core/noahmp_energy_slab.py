@@ -130,13 +130,22 @@ def _refuse_unadmitted(ice, ist):
 # seg1: entry (:2033) to the THERMOPROP call (:2119)
 # ---------------------------------------------------------------------------
 
-def energy_seg1(s, *, tanh_profile="glibc_2_39"):
+def energy_seg1(s, *, tanh_profile="glibc_2_39", opt_scf=1):
     """UR, VAI, FSNO, the roughness geometry, the urban override, ZLVL, CWP.
 
     ``s`` maps the scalar generator's argument names to CuPy arrays over the
     column axis.  The returned dict is what seg2 and the THERMOPROP batch read.
+
+    ``opt_scf = 2`` replaces the land-type SCFFAC/MFSNO with the scale-aware
+    parameters of :mod:`woof.core.noahmp_scf` (re-implemented from published
+    descriptions, not bitwise to upstream), read from ``s["scf_dx"]``.
+    ``opt_scf = 1`` is the unchanged statement sequence.
     """
     import cupy as cp
+
+    if type(opt_scf) is not int or opt_scf not in (1, 2):
+        raise ValueError("Noah-MP opt_scf must be 1 (Niu-Yang table) or 2 "
+                         "(scale-aware, Abolafia-Rosenzweig et al. 2025)")
 
     _refuse_unadmitted(s["ice"], s["ist"])
 
@@ -158,9 +167,19 @@ def energy_seg1(s, *, tanh_profile="glibc_2_39"):
     has_snow = snowh > _ZERO
     safe_snowh = cp.where(has_snow, snowh, _ONE)
     bdsno = sneqv / safe_snowh
-    fmelt = slab_powf(bdsno / _f32(100.0), s["mfsno"])
+    if opt_scf == 2:
+        # Abolafia-Rosenzweig et al. 2025, Eq. 4-5: SCfactor and m from the
+        # column's grid spacing replace the land-type table values; Eq. 1-3
+        # (the two statements below) are unchanged.
+        from woof.core.noahmp_scf import scale_aware_parameters
+        # The land step checked the spacing once (noahmp_runtime); no
+        # per-step host read-back here.
+        scffac, mfsno = scale_aware_parameters(s["scf_dx"], check=False)
+    else:
+        scffac, mfsno = s["scffac"], s["mfsno"]
+    fmelt = slab_powf(bdsno / _f32(100.0), mfsno)
     fsno = cp.where(has_snow,
-                    slab_tanhf(safe_snowh / (s["scffac"] * fmelt), profile=tanh_profile),
+                    slab_tanhf(safe_snowh / (scffac * fmelt), profile=tanh_profile),
                     _ZERO)
 
     # -- :2077-2085  ground roughness length (IST == 1 leg) ------------------

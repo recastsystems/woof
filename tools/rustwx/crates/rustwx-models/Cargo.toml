@@ -14,4 +14,6 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 ureq.workspace = true
+# Retry/backoff on 429 and 5xx with a per-host gap (the 2026-11-09 rw_asos 429 defect).
+rw-http = { path = "../rw-http" }
 rustwx-core = { path = "../rustwx-core" }

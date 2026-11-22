@@ -50,10 +50,11 @@ def test_packager_requires_commands_and_new_probe_accepts_them(monkeypatch):
     assert rustwx_fetch.probe_fetch_bin(Path("new-rw_fetch"))[0]
 
 
-@pytest.mark.parametrize("door", ["static-hash", "public-objects"])
+# The "public-objects" door this test also drove was the local data
+# assimilation's object fetcher, removed in gpuwm 3.0.3.
+@pytest.mark.parametrize("door", ["static-hash"])
 def test_default_command_doors_refuse_before_transfer(monkeypatch, door):
     from woof import geog_assets
-    from tools import da_object_fetch
 
     _binary_answers(monkeypatch, OLD_ABI)
     monkeypatch.setattr(rustwx_fetch, "find_fetch_bin", lambda: Path("old-rw_fetch"))
@@ -62,9 +63,5 @@ def test_default_command_doors_refuse_before_transfer(monkeypatch, door):
         pytest.fail("a stale binary reached the data command before its ABI refusal")
 
     monkeypatch.setattr(rustwx_fetch, "_run", transfer)
-    monkeypatch.setattr(da_object_fetch.subprocess, "Popen", transfer)
     with pytest.raises((geog_assets.GeogFetchError, ValueError), match="rw_fetch.*hash"):
-        if door == "static-hash":
-            geog_assets._rw_asset("hash", input=Path("unused"))
-        else:
-            list(da_object_fetch.events("objects", {"objects": []}))
+        geog_assets._rw_asset("hash", input=Path("unused"))

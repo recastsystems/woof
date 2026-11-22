@@ -1,8 +1,8 @@
 """Strict numerics refuses a TEMPO lookup file that is not the strict packet's, before the run starts.
 
-THE BREAKAGE (hrrrv5 x1.40962, strict, a test host, 2026-11-06): the named table directories did not hold the strict
+THE BREAKAGE (hrrrv5 x1.40962, strict, verification host, 2026-11-06): the named table directories did not hold the strict
 reference's lookup files, so TEMPO silently read the fork source's NOAA copies (freeze_water_data_tempo_v3 sha256
-4624...) where native and a test host read the strict-rebuilt 9cf5..., and the bitwise comparison ran on other tables.
+4624...) where native and verification host read the strict-rebuilt 9cf5..., and the bitwise comparison ran on other tables.
 """
 from __future__ import annotations
 

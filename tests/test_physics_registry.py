@@ -1624,7 +1624,7 @@ def test_mynn_component_dependencies_are_the_wrf_v461_cells():
 
     The MYNN surface layer's dependency row transcribes WRF's isfc class
     check, and that check has no cell for SASE at all: bl_pbl_physics=900
-    is a WOOF closure, outside the transcription's PBL axis, and asking
+    is a WOOF-ArWen closure, outside the transcription's PBL axis, and asking
     it for a verdict raises rather than answering.  Excluding SASE was
     therefore an intersection of two tables, not a physical statement --
     and the physical statement runs the other way: SASE reads
@@ -1648,8 +1648,12 @@ def test_mynn_component_dependencies_are_the_wrf_v461_cells():
     ] == {
         "surface_layer": ["revised-mm5", "classic-mm5", "mynn"]}
     sase = components["pbl"]["options"]["sase"]["constraints"]
+    # "gfs" on the same field contract (3.0.3): the GFS layer writes all
+    # four of ust/hfx/qfx/wspd, and the run door always started the pair.
     assert sase["requires_components"]["surface_layer"] == [
-        "revised-mm5", "classic-mm5", "mynn", "pleim-xiu"]
+        "revised-mm5", "classic-mm5", "mynn", "pleim-xiu", "gfs"]
+    assert "sase" in components["surface_layer"]["options"]["gfs"][
+        "constraints"]["requires_components"]["pbl"]
     # The cadence pin went with it: the driver runs SASE at bldt_seconds
     # and holds/recouples its tendencies across skipped calls, and
     # tests/test_sase_cadence*.py exercise 0.1 s and 5.0 s.
@@ -3063,7 +3067,7 @@ def test_the_published_mp28_evidence_agrees_between_registry_and_docs():
         assert f"`{name}`" in knobs, (
             f"CONFIGURATION.md does not document the refused knob {name}")
     assert "aer_init_opt" in knobs and "derived" in knobs, (
-        "the page must say why aer_init_opt is not a WOOF knob")
+        "the page must say why aer_init_opt is not a WOOF-ArWen knob")
 
 
 def test_mp28_published_residuals_still_equal_a_live_adapter_measurement():

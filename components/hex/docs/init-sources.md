@@ -78,6 +78,38 @@ The `icon` row needs the engine at or after the commit that gives
 source and the soil-water-mass rule. Every other row runs on the unchanged
 writer.
 
+## Blended starts
+
+A blend row names a regional analysis for inside its map and a global row for
+everywhere else, with a smooth edge (`blend.taper_km`): `rrfs-gfs` (RRFS v1
+inside) and `hrrr-gfs` (HRRR inside, with HRRR's own soil). On a globe or a
+zoom globe the door builds the outside init itself. On a limited-area mesh
+(conus3km) the init and its boundaries come from the regional or deck
+producer, so give that init as the outside half:
+
+```sh
+woof hex init-source --source hrrr-gfs --cycle 2022-03-05T15 --out-dir BLEND \
+  --grid conus3km.grid.nc --static conus3km.static.nc --physics-suite hrrrv5 \
+  --outside-init DECK/init/init.nc
+```
+
+It is also how a start at an hour with no GFS analysis gets its outside half:
+HRRR is hourly, GFS six-hourly, so the deck builds its init from the last GFS
+cycle's forecast (for 15Z, 12Z f003) and the blend takes that init.
+
+The door refuses an `--outside-init` valid at another hour than the start.
+
+How large a region a blend needs: the inside analysis has full weight only where a cell lies more than the taper
+(300 km for `hrrr-gfs`) inside the cut, and the outer rings keep the outside init untouched so the start agrees
+with its boundaries. The door prints the three counts. Measured with `hrrr-gfs` on two caps round 36N 96W built by
+`woof hex country --source gfs` (2026-11-15 12Z, the hrrrv5 suite): a 350 km radius gave no cell at full HRRR
+weight (16,353 in the taper, 11,971 GFS alone); a 700 km radius gave 1,908 at full weight, 14,718 in the taper and
+11,837 GFS alone, and a 3-hour forecast from it ran with the region's own boundaries. `woof hex country` does not
+take a blend row as a region's `--source`: it says so and names these two steps.
+The HRRR half is cut from the outside init's own vertical grid, so the two
+halves share every level, and the blend writes `BLEND/init.nc` without
+touching the given file.
+
 ## Generated Earth-2 forecasts
 
 The Earth-2 extension lists each model's output channels, pressure levels,

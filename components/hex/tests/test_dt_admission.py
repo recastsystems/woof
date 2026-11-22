@@ -258,7 +258,7 @@ def test_the_proven_timestep_is_the_one_the_native_reference_was_run_at():
 def test_the_frozen_config_admits_exactly_the_earned_set_and_nothing_else():
     """RETIRED 2026-10-10 as a gate: every schedulable timestep builds.
 
-    owner ruling.  The earned rows still
+    The earned rows still
     build, and so do timesteps no row holds -- 60 s and 90 s among them, the
     MPAS-A standard steps for 10 km and 15 km.  What is still refused is a
     cadence the timestep cannot schedule, by name.

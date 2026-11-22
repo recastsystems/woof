@@ -1,4 +1,4 @@
-"""hf-5 proof 2: step WOOF as an Earth2Studio prognostic model for 6 h.
+"""hf-5 proof 2: step WOOF-ArWen as an Earth2Studio prognostic model for 6 h.
 
 ERA5 (earth2studio ARCO, keyless) gives the initial state; the same source
 gives the 6 h lateral boundary. One earth2studio.run.deterministic call.
@@ -30,7 +30,7 @@ io = NetCDF4Backend(str(out / "arwen_px_6h.nc"), backend_kwargs={"mode": "w"})
 run.deterministic([np.datetime64(init)], 1, model, ARCO(), io, device="cuda")
 io.close()
 wall = time.perf_counter() - t0
-receipt = {"proof": "earth2studio.run.deterministic with earth2studio_arwen.WOOF, 1 step",
+receipt = {"proof": "earth2studio.run.deterministic with earth2studio_arwen.WOOF-ArWen, 1 step",
            "init": init, "area": area, "wall_s": round(wall, 1), "steps": model.receipts}
 (out / "proof-px-receipt.json").write_text(json.dumps(receipt, indent=1))
 print(json.dumps(receipt, indent=1))

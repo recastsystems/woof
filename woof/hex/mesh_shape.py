@@ -134,6 +134,92 @@ def _ring(row: Mapping[str, Any]) -> np.ndarray:
     return vertices
 
 
+def _corner(vertex: np.ndarray) -> str:
+    return f"({vertex[0]:.4f}, {vertex[1]:.4f})"
+
+
+def check_simple(row: Mapping[str, Any]) -> None:
+    """Refuse an outline that has fewer than three distinct corners, encloses no area, or crosses itself.
+
+    THE BREAKAGE IT PREVENTS (mesh-check, 2026-11-18): a polygon whose sides cross was accepted by
+    every door.  A crossing outline has no single inside: the generator's even-odd test and the
+    planner's area disagree about which cells are in the zone, so the columns priced are not the
+    columns built and the fine zone is not the place drawn.  The sides are great-circle arcs; the
+    test runs on the gnomonic plane about the outline's centre, where every such arc is a straight
+    segment, so it is exact for any outline the size check admits (under 60 degrees from its centre).
+    """
+
+    ring = _ring(row)
+    keep = [0]
+    for k in range(1, len(ring)):
+        if not np.allclose(ring[k], ring[keep[-1]], atol=1e-9):
+            keep.append(k)
+    if len(keep) > 1 and np.allclose(ring[keep[-1]], ring[keep[0]], atol=1e-9):
+        keep.pop()
+    if len(keep) < 3:
+        raise ShapeRefusal(
+            f"the outline has {len(keep)} distinct corner(s); a zone needs at least three corners to enclose "
+            f"an area.  Give three or more different [lat, lon] points")
+    ring = ring[keep]
+    xyz = _xyz(*ring.T)
+    centre = xyz.sum(axis=0)
+    centre /= max(float(np.linalg.norm(centre)), 1e-300)
+    east = np.cross([0.0, 0.0, 1.0], centre)
+    if float(np.linalg.norm(east)) < 1e-12:
+        east = np.array([1.0, 0.0, 0.0])
+    east /= np.linalg.norm(east)
+    north = np.cross(centre, east)
+    depth = xyz @ centre
+    if float(depth.min()) <= 1e-6:
+        return  # beyond a quarter turn: _check_size refuses it in its own words
+    x = (xyz @ east) / depth
+    y = (xyz @ north) / depth
+    n = len(ring)
+    scale = float(np.max(np.hypot(x - x.mean(), y - y.mean())))
+    ax, ay = x, y
+    bx, by = np.roll(x, -1), np.roll(y, -1)
+    eps = 1e-12 * max(scale, 1e-300) ** 2
+
+    def side(px, py, qx, qy, rx, ry):
+        return (qx - px) * (ry - py) - (qy - py) * (rx - px)
+
+    def on(px, py, qx, qy, rx, ry, d):
+        return (np.abs(d) <= eps) & (np.minimum(px, qx) - 1e-12 <= rx) & (rx <= np.maximum(px, qx) + 1e-12) \
+            & (np.minimum(py, qy) - 1e-12 <= ry) & (ry <= np.maximum(py, qy) + 1e-12)
+
+    for i in range(n - 2):
+        j = np.arange(i + 2, n if i > 0 else n - 1)
+        if not len(j):
+            continue
+        d1 = side(ax[i], ay[i], bx[i], by[i], ax[j], ay[j])
+        d2 = side(ax[i], ay[i], bx[i], by[i], bx[j], by[j])
+        d3 = side(ax[j], ay[j], bx[j], by[j], ax[i], ay[i])
+        d4 = side(ax[j], ay[j], bx[j], by[j], bx[i], by[i])
+        proper = (((d1 > eps) & (d2 < -eps)) | ((d1 < -eps) & (d2 > eps))) & \
+                 (((d3 > eps) & (d4 < -eps)) | ((d3 < -eps) & (d4 > eps)))
+        touch = on(ax[i], ay[i], bx[i], by[i], ax[j], ay[j], d1) | on(ax[i], ay[i], bx[i], by[i], bx[j], by[j], d2) \
+            | on(ax[j], ay[j], bx[j], by[j], ax[i], ay[i], d3) | on(ax[j], ay[j], bx[j], by[j], bx[i], by[i], d4)
+        hit = np.flatnonzero(proper | touch)
+        if len(hit):
+            k = int(j[hit[0]])
+            # Where the two sides meet, on the plane and back on the sphere.
+            denom = (bx[i] - ax[i]) * (by[k] - ay[k]) - (by[i] - ay[i]) * (bx[k] - ax[k])
+            t = 0.0 if abs(denom) < 1e-300 else (
+                (ax[k] - ax[i]) * (by[k] - ay[k]) - (ay[k] - ay[i]) * (bx[k] - ax[k])) / denom
+            px, py = ax[i] + t * (bx[i] - ax[i]), ay[i] + t * (by[i] - ay[i])
+            lat, lon = _latlon(centre + px * east + py * north)
+            raise ShapeRefusal(
+                f"the outline crosses itself: the side from corner {i + 1} {_corner(ring[i])} to corner "
+                f"{i + 2} {_corner(ring[(i + 1) % n])} meets the side from corner {k + 1} {_corner(ring[k])} to "
+                f"corner {(k + 1) % n + 1} {_corner(ring[(k + 1) % n])} near ({float(lat):.4f}, {float(lon):.4f}).  "
+                f"An outline that crosses itself has no single inside, so the zone it asks for is not defined.  "
+                f"Draw it so that no two sides cross (for two areas, give two zones)")
+    area = 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+    if abs(area) <= 1e-12 * max(scale * scale, 1e-300):
+        raise ShapeRefusal(
+            "the outline's corners lie on one line and enclose no area.  Give corners that go round the zone")
+
+
 def centroid(row: Mapping[str, Any]) -> tuple[float, float]:
     """The normalised vertex centroid, the point the generator itself uses
     as a polygon's representative interior point."""
@@ -300,6 +386,7 @@ def shape_from_document(document: Mapping[str, Any]) -> dict[str, Any]:
         raise ShapeRefusal(
             "the shape is neither a Shape row (kind cap, lat_lon_box or polygon) nor GeoJSON")
     _check_size(row)
+    check_simple(row)
     return row
 
 
@@ -415,9 +502,15 @@ def _march(field: np.ndarray, xs: np.ndarray, ys: np.ndarray) -> list[np.ndarray
 def _simplify(loop: np.ndarray, tolerance: float) -> np.ndarray:
     """Douglas-Peucker on a closed planar loop."""
 
+    return loop[_simplify_mask(loop, tolerance)]
+
+
+def _simplify_mask(loop: np.ndarray, tolerance: float) -> np.ndarray:
+    """Which points of a closed planar loop Douglas-Peucker keeps."""
+
     n = len(loop)
     if n <= 4:
-        return loop
+        return np.ones(n, dtype=bool)
     far = int(np.argmax(np.hypot(*(loop - loop[0]).T)))
     keep = np.zeros(n, dtype=bool)
     keep[0] = keep[far] = True
@@ -439,7 +532,69 @@ def _simplify(loop: np.ndarray, tolerance: float) -> np.ndarray:
             mid = a + 1 + k
             keep[mid] = True
             stack.extend([(a, mid), (mid, b)])
-    return loop[keep]
+    return keep
+
+
+def _great_circle_miss_km(proj: "_Azimuthal", loop: np.ndarray, keep: np.ndarray) -> float:
+    """How far the traced loop lies from the polygon the generator will build from the kept corners.
+
+    The generator joins a polygon's corners by great circles.  The largest distance (km) from a
+    dropped point to the great circle through the two kept corners either side of it.
+    """
+
+    lat, lon = proj.inverse(loop[:, 0], loop[:, 1])
+    xyz = _xyz(np.asarray(lat, dtype=float), np.asarray(lon, dtype=float))
+    kept = np.flatnonzero(keep)
+    worst = 0.0
+    for a, b in zip(kept, np.r_[kept[1:], kept[0] + len(loop)]):
+        if b - a < 2:
+            continue
+        normal = np.cross(xyz[a], xyz[b % len(loop)])
+        norm = float(np.linalg.norm(normal))
+        if norm < 1e-12:
+            continue
+        inner = xyz[np.arange(a + 1, b) % len(loop)]
+        worst = max(worst, float(np.abs(np.arcsin(np.clip(inner @ (normal / norm), -1.0, 1.0))).max()))
+    return worst * EARTH_RADIUS_KM
+
+
+def _gnomonic(loop: np.ndarray) -> np.ndarray | None:
+    """The loop on the gnomonic plane about the same centre, where a great circle is a straight line.
+
+    ``None`` when the loop reaches too near a quarter of the way round the earth for that plane.
+    """
+
+    c = np.hypot(loop[:, 0], loop[:, 1]) / EARTH_RADIUS_KM
+    if float(c.max()) > 0.45 * math.pi:
+        return None
+    scale = np.where(c > 1e-9, np.tan(c) / np.where(c > 1e-9, c, 1.0), 1.0)
+    return loop * scale[:, None]
+
+
+def _inside_outline(row: Mapping[str, Any], proj: "_Azimuthal", xs: np.ndarray, ys: np.ndarray,
+                    cell_km: float) -> np.ndarray:
+    """Which raster points lie inside the drawn outline (even-odd, on the azimuthal plane).
+
+    The outline is walked as finely as the distance raster walks it, so its sides are the same
+    lines on the plane.
+    """
+
+    dense = _densify(_xyz(*_ring(row).T), 0.5 * cell_km / EARTH_RADIUS_KM)
+    bx, by = proj.forward(*_latlon(dense))
+    x0, y0 = np.asarray(bx, dtype=float), np.asarray(by, dtype=float)
+    x1, y1 = np.roll(x0, -1), np.roll(y0, -1)
+    inside = np.zeros((len(ys), len(xs)), dtype=bool)
+    lo, hi = np.minimum(y0, y1), np.maximum(y0, y1)
+    order = np.argsort(lo)
+    lo_sorted = lo[order]
+    for i, y in enumerate(ys):
+        edges = order[:int(np.searchsorted(lo_sorted, y, side="right"))]
+        edges = edges[hi[edges] > y]
+        if edges.size == 0:
+            continue
+        cross = np.sort(x0[edges] + (y - y0[edges]) * (x1[edges] - x0[edges]) / (y1[edges] - y0[edges]))
+        inside[i] = (np.searchsorted(cross, xs, side="right") % 2) == 1
+    return inside
 
 
 def _touches_border(mask: np.ndarray) -> bool:
@@ -474,12 +629,23 @@ def grow(row: Mapping[str, Any], distance_km: float, *, tolerance_km: float,
                 f"growing the outline by {distance_km:g} km reaches past its own raster even with the "
                 f"projection's stretch allowed for; tracing it would close the clipped band with a chord "
                 f"across the region")
-    region = ndimage.binary_fill_holes(near)
+    # THE BREAKAGE THIS PREVENTS (a 5,400 by 3,250 km rounded box grown half a 3 km cell, 2026-11-18): the raster
+    # is at most MAX_GRID cells a side, so on a large outline its cell (4.5 km there) is wider than the band of
+    # points within ``distance_km`` (1.5 km) of the boundary. The band was then a scatter of single cells, nothing
+    # was enclosed for the fill, and the largest traced scrap was simplified to TWO vertices (rw_mpas_mesh: "a
+    # polygon with 2 vertices"). The drawn region itself is therefore counted in, by its own outline on the plane,
+    # and its interior carries the signed distance so the outline is traced where it is and not at the nearest
+    # raster point. When the cell is no wider than the distance (every outline grown before this) the band already
+    # enclosed the interior and no traced point moves.
+    inside = _inside_outline(row, proj, xs, ys, cell)
+    region = ndimage.binary_fill_holes(near | inside)
     labels, count = ndimage.label(region)
     if count > 1:
         sizes = ndimage.sum(region, labels, range(1, count + 1))
         region = labels == (1 + int(np.argmax(sizes)))
     field = np.where(region, np.minimum(dist - distance_km, -1e-9), np.maximum(dist - distance_km, 1e-9))
+    deep = inside & region & ~near
+    field[deep] = -(dist[deep] + distance_km)
     loops = _march(field, xs, ys)
     if not loops:
         raise ShapeRefusal("growing the drawn outline traced no boundary")
@@ -487,10 +653,28 @@ def grow(row: Mapping[str, Any], distance_km: float, *, tolerance_km: float,
                                                        - np.roll(p[:, 0], -1) * p[:, 1])))
     tol = max(tolerance_km, 0.5 * cell)
     while True:
-        simple = _simplify(loop, tol)
-        if len(simple) <= max_vertices:
+        keep = _simplify_mask(loop, tol)
+        if int(keep.sum()) <= max_vertices:
             break
         tol *= 1.5
+    # THE BREAKAGE THIS PREVENTS (a 5,400 by 3,250 km rounded box, 2026-11-18): the corners are chosen on the
+    # azimuthal plane, where the box's long north side is one straight line, so every point along it was dropped;
+    # rw_mpas_mesh joins corners by great circles, and the great circle between the two far corners runs up to
+    # 145 km north of that line (the 12 km zone drawn 1,500 km outside it: about 500 km). The 3 km box was built
+    # with a dome into Canada that nobody asked for. When the kept corners' great circles leave the traced outline by
+    # more than twice the tolerance, the corners are chosen again on the gnomonic plane, where a great circle IS a
+    # straight line. An outline a few hundred km across never gets there (its miss is a fraction of the
+    # tolerance), so it keeps the corners it always had.
+    if _great_circle_miss_km(proj, loop, keep) > 2.0 * tol:
+        flat = _gnomonic(loop)
+        if flat is not None:
+            tol = max(tolerance_km, 0.5 * cell)
+            while True:
+                keep = _simplify_mask(flat, tol)
+                if int(keep.sum()) <= max_vertices:
+                    break
+                tol *= 1.5
+    simple = loop[keep]
     lat, lon = proj.inverse(simple[:, 0], simple[:, 1])
     return {"kind": "polygon",
             "vertices_deg": [[round(float(a), 5), round(float(b), 5)] for a, b in zip(lat, lon)]}
@@ -643,7 +827,7 @@ def predicted_shape_cull_cells(*, spec: Mapping[str, Any], drawn: Mapping[str, A
 
 
 __all__ = [
-    "ShapeRefusal", "area_km2", "centroid", "ellipse_row", "equal_area_radius_km",
+    "ShapeRefusal", "area_km2", "centroid", "check_simple", "ellipse_row", "equal_area_radius_km",
     "fine_region_growth_km", "grow", "load_shape", "parse_ellipse", "predicted_shape_cull_cells",
     "shape_cull_region", "shape_from_document", "shape_halo_region", "shape_ladder_spec",
 ]

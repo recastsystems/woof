@@ -1,6 +1,6 @@
 # Run an existing WRF initial state
 
-WOOF's native preparation remains the recommended route. When you already have
+WOOF-ArWen's native preparation remains the recommended route. When you already have
 a compatible CPU WRF `real.exe` run, you can keep its initialization workflow:
 
 ```sh
@@ -8,7 +8,7 @@ woof run --wrfinput /path/to/wrf-run --outdir out/forecast
 ```
 
 The input directory must contain `namelist.input`, `wrfinput_d01` (and a file for
-each additional domain), and `wrfbdy_d01`. WOOF reads the producing namelist,
+each additional domain), and `wrfbdy_d01`. WOOF-ArWen reads the producing namelist,
 checks the files against its geometry and physics, verifies the first boundary
 state against the initial state, and uses the shared forecast engine, radiation
 workspace, clocks, health checks, restart validation and output. Input bytes

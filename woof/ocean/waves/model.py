@@ -74,7 +74,13 @@ class WaveModel:
         record_module(f"woof.ocean.waves:kernels:directions={self.nd}", source=source,
                       options=("--std=c++17", f"-DWAVES_DIRECTIONS={self.nd}"), module=self.module)
         self._functions = {name: self.module.get_function(name) for name in (
-            "geometry", "propagate", "refract", "moments", "sources", "source_integrate", "dia", "dia_unlimited", "dia_apply", "diagnose", "input_bound")}
+            "geometry", "propagate", "refract", "moments", "sources", "source_integrate", "dia_apply", "diagnose", "input_bound")}
+        # The DIA exchange gathers in a fixed order (ordered.cu); its atomicAdd scatter differed run to run.
+        from .ordered import OrderedDia, compile_module
+        _, _, self.ordered_module = compile_module(key=f"woof.ocean.waves:ordered:directions={self.nd}",
+                                                   fast_math=False)
+        self.dia = OrderedDia(self.ordered_module, self.frequency, self.df, self.nd,
+                              math.log(self.spectral.ratio), diagonal=False)
         self._launch("geometry", self.nc * self.ns, (depth, latitude, self.frequency,
             self.k, self.cg, self.turn, self.cfl, self.i(self.nx), self.i(self.ny),
             self.i(self.nf), self.i(self.nd), self.f(self.dx), self.f(self.dy)))
@@ -164,9 +170,8 @@ class WaveModel:
         self._timed("wind_and_moments", lambda: self._moments(u0, v0, u1, v1, alpha))
         def nonlinear():
             self.rate.fill(0)
-            self._launch("dia", self.nc * self.ns, (self.spectrum, self.rate,
-                self.frequency, self.df, self.depth, self.moments, self.i(self.nc),
-                self.i(self.nf), self.i(self.nd), self.f(math.log(self.spectral.ratio)), self.f(dt)))
+            self.dia.launch(self.spectrum, self.rate, None, self.frequency, self.df, self.depth,
+                            self.moments, self.nc, dt=dt, limited=True)
             self._launch("dia_apply", self.nc, (self.spectrum, self.rate, self.limiter,
                 self.i(self.nc), self.i(self.nf), self.i(self.nd), self.f(dt)), blocks=True)
         self._timed("DIA", nonlinear)

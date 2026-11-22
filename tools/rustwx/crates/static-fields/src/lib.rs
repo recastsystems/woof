@@ -30,6 +30,7 @@ pub mod error;
 pub mod extra;
 pub mod fields;
 pub mod geog;
+pub mod gwdo_wps281;
 pub mod highres;
 pub mod interp;
 pub mod npz;
@@ -45,6 +46,7 @@ pub mod snow_optics;
 #[cfg(test)]
 pub(crate) mod testsupport;
 pub mod types;
+pub mod wetland;
 
 pub use error::StaticError;
 pub use types::{Field, FieldSet, Grid2, Stack3};
@@ -67,3 +69,4 @@ pub mod fire_ignition;
 
 pub mod snow_shapes;
 pub mod snow_aging;
+pub mod snow_optics_sets;

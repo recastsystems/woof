@@ -692,7 +692,7 @@ class SwathRow:
     #: and the driven rings move out to where the mesh is coarser, so the
     #: interface ratio falls with no extra integration.
     #:
-    #: MEASURED (2026-08-27, the proving RTX 5090, evidence/nest-ratio-20260827/):
+    #: MEASURED (2026-08-27, an RTX 5090, evidence/nest-ratio-20260827/):
     #: on one placed swath, over one shared patch of 2,937 cells, with the
     #: coarse parent's finest spacing at 71.0 km --
     #:

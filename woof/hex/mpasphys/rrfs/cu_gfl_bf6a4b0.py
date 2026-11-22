@@ -1,6 +1,6 @@
 """Pinned RRFS GFL bf6a4b0: complete CUDA transcription and MPAS boundary.
 
-Authority RRFS-MPAS 1d6e370e + ierrm init (owner ruling 2026-10-14 07:45Z).
+Authority RRFS-MPAS 1d6e370e + ierrm init (2026-10-14 07:45Z).
 Separately labelled source-corrected strict GNU single precision. All 31
 procedure bodies retained. See receipts for measured identity scope.
 """
@@ -19,6 +19,15 @@ BACKEND = "hex-cuda"
 ORACLE_SCHEME = "gfl_bf6a4b0"
 SOURCE_PIN = "1d6e370e7b43a332074809f170532a216c2212fb"
 GFL_PIN = "bf6a4b0d58f112322fbf9b11d43ed2027aeb56fa"
+# Latest released upstream: the commit WRF v4.8.0 ships (NOAA-GSL/GFL has no tags).  The three files this port is
+# lowered from are byte-identical at GFL_PIN and here (raw sha256, 2026-11-09: module_cu_gfl_deep.F90 68dc0432...,
+# module_cu_gfl_sh.F90 56f6bd45..., MPAS/module_cu_gfl_mpas.F90 bd78ac37... at both commits); only the WRF driver
+# changed, which hex does not use.  main's later c0caec0 only declares neg_check's i,k, which implicit typing gave.
+# SOURCE_HASHES below hashes the files the port was generated from.  For the MPAS driver that is the upstream file
+# plus the one labelled AUTHORITY_LABEL line (ierrm(i) = 0, tests/rrfs_gfl/native_gfl_state_authority_proposal.patch,
+# AUTHORITY_PATCH_SHA256), so it reads 6664dcc9... where the raw upstream file is bd78ac37...; UPSTREAM_SOURCE_HASHES
+# holds the raw upstream hashes (the generator removes that one line to get them).
+GFL_LATEST = "873b414670"
 AUTHORITY_LABEL = "RRFS fork 1d6e370e + ierrm init (owner ruling 2026-10-14 07:45Z)"
 AUTHORITY_PATCH_SHA256 = "8dcf2f4c31501f3a72a72f72f250383290bfa95df1130179c2986698ddaeb157"
 COMPILER_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true")
@@ -29,6 +38,7 @@ SCALAR_FIELDS = ('cp', 'dt', 'g', 'ichoice_deep', 'ichoice_shallow', 'ishallow_g
 SURFACE_FIELDS = ('areacell', 'bilbc', 'dxcell', 'gsw', 'hbot', 'hfx', 'ht', 'htop', 'k22_shallow', 'kbcon_shallow', 'kpbl', 'ktop_shallow', 'maxmf', 'pratec', 'qfx', 'raincv', 'rainncv', 'sig_deep', 'sig_deep_far', 'vcpool', 'xland', 'xmb_shallow', 'xmb_total')
 OUTPUT_FIELDS = ('htop', 'hbot', 'k22_shallow', 'kbcon_shallow', 'ktop_shallow', 'xmb_total', 'xmb_shallow', 'raincv', 'pratec', 'gdc', 'gdc2', 'rthcuten', 'rqvcuten', 'rqccuten', 'rqicuten', 'rucuten', 'rvcuten', 'qc3d', 'qi3d', 'chem3d_in', 'qc_cu', 'qi_cu', 'cldfrac_cu', 'vcpool', 'sig_deep', 'sig_deep_far', 'sub3d_rthcuten', 'sub3d_rqvcuten', 'sub3d_rucuten', 'sub3d_rvcuten', 'refl10cm_cu')
 SOURCE_HASHES = {'module_cu_gfl_deep.F90': '68dc04322599209036d05d2e53437f3a12490fc481085e5886756bc002df310e', 'module_cu_gfl_sh.F90': '56f6bd459ec8ae3b2e3ac38457509b617a61a0865a4536ef6fecc349b43154cd', 'MPAS/module_cu_gfl_mpas.F90': '6664dcc9e639020f7f5f32564a34f29abcc08cf7c3d03074779f2f8b0cfa6cb5'}
+UPSTREAM_SOURCE_HASHES = {'module_cu_gfl_deep.F90': '68dc04322599209036d05d2e53437f3a12490fc481085e5886756bc002df310e', 'module_cu_gfl_sh.F90': '56f6bd459ec8ae3b2e3ac38457509b617a61a0865a4536ef6fecc349b43154cd', 'MPAS/module_cu_gfl_mpas.F90': 'bd78ac37fe148054329423012a6cc751f63985975fe0724aec83e7e7e8361d62'}
 _SUPPORT = r'''
 
 // Precision and column scratch support; no scheme algebra lives here.

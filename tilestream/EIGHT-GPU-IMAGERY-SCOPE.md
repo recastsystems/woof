@@ -36,7 +36,7 @@ nobody reads a 30-minute forecast as a 12-hour one.
 
 ## What the frames must carry
 
-Use WOOF's own renderer (`woof render --engine rust`; see `RENDERING.md`: do
+Use WOOF-ArWen's own renderer (`woof render --engine rust`; see `RENDERING.md`: do
 not hand-roll matplotlib). Composite reflectivity is the primary field; updraft
 helicity over it is the supercell signature.
 

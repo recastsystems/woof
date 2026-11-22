@@ -26,7 +26,7 @@ tendency is re-derived so the end of the interval is still the boundary's own,
 interval shorter than the cadence, which the WRF-input door reads as such
 (:func:`woof.ingest.wrfinput.wrfbdy_coverage`); every later record and every other byte is the
 original's.  WRF's own evaluation of the record at ``t`` (``B + dtbc*BT`` from a record left at
-``t0``) gives the same coupled value, but WOOF's default boundary path re-normalises each
+``t0``) gives the same coupled value, but WOOF-ArWen's default boundary path re-normalises each
 interval's END POINTS by the column mass at that instant and interpolates between them, so a
 record left at ``t0`` with back-extrapolated values would put the rim at ``t`` somewhere other
 than the start's own coupling; the restamped record has both ends at real states.  A start in a

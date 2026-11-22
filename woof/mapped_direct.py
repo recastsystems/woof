@@ -159,6 +159,10 @@ def _canonical(value: object) -> str:
 #: and receipt.  One name for every composition that reaches this
 #: adapter, 20CRv3 included.
 _WATER_ROUTE = "the mapped rw-wps route"
+# WRF's max_domains: every per-domain namelist array the native hierarchy
+# export writes has this many slots (hrrr_hierarchy_direct accepts the same
+# max_dom = 1..21).  The only domain-count limit of the mapped route.
+_WRF_MAX_DOMAINS = 21
 
 
 def _forcing_series(bundle):
@@ -465,6 +469,19 @@ def _validate_target_contract(
     both reconciling doors, is a config with no ladder at all -- a
     count alone does not define the interpolation target and WRF's
     automatic level generator is not implemented.
+
+    The domain count is the EXPERIMENT'S too.  A mapping's ``max_dom``
+    is the layout its stock-WRF certification covered (d01..d04), and it
+    is recorded as that reference.  It is not a ceiling: the mapping
+    describes one source's fields, which are decoded and placed once on
+    d01; every child is built from its parent by the shared native
+    hierarchy (``source_hierarchy``), the same code the HRRR door runs
+    for ``max_dom = 1..21``.  Refusing a fifth domain named no breakage
+    (WOOF 2026-11-10, run_c8297bf7540c928d: a 9 km -> 40 m five-domain
+    LES ladder from IFS 0.1 deg was refused here after its box was
+    rented, while the same ladder runs from HRRR).  What is refused is
+    more than WRF's own ``max_domains`` (21), the size of every
+    per-domain namelist array the hierarchy export writes.
     """
 
     target = mapping["target"]
@@ -472,10 +489,10 @@ def _validate_target_contract(
         raise TypeError("mapping target must be an object")
     domain_count = len(exp.domains)
     max_dom = target["max_dom"]
-    if domain_count > max_dom:
+    if domain_count > _WRF_MAX_DOMAINS:
         raise ValueError(
-            f"mapped target allows max_dom={max_dom}, experiment requests "
-            f"{domain_count} domains"
+            f"the mapped route builds at most {_WRF_MAX_DOMAINS} domains "
+            f"(WRF max_domains); the experiment requests {domain_count}"
         )
     target_vertical_levels = target["target_vertical_levels"]
     nz = int(exp.root.run.nz)
@@ -565,6 +582,8 @@ def _validate_target_contract(
                 ).isoformat())
             for domain in exp.domains
         },
+        # The mapping's certified layout, recorded beside the adopted
+        # domain_count above as the reference it is.
         "mapping_max_dom": max_dom,
         # The ADOPTED count -- the experiment's, which is what every
         # array downstream is allocated at; the mapping's declared
@@ -1247,7 +1266,8 @@ class _PostedMappedSource:
             position = self.leads.index(lead)
             if (recorded != trajectory
                     or _naive_time(marker["valid_time"]) != self.valid_times[position]
-                    or self.valid_times[position] != _naive_time(cycle) + timedelta(hours=lead)):
+                    or self.valid_times[position] != _naive_time(cycle) + timedelta(
+                        minutes=lead * int(self.schedule.get("lead_minutes", 60)))):
                 raise ValueError("mapped physical lead differs from its posted source trajectory")
         return trajectory
 

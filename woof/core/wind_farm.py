@@ -341,7 +341,17 @@ def attach_wind_farm(cfg, shape, **kwargs):
                    turbine_count=len(rows))
     if reason:
         return None, receipt
-    if getattr(cfg, "windfarm_induction", 0):
+    from woof.wind_table import fitch_induction, native_wrf_tables
+    native_tables = native_wrf_tables(data)
+    induction = fitch_induction(cfg, native_tables)
+    wrf_480 = (native_tables and cfg.wind_farm_scheme == "fitch"
+               and getattr(cfg, "windfarm_fitch_version", "wrf_471") == "wrf_480")
+    if wrf_480:
+        receipt.update(windfarm_fitch_version="wrf_480", windfarm_induction=induction)
+    if wrf_480:
+        from woof.core.wind_fitch480 import Fitch480Farm
+        return Fitch480Farm(cfg, shape, induction=induction, prepared=(data, digest), **kwargs), receipt
+    if induction:
         from woof.core.wind_induction import InductionFarm
         return InductionFarm(cfg, shape, prepared=(data, digest), **kwargs), receipt
     return WindFarm(cfg, shape, prepared=(data, digest), **kwargs), receipt

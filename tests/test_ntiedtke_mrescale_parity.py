@@ -14,7 +14,7 @@ BOTH OF THIS PHASE'S ERRORS LANDED ON THE MOMENTUM PATH (observed by
 review, review): :833-919 misattributed as producing zmfuus/zmfdus, and
 the zcons comment wrong about which constants differ -- whose sole consumer
 is this block. That path is where the port has no precedent to lean on: GF
-and KF both omit momentum coupling and there is no WOOF analogue to
+and KF both omit momentum coupling and there is no WOOF-ArWen analogue to
 pattern-match against. Hence the extra checks below.
 """
 from __future__ import annotations
@@ -97,7 +97,7 @@ def test_the_momentum_CAP_NEVER_BINDS_and_that_is_the_worst_gap_here():
     plausible, and off by a FIXED RATIO -- it would reach f012 looking
     like a physics result. And this is on the momentum path, where the
     port has no precedent: GF and KF both omit momentum coupling, so
-    there is no WOOF analogue to be wrong against. Both of this phase's
+    there is no WOOF-ArWen analogue to be wrong against. Both of this phase's
     errors landed on that path.
 
     THE GOOD NEWS IS THE FACTOR. At 0.5076 the fixture is short by 2x,

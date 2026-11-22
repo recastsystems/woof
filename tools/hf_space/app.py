@@ -90,7 +90,7 @@ def build_app():
             field.input(variable_changed, [sample, field], [time, display, caption])
             time.input(picture, [sample, field, time], [display, caption])
         with gr.Tab("Soundings"):
-            gr.Markdown("Select a location to see a WOOF sounding.")
+            gr.Markdown("Select a location to see a WOOF-ArWen sounding.")
             with gr.Row():
                 point = gr.Radio(POINTS, value=POINTS[0], label="Point")
                 sound_time = gr.Radio(sounding_leads(POINTS[0]), value=sounding_leads(POINTS[0])[0], label="Sounding lead time")

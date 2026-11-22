@@ -8,7 +8,7 @@ source. Table decoding belongs to the Rust preparation owner; this module
 accepts already validated, Fortran-ordered device arrays.
 
 The launcher implements MPAS's own driver interface and the published f4
-registration protocol. WOOF defaults remain unchanged; real-door integration
+registration protocol. WOOF-ArWen defaults remain unchanged; real-door integration
 and whole-model acceptance are still required.
 """
 from __future__ import annotations

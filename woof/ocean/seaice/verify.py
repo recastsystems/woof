@@ -107,7 +107,7 @@ def compare(history: Path, analysis: Path, out: Path, *, radius: int = 3,
     y = schema.def_dim('y', ny); x = schema.def_dim('x', nx)
     t = schema.def_dim('time', 1)
     for key, value in dict(Conventions='CF-1.8', title='Thermodynamic sea ice and NOAA/NIC IMS extent',
-        source='ERA5 initialized WOOF forecast; NOAA/NIC IMS G02156 Version 1',
+        source='ERA5 initialized WOOF-ArWen forecast; NOAA/NIC IMS G02156 Version 1',
         references='https://doi.org/10.7265/N52R3PMC', time_coverage_start=valid).items():
         schema.put_global_attr(key, value)
     tv = schema.def_var('time', 'f8', (t,))

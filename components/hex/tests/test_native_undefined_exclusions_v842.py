@@ -1,7 +1,7 @@
 """The registered native-undefined exclusion stays exactly as narrow as it was signed.
 
 Proof-bar ruling 1 admits excluding words where native MPAS-A itself reads
-undefined memory only with a full witness and the owner's sign-off for that
+undefined memory only with a full witness and a recorded sign-off for that
 case. tools/native_undefined_exclusions.json holds one such case: p21-rad-shared's
 exact final ozone-table latitude, ozmixm words 0..707 (the first global cell).
 These tests fail if the set widens or moves, if it is asked for on another unit,

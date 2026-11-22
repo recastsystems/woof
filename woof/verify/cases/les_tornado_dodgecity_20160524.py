@@ -28,7 +28,7 @@ re-derives the ratified pins from the shipped config and refuses if the
 two have drifted apart.
 
 That drift is a real failure mode. The ratifications live in
-``docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`` as
+``docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`` as
 prose, the geometry lives in the TOML as numbers, and nothing else
 connects them -- so a later edit to either could leave the run
 integrating something the owner never ruled on, with both documents
@@ -71,7 +71,7 @@ CONFIG_NAME = "les_tornado_100m_dodgecity_20160524.toml"
 CONFIG = _repo_config.default_path(CONFIG_NAME)
 
 #: The owner ruling this case implements.
-RATIFICATION = ("docs/superpowers/specs/"
+RATIFICATION = ("docs/internal/specs/"
                 "P6-LES-DECISIONS-RATIFIED-2026-08-05.md")
 #: The screens the run is graded on, registered before it.
 EXPECTATIONS = "docs/les/ATTEMPT1-EXPECTATIONS.md"

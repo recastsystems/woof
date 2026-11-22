@@ -237,7 +237,7 @@ Grading requires resolving those missing values or supplying a documented
 shared terrain mask, so a failing forecast cannot improve its score by
 silently losing cells. Decoding and remapping remain the Rust caller's job;
 this API has no CPU weather-field path. GFS analysis acquisition and
-remapping are not yet wired for this lane's run.
+remapping are not yet wired for this run.
 
 The daily file consumer is `tools/stochastic_verify_day.py`. It invokes
 the engine's `rw_netcdf dump` once per input file with the requested
@@ -358,7 +358,7 @@ transport paths/sizes are included in the daily receipt. An error receipt
 retains that audit and no scores. The real GFS acquisition and existing Rust
 stack decoder passed a smoke check in 1.275 seconds, using three concurrent
 field workers and an unmodified debug build of the engine library. The
-receipt is `receipts/native-gfs-probe.json` in the lane delivery. Raw ranges
+receipt is `receipts/native-gfs-probe.json`, kept with the maintainers' records. Raw ranges
 and decoded payloads were deleted after their hashes and manifests were
 recorded. This transport check performed no weather-field arithmetic.
 Separate decoded GPU fixtures now cover remapping and the daily consumer;

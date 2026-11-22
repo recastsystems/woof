@@ -1,6 +1,6 @@
 # Integration kit (engine 2.7)
 
-This kit documents the versioned CLI, plan documents, and durable run files used to integrate applications with WOOF. It includes a Python subprocess client, interface examples, and capability catalogs. The desktop GUI and Rust TUI use the same forecast engine; the example client is an interface adapter, not a separate Python simulation API.
+This kit documents the versioned CLI, plan documents, and durable run files used to integrate applications with WOOF-ArWen. It includes a Python subprocess client, interface examples, and capability catalogs. The desktop GUI and Rust TUI use the same forecast engine; the example client is an interface adapter, not a separate Python simulation API.
 
 ## Getting started
 

@@ -1,10 +1,10 @@
 # Declared divergences
 
-**This register is about the default WOOF physics route.** On that route
-woof hex runs WOOF's physics, not MPAS's, so whole-model agreement with
+**This register is about the default ArWen physics route.** On that route
+woof hex runs WOOF-ArWen's physics, not MPAS's, so whole-model agreement with
 native MPAS-Atmosphere is not reachable there and is not its standard: **the
 dynamical core is byte-identical to native v8.4.2 on the measured cases (see
-[compatibility](mpas-compatibility.md)), and WOOF's physics is judged by skill
+[compatibility](mpas-compatibility.md)), and WOOF-ArWen's physics is judged by skill
 against observations, MRMS and ASOS, not by agreement with another model.**
 Since 0.4.0 the MPAS physics suites are a separate route, ported from MPAS-A
 v8.4.2 and matched against native MPAS bit for bit
@@ -15,7 +15,7 @@ This document is the register of the known physics-shaped differences against
 native. Each one is **declared**: measured, mechanism named, referee named. A
 declared divergence is not a blocker and it is not a licence to ignore a
 defect: a bias that is wrong against *observations* is still wrong. Judging
-WOOF's physics by observations instead of by MPAS changes the referee; it
+WOOF-ArWen's physics by observations instead of by MPAS changes the referee; it
 does not clear a finding.
 
 **The status of the referee itself: it has run.** The first real run is
@@ -165,8 +165,8 @@ is byte-identical to 2.7.3 on all 500 arrays of that profile
 That the manifest does not reach the boundary-layer kernel is a named
 follow-up; it is not a claim this page makes.
 
-The 2026-10-05 move to the gpuwm 2.8.6 candidate (an unpublished
-2.8.6 engine build) moved ten of the sixteen pinned files
+The 2026-10-05 move to an unpublished gpuwm 2.8.6 engine build
+moved ten of the sixteen pinned files
 against the 2.8.0 manifest, measured against the engine tree:
 `woof/config.py`, `woof/core/gf.py`, `woof/core/kernels/gf.cu`,
 `woof/core/kernels/__init__.py`, `woof/core/microphysics.py`,
@@ -363,8 +363,8 @@ different causes:
   so it does not drive the cold drift. It does inflate RAINC, which bears on
   section 2's live-referee sign.
 
-**Fixed by default, 2026-10-05: New Tiedtke at 20 km and coarser.** This
-ruling was delegated by the owner on 2026-10-05: New Tiedtke becomes the hex
+**Fixed by default, 2026-10-05: New Tiedtke at 20 km and coarser.** Decided
+on 2026-10-05: New Tiedtke becomes the hex
 coarse-mesh default once a second case confirms it. It supersedes the
 2026-08-26 resolution rule's Grell-Freitas answer for those meshes. The
 reason is the observation-scored drift above, not parity.
@@ -433,7 +433,7 @@ MRMS; run against Stage-IV, for the reason above.
 **Status: MEASURED, and it went the other way.**
 
 The registered claim `current-arwen-convective-rainfall-deficit` says current
-WOOF has a *negative* one-hour precipitation bias against observations. The
+WOOF-ArWen has a *negative* one-hour precipitation bias against observations. The
 referee returns **DISFAVORED**: the paired case-block interval is entirely
 positive. Estimate **+0.0247 mm/h**, 95 % interval **[+0.0041, +0.0606]**, four
 cases, 5,000 replicates. Against Stage-IV the port is **wet**, in every case:
@@ -650,7 +650,7 @@ way from the deficit. Three things would move the rest.
 2. **A profile referee for (1)**: radiosondes or a provenance-pinned analysis
    profile. Choosing the reference is not an automated decision and this work
    did not make it.
-3. **Any GF-lane change re-measures all three**, (3) explicitly only after (2).
+3. **Any Grell-Freitas change re-measures all three**, (3) explicitly only after (2).
    The re-measurement now has a standing target rather than an empty column:
    a GF change that removes the convective rainfall deficit against native
    would, on this evidence, make the port *wetter* against observations than it

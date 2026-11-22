@@ -21,7 +21,7 @@ of nothing).  Like :mod:`woof.wrf_exact`, this is read once, at import.
 
 Each correction is one or more mechanism-named :class:`woof.config.RunConfig`
 keys (the same pattern ``woof.physics_mode``'s divergence ledger uses), so
-a WOOF TOML can also set one key alone.  The RunConfig defaults of those
+a WOOF-ArWen TOML can also set one key alone.  The RunConfig defaults of those
 keys are :data:`CORRECT_KEYS_DEFAULT`: on in a default process, off in a
 strict one.  The mode is a resolver onto those keys and nothing else, and it
 authors EVERY key in both modes, so a resolution never depends on a default.
@@ -53,6 +53,24 @@ WB5  WSM6 sedimentation books the below-ground part of the straddling cell
      nislfv_rain_plm) and the same defect (up to 0.0082 kg m-2 per call on
      the same columns); from 2.9.1 their keys are WB5's third to fifth.
 
+ML1  MYNN's BouLac downward length (boulac_length, used by mym_length
+     CASE(1), bl_mynn_mixlength = 1) solves for the distance a parcel sinks
+     into the layer where its energy runs out.  Where that layer has exactly
+     constant theta (bbb = 0) the linear branch divides by
+     beta*(theta(izz) - theta(iz)) where the bbb -> 0 limit of the quadratic
+     branch is beta*(theta(iz) - theta(izz)): the last step comes out negative
+     and the downward length is short by twice it.  NCAR/MYNN-EDMF fixed it in
+     399f50f (PR 94, issue 93; v6.1.1); correct mode compiles the same sign
+     into the wrf_461 and gsd_41 length kernels (kernels/mynn_pbl.cu,
+     MYNN_BOULAC_DOWN_SIGN).  The WRF 4.7.1 and 4.8.0 MYNN sources carry it
+     too and are listed as uncorrected (:data:`KEY_UNREAD`).  WRF's own
+     BouLac (8) and k-epsilon (17) PBL schemes carry the same loop with the
+     same sign (module_bl_boulac.F:606, module_bl_keps.F boulac_length;
+     fixed by WRF in wrf-model/WRF PR 2431, release-v4.8.1, not yet
+     released); ML1's second key, ``pbl_boulac_down_sign``, compiles the
+     same sign into both kernels (kernels/boulac.cu, kernels/keps.cu,
+     BOULAC_DOWN_SIGN).
+
 HN1  A hydrometeor mass handed from one model to another (prep from a
      hex or other parent, ``woof downscale``, a specified ring) arrives
      with number concentration 0, which a two-moment scheme sizes at its
@@ -61,6 +79,22 @@ HN1  A hydrometeor mass handed from one model to another (prep from a
      with the child scheme's relations and forces a ring number back with
      its mass (woof/ingest/handover_numbers.py).  Exact mode keeps
      real.exe's zeros and WRF's tendency-only scalar ring.
+
+MY1  WRF 4.6.1's MYNN (and every MYNN-EDMF before NCAR/MYNN-EDMF f3c9d9e,
+     4 Nov 2026) limits a negative surface vapour flux with
+     ``max(qvflux, min(0.9*sqv - 1e-8, 0)/dtz)``; for any sqv above 1.1e-8
+     the MIN is 0, so dew and frost are deleted, not limited, which is too
+     much moisture left in the lowest layer under a calm clear night (too
+     much shallow nocturnal fog, upstream says).  The key is
+     ``mynn_fixes_v61``: the upstream MYNN v6.1 fixes that apply to the WRF
+     4.6.1 lineage (woof/core/mynn_pbl_v61.py: this dew limit, the surface
+     density's virtual-temperature factor, ground-Exner surface theta, the
+     PBL-height search start, and no surface-layer cold-start reset on a
+     cycled start), read by the wrf_461 MYNN generation only.  WRF 4.7.1's
+     and 4.8.0's MYNN (bl_mynn_version wrf_471, wrf_480) carry the same
+     limiter and run it as WRF ships it, so a correct-mode run on them lists
+     MY1 as uncorrected; GSD MYNN 4.1 (gsd_41) adds the flux with its sign
+     and does not carry it.
 
 WHICH SCHEMES CARRY EACH FINDING is data too (:attr:`Correction.carriers`),
 separate from which schemes a key corrects (:data:`KEY_SCOPE`).  A domain
@@ -169,7 +203,70 @@ CORRECTIONS: tuple[Correction, ...] = (
         # Morrison (10): the prep, downscale and ring closure.
         carriers=(("mp_physics", (8, 10, 28)),),
     ),
+    Correction(
+        finding="SN1",
+        keys=("noahmp_melt_reset_esat",),
+        summary=(
+            "Noah-MP land snowmelt reset (snow deeper than 5 cm, ground "
+            "solved above freezing, TG set to 273.16 K) evaluates the ground "
+            "evaporation, and bare-ground QSFC, at the reset temperature, as "
+            "WRF's own glacier reset does, instead of at the discarded warmer "
+            "TG; that stale value overstated evaporation from sunlit melting "
+            "snow and drove the vegetated 2 m mixing ratio to zero or below"),
+        carriers=(("sf_surface_physics", (4,)),),
+    ),
+    Correction(
+        finding="MY1",
+        keys=("mynn_fixes_v61",),
+        summary=(
+            "MYNN dew and frost limited, not deleted: a downward surface "
+            "vapour flux is kept unless it would take the lowest layer below "
+            "1e-8 kg/kg (NCAR/MYNN-EDMF v6.1.1 f3c9d9e), with the other "
+            "upstream MYNN v6.1 fixes of the WRF 4.6.1 lineage (surface "
+            "density virtual-temperature factor, ground-Exner surface theta, "
+            "PBL-height search start, no surface-layer cold-start reset on a "
+            "cycled start)"),
+        # Every MYNN generation but GSD 4.1 limits the flux this way
+        # (CARRIER_GENERATIONS below).
+        carriers=(("bl_pbl_physics", (5,)),),
+    ),
+    Correction(
+        finding="ML1",
+        keys=("mynn_boulac_down_sign", "pbl_boulac_down_sign"),
+        summary=(
+            "BouLac downward mixing length (MYNN, the BouLac PBL and the "
+            "k-epsilon PBL): in a layer of exactly constant theta the last "
+            "step of the sinking parcel takes the sign of the bbb -> 0 limit, "
+            "(e - zdo_sup)/(beta*(theta(iz) - theta(izz))), as NCAR/MYNN-EDMF "
+            "v6.1.1 (399f50f) and wrf-model/WRF PR 2431 do, instead of WRF's "
+            "opposite sign, which made it negative and the downward length "
+            "short by twice it"),
+        # MYNN (5) through bl_mynn_mixlength = 1 (first key); WRF's BouLac
+        # (8) and k-epsilon (17) PBL schemes carry the same downward loop
+        # with the same sign (second key).
+        carriers=(("bl_pbl_physics", (5, 8, 17)),),
+    ),
 )
+
+#: Finding -> ``(selector, absent value, values)``: a carrier that is a
+#: scheme generation, not a scheme number.  The finding is carried only when
+#: the run's generation selector is one of ``values`` (an absent selector
+#: reads as ``absent value``, its RunConfig default, since the checkpoint
+#: echo drops it there).
+CARRIER_GENERATIONS: Mapping[str, tuple[str, str, tuple[str, ...]]] = {
+    # MY1: wrf_461 (kernels/mynn_pbl.cu), wrf_471 and wrf_480
+    # (data/mynn471, data/mynn480 model.cu) all hold the limiter;
+    # gsd_41 adds dtz*flqv with its sign (kernels/mynn_pbl.cu MYNN_GSD41).
+    "MY1": ("bl_mynn_version", "wrf_461", ("wrf_461", "wrf_471", "wrf_480")),
+}
+
+#: Key -> ``(selector, absent value, values)``: a key read only under one
+#: scheme generation as well as under its :data:`KEY_SCOPE` scheme.
+KEY_GENERATIONS: Mapping[str, tuple[str, str, tuple[str, ...]]] = {
+    # The v6.1 fixes are marked edits of the wrf_461 unit; the other
+    # generations are other sources and never read the key.
+    "mynn_fixes_v61": ("bl_mynn_version", "wrf_461", ("wrf_461",)),
+}
 
 #: Key -> ``(selector, values)``: the scheme selection under which the key is
 #: read at all.  Outside it the key reaches nothing, so the checkpoint echo
@@ -188,7 +285,40 @@ KEY_SCOPE: Mapping[str, tuple[str, tuple[int, ...]]] = {
     "thompson_cloud_surface_booking": ("mp_physics", (8, 28, 38)),
     # HN1: the schemes whose number moments the handover closure writes.
     "hydrometeor_handover_numbers": ("mp_physics", (8, 10, 28)),
+    # SN1: VEGE_FLUX/BARE_FLUX (and GECROS's VEGE_FLUX) of Noah-MP.
+    "noahmp_melt_reset_esat": ("sf_surface_physics", (4,)),
+    # MY1: the MYNN PBL, at the wrf_461 generation (KEY_GENERATIONS).  The
+    # surface-layer part (S1) runs only beside it.
+    "mynn_fixes_v61": ("bl_pbl_physics", (5,)),
+    # ML1: the two mixing-length kernels of the wrf_461/gsd_41 MYNN unit.
+    "mynn_boulac_down_sign": ("bl_pbl_physics", (5,)),
+    # ML1's second key: the BouLac (8) and k-epsilon (17) length kernels.
+    "pbl_boulac_down_sign": ("bl_pbl_physics", (8, 17)),
 }
+
+#: Key -> ``(selector, values)``: selections inside :data:`KEY_SCOPE` under
+#: which the key is still not read, because that code path has no build of
+#: the correction.  A finding whose carrier runs there is listed as
+#: uncorrected, never as applied.
+KEY_UNREAD: Mapping[str, tuple[str, tuple[str, ...]]] = {
+    "mynn_boulac_down_sign": ("bl_mynn_version", ("wrf_471", "wrf_480")),
+}
+
+
+def _key_unread(key: str, values) -> bool:
+    unread = KEY_UNREAD.get(key)
+    if unread is None:
+        return False
+    selector, names = unread
+    value = (values.get(selector) if isinstance(values, Mapping)
+             else getattr(values, selector, None))
+    return value in names
+
+
+def _generation_matches(rule, values: Mapping) -> bool:
+    selector, absent, allowed = rule
+    value = values.get(selector, absent)
+    return (absent if value is None else value) in allowed
 
 
 def key_in_scope(key: str, values: Mapping) -> bool:
@@ -196,9 +326,31 @@ def key_in_scope(key: str, values: Mapping) -> bool:
     (a configuration echo or ``dataclasses.asdict`` of a RunConfig)?"""
     selector, schemes = KEY_SCOPE[key]
     try:
-        return int(values.get(selector, 0) or 0) in schemes
+        if int(values.get(selector, 0) or 0) not in schemes:
+            return False
     except (TypeError, ValueError):
         return True
+    if _key_unread(key, values):
+        return False
+    rule = KEY_GENERATIONS.get(key)
+    return rule is None or _generation_matches(rule, values)
+
+
+#: Every selector :func:`key_in_scope` and the carrier rules read.
+SCOPE_SELECTORS: tuple[str, ...] = tuple(dict.fromkeys(
+    [selector for selector, _ in KEY_SCOPE.values()]
+    + [rule[0] for rule in KEY_GENERATIONS.values()]
+    + [rule[0] for rule in CARRIER_GENERATIONS.values()]
+    + [selector for selector, _ in KEY_UNREAD.values()]))
+
+
+def _scope_values(cfg) -> dict:
+    """The scope selectors of a RunConfig, or of a mapping, as a mapping
+    (an absent one is left out, so it reads as its absent value)."""
+    if isinstance(cfg, Mapping):
+        return {name: cfg[name] for name in SCOPE_SELECTORS if name in cfg}
+    return {name: getattr(cfg, name) for name in SCOPE_SELECTORS
+            if hasattr(cfg, name)}
 
 
 #: Correction keys that change no prognostic word, only what the run books
@@ -367,15 +519,20 @@ def uncorrected(cfg) -> list[str]:
     if resolution.mode != PHYSICS_MODE_CORRECT:
         return []
     out: list[str] = []
+    values = _scope_values(cfg)
     for c in CORRECTIONS:
         if c.finding in resolution.skipped:
+            continue
+        generation = CARRIER_GENERATIONS.get(c.finding)
+        if generation is not None and not _generation_matches(generation, values):
             continue
         for selector, schemes in c.carriers:
             value = _selector_value(cfg, selector)
             if value not in schemes:
                 continue
             if not any(KEY_SCOPE[key][0] == selector
-                       and value in KEY_SCOPE[key][1] for key in c.keys):
+                       and value in KEY_SCOPE[key][1]
+                       and key_in_scope(key, values) for key in c.keys):
                 out.append(c.finding)
                 break
     return out
@@ -407,6 +564,8 @@ def in_effect(cfg) -> dict:
 
     selectors = {selector: getattr(cfg, selector, 0)
                  for selector, _ in KEY_SCOPE.values()}
+    selectors.update({name: value for name, value in _scope_values(cfg).items()
+                      if name not in selectors})
     keys = [key for c in CORRECTIONS for key in c.keys
             if getattr(cfg, key, False) is True and key_in_scope(key, selectors)]
     return {"findings": [c.finding for c in CORRECTIONS
@@ -446,9 +605,11 @@ def _domain_receipt(cfg) -> dict:
 
 
 __all__ = [
-    "CORRECTIONS", "CORRECTIONS_BY_FINDING", "CORRECTION_KEYS",
+    "CARRIER_GENERATIONS", "CORRECTIONS", "CORRECTIONS_BY_FINDING",
+    "CORRECTION_KEYS",
     "CORRECT_KEYS_DEFAULT", "Correction", "CorrectModeResolution", "EXACT",
-    "FINDING_BY_KEY", "KEY_SCOPE", "OUTPUT_ONLY_KEYS", "PHYSICS_MODES",
+    "FINDING_BY_KEY", "KEY_GENERATIONS", "KEY_SCOPE", "KEY_UNREAD",
+    "OUTPUT_ONLY_KEYS", "PHYSICS_MODES", "SCOPE_SELECTORS",
     "PHYSICS_MODE_CORRECT",
     "PHYSICS_MODE_DEFAULT", "PHYSICS_MODE_EXACT", "STRICT",
     "STRICT_FORCED_BY", "in_effect", "key_in_scope", "resolution_of",

@@ -37,7 +37,13 @@ from .cuda_courant_fullstep_lts import CudaColumnTransportMonitor
 # tendency add pairs (_add_pair) only; both transport calls are byte-identical to the deferral branch's.
 # Re-audited for 0.5.0 after the RRFS speed fold: both scalar calls retain source-old
 # density, split fluxes and stage duration; rdzw and rk_step remain explicit keywords.
-NATIVE_DRIVER_SHA256 = 'f453eee1152aa33392b09ecfde1d16ee33ec53cf17d754ecd076736088630fea'
+# Re-audited 2026-11-11 (hex 0.5.0 re-seal): one comment line of cuda_driver.py reworded; its AST with docstrings
+# stripped is unchanged, so both transport calls are untouched.
+# Re-audited 2026-11-16 (hex 0.6.0, model audit D8, the once-a-step regional clamp): the change is ten lines after
+# both transport calls (the regional negative-scalar clamp runs only when no post-transport callback ran); the two
+# advance_scalar_transport_cuda_v841 calls are unchanged as text and as AST: source-old density at position 4, split
+# fluxes at 6 and 7, stage duration at 8.
+NATIVE_DRIVER_SHA256 = '6e9362bfe5c530368a27c68cbf4a723d34c5f92f5d1420e79f942ee59e6643b9'
 
 
 class FullStepShadow:

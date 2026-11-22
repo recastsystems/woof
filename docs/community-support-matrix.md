@@ -34,7 +34,7 @@ evidence.
 | Pole-containing or pole-touching domains | Refused; lat-lon source interpolation and static-tile windowing are not pole-capable |
 | Latitude/longitude (cylindrical), rotated grids | Unsupported; fail closed |
 | Static one-way nests | Implemented; strongest live gate d06 HRRR |
-| Delayed child starts | Implemented in namelist import, native hierarchy artifacts, WOOF tree execution, wrfout provenance, and restart/resume. Each start must be an exact parent-step boundary and an external-forcing seam; synthetic end-to-end gated, not a new stock-WRF certification claim |
+| Delayed child starts | Implemented in namelist import, native hierarchy artifacts, WOOF-ArWen tree execution, wrfout provenance, and restart/resume. Each start must be an exact parent-step boundary and an external-forcing seam; synthetic end-to-end gated, not a new stock-WRF certification claim |
 | Boundary forcing cadence | Generic mapped hierarchies accept positive uniform whole-second cadence, including 5 minutes, when the cadence is an exact integer number of d01 steps. Named-source routes retain their genuine source-product cadence limits |
 | Moving nests, two-way feedback, vertical refinement | Unsupported; fail closed |
 | Domain count | Common parser/export 1..21; explicit regression at 6; route/mapping/live-evidence ceilings still apply |

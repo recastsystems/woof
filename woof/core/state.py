@@ -1011,6 +1011,14 @@ class DomainState:
         for name in active_tracers(cfg):
             setattr(self, name, zeros(nz, ny, nx))
             setattr(self, name + "0", rebuilt(name + "0", nz, ny, nx))
+        if getattr(cfg, "dyn_lightning_option", 0):
+            # WRF v4.8.0 registry.dyn_light: three advected scalar-array
+            # energies (zero initial state, as real.exe writes them).
+            from woof.core.dyn_lightning import DYN_LIGHTNING_SCALARS, allocate
+            for name in DYN_LIGHTNING_SCALARS:
+                setattr(self, name, zeros(nz, ny, nx))
+                setattr(self, name + "0", rebuilt(name + "0", nz, ny, nx))
+            allocate(self, cfg, zeros)
 
         from woof.core.physics_inventory import PBL_ADVECTED_SCALARS
         for name, floor in PBL_ADVECTED_SCALARS.get(cfg.bl_pbl_physics, ()):

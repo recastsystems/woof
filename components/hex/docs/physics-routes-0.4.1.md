@@ -1,9 +1,9 @@
 # Physics routes in 0.4.1
 
-Every bare hex forecast uses WOOF physics, including global and limited-area
+Every bare hex forecast uses ArWen physics, including global and limited-area
 rows. The default suite is `arwen_mpas_column` and its backend is
 `wsm6_column`. This route does not claim bitwise identity to native MPAS
-physics. The measured H60 mean step was 0.467 s for WOOF and 0.751 s for
+physics. The measured H60 mean step was 0.467 s for WOOF-ArWen and 0.751 s for
 MPAS physics on the same PRO 6000 at the 60 GB cap, about 1.6 times faster.
 
 MPAS suites remain explicit named selections through `woof hex physics list`
@@ -23,5 +23,5 @@ Other named suites retain their own recorded comparison scope.
 Forecasts use the Rust/CUDA port and do not require a Fortran runtime. Native
 Fortran references are test inputs, not a forecast dependency. The UCAR
 Noah-MP v5 port is excluded from public exports; selecting it names its
-licence hold. The UGWP ports ship (US Government code, NOTICE section 8). The permissive WOOF route remains the
+licence hold. The UGWP ports ship (US Government code, NOTICE section 8). The permissive WOOF-ArWen route remains the
 default.

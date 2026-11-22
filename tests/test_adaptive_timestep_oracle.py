@@ -102,7 +102,7 @@ def test_calc_dt_alone_does_NOT_land_on_a_hundredth_tick():
     it comes from the requantisation two steps later, whose upstream
     comment justifies it only as overflow protection.  It is doing more
     than that -- it is the reason an adaptive dt is representable on
-    WOOF's exact-tick clock at all.  Pinned so that discovery is not
+    WOOF-ArWen's exact-tick clock at all.  Pinned so that discovery is not
     re-made the hard way.
     """
     offenders = []
@@ -125,7 +125,7 @@ def test_requantise_puts_every_result_on_a_hundredth_tick():
 
     After ``requantise`` -- upstream's :179-184 -- every interval is an
     exact multiple of 1/100 s, so ``tick_den`` carrying a factor of 100 is
-    all WOOF's clock needs to hold a varying dt without ever accumulating
+    all WOOF-ArWen's clock needs to hold a varying dt without ever accumulating
     seconds in floating point.
     """
     for row in ROWS:

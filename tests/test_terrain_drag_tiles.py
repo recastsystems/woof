@@ -7,16 +7,19 @@ import numpy as np
 import pytest
 
 from woof.core.terrain_drag import TerrainDrag
-from woof.static.orographic import GWD_FIELDS, required_static_fields
+from woof.static.orographic import (GWD_FIELDS, drag_static_fields,
+                                    gwd_fields, required_static_fields)
 
 
 def _drag(topo, gwd, shape=(3, 4)):
+    # The default gwd_opt = 1 generation is WRF v4.8.0's, which also
+    # carries ELVMAX through the tile gather.
     return TerrainDrag(
         topo_wind=topo, gwd_opt=gwd,
         ctopo=np.zeros(shape, np.float32) if topo else None,
         ctopo2=np.zeros(shape, np.float32) if topo else None,
         gwd={name: np.zeros(shape, np.float32)
-             for name in GWD_FIELDS[gwd]} if gwd else None,
+             for name in gwd_fields(gwd)} if gwd else None,
         kpblmax=7 if gwd == 3 else None)
 
 
@@ -71,7 +74,8 @@ def test_prepared_factory_builds_matching_neutral_statics(monkeypatch, topo, gwd
     tile = factory(cfg)
     assert tile._tile_buffer
     statics = observed["terrain_drag_static"]
-    assert set(statics) == {"HGT_M", *required_static_fields(topo, gwd)}
+    # The default gwd_opt = 1 generation (WRF v4.8.0) also carries ELVMAX.
+    assert set(statics) == {"HGT_M", *drag_static_fields(topo, gwd)}
     for values in statics.values():
         assert values.shape == (cfg.ny, cfg.nx)
         assert values.dtype == np.float32

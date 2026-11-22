@@ -25,7 +25,7 @@ WINDOW = 300.0             # 3D-IAU over the first 20 steps
 
 
 def _run_cfg():
-    from test_da_nested_forecast_gpu import _parent_run
+    from idealised_parent_fixture import _parent_run
 
     run = _parent_run()
     zeros = {name: 0 for name in ("mp_physics", "ra_lw_physics",
@@ -39,7 +39,7 @@ def _run_cfg():
 def _state(run):
     import cupy as cp
 
-    from test_da_nested_forecast_gpu import _build_parent_state
+    from idealised_parent_fixture import _build_parent_state
 
     state, _coord = _build_parent_state(run)
     state.thp[...] = 0.0

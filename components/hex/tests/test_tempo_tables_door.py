@@ -110,3 +110,28 @@ def test_an_init_without_aerosol_is_refused_before_any_table_download(monkeypatc
     problems = forecast_door.microphysics_problems(row, _init(_sub(tmp_path), nwfa=1.0e9, nifa=1.0e6))
     assert problems == []
     assert calls == [((), {})]
+
+
+def test_a_door_that_completes_the_init_does_not_refuse_it_for_aerosols(monkeypatch, tmp_path):
+    """TEMPO picked over the WOOF-ArWen suite on a door whose cold init is built before the scheme is known (global,
+    country, a plain forecast --init) was refused for nwfa and nifa the same door writes into its own copy of the init
+    (prepare_forecast_init).  A run the suite table resolved is not refused for them; a backend row, a namelist run
+    and an MPAS-A suite keep the refusal, because their init is used as supplied."""
+    from woof.hex.physics_suites import resolve_physics
+
+    row = _tempo_row(monkeypatch, lambda *a, **k: None)
+    bare = _init(tmp_path, qv=1.0)
+    assert forecast_door.microphysics_problems(row, bare)  # as supplied: refused
+    assert forecast_door.microphysics_problems(row, bare, door_completes_init=True) == []
+    from woof.hex.physics_suites import PhysicsSelectionRefusal
+    try:
+        picked = resolve_physics("arwen_mpas_column", [("config_microp_scheme", "mp_tempo")])
+    except PhysicsSelectionRefusal as error:
+        # As in test_physics_default: planning a pick needs the engine's column seam (the GPU array module).
+        if "could not be imported" in str(error):
+            __import__("pytest").skip("the engine's column seam is not importable in this environment")
+        raise
+    assert forecast_door.door_completes_init(picked) is True
+    assert forecast_door.door_completes_init(None) is False
+    assert forecast_door.door_completes_init(
+        types.SimpleNamespace(suite="convection_permitting", selectors=dict(picked.selectors))) is False

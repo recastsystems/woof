@@ -1,4 +1,4 @@
-# WOOF cross-card determinism: bit-identical within architecture, seed-equivalent across
+# WOOF-ArWen cross-card determinism: bit-identical within architecture, seed-equivalent across
 
 Verified 2026-08-03 from the stress-lane artifacts, re-checked here against
 the local data rather than quoted (receipt-field diffs, `np.array_equal` per
@@ -31,7 +31,7 @@ excluded, plus every reduced profile array.
    2.1e-5 at 3600 s; km2 4.3e-5 at 7200 s). At the receipt level the worst
    of 23 compared fields differs by **1.81 difference-sigma** against the
    n=18 realisation spread (km3 `wth_total_min_over_qs`: the single-frame
-   entrainment statistic WOOF's own docs cap; every flux/TKE headline field
+   entrainment statistic WOOF-ArWen's own docs cap; every flux/TKE headline field
    is at or below 1.47). A 4090 run is statistically indistinguishable from
    another 5090 seed.
 

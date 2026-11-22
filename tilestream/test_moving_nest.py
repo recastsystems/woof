@@ -1,4 +1,4 @@
-"""THE STORM-FOLLOWING MOVING NEST, under each of WOOF's execution modes.
+"""THE STORM-FOLLOWING MOVING NEST, under each of WOOF-ArWen's execution modes.
 
 Run it::
 

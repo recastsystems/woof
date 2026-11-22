@@ -55,7 +55,7 @@ def _mpas_route(table: Any, name: str | None, overrides: Any = None, mode: str |
     The door (forecast_door._run_forecast) calls forecast_v842.native_route first, and a name in a
     provider's ``suite_routes`` runs that provider's driver port (hex-cuda by default) without reaching
     physics_suites.resolve_physics.  Resolving it here with the same function keeps these verbs true to
-    the door: before this they judged every MPAS suite on the WOOF engine columns, refused
+    the door: before this they judged every MPAS suite on the WOOF-ArWen engine columns, refused
     convection_permitting on the engine-MYNN cloud pairing and named engine or column rows the forecast
     never runs.
     """

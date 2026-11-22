@@ -110,7 +110,7 @@ def seed_eta_family_10m_winds(fields, sf_sfclay_physics) -> None:
     ``IF(.not.restart)`` block (:1156-1348), copies U10/V10 into the
     "special output from myjsfc and qnsesfc" for either Eta-family surface
     layer before the first surface-layer call, so the initial history frame
-    carries U10E = U10 and V10E = V10.  WOOF's own cold starts (source
+    carries U10E = U10 and V10E = V10.  WOOF-ArWen's own cold starts (source
     analysis, child case, HRRR prep) call this once their U10/V10 hold the
     start winds; the wrfinput path applies the same rule inline in
     woof.ingest.wrfinput.initialize_wrfinput_physics (its CPU-only test

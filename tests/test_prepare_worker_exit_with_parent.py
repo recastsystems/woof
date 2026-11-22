@@ -1,6 +1,6 @@
 """Boundary-preparation workers die with their parent.
 
-Breakage this prevents (Updraft factory, Vast V8X, 2026-10-27): a killed HRRR
+Breakage this prevents (Updraft factory, a rented 8-card box, 2026-10-27): a killed HRRR
 preparation left its spawn-pool boundary workers blocked on the executor's call
 queue for 8.5 h, each holding an 866 MiB CUDA context the card pool could not see.
 The test is that exact shape: the real ``_prepare_worker_init`` pool, parent

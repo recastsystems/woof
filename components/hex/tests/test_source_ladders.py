@@ -39,15 +39,28 @@ def test_unposted_leads_are_refused_before_transfer(source, cycle, lead, member)
 ])
 def test_a_later_lead_takes_its_step_zero_statics(source, member, fields):
     plans = _plan(source, "2026-10-23T12", 354, member)
-    donors = [plan for plan in plans if plan.fields]
+    donors = [plan for plan in plans if plan.fields and plan.role != "snow_donor"]
     assert {field for plan in donors for field in plan.fields} == fields
     assert all("-0h-" in plan.url and plan.index_select["levtype"] == "sfc" for plan in donors)
     assert all("-354h-" in plan.url for plan in plans if not plan.fields and plan.role != "surface-input")
+    # GFS snow at the same lead where the row publishes none (AIFS; IFS before 2025-11-20 12Z): never a static
+    assert all(plan.url.endswith(".f354") for plan in plans if plan.role == "snow_donor")
 
 
 def test_step_zero_needs_no_donor():
-    for source, member in (("ifs", None), ("ifs-0p1", None), ("aifs", None), ("aifs-ens", 2)):
-        assert not [plan for plan in _plan(source, "2026-10-23T12", 0, member) if plan.fields]
+    for source, member in (("ifs-0p1", None), ("aifs", None), ("aifs-ens", 2)):
+        assert not [plan for plan in _plan(source, "2026-10-23T12", 0, member)
+                    if plan.fields and plan.role != "snow_donor"]
+
+
+def test_ifs_step_zero_reads_its_own_z_through_the_donor():
+    """Replaces ifs in test_step_zero_needs_no_donor: ECMWF published no z before the 2024-12-02 18Z run, so the ifs
+    row reads terrain through its donor at every lead (tests/test_ifs_publication_eras.py). At step 0 the donor's
+    first address is the cycle's own step-0 file, the object the primary reads."""
+    plans = _plan("ifs", "2026-10-23T12", 0)
+    donors = [plan for plan in plans if plan.fields]
+    assert [plan.fields for plan in donors] == [["SOILGEO"]]
+    assert donors[0].url == next(plan.url for plan in plans if plan.role == "primary")
 
 
 def test_aifs_ens_control_and_members_read_their_own_files():

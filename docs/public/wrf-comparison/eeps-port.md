@@ -74,7 +74,7 @@ physics and is separate from the EEPS stage measurement.
 
 The native reference was intentionally stopped after the third-hour
 capture had passed. It supplies matched 19, 20 and 21 UTC histories;
-it is not a completed six-hour native forecast. The six-hour WOOF
+it is not a completed six-hour native forecast. The six-hour WOOF-ArWen
 forecast has seven saved hours, with finite temperature, wind, PBL height,
 TKE and dissipation fields.
 
@@ -87,7 +87,7 @@ height difference is 667 m in the southwest; the first two maxima are
 of difference, and wind-speed maxima are 0.297, 0.280 and 1.21 kt.
 These are whole-forecast differences, not native module replay errors.
 
-| Valid UTC | Temperature RMSE, WOOF / native, K | Wind RMSE, WOOF / native, m/s | WOOF temperature / dewpoint bias, K |
+| Valid UTC | Temperature RMSE, WOOF-ArWen / native, K | Wind RMSE, WOOF-ArWen / native, m/s | WOOF-ArWen temperature / dewpoint bias, K |
 | --- | --- | --- | --- |
 | 19 | 1.29594 / 1.29615 | 1.19401 / 1.19393 | +0.16335 / -1.32240 |
 | 20 | 1.53938 / 1.53986 | 1.16683 / 1.16617 | +0.79135 / -2.08823 |

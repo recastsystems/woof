@@ -128,7 +128,8 @@ def _copy_constant(module, name: str, value: np.ndarray) -> None:
 
 @lru_cache(maxsize=None)
 def _module_on(_device: int, use_device_libm: bool = False,
-               atan_profile: str = "glibc_2_39", selected_options: bool = False):
+               atan_profile: str = "glibc_2_39", selected_options: bool = False,
+               melt_reset_esat: bool = False):
     """The VEGE_FLUX translation unit on ONE card, constants uploaded.
 
     ``_device`` is a cache key and nothing else: it is the CURRENT device,
@@ -150,11 +151,16 @@ def _module_on(_device: int, use_device_libm: bool = False,
     if use_device_libm:
         # Negative control only. CUDA's device libm is not the WRF function.
         options += ("-DUSE_DEVICE_LIBM",)
+    if melt_reset_esat:
+        # Correct-mode SN1 (woof/correct_mode.py).
+        from woof.core.noahmp_kernel_sources import MELT_RESET_ESAT_DEFINE
+        options += (MELT_RESET_ESAT_DEFINE,)
     module = compile_runtime_unit(
         "noahmp_vegeflux",
         module_key="woof.core.noahmp_vegeflux_gpu:vegeflux"
         + ("(selected-options)" if selected_options else "")
         + ("(device-libm)" if use_device_libm else "")
+        + ("(melt-reset-esat)" if melt_reset_esat else "")
         + (":" + atan_profile if atan_profile != "glibc_2_39" else ""),
         options=options, atan_profile=atan_profile,
         selected_options=selected_options)
@@ -164,11 +170,12 @@ def _module_on(_device: int, use_device_libm: bool = False,
 
 
 def _module(use_device_libm: bool = False, *,
-            atan_profile: str = "glibc_2_39", selected_options: bool = False):
+            atan_profile: str = "glibc_2_39", selected_options: bool = False,
+            melt_reset_esat: bool = False):
     import cupy as cp
 
     return _module_on(cp.cuda.runtime.getDevice(), use_device_libm, atan_profile,
-                      selected_options)
+                      selected_options, bool(melt_reset_esat))
 
 
 def _bind_call(args, kwargs) -> dict:
@@ -227,7 +234,9 @@ def evaluate_vege_flux_calls(
             df[row, slot] = call["df"][layer]
 
     device_out = cp.empty((count, N_OUTPUT), dtype=cp.float32)
-    kernel = _module(use_device_libm, atan_profile=atan_profile).get_function("k_vegeflux")
+    from woof.core.noahmp_kernel_sources import STAGED_MELT_RESET
+    kernel = _module(use_device_libm, atan_profile=atan_profile,
+                     melt_reset_esat=STAGED_MELT_RESET.get()).get_function("k_vegeflux")
     blocks = (count + THREADS - 1) // THREADS
     kernel(
         (blocks,), (THREADS,),

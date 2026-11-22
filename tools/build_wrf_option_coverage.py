@@ -387,8 +387,14 @@ def registry_audit() -> list[dict]:
     from woof.fortran_namelist import parse_namelist
     from woof.namelist_contract import _registry_column
     from woof.namelist_import import import_parsed_namelists
-    from woof.wrf_namelist_registry import REGISTRY_TABLE, wrf_namelist_table
+    from woof.wrf_namelist_registry import (REGISTRY_TABLES, reset_reference,
+                                             using_reference,
+                                             wrf_namelist_table)
 
+    # The page and this audit describe WRF v4.7.1's options until the
+    # WRF 4.8.0 option ports (GFL first) land; the 4.8.0 table is packaged
+    # beside it (woof.wrf_reference).
+    REGISTRY_TABLE = REGISTRY_TABLES["4.7.1"]
     source_lines = {}
     section = None
     for number, line in enumerate(REGISTRY_TABLE.read_text().splitlines(), 1):
@@ -405,7 +411,12 @@ def registry_audit() -> list[dict]:
                     "input_path": Path("namelist.input")}
     import_parsed_namelists(*base, **path_options)
     out = []
-    for declaration in wrf_namelist_table()["keys"]:
+    token = using_reference("4.7.1")
+    try:
+        declarations = wrf_namelist_table()["keys"]
+    finally:
+        reset_reference(token)
+    for declaration in declarations:
         group, key = declaration["section"], declaration["key"]
         row = {**declaration, "source": str(REGISTRY_TABLE.relative_to(ROOT)),
                "line": source_lines[(group, key)]}

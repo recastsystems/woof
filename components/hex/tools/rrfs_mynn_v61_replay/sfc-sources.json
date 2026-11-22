@@ -1,0 +1,40 @@
+{
+  "schema": "gpuwm-hex.mynn-version-sources/v1",
+  "version": "MYNN-SFC v6.1.0",
+  "repository": "https://github.com/NCAR/MYNN-SFC",
+  "commit": "a038a9ea35a12f0bf879fac8b64c99a77ffdae1c",
+  "licence": "Apache-2.0 (LICENSE at this commit)",
+  "note": "The upstream files sf_mynnsfc_v610.py is ported from and sfc_referee.py v610 builds. The v6.0.0 referee builds from the rrfs-44c0849 source tree (MYNN-SFC b66187f).",
+  "files": {
+    "LICENSE": {
+      "bytes": 567,
+      "sha256": "a49aecb88eadcc45f60703f07b5a2ef3329382c950d849e7f6492b524e9a1081",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-SFC/a038a9ea35a12f0bf879fac8b64c99a77ffdae1c/LICENSE"
+    },
+    "src/MPAS/module_sf_mynnsfc_common.F90": {
+      "bytes": 2874,
+      "sha256": "ae0ede2b886fc0ca3ee23f913f6cd8bd8557ecf211d95b3a7ff95f6e203ca1c1",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-SFC/a038a9ea35a12f0bf879fac8b64c99a77ffdae1c/src/MPAS/module_sf_mynnsfc_common.F90"
+    },
+    "src/module_sf_mynnsfc_land.F90": {
+      "bytes": 64961,
+      "sha256": "8b7fea633d9296fc5d3857cccfcdfc5fe5595d019fb30392afc1a6c9dc4707e2",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-SFC/a038a9ea35a12f0bf879fac8b64c99a77ffdae1c/src/module_sf_mynnsfc_land.F90"
+    },
+    "src/module_sf_mynnsfc_water.F90": {
+      "bytes": 83707,
+      "sha256": "a9af06c076e2d382f9a35639ca6412b148185bf3417b053d1f9ed71b6aa1ecea",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-SFC/a038a9ea35a12f0bf879fac8b64c99a77ffdae1c/src/module_sf_mynnsfc_water.F90"
+    },
+    "src/module_sf_mynnsfc_ice.F90": {
+      "bytes": 59486,
+      "sha256": "28fa2d5b624c99b3a38764b1c3e19430105c33557c27e31906ff62525ec8c978",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-SFC/a038a9ea35a12f0bf879fac8b64c99a77ffdae1c/src/module_sf_mynnsfc_ice.F90"
+    },
+    "src/module_sf_mynnsfc_driver.F90": {
+      "bytes": 43158,
+      "sha256": "60e5101cc6e7a99b53fa4e0f7c2e73aa2291bddfb72c77ec4abc0626ed7529f8",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-SFC/a038a9ea35a12f0bf879fac8b64c99a77ffdae1c/src/module_sf_mynnsfc_driver.F90"
+    }
+  }
+}

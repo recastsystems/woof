@@ -43,7 +43,7 @@ def test_new_queue_attempt_clears_stale_exit_before_forecast(tmp_path,monkeypatc
     (tmp_path/'evidence/inputs-ready.json').write_text('{}')
     exit_path=tmp_path/'evidence/pilot-exit.json'
     exit_path.write_text('{"returncode":2}')
-    monkeypatch.setenv('GPU_MUTEX_CARDS','4')
+    monkeypatch.setenv('CARD_QUEUE_CARDS','4')
     monkeypatch.setenv('CUDA_VISIBLE_DEVICES','GPU-one-card')
     monkeypatch.setenv('E','/owned/engine')
     def forecast(command):

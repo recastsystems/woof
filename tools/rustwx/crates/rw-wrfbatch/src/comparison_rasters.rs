@@ -334,7 +334,7 @@ pub(super) fn load(
             ));
         }
         let agent = rw_nexrad::s3::build_agent();
-        let mut response = agent.get(&url).call().map_err(|e| e.to_string())?;
+        let mut response = rw_http::get(&agent, &url).map_err(|e| e.to_string())?;
         let bytes = response
             .body_mut()
             .with_config()

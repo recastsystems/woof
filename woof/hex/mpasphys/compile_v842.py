@@ -1,6 +1,6 @@
 """Strict compiler for MPAS physics carriers; mpas_atmphys_interface.F:284-425.
 
-This cache belongs to physics only. Dynamics and the default WOOF suite retain
+This cache belongs to physics only. Dynamics and the default WOOF-ArWen suite retain
 their existing compiler and cache. Direct NVRTC preserves native subnormals.
 """
 from __future__ import annotations

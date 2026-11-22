@@ -274,7 +274,7 @@ def test_every_actionable_gap_carries_a_next_command():
 #: remedy gutter, the order, the closing clause -- is unchanged and
 #: still pinned here.
 _GOLDEN_FULL_REPORT = """\
-woof doctor: runtime estate
+woof doctor: runtime estate (WOOF-ArWen)
   ok      python: 3.13 on this machine
   present manifest: schema only, so presence-only
   info    root: not set

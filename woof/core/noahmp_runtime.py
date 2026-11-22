@@ -229,6 +229,31 @@ def _resolve_leaf_evaluator():
     return LEAF_BATCH_EVALUATOR
 
 
+def _melt_reset_leaves(evaluator):
+    """The staged seam's leaf evaluator for a run with correct-mode SN1 on.
+
+    The device leaf batches compile VEGE_FLUX/BARE_FLUX with the snowmelt
+    reset correction while one batch is answered.  The host authority
+    (noahmp_vegeflux.py / noahmp_bareflux.py) is WRF's arithmetic only, so it
+    is refused rather than run: it would differ from the forecast route at
+    every sunlit melting snow column without saying so."""
+    if evaluator is evaluate_leaf_batch_on_host:
+        raise ValueError(
+            "noahmp_melt_reset_esat = true (correct-mode SN1) is implemented "
+            "in the device leaves only; the host Noah-MP leaves carry WRF's "
+            "stale-ESTG snowmelt reset. Set noahmp_melt_reset_esat = false "
+            "(or physics.mode = 'exact') for a host-authority run.")
+    from woof.core.noahmp_kernel_sources import STAGED_MELT_RESET
+
+    def evaluate(leaf, calls):
+        token = STAGED_MELT_RESET.set(True)
+        try:
+            return evaluator(leaf, calls)
+        finally:
+            STAGED_MELT_RESET.reset(token)
+    return evaluate
+
+
 def _slab_path_selected() -> bool:
     """True when this call takes the whole-slab orchestration.
 
@@ -637,6 +662,12 @@ NOAHMP_STATE_2D = (
 
 NOAHMP_GROUNDWATER_2D=("zwtxy","wtxy")
 
+def _runoff_carrier(options):
+    """The opt_run whose groundwater carriers a (possibly split) pair needs."""
+    from woof.core.noahmp_runoff_split import carrier_run
+    return carrier_run(options.get("opt_run", 3), options.get("opt_runsub", 0))
+
+
 def state_fields_2d(opt_run=3,dveg=4,opt_tdrn=0,opt_irr=0,opt_crop=0):
     """Exact active native state inventory; the option-off tuple is unchanged."""
     from woof.core.noahmp_carbon_slab import CARBON_STATE_2D,dynamic
@@ -879,30 +910,63 @@ class NoahmpRuntimeParameters:
                  glacier_path: bool = True,
                  opt_gla: int = 1, opt_alb: int = 2, opt_stc: int = 1, opt_rsf: int = 1,
                  opt_btr: int = 1, opt_snf: int = 1, dveg: int = 4,
-                 opt_inf: int = 1, opt_run: int = 3, opt_rad: int = 3, opt_frz: int = 1, opt_tbot: int = 2, opt_crs: int = 1, opt_sfc: int = 1, opt_soil: int = 1, opt_infdv: int = 0, opt_tdrn: int = 0, opt_irr: int = 0, opt_irrm: int = 0, opt_crop: int = 0, wtddt: float = 30.0, soiltstep: float = 0.0, noahmp_output: int = 1, noahmp_acc_dt: float = 0.0,
+                 opt_inf: int = 1, opt_run: int = 3, opt_runsub: int = 0, opt_rad: int = 3, opt_frz: int = 1, opt_tbot: int = 2, opt_crs: int = 1, opt_sfc: int = 1, opt_soil: int = 1, opt_infdv: int = 0, opt_tdrn: int = 0, opt_irr: int = 0, opt_irrm: int = 0, opt_crop: int = 0, opt_tksno: int = 1, snow_tinit: int = 1, wtddt: float = 30.0, soiltstep: float = 0.0, noahmp_output: int = 1, noahmp_acc_dt: float = 0.0,
                  tanh_profile: str = "glibc_2_39", atan_profile: str = "glibc_2_39",
-                 log10_profile: str = "glibc_2_39", snicar_options=None):
+                 log10_profile: str = "glibc_2_39", snicar_options=None,
+                 opt_snow_compact: int = 1,
+                 opt_scf: int = 1,
+                 melt_reset_esat: bool = False, wetland: int = 0):
         # Keyword-only with no **kwargs: a misspelled keyword refuses with
         # its name (house convention), never lands as an ignored attribute.
         from woof.core.noahmp_column_slab import _selected_options
 
         _selected_options(opt_alb, opt_stc, opt_rsf, opt_btr, opt_snf, dveg, opt_inf, opt_run, opt_rad, opt_frz, opt_tbot, opt_crs, opt_sfc, opt_soil, opt_infdv,opt_tdrn,opt_irr,opt_irrm)
+        if type(opt_scf) is not int or opt_scf not in (1, 2):
+            raise ValueError("Noah-MP opt_scf must be 1 (Niu-Yang table) or 2 "
+                             "(scale-aware, re-implemented from published "
+                             "descriptions, not bitwise to upstream)")
         if opt_run==8 and opt_infdv==0:
             raise ValueError("RUN8 requires opt_infdv=1,2,3: native FSUR is unassigned at zero")
+        if type(opt_snow_compact) is not int or opt_snow_compact not in (1, 2):
+            raise ValueError("opt_snow_compact must be 1 (WRF fixed C_bd) or 2 "
+                             "(C_bd(T_air, p_sfc), re-implemented from published "
+                             "descriptions, not bitwise to upstream)")
+        # opt_runsrf/opt_runsub split, re-implemented from published
+        # descriptions, not bitwise to upstream. 0 is the stock pair, which
+        # leaves every land option and every downstream decision unchanged.
+        from woof.core import noahmp_runoff_split as _runoff_split
+        if type(opt_runsub) is not int or opt_runsub not in (0, *_runoff_split.RUNOFF_OPTIONS):
+            raise ValueError(f"opt_runsub must be 0 or in {_runoff_split.RUNOFF_OPTIONS}, got {opt_runsub!r}")
+        opt_runsub = _runoff_split.canonical(opt_run, opt_runsub or opt_run)[1]
+        _runoff_split.validate(opt_run, opt_runsub or opt_run, opt_tdrn=opt_tdrn, opt_infdv=opt_infdv)
         if log10_profile not in ("glibc_2_39","glibc_2_43"):
             raise ValueError("unknown Noah-MP native LOG10 profile")
         from woof.core.noahmp_kernel_sources import validate_vege_atan_profile
         validate_vege_atan_profile(atan_profile)
         if tanh_profile not in ("glibc_2_39", "glibc_2_43"):
             raise ValueError("unknown Noah-MP tanh profile")
+        if type(melt_reset_esat) is not bool:
+            raise ValueError("melt_reset_esat must be a bool (correct-mode SN1)")
         from woof.core.noahmp_soil_cadence import validate
         validate(soiltstep)
+        from woof.core.noahmp_tksno import validate as tksno_validate
+        tksno_validate(opt_tksno)
+        from woof.core.noahmp_snow_tinit import validate as snow_tinit_validate
+        #: Cold-start snow-layer temperatures (woof.core.noahmp_snow_tinit):
+        #: 1 WRF (every layer at TGXY), 2 conduction profile.  Read only by
+        #: noahmp_cold_start, kept out of land_options so option-1 runs carry
+        #: the same option mapping as before.
+        self.snow_tinit = snow_tinit_validate(snow_tinit)
         from woof.core.noahmp_output import validate as output_validate
         output_validate(noahmp_acc_dt)
         from woof.core.noahmp_groundwater_slab import validate as groundwater_validate
         groundwater_validate(wtddt)
+        from woof.core.noahmp_wetland import validate as wetland_validate
+        wetland_validate(wetland=wetland, sf_surface_physics=4, opt_run=opt_run,
+                         soiltstep=soiltstep)
         self._land_options = MappingProxyType(dict(
-            **(dict(wtddt=wtddt) if opt_run==5 else {}),
+            **(dict(wetland=int(wetland)) if wetland else {}),
+            **(dict(wtddt=wtddt) if _runoff_split.carrier_run(opt_run, opt_runsub)==5 else {}),
             **(dict(noahmp_output=noahmp_output,noahmp_acc_dt=noahmp_acc_dt) if noahmp_output!=1 or noahmp_acc_dt!=0.0 else {}),
             **({"soiltstep":soiltstep} if soiltstep>0 else {}),
             **(dict(opt_crop=opt_crop) if opt_crop else {}),
@@ -912,19 +976,25 @@ class NoahmpRuntimeParameters:
             **({"dveg": dveg} if dveg != 4 else {}),
             **({"opt_inf": opt_inf} if opt_inf != 1 else {}),
             **({"opt_run": opt_run} if opt_run != 3 else {}),
+            **({"opt_runsub": opt_runsub} if opt_runsub else {}),
             **({"opt_tdrn":opt_tdrn} if opt_tdrn else {}),
+            **({"opt_snow_compact": opt_snow_compact} if opt_snow_compact != 1 else {}),
             **(dict(opt_irr=opt_irr,opt_irrm=opt_irrm) if opt_irr or opt_irrm else {}),
             **({"opt_infdv":opt_infdv} if opt_infdv else {}),
             **({"opt_rad": opt_rad} if opt_rad != 3 else {}),
             **({"opt_frz": opt_frz} if opt_frz != 1 else {}),
+            **({"opt_scf": opt_scf} if opt_scf != 1 else {}),
             **({"snicar_options": dict(snicar_options)} if opt_alb == 3 and snicar_options else {}),
             **({"opt_tbot": opt_tbot} if opt_tbot != 2 else {}),
             **({"opt_crs": opt_crs} if opt_crs != 1 else {}),
             **({"opt_sfc": opt_sfc} if opt_sfc != 1 else {}),
             **({"opt_soil": opt_soil} if opt_soil != 1 else {}),
+            **({"opt_tksno": opt_tksno} if opt_tksno != 1 else {}),
             **({"log10_profile": log10_profile} if log10_profile != "glibc_2_39" else {}),
             **({"tanh_profile": tanh_profile} if tanh_profile != "glibc_2_39" else {}),
-            **({"atan_profile": atan_profile} if atan_profile != "glibc_2_39" else {})))
+            **({"atan_profile": atan_profile} if atan_profile != "glibc_2_39" else {}),
+            # Correct-mode SN1; absent is WRF's arithmetic.
+            **({"melt_reset_esat": True} if melt_reset_esat else {})))
         threshold = float(xice_threshold)
         if not np.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
             raise ValueError(
@@ -1020,7 +1090,13 @@ class NoahmpRuntimeParameters:
             row = parameter_row(self.handle(
                 vegtyp=key[0], soiltyp=key[1], slopetype=key[2],
                 soilcolor=key[3], nsoil=key[4]))
-            if self.land_options.get("opt_run", 3) in (1, 2, 5, 6, 7, 8):
+            if self.land_options.get("opt_runsub", 0):
+                from woof.core.noahmp_runoff_split import transferred_names
+                transferred = self.transferred(vegtyp=key[0], soiltyp=key[1],
+                    slopetype=key[2], soilcolor=key[3])
+                row.update({name.lower(): np.float32(transferred.scalar(name))
+                            for name in transferred_names(self.land_options.get("opt_run", 3), self.land_options["opt_runsub"])})
+            elif self.land_options.get("opt_run", 3) in (1, 2, 5, 6, 7, 8):
                 transferred = self.transferred(vegtyp=key[0], soiltyp=key[1],
                     slopetype=key[2], soilcolor=key[3])
                 names = (("FSATMX","TIMEAN") if self.land_options["opt_run"] in (1,2) else ("FSATMX",) if self.land_options["opt_run"]==5 else ("BVIC",) if self.land_options["opt_run"] == 6 else ("BBVIC","BDVIC","GDVIC") if self.land_options["opt_run"] == 8 else ("AXAJ", "BXAJ", "XXAJ"))
@@ -1121,16 +1197,17 @@ class NoahmpRuntimeParameters:
         return layout
 
     def uses_device_surface_layout(self) -> bool:
-        """The selection _lsm_step_slab makes: the device-resident layout
-        (noahmp_surface_device) for output level 3, the soil cadence or any
-        non-default land option; otherwise the host-classified layout."""
-        options = dict(self.land_options)
-        output_level = options.pop("noahmp_output", 1)
-        options.pop("noahmp_acc_dt", 0.0)
-        options.pop("wtddt", 30.0)
-        soil_interval = options.pop("soiltstep", 0.0)
-        return (output_level == 3 or soil_interval > 0 or dict(options)
-                != dict(opt_alb=2, opt_stc=1, opt_rsf=1, opt_btr=1))
+        """The selection _lsm_step_slab makes: always the device-resident
+        layout (noahmp_surface_device).
+
+        Until 2.9.14 the default options took the host-classified layout and
+        host-built parameter chunks, and only a selected option took the
+        resident one.  Same words either way (2026-11-09, RTX 5090: 0 of
+        338,307,610 history words on a 3 km 150x120 9 h case and 0 of
+        24,142,130 on a 12 km 90x72 case), and the resident route's land
+        call is the faster one (one-off synced probe, 12 h 90x72 case, 482
+        calls: 8.84 and 6.14 ms against 9.43 and 8.24 ms per call)."""
+        return True
 
     def prepare_surface_footprint(self, token, fields, *, nsoil,
                                   sf_urban_physics=0):
@@ -1215,16 +1292,18 @@ class NoahmpRuntimeParameters:
         # parameter carriers that a CLASS/RSF1 cache cannot supply.
         opt_rad = self.land_options.get("opt_rad", 3)
         opt_run = self.land_options.get("opt_run", 3)
+        opt_runsub = self.land_options.get("opt_runsub", 0)
         opt_crs = self.land_options.get("opt_crs", 1)
         opt_sfc = self.land_options.get("opt_sfc", 1)
         dveg = self.land_options.get("dveg", 4)
         opt_tdrn=self.land_options.get("opt_tdrn",0)
         opt_irr=self.land_options.get("opt_irr",0)
         opt_crop=self.land_options.get("opt_crop",0)
-        slab_parameter_widths(opt_alb=opt_alb, opt_rsf=opt_rsf, opt_run=opt_run, opt_rad=opt_rad, opt_crs=opt_crs, opt_sfc=opt_sfc, dveg=dveg,opt_tdrn=opt_tdrn,opt_irr=opt_irr,opt_crop=opt_crop)
+        slab_parameter_widths(opt_alb=opt_alb, opt_rsf=opt_rsf, opt_run=opt_run, opt_rad=opt_rad, opt_crs=opt_crs, opt_sfc=opt_sfc, dveg=dveg,opt_tdrn=opt_tdrn,opt_irr=opt_irr,opt_crop=opt_crop,**({"opt_runsub": opt_runsub} if opt_runsub else {}))
 
         signature = (cp.cuda.runtime.getDevice(), int(nsoil), int(chunk_width),
                      opt_alb, opt_rsf, opt_run, opt_rad, opt_crs, opt_sfc, dveg,opt_tdrn,opt_irr,opt_crop,
+                     *(("opt_runsub", opt_runsub) if opt_runsub else ()),
                      keys.dtype.str, keys.tobytes(), inverse.dtype.str,
                      inverse.tobytes())
         cached = self.__dict__.get("_slab_parameter_cache")
@@ -1238,7 +1317,7 @@ class NoahmpRuntimeParameters:
                               slopetype=1, soilcolor=4, nsoil=nsoil)
                 for key in keys]
         chunks = [parameter_fields(rows, inverse[start:start + chunk_width],
-                                   opt_alb=opt_alb, opt_rsf=opt_rsf, opt_run=opt_run, opt_rad=opt_rad, opt_crs=opt_crs, opt_sfc=opt_sfc, dveg=dveg,opt_tdrn=opt_tdrn,opt_irr=opt_irr,opt_crop=opt_crop)
+                                   opt_alb=opt_alb, opt_rsf=opt_rsf, opt_run=opt_run, opt_rad=opt_rad, opt_crs=opt_crs, opt_sfc=opt_sfc, dveg=dveg,opt_tdrn=opt_tdrn,opt_irr=opt_irr,opt_crop=opt_crop,**({"opt_runsub": opt_runsub} if opt_runsub else {}))
                   for start in range(0, len(inverse), chunk_width)]
         self._slab_parameter_cache = (signature, chunks)
         return chunks
@@ -1338,7 +1417,7 @@ class NoahmpRuntimeParameters:
             identity["land_options"] = dict(self.land_options)
         if self.land_options.get("opt_alb") == 3:
             from woof.core.snow_papers import identity as snow_identity
-            identity["snow_papers"] = snow_identity()
+            identity["snow_papers"] = snow_identity(self.land_options.get("snicar_options"))
         return identity
 
 
@@ -1535,7 +1614,7 @@ def noahmp_cold_start(fields, *, params: NoahmpRuntimeParameters,
     import cupy as cp
 
     slab = {name: np.ascontiguousarray(cp.asnumpy(fields[name]))
-            for name in dict.fromkeys((*_COLD_START_SLAB,*state_fields_2d(params.land_options.get("opt_run",3),params.land_options.get("dveg",4),params.land_options.get("opt_tdrn",0),params.land_options.get("opt_irr",0),params.land_options.get("opt_crop",0))))}
+            for name in dict.fromkeys((*_COLD_START_SLAB,*state_fields_2d(_runoff_carrier(params.land_options),params.land_options.get("dveg",4),params.land_options.get("opt_tdrn",0),params.land_options.get("opt_irr",0),params.land_options.get("opt_crop",0))))}
     nsoil = slab["tslb"].shape[0]
     if nsoil != NSOIL:
         raise ValueError(
@@ -1552,6 +1631,10 @@ def noahmp_cold_start(fields, *, params: NoahmpRuntimeParameters,
     for name, array in slab.items():
         fields[name][...] = cp.asarray(array)
 
+    if getattr(params, "snow_tinit", 1) == 2:
+        from woof.core.noahmp_snow_tinit import apply_conduction_profile
+        apply_conduction_profile(fields, xice_threshold=params.xice_threshold)
+
     if params.land_options.get("opt_crop",0)==2:
         if latitude is None:raise ValueError("GECROS cold start requires actual latitude")
         from woof.core.noahmp_gecros_slab import initialize
@@ -1560,9 +1643,13 @@ def noahmp_cold_start(fields, *, params: NoahmpRuntimeParameters,
         from woof.core.noahmp_crop_slab import initialize
         initialize(fields,params)
 
-    if params.land_options.get("opt_run",3)==5:
+    if _runoff_carrier(params.land_options)==5:
         from woof.core.noahmp_groundwater_slab import initialize
         initialize(fields,params,dzs,params.land_options["wtddt"])
+
+    if params.land_options.get("wetland",0):
+        from woof.core.noahmp_wetland import initialize_store
+        initialize_store(fields, params)
 
     # NOAHMP_INIT also seeds the two 2-m temperature diagnostics
     # (module_sf_noahmpdrv.F:2129-2132) with exactly the expression it uses
@@ -1726,7 +1813,7 @@ def cold_start_on_device(slab, *, params: NoahmpRuntimeParameters,
                           ("waxy", "wa"), ("xsaixy", "xsai"),
                           ("t2mvxy", "t2mv"), ("t2mbxy", "t2mb")):
             slab[name].reshape(ncol)[span] = y[:, NI_OUT[out]]
-        if params.land_options.get("opt_run",3) in (1,2) or params.land_options.get("opt_tdrn",0):
+        if _runoff_carrier(params.land_options) in (1,2) or params.land_options.get("opt_tdrn",0):
             for name,out in (("zwtxy","zwt"),("wtxy","wt")):
                 if name in slab:slab[name].reshape(ncol)[span]=y[:,NI_OUT[out]]
         if params.land_options.get("dveg",4) in (2,5,6) or params.land_options.get("opt_crop",0):
@@ -1822,7 +1909,7 @@ def cold_start_on_host(slab, *, params: NoahmpRuntimeParameters,
             slab["qrainxy"][j, i] = cold.qrain
             slab["wslakexy"][j, i] = cold.wslake
             slab["waxy"][j, i] = cold.wa
-            if params.land_options.get("opt_run",3) in (1,2) or params.land_options.get("opt_tdrn",0):
+            if _runoff_carrier(params.land_options) in (1,2) or params.land_options.get("opt_tdrn",0):
                 slab["zwtxy"][j,i]=cold.zwt
                 if "wtxy" in slab:slab["wtxy"][j,i]=cold.wt
             if params.land_options.get("dveg",4) in (2,5,6) or params.land_options.get("opt_crop",0):
@@ -1907,7 +1994,9 @@ def noahmp_lsm_step(
     # digest gate in tests/test_noahmp_runtime.py is what says the two paths
     # are the same function.
     slab_path = _slab_path_selected()
-    if (not slab_path and dict(params.land_options)
+    staged_options = {k: v for k, v in params.land_options.items()
+                      if k != "melt_reset_esat"}
+    if (not slab_path and staged_options
             != dict(opt_alb=2, opt_stc=1, opt_rsf=1, opt_btr=1)):
         raise ValueError(
             "selected Noah-MP land options require the resident slab; "
@@ -2086,6 +2175,8 @@ def noahmp_lsm_step(
             "for it")
 
     evaluator = _resolve_leaf_evaluator()
+    if params.land_options.get("melt_reset_esat", False):
+        evaluator = _melt_reset_leaves(evaluator)
     staged: list[_StagedColumn] = []
 
     def flush() -> None:
@@ -2217,7 +2308,7 @@ def _noahmp_post_lsm_diagnostics(fields, *,
     Urban and partial-ice categories take Noah-MP's bare-ground values at
     :3357-3365.  Every other land category blends Noah-MP's vegetation and
     bare-ground diagnostics with ``FVEGXY`` at :3366-3369.  The urban-model
-    overwrites following that block are outside WOOF's admitted
+    overwrites following that block are outside WOOF-ArWen's admitted
     ``sf_urban_physics=0`` identity.
 
     This routine deliberately writes only ``t2``, ``th2`` and ``q2``.
@@ -2352,7 +2443,10 @@ def _lsm_step_slab(
         if reset:
             for name in ACCUMULATORS.values():fields[name].fill(0)
         options.update(soil_update_steps=steps,calculate_soil=calculate,carry_soil_accumulators=True)
-    device_surface = output_level==3 or dict(options) != dict(opt_alb=2, opt_stc=1, opt_rsf=1, opt_btr=1)
+    # Every option set takes the device-resident layout and parameter pool
+    # (uses_device_surface_layout); the host-classified layout stays only for
+    # the staged per-column seam below the slab.
+    device_surface = params.uses_device_surface_layout()
     if device_surface:
         from woof.core.noahmp_surface_device import layout as device_layout
         layout = device_layout(params, fields, nsoil=nsoil,
@@ -2464,7 +2558,8 @@ def _lsm_step_slab(
                          opt_alb=options["opt_alb"], opt_gla=options.get("opt_gla",1),
                          opt_stc=options["opt_stc"], opt_tbot=options.get("opt_tbot", 2),
                          snicar_options=options.get("snicar_options"),
-                         noahmp_snow_age=noahmp_snow_age)
+                         noahmp_snow_age=noahmp_snow_age,
+                         opt_tksno=options.get("opt_tksno", 1))
         census["glacier_path"] = "noahmp-glacier/resident-cuda"
     elif n_glacier:
         if not params.glacier_path:
@@ -2502,11 +2597,13 @@ def _lsm_step_slab(
         "ch": "chxy", "tauss": "taussxy", "qsfc": "qsfc", "tbot": "tmn",
         "soldn": "swdown", "wslake": "wslakexy",
     }
-    if options.get("opt_run",3) in (1,2):
+    if _runoff_carrier(options) in (1,2):
         gather_2d.update(zwt="zwtxy",wt="wtxy")
-    if options.get("opt_run",3)==5:
+    if _runoff_carrier(options)==5:
         gather_2d.update(zwt="zwtxy",smcwtd="smcwtdxy",deeprech="deeprechxy",rech="rechxy")
     if options.get("opt_tdrn",0):gather_2d.update(zwt="zwtxy",tdfracmp="td_fraction")
+    if options.get("wetland",0):
+        gather_2d.update(wetstore="wetstorexy",wetfsatmx="wetfsatmx",wetcap="wetcap")
     if options.get("opt_irr",0):
         from woof.core.noahmp_irrigation_slab import GATHER
         gather_2d.update(GATHER)
@@ -2540,7 +2637,7 @@ def _lsm_step_slab(
         from woof.core.noahmp_gecros_slab import STATE
         gather_2d.update({name:name for name in STATE})
     gather_3d = {}
-    if options.get("opt_run",3)==5:gather_3d["smceq"]=fields["smoiseq"]
+    if _runoff_carrier(options)==5:gather_3d["smceq"]=fields["smoiseq"]
     if cadence_on:gather_3d["acc_etrani"]=fields["acc_etrani"]
     if options.get("opt_soil",1)==3:
         gather_3d["soilcomp"]=fields["soilcomp"]
@@ -2556,6 +2653,27 @@ def _lsm_step_slab(
     if options["opt_alb"] == 3:
         from woof.core.snow_papers import STATE_FIELD
         gather_3d["snicar_state"] = fields[STATE_FIELD]
+        lap_options = options.get("snicar_options") or {}
+        if int(lap_options.get("snicar_lap_opt", 0) or 0):
+            from woof.core.snow_papers import LAP_FIELD, LAP_DEPOSITION_FIELD, lap_provider
+            provider = lap_provider(fields[LAP_FIELD], lap_options, (ny, nx), geometry.start_time)
+            fields[LAP_DEPOSITION_FIELD][...] = provider.at(geometry.valid_time(elapsed_seconds))
+            gather_3d["snicar_lap"] = fields[LAP_FIELD]
+            gather_3d["snicar_lapdep"] = fields[LAP_DEPOSITION_FIELD]
+    # Scale-aware SCF reads each column's own grid spacing when the caller
+    # carries one (a hex variable-resolution mesh); otherwise the domain dx.
+    # The spacing is checked once per source, never per step (one host
+    # read-back for a device field, on its first step).
+    if options.get("opt_scf", 1) == 2:
+        from woof.core.noahmp_scf import check_spacing
+        if "noahmp_cell_dx" in fields:
+            gather_2d["scf_dx"] = "noahmp_cell_dx"
+            checked = params.__dict__.setdefault("_scf_spacing_checked", set())
+            if id(fields["noahmp_cell_dx"]) not in checked:
+                check_spacing(fields["noahmp_cell_dx"])
+                checked.add(id(fields["noahmp_cell_dx"]))
+        else:
+            check_spacing(float(dx))
 
     for start in range(0, n_land, SLAB_COLUMN_CHUNK):
         stop = min(start + SLAB_COLUMN_CHUNK, n_land)
@@ -2676,6 +2794,9 @@ def _write_back_slab(fields, j, i, r, *, nsoil, dt, active=None) -> None:
     if "snicar_state" in r:
         from woof.core.snow_papers import STATE_FIELD
         scatter_slab_fields(j, i, [(fields[STATE_FIELD], r["snicar_state"])], active=active)
+    if "snicar_lap" in r:
+        from woof.core.snow_papers import LAP_FIELD
+        scatter_slab_fields(j, i, [(fields[LAP_FIELD], r["snicar_lap"])], active=active)
     if "soldrain" in fields:
         scatter_slab_fields(j, i, [(fields["soldrain"], r["soldrain"])], active=active)
 
@@ -2689,9 +2810,16 @@ def _write_back_slab(fields, j, i, r, *, nsoil, dt, active=None) -> None:
         (fields["snowh"], r["snowh"]), (fields["isnowxy"], r["isnow"]),
     ], active=active)
 
+    if "wetland_dlh" in r:
+        scatter_slab_fields(j, i, [(fields["wetstorexy"], r["wetstore"]),
+                                   (fields["wetfsatxy"], r["wetfsat"]),
+                                   (fields["wetlhxy"], r["wetlh"])], active=active)
     if write_slab_arithmetic(fields, j, i, r, nsoil=nsoil, dt=dt, active=active):
         if "eirr" in r:
             scatter_slab_fields(j,i,[(fields["qfx"],fields["qfx"][j,i]+r["eirr"]),(fields["lh"],fields["lh"][j,i]+r["firr"])],active=active)
+        if "wetland_dlh" in r:
+            # Zhang et al. (2022) Eq. 11: the open-water share of LH and QFX.
+            scatter_slab_fields(j,i,[(fields["qfx"],fields["qfx"][j,i]+r["wetland_dqfx"]),(fields["lh"],fields["lh"][j,i]+r["wetland_dlh"])],active=active)
         return
 
     if active is not None:

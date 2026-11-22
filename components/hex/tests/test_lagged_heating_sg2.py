@@ -1,4 +1,4 @@
-"""SG2: MPAS-A's lagged microphysics heating on the WOOF column path.
+"""SG2: MPAS-A's lagged microphysics heating on the WOOF-ArWen column path.
 
 The producer must reproduce native mpas_atmphys_interface.F:909-919 (the
 modified-theta change across the microphysics call over dt), not the engine's
@@ -6,7 +6,7 @@ dry-theta ``h_diabatic``.  The fixtures are the audit's heating-contract cases
 (the 2026-10-13 physics-coupling audit's heating contract), whose native values were computed by compiling the
 unchanged Fortran assignments.
 
-Before SG2 the WOOF adapter produced no carry at all (``h_diabatic`` was
+Before SG2 the WOOF-ArWen adapter produced no carry at all (``h_diabatic`` was
 "explicitly declined"), and the only rate on offer was the engine's dry one;
 ``test_engine_dry_rate_is_not_the_native_carry`` is the failure that motivated
 the producer, and ``test_producer_matches_native_assignment`` passes only with

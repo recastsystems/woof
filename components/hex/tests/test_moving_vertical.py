@@ -302,3 +302,37 @@ def test_column_roundoff_workers_keep_errors_and_adjustment_receipt(monkeypatch)
     values[2, 17] = 1.00001
     with pytest.raises(ValueError, match='FP64 arithmetic allowance'):
         positive_cumulative_roundoff(values)
+
+
+# Brought from fork jacobbieker/woof PR 137 (Apache-2.0).
+def test_layer_bound_is_the_number_of_byte_values():
+    from woof.hex.moving_vertical import MAX_SOURCE_LAYERS
+    assert MAX_SOURCE_LAYERS == 256
+
+
+@pytest.mark.parametrize('target_layers', [256, 137])
+@pytest.mark.parametrize('absolute_height', [False, True])
+def test_256_layer_source_conserves_columns(target_layers, absolute_height):
+    rng=np.random.default_rng(256)
+    n=12
+    z=np.linspace(0,26500,257)[:,None]*np.ones((1,n))
+    zt=np.linspace(0,26500,target_layers+1)[:,None]*np.ones((1,n))
+    zt=zt+np.sin(np.linspace(0,np.pi,target_layers+1))[:,None]*rng.uniform(-50,50,n)
+    weights=mapper(z,zt,source_dzw=np.diff(z[:,0]),target_dzw=np.diff(zt[:,0]),
+                   endpoint_alignment=not absolute_height,backend='cpu')
+    # The topmost source layer (index 255) is reachable and stored exactly.
+    assert weights.sample_layer.dtype==np.uint8
+    assert int(weights.sample_layer.max())==255
+    water=np.zeros((256,n))
+    water[20:120]=rng.uniform(0,1e-3,(100,n))
+    water[-1]=rng.uniform(0,1e-6,n)
+    out,receipt=weights.conserved(water)
+    assert np.all(out>=0)
+    np.testing.assert_allclose(np.einsum('lc,l->c',out,weights.target_dzw),
+                               np.einsum('lc,l->c',water,weights.source_dzw),rtol=5e-8)
+
+
+def test_257_layer_source_is_refused():
+    z=np.linspace(0,26500,258)[:,None]
+    with pytest.raises(ValueError,match='more than 256 source layers'):
+        mapper(z,z,source_dzw=np.diff(z[:,0]),target_dzw=np.diff(z[:,0]),backend='cpu')

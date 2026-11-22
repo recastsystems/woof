@@ -143,7 +143,7 @@ def captured_fzu(fixture):
     shallow one from ``gf-shallow-surface.csv``, which is keyed by CASE
     alone because CUP_gf_sh takes no dx.
 
-    WHY THIS EXISTS.  WOOF's gamma is correctly rounded and glibc's is not,
+    WHY THIS EXISTS.  WOOF-ArWen's gamma is correctly rounded and glibc's is not,
     so the kernel's computed ``fzu`` is deliberately not WRF's
     (docs/gf_gamma_known_delta.md).  Feeding these words back through the
     ``fzu_override`` slots is what lets the parity suites keep grading the
@@ -184,7 +184,7 @@ def drv_scalar_inputs(fixture, pin_fzu: bool):
     """``scin`` for ``gf_gfdrv_stage``, shaped ``(ncol, len(DRV_IN_SCA))``.
 
     ``pin_fzu=False`` reproduces the SHIPPED forecast path: the three
-    override slots are 0 and the kernel computes ``fzu`` from WOOF's own
+    override slots are 0 and the kernel computes ``fzu`` from WOOF-ArWen's own
     correctly rounded gamma.  ``pin_fzu=True`` fills them with WRF's captured
     words, which is the only way a GFDRV-boundary comparison against the WRF
     capture can be bitwise.

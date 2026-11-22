@@ -1,6 +1,6 @@
 """``export --follow``: each frame is exported the moment the forecast lists it.
 
-The breakage: a WOOF domain driven by a hex parent waited for the whole parent
+The breakage: a WOOF-ArWen domain driven by a hex parent waited for the whole parent
 forecast, because the export only read a finished run.  Here the converter is
 replaced by a stand-in that writes one wrfout per history, so the test checks
 the follow loop itself: order, the atomic filing, and the ready list.

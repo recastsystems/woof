@@ -316,7 +316,7 @@ class TCConfig:
     steering_outer_km: float = 500.0
     weights: dict = field(default_factory=lambda: {'mslp': 1.0, 'vort850': 1.0, 'vort700': 0.5})
     # fix = prediction + fix_blend * (consensus - prediction). 1.0 for a cyclone (its centre is sharp); a broad
-    # synoptic low's smoothed minimum jumps 100-200 km between half-hourly frames (IFS f360 lee low, box L
+    # synoptic low's smoothed minimum jumps 100-200 km between half-hourly frames (IFS f360 lee low, a rented machine
     # 2026-10-24: fixes 44.9N -> 46.6N -> 43.4N in 1.5 h, the region thrown 264 km off), so the low target damps it.
     fix_blend: float = 1.0
 
@@ -561,12 +561,12 @@ class EnvConfig:
     fix_blend: float = 0.6            # fix = prediction + blend * (area centre - prediction): an area's centroid
                                       # wanders with the diurnal cycle; the blend keeps the region's moves clean
     core_fraction: float = 0.6        # the target is the area's core: the part at or above core_fraction x its peak.
-                                      # Breakage it prevents: GFS 2026-10-23 18Z f354 (box K, 2026-10-24) grew one
+                                      # Breakage it prevents: GFS 2026-10-23 18Z f354 (2026-10-24) grew one
                                       # connected 0.25 area to 570,000 km2 over Texas and Mexico, its centroid
                                       # drifted 700 km to Sinaloa and the region left the storms on the Rio Grande.
     # Storms are part of the setup: deep convection uses up the CAPE it grows from, so the index is lowest
     # exactly where the setup is producing storms, and an index-only target walks away from them. Breakage it
-    # prevents: GFS 2026-10-23 18Z f354 cape_shear (box L, 2026-10-24) left the storm complex on the Rio Grande
+    # prevents: GFS 2026-10-23 18Z f354 cape_shear (2026-10-24) left the storm complex on the Rio Grande
     # and Edwards Plateau after 4 h and slid 800 km WSW, ending on a storm-free Pacific CAPE plume off Sinaloa.
     # Column-maximum reflectivity at or above storm_dbz near the area pulls the centre with weight
     # storm_weight x the area's peak index per fully covered cell; with no storms the target is the index core.

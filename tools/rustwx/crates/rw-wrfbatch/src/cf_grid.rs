@@ -214,6 +214,10 @@ pub struct CfGrid {
     spatial_dims: [String; 2],
     /// Source index after row seam rotation. Applied to every plane.
     order: Vec<usize>,
+    /// Whether each row is a cyclic longitude axis (1-D coordinates, or 2-D ones that repeat one axis on every
+    /// row), which open() and recenter() may reverse and rotate at the seam. A curvilinear grid's column order is
+    /// its mesh and is never changed (see `rectilinear`).
+    cyclic: bool,
 }
 impl CfGrid {
     pub fn open(path: &Path, valid: Option<DateTime<Utc>>) -> Result<Self, String> {
@@ -290,10 +294,12 @@ impl CfGrid {
         {
             return Err("nonfinite or invalid CF grid coordinates".into());
         }
+        let cyclic = axes || rectilinear(&lat, &lon, nx);
         let mut order: Vec<usize> = (0..ny * nx).into_par_iter().collect();
         lat.par_chunks_mut(nx)
             .zip(lon.par_chunks_mut(nx))
             .zip(order.par_chunks_mut(nx))
+            .filter(|_| cyclic)
             .for_each(|((a, b), idx)| {
                 // A westward axis must be reversed together with its values
                 // before locating the cyclic seam.
@@ -333,16 +339,24 @@ impl CfGrid {
             time_index: ti,
             spatial_dims,
             order,
+            cyclic,
         })
     }
     /// Keep coordinates and field indices together across a requested map seam.
+    /// A curvilinear grid's longitudes are only rewrapped around `center`: its rows keep their order, so a row
+    /// that crosses the requested seam or a pole keeps its neighbours (each cell is drawn in the map projection,
+    /// where a longitude and itself plus 360 are one place).
     pub fn recenter(&mut self, center: f64) {
+        let cyclic = self.cyclic;
         self.lat.par_chunks_mut(self.nx)
             .zip(self.lon.par_chunks_mut(self.nx))
             .zip(self.order.par_chunks_mut(self.nx))
             .for_each(|((lat, lon), order)| {
                 for x in lon.iter_mut() {
                     *x = ((*x as f64 - center + 180.).rem_euclid(360.) - 180. + center) as f32;
+                }
+                if !cyclic {
+                    return;
                 }
                 if let Some(k) = lon.windows(2).position(|p| p[1] - p[0] < -180.) {
                     lat.rotate_left(k + 1);
@@ -426,6 +440,20 @@ impl CfGrid {
             .collect();
         Ok((values, row))
     }
+}
+
+/// Whether 2-D coordinates are one longitude axis repeated on every row, with one latitude along each row: a
+/// regular grid written out in full, whose rows are cyclic longitude axes like 1-D coordinates. Any other 2-D grid
+/// is curvilinear (a rotated or projected model grid), and its rows are not longitude axes: reversing a row that
+/// runs west, or rotating one at the -180/180 seam, breaks its mesh. Breakage it prevents: a WOOF-NAM box holding
+/// the North Pole drew every row past the pole reversed (they run west there) and the rows across the seam rotated,
+/// so a quarter of the map was stripes and the rest of the far half mirrored, with a 10 to 15 hPa seam through the
+/// pole (88.9N 0E, 2,000 km, gpuwm 2.9.13, 2026-11-13); a box across 180 lost the cells east of it the same way.
+fn rectilinear(lat: &[f32], lon: &[f32], nx: usize) -> bool {
+    let axis = &lon[..nx];
+    lat.par_chunks(nx).zip(lon.par_chunks(nx)).all(|(a, b)| {
+        a.iter().all(|v| (v - a[0]).abs() <= 1e-4) && b.iter().zip(axis).all(|(v, w)| (v - w).abs() <= 1e-4)
+    })
 }
 
 /// A rectangle of source indices. The panel frame itself uses the exact requested bounds.
@@ -528,6 +556,100 @@ mod tests {
             assert!((*value - i as f32 * 1.9438445).abs() < 1e-5);
         }
         std::fs::remove_file(path).unwrap();
+    }
+    /// A rotated lat-lon grid (NMMB's: woof-nam namgpu/grid.py rotated_to_geographic) of nx x ny points d degrees
+    /// apart, centred on (lat0, lon0): geographic latitudes and longitudes (-180..180), row-major.
+    fn rotated_grid(lat0: f64, lon0: f64, nx: usize, ny: usize, d: f64) -> (Vec<f32>, Vec<f32>) {
+        let (s0, c0) = lat0.to_radians().sin_cos();
+        let (mut lat, mut lon) = (Vec::new(), Vec::new());
+        for j in 0..ny {
+            for i in 0..nx {
+                let tlm = (i as f64 - (nx - 1) as f64 / 2.) * d;
+                let tph = (j as f64 - (ny - 1) as f64 / 2.) * d;
+                let (st, ct) = tph.to_radians().sin_cos();
+                let (sl, cl) = tlm.to_radians().sin_cos();
+                let sphi = (s0 * ct * cl + c0 * st).clamp(-1., 1.);
+                let dl = (ct * sl).atan2(c0 * ct * cl - s0 * st).to_degrees();
+                lat.push(sphi.asin().to_degrees() as f32);
+                lon.push(((lon0 + dl + 180.).rem_euclid(360.) - 180.) as f32);
+            }
+        }
+        (lat, lon)
+    }
+    fn arc_deg(a: (f32, f32), b: (f32, f32)) -> f64 {
+        let (la, lb) = ((a.0 as f64).to_radians(), (b.0 as f64).to_radians());
+        let dl = (b.1 as f64 - a.1 as f64).to_radians();
+        (la.sin() * lb.sin() + la.cos() * lb.cos() * dl.cos()).clamp(-1., 1.).acos().to_degrees()
+    }
+    #[test]
+    fn curvilinear_grid_keeps_its_mesh_across_a_pole_and_the_dateline() {
+        use netcdf_writer::{AttrValue, NcFormat, NcType, NcWriter, Schema, VarData};
+        let (nx, ny, d) = (41usize, 37usize, 0.5);
+        // (centre, the frame centre run() recentres on, if any): a box holding the North Pole (its frame is the
+        // whole circle, recentred), the same box drawn without recentring, a box holding the South Pole, a box
+        // centred right on the South Pole, and a box across 180 recentred on it.
+        let cases = [((88.9, 0.), Some(3.278)), ((88.9, 0.), None), ((-88.0, 40.), Some(40.)),
+                     ((-90.0, 0.), Some(0.5)), ((-37., 175.), Some(180.))];
+        for (n, ((lat0, lon0), center)) in cases.into_iter().enumerate() {
+            let (lat, lon) = rotated_grid(lat0, lon0, nx, ny, d);
+            let path = std::env::temp_dir().join(format!("cf-curvilinear-{}-{n}.nc", std::process::id()));
+            let mut s = Schema::new(NcFormat::Offset64);
+            let t = s.def_dim("time", 1, false).unwrap();
+            let y = s.def_dim("y", ny, false).unwrap();
+            let x = s.def_dim("x", nx, false).unwrap();
+            let tv = s.def_var("time", NcType::Double, &[t]).unwrap();
+            let la = s.def_var("lat", NcType::Float, &[y, x]).unwrap();
+            let lo = s.def_var("lon", NcType::Float, &[y, x]).unwrap();
+            let v = s.def_var("fg10m", NcType::Float, &[t, y, x]).unwrap();
+            s.put_var_attr(tv, "units", AttrValue::Text("hours since 2024-09-25 00:00:00".into())).unwrap();
+            s.put_var_attr(la, "standard_name", AttrValue::Text("latitude".into())).unwrap();
+            s.put_var_attr(lo, "standard_name", AttrValue::Text("longitude".into())).unwrap();
+            let mut wr = NcWriter::create(&path, s).unwrap();
+            wr.write_var(tv, VarData::F64(&[0.])).unwrap();
+            wr.write_var(la, VarData::F32(&lat)).unwrap();
+            wr.write_var(lo, VarData::F32(&lon)).unwrap();
+            let index: Vec<f32> = (0..nx * ny).map(|k| k as f32).collect();
+            wr.write_var(v, VarData::F32(&index)).unwrap();
+            wr.finish().unwrap();
+            let mut grid = CfGrid::open(&path, None).unwrap();
+            if let Some(c) = center {
+                grid.recenter(c);
+            }
+            let (values, _) = grid.field("fg10m", &product_rows(None).unwrap()).unwrap();
+            std::fs::remove_file(&path).unwrap();
+            // every point keeps its own value and its own place
+            for k in 0..nx * ny {
+                assert!((values[k] / 1.9438445 - k as f32).abs() < 0.01, "case {n}: point {k} drew {}", values[k]);
+                assert_eq!(grid.lat[k], lat[k], "case {n}: point {k} moved");
+                let dl = (grid.lon[k] as f64 - lon[k] as f64).rem_euclid(360.);
+                assert!(dl.min(360. - dl) < 1e-3, "case {n}: point {k} moved");
+            }
+            // and the mesh joins only neighbours: no cell edge longer than two grid lengths
+            for j in 0..ny {
+                for i in 0..nx {
+                    let k = j * nx + i;
+                    let p = (grid.lat[k], grid.lon[k]);
+                    for q in [(i + 1 < nx).then(|| k + 1), (j + 1 < ny).then(|| k + nx)].into_iter().flatten() {
+                        let e = arc_deg(p, (grid.lat[q], grid.lon[q]));
+                        assert!(e < 2. * d, "case {n}: edge {k}-{q} spans {e:.2} degrees");
+                    }
+                }
+            }
+            if let Some(c) = center {
+                assert!(grid.lon.iter().all(|&x| (x as f64) >= c - 180. - 1e-3 && (x as f64) < c + 180. + 1e-3));
+            }
+        }
+    }
+    #[test]
+    fn rectilinear_2d_coordinates_are_still_a_cyclic_axis() {
+        // a regular grid written out in full: each row is the longitude axis (rotated at the seam as before)
+        let lat = [10f32, 10., 10., 10., -10., -10., -10., -10.];
+        let lon = [0f32, 90., -180., -90., 0., 90., -180., -90.];
+        assert!(rectilinear(&lat, &lon, 4));
+        let (rlat, rlon) = rotated_grid(88.9, 0., 6, 5, 0.5);
+        assert!(!rectilinear(&rlat, &rlon, 6));
+        let (rlat, rlon) = rotated_grid(-37., 175., 6, 5, 0.5);
+        assert!(!rectilinear(&rlat, &rlon, 6));
     }
     #[test]
     fn cf_reader_selects_time_and_only_collapses_singleton_producer_axes() {

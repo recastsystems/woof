@@ -50,7 +50,7 @@ The stock namelist door is `woof go --wrfinput DIR --outdir DIR`, where
 the input directory contains namelist.input, wrfinput_d01 and wrfbdy_d01.
 All 24 PX output/state words are exposed in history. Registry fields keep
 their native metadata; five module-local transfer diagnostics are explicitly
-WOOF history extensions. Both nest feedback modes, one- and four-member
+WOOF-ArWen history extensions. Both nest feedback modes, one- and four-member
 ensembles, restart continuation and both RUC ice thresholds have device
 checks.
 

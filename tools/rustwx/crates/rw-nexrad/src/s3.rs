@@ -417,9 +417,7 @@ pub fn list_s3(agent: &ureq::Agent, request: ListRequest<'_>) -> Result<S3Listin
             url.push_str("&continuation-token=");
             url.push_str(&url_query_encode(token));
         }
-        let mut response = agent
-            .get(&url)
-            .call()
+        let mut response = rw_http::get(agent, &url)
             .map_err(|err| describe_request_failure(err, bucket, prefix))?;
         if server_date.is_none() {
             server_date = response
@@ -708,7 +706,7 @@ pub fn download_object(
         });
     }
     let url = object_url(bucket, &object.key);
-    let mut response = agent.get(&url).call()?;
+    let mut response = rw_http::get(agent, &url)?;
     let limit = object
         .size_bytes
         .saturating_add(16 * 1024 * 1024)

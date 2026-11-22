@@ -128,6 +128,14 @@ def surface_continuation_fields(cfg, *, interpolate=False):
             names += ["dtw"]
     if getattr(cfg, "tmn_update", 0):
         names += ["tmn", "tyr", "tyra", "tdly", "tlag"]
+    if (getattr(cfg, "noahmp_wetland", 0)
+            and int(getattr(cfg, "sf_surface_physics", 0)) == 4 and not interpolate):
+        # Zhang (2022) wetland store: carried on the overlap; a newborn
+        # column keeps the rebuilt driver's "not started" marker and cold
+        # starts from its own first-layer wetness and its own WCAP/FSATMX
+        # (woof.core.noahmp_wetland.initialize_store), never a parent value
+        # read against another cell's capacity.
+        names += ["wetstorexy"]
     return tuple(dict.fromkeys(names))
 
 #: Statics the overlap-equality assertion refuses on.  Everything the

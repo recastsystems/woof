@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ET
 ref = Path(sys.argv[1]).resolve()
 wf = ref / 'wf/rrfs-workflow'
 home = Path.home()
-lanes = Path(os.environ['MPAS_LANES'])
+lanes = Path(os.environ['HEX_REFERENCE_ROOT'])
 old = lanes / 'ref/rrfs/cases/x1.2562/2023-03-31_12.00.00/soil9'
 lam = Path(os.environ['RRFS_LAM7K_CASE'])
 jobs = [('x1.2562-6h', 'x1.2562', 21600, False), ('x1.2562-6h-repeat', 'x1.2562', 21600, False),

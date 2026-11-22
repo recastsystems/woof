@@ -312,7 +312,7 @@ def stage_twin(args) -> None:
     state = prep.initial_result.state
     boundaries = state.lateral_boundaries
     title = args.title or (
-        f"WOOF twin receipt {cfg.nx}x{cfg.ny} dx={cfg.dx/1000:.1f} km "
+        f"WOOF-ArWen twin receipt {cfg.nx}x{cfg.ny} dx={cfg.dx/1000:.1f} km "
         f"-- {Path(args.config).stem}")
 
     histories = {
@@ -549,7 +549,7 @@ def stage_forecast(args) -> None:
         history = realcase_wrfout.History(
             prep, exp, args.wrfout, slab_rows=args.refl_slab,
             title=(args.title
-                   or f"WOOF streamed out-of-core {cfg.nx}x{cfg.ny} "
+                   or f"WOOF-ArWen streamed out-of-core {cfg.nx}x{cfg.ny} "
                       f"dx={cfg.dx/1000:.1f} km -- {Path(args.config).stem}"))
     case = realcase.build_stores(
         prep, exp, on_state=(None if history is None else history.capture),

@@ -3,7 +3,7 @@
 Stock WRF v4.6.1 accepts an ``mp_physics(max_domains)`` namelist vector but
 ``share/module_check_a_mundo.F:774-790`` replaces every entry with the
 innermost-domain selector.  WRF therefore has no executable mixed-scheme nest
-edge.  The matrix in this module is a WOOF extension: shared mass species
+edge.  The matrix in this module is a WOOF-ArWen extension: shared mass species
 are mapped, absent target mass species use their scheme cold-start default,
 and target number/volume moments are diagnosed from target mass.
 

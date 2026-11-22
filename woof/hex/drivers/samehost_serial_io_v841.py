@@ -208,7 +208,7 @@ def coordinator_only_extension_io(*, netcdf=None, cftime=None):
         # Readers may already have imported Dataset or a conversion function
         # by value. Replace those known aliases before any worker exists.
         for module_name, module in tuple(sys.modules.items()):
-            if module is None or not module_name.startswith(("hexcore.", "woof.")):
+            if module is None or not module_name.startswith(("woof.hex.", "woof.")):
                 continue
             for name, value in tuple(vars(module).items()):
                 replacement = replacements.get(id(value))
@@ -222,7 +222,7 @@ def coordinator_only_extension_io(*, netcdf=None, cftime=None):
         # entrypoint by value too. Restore those newly created aliases before
         # restoring the original module and pre-existing reader bindings.
         for module_name, module in tuple(sys.modules.items()):
-            if module is None or not module_name.startswith(("hexcore.", "woof.")):
+            if module is None or not module_name.startswith(("woof.hex.", "woof.")):
                 continue
             for name, value in tuple(vars(module).items()):
                 original = reverse_replacements.get(id(value))

@@ -159,7 +159,7 @@ def control_statistics(runs: Path, dt: float, steps) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", required=True, type=Path,
-                    help="test-machine-1's run tree plus the local WOOF runs")
+                    help="test-machine-1's run tree plus the local WOOF-ArWen runs")
     ap.add_argument("--node2-runs", required=True, type=Path,
                     help="test-machine-2's independently built WRF quartet")
     ap.add_argument("--out", required=True, type=Path)

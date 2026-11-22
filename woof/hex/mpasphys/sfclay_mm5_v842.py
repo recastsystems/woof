@@ -5,7 +5,7 @@ inputs are the lowest model level prepared by MPAS's physics driver.
 Packed storage has shape (len(FIELDS), nCells), with contiguous rows.
 Every optional argument supplied by MPAS is carried, including old USTM.
 The standalone replay also preserves optional-argument absence semantics.
-WOOF kernels and suite defaults are untouched.
+WOOF-ArWen kernels and suite defaults are untouched.
 
 Sources: physics_mmm/sf_sfclayrev.F90:1-1119;
 physics_wrf/module_sf_sfclay.F:1-968; module_sf_sfclayrev.F:1-281;
@@ -1214,10 +1214,53 @@ CORRECT_MODE_SOURCE = {
 }
 
 
-def _cuda_text(corrections=()):
-    """MPAS mpas_atmphys_driver_sfclayer.F:428-546; RP3 referee cited above."""
+# KIM turbulent orographic form drag (Koo et al. 2018; Koo and Hong 2025), NCAR/MMM-physics 550b5b494758
+# sf_sfclayrev.F90:15-16,221-225,707-720,722-725,779-783 (MMM PR #15, e9065ee; WRF v4.8.0 kim_tofd). Opt-in,
+# as upstream (WRF Registry kim_tofd=.false.). With it off 550b5b4 is the a4baf7f arithmetic word for word, so
+# the off kernel is the pinned source unchanged; this variant compiles only when a run asks for the drag.
+# Upstream line 712 sets dx_factor from itself before it is ever assigned and never uses the result; that
+# statement is not transcribed (no output depends on it).
+TOFD_SOURCE = (
+    ('float dx; float water_depth; };',
+     'float dx; float water_depth; float varf; float tofd_factor; };', 1),
+    ('unsigned int optional_mask = 255) {\nint i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=n) return;\nMM5State s; MM5Constants c;',
+     'unsigned int optional_mask, const float *varf, float tofd_factor) {\nint i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=n) return;\nMM5State s; MM5Constants c;\ns.varf=varf[i]; s.tofd_factor=tofd_factor;', 1),
+    ('if ((optional_mask & 240u) == 240u) { // MPAS:698\n',
+     'float cf = 0x0.0p+0f; // MMM 550b5b4:225 cf(:)=0.\n'
+     'if ((s.varf > 0x1.4000000000000p+2f)) { // MMM 550b5b4:711 (if_kim_tofd) .and. varf(i).gt.varf_min\n'
+     'float zf = fminf(FMUL(s.varf, s.tofd_factor), za); // MMM 550b5b4:713\n'
+     'float fri = fminf(fmaxf(FSUB(0x1.0000000000000p+0f, s.br), 0x0.0p+0f), 0x1.0000000000000p+0f); // MMM 550b5b4:714\n'
+     'float ff = mm5_log(FDIV(FADD(za, zf), zf)); // MMM 550b5b4:715\n'
+     'cf = FMUL(FDIV(0x1.47ae160000000p-3f, FMUL(ff, ff)), fri); // MMM 550b5b4:716 ca_square/(ff*ff)*fri\n'
+     '} // MMM 550b5b4:719\n'
+     'if ((optional_mask & 240u) == 240u) { // MPAS:698\n', 1),
+    ('s.cd = FMUL(FDIV(c.karman, psix10), FDIV(c.karman, psix10)); // MPAS:700\n',
+     's.cd = FADD(FMUL(FDIV(c.karman, psix10), FDIV(c.karman, psix10)), cf); // MMM 550b5b4:724\n', 1),
+    ('s.cda = FMUL(FDIV(c.karman, psix), FDIV(c.karman, psix)); // MPAS:702\n',
+     's.cda = FADD(FMUL(FDIV(c.karman, psix), FDIV(c.karman, psix)), cf); // MMM 550b5b4:725\n', 1),
+    ('s.ust = FADD(FMUL(0x1.0000000000000p-1f, s.ust), FDIV(FMUL(FMUL(0x1.0000000000000p-1f, c.karman), s.wspd), psix)); // MPAS:756\n',
+     'if ((cf > 0x1.79ca100000000p-67f)) { // MMM 550b5b4:779 (if_kim_tofd) .and. (cf(i).gt.1.e-20)\n'
+     's.ust = FADD(FADD(FMUL(0x1.0000000000000p-1f, s.ust), FDIV(FMUL(FMUL(0x1.0000000000000p-1f, c.karman), s.wspd), psix)), FMUL(FMUL(0x1.0000000000000p-1f, FSQRT(cf)), s.wspd)); // MMM 550b5b4:780\n'
+     '} else { // MMM 550b5b4:781\n'
+     's.ust = FADD(FMUL(0x1.0000000000000p-1f, s.ust), FDIV(FMUL(FMUL(0x1.0000000000000p-1f, c.karman), s.wspd), psix)); // MPAS:756\n'
+     '} // MMM 550b5b4:783\n', 1),
+)
+
+
+def _tofd_text(source: str) -> str:
+    for old, new, count in TOFD_SOURCE:
+        if source.count(old) != count:
+            # THE BREAKAGE THIS PREVENTS: a drifted pinned source would run without the drag it was asked for.
+            raise RuntimeError("MM5 KIM form-drag substitution no longer matches the pinned source")
+        source = source.replace(old, new)
+    return source
+
+
+def _cuda_text(corrections=(), tofd=False):
+    """MPAS mpas_atmphys_driver_sfclayer.F:428-546; RP3 referee cited above; MMM 550b5b4 form drag."""
     from .driver_v842 import correct_source
-    return correct_source(CUDA_SOURCE, CORRECT_MODE_SOURCE, corrections, __name__)
+    text = correct_source(CUDA_SOURCE, CORRECT_MODE_SOURCE, corrections, __name__)
+    return _tofd_text(text) if tofd else text
 
 
 def _shared_math_source() -> str:
@@ -1236,7 +1279,7 @@ def _shared_math_source() -> str:
             '#define mm5_pow gfk_pow\n#define mm5_atan glibc_atanf\n')
 
 
-def _read_cuda_artifact(path, architecture, corrections=()):
+def _read_cuda_artifact(path, architecture, corrections=(), tofd=False):
     """Validate the compiled source for physics_mmm/sf_sfclayrev.F90:27-55 tables.
 
     Reject stale source/options/CUBIN: otherwise a replay could silently execute
@@ -1246,7 +1289,7 @@ def _read_cuda_artifact(path, architecture, corrections=()):
     import json
     path = Path(path)
     seal = json.loads(path.read_text())
-    source = _shared_math_source() + _cuda_text(corrections)
+    source = _shared_math_source() + _cuda_text(corrections, tofd)
     expected = (*_hex_numerics.options(COMPILE_OPTIONS), '--gpu-architecture=sm_' + architecture)
     if (seal.get('schema') != 'mpas.mm5-cuda-artifact/v1'
             or seal.get('cuda_source_sha256') != hashlib.sha256(source.encode()).hexdigest()
@@ -1289,7 +1332,7 @@ def _nvrtc_cubin(program):
 
 
 @lru_cache(maxsize=None)
-def _kernels(device: int, corrections=()):
+def _kernels(device: int, corrections=(), tofd=False):
     """Build column kernels/tables for physics_mmm/sf_sfclayrev.F90:27-55."""
     import cupy as cp
     import os
@@ -1298,14 +1341,14 @@ def _kernels(device: int, corrections=()):
         artifact = os.environ.get('MPAS_MM5_CORRECT_CUDA_ARTIFACT' if corrections
                                   else 'MPAS_MM5_CUDA_ARTIFACT')
         if artifact:
-            cubin = _read_cuda_artifact(artifact, _compilation_target(device, xp=cp), corrections)
+            cubin = _read_cuda_artifact(artifact, _compilation_target(device, xp=cp), corrections, tofd)
             module.load_file(str(cubin))
         else:
             from ..cuda_backend.aot import direct_image
             # RawModule's cache compiler appends -ftz=true after caller flags.
             # Compile directly, as the shared subnormal defect witness requires.
             architecture = _compilation_target(device, xp=cp)
-            module.load(direct_image(_shared_math_source() + _cuda_text(corrections),
+            module.load(direct_image(_shared_math_source() + _cuda_text(corrections, tofd),
                                     _hex_numerics.options(COMPILE_OPTIONS), architecture,
                                     filename='sfclay_mm5_v842.cu'))
         table = cp.empty(6006, dtype=cp.float32)
@@ -1316,7 +1359,7 @@ def _kernels(device: int, corrections=()):
 def launch_columns(packed, constants, *, scheme: str, isfflx: int = 1,
                    isftcflx: int = 0, iz0tlnd: int = 0,
                    scm_force_flux: int = 0, shalwater_z0: int = 0,
-                   optional_mask: int = ALL_OPTIONAL) -> None:
+                   optional_mask: int = ALL_OPTIONAL, tofd=None) -> None:
     """In-place column call with the argument values MPAS supplies.
 
     MPAS physics_mmm/sf_sfclayrev.F90:79-919;
@@ -1325,6 +1368,8 @@ def launch_columns(packed, constants, *, scheme: str, isfflx: int = 1,
     that exact interface. ``optional_mask`` uses OPTIONAL_ARGUMENTS order;
     the MPAS driver supplies all eight. Absent argument rows retain their
     input words. No atmosphere, flux or previous state is inferred.
+    ``tofd`` is None (no form drag: the pinned kernel) or ``(varf, tofd_factor)``: the orographic standard
+    deviation per cell (MPAS var2d, a float32 device vector) and the KIM factor, MMM 550b5b4 revised only.
     """
     if not 0 <= optional_mask <= ALL_OPTIONAL:
         raise ValueError('optional_mask must contain only the eight source argument bits')
@@ -1347,16 +1392,25 @@ def launch_columns(packed, constants, *, scheme: str, isfflx: int = 1,
     if packed.device.id != constants.device.id:
         raise ValueError('columns and constants must reside on the same CUDA device')
     n = packed.shape[1]
+    if tofd is not None:
+        if scheme != SCHEMES[0]:
+            # THE BREAKAGE THIS PREVENTS: the classic MM5 layer has no form-drag term; the run would carry none.
+            raise ValueError('KIM form drag (kim_tofd) exists only in the revised MM5 layer, sf_monin_obukhov_rev')
+        varf, factor = tofd
+        if (not isinstance(varf, cp.ndarray) or varf.dtype != cp.float32 or varf.shape != (n,)
+                or not varf.flags.c_contiguous or varf.device.id != packed.device.id):
+            raise ValueError('kim_tofd needs var2d as a contiguous float32 device vector (nCells,)')
     if n == 0:
         return
     with cp.cuda.Device(packed.device.id):
-        module, tables = _kernels(packed.device.id)
-        module.get_function('mm5_columns')(
-            ((n + 127) // 128,), (128,),
-            (packed, constants, tables, np.int32(n),
-             np.int32(scheme == SCHEMES[0]), np.int32(isfflx),
-             np.int32(isftcflx), np.int32(iz0tlnd), np.int32(scm_force_flux),
-             np.int32(shalwater_z0), np.uint32(optional_mask)))
+        module, tables = _kernels(packed.device.id, (), tofd is not None)
+        arguments = (packed, constants, tables, np.int32(n),
+                     np.int32(scheme == SCHEMES[0]), np.int32(isfflx),
+                     np.int32(isftcflx), np.int32(iz0tlnd), np.int32(scm_force_flux),
+                     np.int32(shalwater_z0), np.uint32(optional_mask))
+        if tofd is not None:
+            arguments += (varf, np.float32(factor))
+        module.get_function('mm5_columns')(((n + 127) // 128,), (128,), arguments)
 
 
 _MPAS_NAMES = {'t2': 't2m', 'th2': 'th2m'}
@@ -1433,7 +1487,7 @@ def run_surface_layer(atmosphere: Mapping, diag_physics: Mapping,
                       sfc_input: Mapping, mesh_density, constants, *,
                       scheme: str, config_len_disp,
                       config_frac_seaice: bool, xice_threshold,
-                      sea_exchange: Mapping | None = None, corrections=()) -> None:
+                      sea_exchange: Mapping | None = None, corrections=(), tofd=None) -> None:
     """MPAS mpas_atmphys_driver_sfclayer.F:839-1088 MM5 driver branches.
 
     Driver switches are the source's fixed values ISFFLX=1, ISFTCFLX=0,
@@ -1445,9 +1499,9 @@ def run_surface_layer(atmosphere: Mapping, diag_physics: Mapping,
         atmosphere, diag_physics, sfc_input, mesh_density,
         config_len_disp=config_len_disp, config_frac_seaice=config_frac_seaice,
         xice_threshold=xice_threshold, corrections=corrections)
-    launch_columns(main, constants, scheme=scheme)
+    launch_columns(main, constants, scheme=scheme, tofd=tofd)
     if config_frac_seaice:
-        launch_columns(sea, constants, scheme=scheme)
+        launch_columns(sea, constants, scheme=scheme, tofd=tofd)
         # MPAS mpas_atmphys_driver_sfclayer.F:260-310 retains these arrays;
         # mpas_atmphys_driver_seaice.F:390-399 consumes the open-water results.
         if sea_exchange is not None:
@@ -1494,6 +1548,24 @@ def wrf_surface_diagnostics(packed, constants, *, ua_phys: bool = False) -> None
             (packed, constants, np.int32(n), np.int32(ua_phys)))
 
 
+def slot_tofd(call, pools):
+    """``launch_columns``'s ``tofd`` for this call: None, or (var2d, tofd_factor) when the run asks for KIM drag.
+
+    ``pools`` is the slot's pool mapping; its ``sfc_input`` is read only when the drag is on."""
+    from .mmm_version import of
+    choice = of(call)
+    if not choice['kim_tofd']:
+        return None
+    sfc_input = pools['sfc_input']
+    if call.scheme != SCHEMES[0]:
+        # THE BREAKAGE THIS PREVENTS: kim_tofd on the classic layer would silently run without form drag.
+        raise ValueError('kim_tofd applies to config_sfclayer_scheme=sf_monin_obukhov_rev only')
+    if 'var2d' not in sfc_input:
+        # THE BREAKAGE THIS PREVENTS: no orographic standard deviation means zero form drag everywhere.
+        raise ValueError('kim_tofd needs the static var2d field (orographic standard deviation) in sfc_input')
+    return (sfc_input['var2d'], choice['tofd_factor'])
+
+
 def register_hex_cuda(registry, arguments) -> None:
     """Bind f4 SlotCall callbacks to the MPAS surface-layer driver.
 
@@ -1506,10 +1578,12 @@ def register_hex_cuda(registry, arguments) -> None:
     def invoke(call):
         """Dispatch the MPAS mpas_atmphys_driver_sfclayer.F:839-1010 slice."""
         from .driver_v842 import slot_corrections
+        bound = arguments(call)
         return run_surface_layer(
-            **arguments(call), corrections=slot_corrections(call, CORRECT_MODE_SOURCE), scheme=call.scheme,
+            **bound, corrections=slot_corrections(call, CORRECT_MODE_SOURCE), scheme=call.scheme,
             config_len_disp=call.options['config_len_disp'],
-            config_frac_seaice=call.options['config_frac_seaice'])
+            config_frac_seaice=call.options['config_frac_seaice'],
+            tofd=slot_tofd(call, bound))
     for scheme in SCHEMES:
         registry.register('surface_layer', scheme, 'hex-cuda', invoke,
                           corrections=CORRECT_MODE_SOURCE)
@@ -1605,7 +1679,8 @@ def run_slot(call):
     from .driver_v842 import slot_corrections
     return run_surface_layer(**call.pools, scheme=call.scheme,
                              corrections=slot_corrections(call, CORRECT_MODE_SOURCE),
-                             config_frac_seaice=call.options['config_frac_seaice'])
+                             config_frac_seaice=call.options['config_frac_seaice'],
+                             tofd=slot_tofd(call, call.pools))
 
 
 def run_native_diagnostics(provider, call):

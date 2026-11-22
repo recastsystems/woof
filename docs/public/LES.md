@@ -1,6 +1,6 @@
-# Large-eddy simulation in WOOF
+# Large-eddy simulation in WOOF-ArWen
 
-WOOF implements two of WRF's resolved-turbulence closures. This page states
+WOOF-ArWen implements two of WRF's resolved-turbulence closures. This page states
 what they are, what has been measured, and (at least as carefully) what has
 **not**.
 
@@ -16,7 +16,7 @@ The one-sentence scope, which the rest of this page only elaborates:
 > on configurations now archived under `configs/frozen/`. The shipped
 > configurations have changed since and have not been re-scored (section 4).
 
-LES enters WOOF's existing maturity ladder as **implemented-unverified**.
+LES enters WOOF-ArWen's existing maturity ladder as **implemented-unverified**.
 There is no separate "LES-verified" tier and none is claimed.
 
 ---
@@ -31,7 +31,7 @@ There is no separate "LES-verified" tier and none is claimed.
 Both require `diff_opt=2`. `km_opt=2` additionally requires
 `bl_pbl_physics=0`: WRF will evolve TKE with the PBL on, but that combination
 has no vertical TKE mixing, because `vertical_diffusion_2` is PBL-off-gated.
-WOOF refuses it rather than run a half-wired scheme.
+WOOF-ArWen refuses it rather than run a half-wired scheme.
 
 The parameter row (`c_s`, `c_k`, `mix_isotropic`, `mix_upper_bound`,
 `tke_upper_bound`, `tke_heat_flux`, `tke_drag_coefficient`) is per-domain,
@@ -75,7 +75,7 @@ closure-independent resolved-fraction measure, because its subgrid
 counterpart comes from the live `smag_khv` field that both closures fill.
 
 Every row below is a receipt committed at
-`docs/superpowers/receipts/les/cbl-2026-08-02/`, produced by the tree
+`docs/internal/receipts/les/cbl-2026-08-02/`, produced by the tree
 this page describes. The five older receipts beside that directory come
 from the LES engine branch and an earlier code state; they are kept as
 history and **do not** correspond to this table.
@@ -114,7 +114,7 @@ leaving the partition where it was. The TKE budget tightens with it, closing
 to 7.88e-10 relative.
 
 Both 50 m runs are committed beside the 100 m six, at
-`docs/superpowers/receipts/les/cbl-2026-08-02/{km2fine,km3fine}/`: receipt
+`docs/internal/receipts/les/cbl-2026-08-02/{km2fine,km3fine}/`: receipt
 and per-minute profile arrays alike, from the same driver and the same code
 state as the 100 m pair, so the refinement is a difference between two runs
 of one instrument rather than between two printed numbers. Every scalar in
@@ -163,17 +163,17 @@ perturbation is unseeded and decomposition-dependent, so the two initial
 conditions cannot be made equal.
 
 **WRF also refines the same way, judged against measured noise, not
-assumed noise.** WOOF's own realisation spread (n=18 at 100 m, n=9 at
+assumed noise.** WOOF-ArWen's own realisation spread (n=18 at 100 m, n=9 at
 50 m) is measured and committed beside WRF's own draws in
 [receipts/les/ARWEN-REALISATION-SPREAD.md](receipts/les/ARWEN-REALISATION-SPREAD.md),
-its correction history kept in place. On the flux-fraction arm WOOF's
+its correction history kept in place. On the flux-fraction arm WOOF-ArWen's
 spread is **8.7x** WRF's (0.01414 against 0.00163 stdev at 100 m: an open
 question, recorded rather than diagnosed); on the TKE-based resolved
 fraction the two are at parity (0.00231 against 0.00247). That receipt's
 composite statement is the citable form: *both refinement arms land at or
 below a third of their measured single-draw noise, inside a band registered
 before the data existed; the TKE arm's band is a sharp test and the flux
-arm's is not, because WOOF's own 50 m flux-fraction scatter (0.017, n=9)
+arm's is not, because WOOF-ArWen's own 50 m flux-fraction scatter (0.017, n=9)
 exceeds the band.* An instrument-qualification control (`km_opt=4`, which
 must **not** present a credible LES partition here) and a
 `-fno-tree-vectorize` toolchain arm ship with the same set.
@@ -224,7 +224,7 @@ large scales through the lateral boundary) and separate only between the
 parent's 7dx limit (5.25 km) and the child's (1.75 km), which is where
 refinement is supposed to add energy. Full detail, including what it does
 not establish, in
-`docs/superpowers/receipts/les/nested-les-scored-2026-08-02.md`.
+`docs/internal/receipts/les/nested-les-scored-2026-08-02.md`.
 
 **A PBL-off domain carries no PBLH.** WRF diagnoses PBLH inside the PBL
 scheme, so an LES child running `bl_pbl_physics=0` has `PBLH` identically
@@ -350,7 +350,7 @@ These are limits of the current build, not opinions about LES.
   unspecialized module, no define injected. Above 256 the host raises before
   any launch, so it is a loud refusal and not a silently skipped kernel.
   The `nz=160` acceptance battery registered at
-  `docs/superpowers/specs/2026-08-04-p2-nz-tier-acceptance.md` **ran on
+  `docs/internal/specs/2026-08-04-p2-nz-tier-acceptance.md` **ran on
   2026-08-04 and passed every leg**: mass drift 6.27e-08, TKE budget residual
   1.23e-09, restart bit-identical member for member, and a determinism pair
   with 0 of 54 screened receipt fields differing. The level sweep and the
@@ -359,7 +359,7 @@ These are limits of the current build, not opinions about LES.
   reserves any local-memory backing store: the widest frame is 800 B against
   the 1,024 B default stack limit, so the ~8.0 MiB reservation the acceptance
   document prices arrives only above nz=192. Receipt:
-  `docs/superpowers/receipts/les/p2-nz-tier-2026-08-04/P2-DEVICE-ACCEPTANCE.md`.
+  `docs/internal/receipts/les/p2-nz-tier-2026-08-04/P2-DEVICE-ACCEPTANCE.md`.
   **`nz > 192` is still unrun**: the 257 tier is compiled, frame-measured
   (1,056 B) and gated, but no integration has been run there.
 - **Radiation, not the acoustic solver, is the vertical ceiling on a
@@ -405,7 +405,7 @@ These are limits of the current build, not opinions about LES.
 - **`km_opt=2` on a nest cold-starts its own TKE, under any parent.** WRF
   gives `tke` no `i` (nest-interpolation) and no `f` (feedback) Registry
   flag, so a child cold-starts its own TKE and never feeds it back, and
-  WOOF's nest forcing carries no TKE row either. Under a parent carrying
+  WOOF-ArWen's nest forcing carries no TKE row either. Under a parent carrying
   no TKE that case has been run: a 250 m `km_opt=2` child under a
   `km_opt=4` parent, 7 h, PASS, carrying 4.8x to 9.9x the parent's resolved
   w variance and *leading the `km_opt=3` child at every output time*
@@ -414,7 +414,7 @@ These are limits of the current build, not opinions about LES.
   tree loads with a warning that it is implemented and not yet verified.
 - **`km_opt=2` requires `bl_pbl_physics=0`** (see §1).
 - **Per-domain `isfflx` is an WOOF-over-WRF extension.** `isfflx` is
-  `nentries=1` in the WRF Registry: a scalar. WOOF's TOML schema admits it
+  `nentries=1` in the WRF Registry: a scalar. WOOF-ArWen's TOML schema admits it
   per domain, which WRF cannot express, so a configuration that uses it has
   left WRF-expressible territory and cannot be round-tripped back to a
   namelist. The namelist importer deliberately reads it as the scalar WRF
@@ -422,7 +422,7 @@ These are limits of the current build, not opinions about LES.
 - **One registered runtime divergence, D8, and it is inert in most of
   what is measured here.** WRF hands `vertical_diffusion_w_2` the
   *horizontal* momentum coefficient `xkmh`, while every other stress
-  operator takes the coefficient of its own directions. WOOF hands it
+  operator takes the coefficient of its own directions. WOOF-ArWen hands it
   `xkmv`. That can only change an answer where the two coefficients
   differ, i.e. `km_opt` 2 or 3 **with `mix_isotropic = 0`**. The
   idealized CBL case runs `mix_isotropic = 1`, where the two are the same

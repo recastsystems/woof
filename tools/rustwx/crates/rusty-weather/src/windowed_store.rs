@@ -179,7 +179,7 @@ impl WindowFrame {
         self.lead_seconds / SECONDS_PER_HOUR
     }
 
-    /// `F001` on a whole-hour lead, `+000:15` between hours.
+    /// `F001` on a whole-hour lead, `F000:15` between hours.
     pub fn label(&self) -> String {
         if self.closes_windows() {
             format!("F{:03}", self.whole_hours())
@@ -189,15 +189,16 @@ impl WindowFrame {
     }
 }
 
-/// `+HHH:MM`, with `:SS` only when the seconds are not zero.
+/// `FHHH:MM`, with `:SS` only when the seconds are not zero: the hourly frames' `FHHH` with its minutes, so a
+/// themed header files it as the lead beside the valid time on every frame (it read `+HHH:MM` and stayed on the left).
 fn lead_label(lead_seconds: u64) -> String {
     let hours = lead_seconds / SECONDS_PER_HOUR;
     let minutes = (lead_seconds % SECONDS_PER_HOUR) / 60;
     let seconds = lead_seconds % 60;
     if seconds == 0 {
-        format!("+{hours:03}:{minutes:02}")
+        format!("F{hours:03}:{minutes:02}")
     } else {
-        format!("+{hours:03}:{minutes:02}:{seconds:02}")
+        format!("F{hours:03}:{minutes:02}:{seconds:02}")
     }
 }
 
@@ -655,7 +656,7 @@ pub fn compute_windowed_products(
 
 /// How a message names one stored frame: `hour F001` on the whole-hour
 /// axis (the wording every reason used before exact-time windows), and
-/// `frame +000:15 (slot 1)` on the exact-time axis.  `at` is the short
+/// `frame F000:15 (slot 1)` on the exact-time axis.  `at` is the short
 /// form a strategy note lists.
 struct FrameName {
     frame: WindowFrame,
@@ -3874,7 +3875,7 @@ mod tests {
             .collect();
         assert_ne!(uh.values, last_quarter, "the last interval alone reads low");
         assert!(
-            uh.strategy.contains("+000:15, +000:30, +000:45, +001:00"),
+            uh.strategy.contains("F000:15, F000:30, F000:45, F001:00"),
             "every folded frame is named: {}",
             uh.strategy
         );
@@ -3898,7 +3899,7 @@ mod tests {
         for slug in ["qpf_1h", "uh_2to5km_1h_max"] {
             let reason = blocker_reason(&between, slug);
             assert!(
-                reason.contains("whole forecast hours") && reason.contains("+000:30"),
+                reason.contains("whole forecast hours") && reason.contains("F000:30"),
                 "{slug}: {reason}"
             );
         }
@@ -3965,8 +3966,8 @@ mod tests {
         for slug in ["uh_2to5km_1h_max", "10m_wind_1h_max"] {
             let reason = blocker_reason(&outcome, slug);
             assert!(
-                reason.contains("+000:15")
-                    && reason.contains("+000:45")
+                reason.contains("F000:15")
+                    && reason.contains("F000:45")
                     && reason.contains("read low"),
                 "{slug}: {reason}"
             );

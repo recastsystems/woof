@@ -1,5 +1,5 @@
 # Observation-battery DOMAIN SHAPE, faithful arm, as the battery spec
-# registers it (docs/superpowers/specs/2026-08-03-obs-verification-battery.md
+# registers it (docs/internal/specs/2026-08-03-obs-verification-battery.md
 # section 1.3): one 3 km Lambert domain, 480 x 400 x 49 = 9.408 M cells
 # (1440 x 1200 km), the 49-level eta ladder, dt 15 s, Thompson mp8 / YSU /
 # classic MM5 / Noah, cumulus OFF (3 km is convection-permitting), radiation
@@ -15,7 +15,7 @@
 # about the battery's shape rather than about a placeholder.
 #
 # ROUTE STATUS (B4, measured with tools/battery_route_preflight.py; receipt
-# at docs/public/receipts/obsbattery/B4-WOOF-HRRR-ROUTE.json): the HRRR run
+# at docs/public/receipts/obsbattery/B4-WOOF-ArWen-HRRR-ROUTE.json): the HRRR run
 # route REFUSES this composition today, at three independent gates, all for
 # one reason -- the HRRR route pins radiation to (ra_lw_physics 0,
 # ra_sw_physics 1).  Run the preflight for the current answer; it quotes each

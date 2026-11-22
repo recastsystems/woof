@@ -148,7 +148,7 @@ def resolve_bar(kind: str, derived: int | None, *,
     subject = _BAR_SUBJECTS[kind]
     headline = (
         f"fetch: UPSTREAM INVENTORY CHANGE -- {subject} now yields "
-        f"{derived} records, but this WOOF was certified against "
+        f"{derived} records, but this WOOF-ArWen was certified against "
         f"{certified}.")
     if not accept_inventory_change:
         disposition = (NOTHING_DOWNLOADED if on_refusal is None

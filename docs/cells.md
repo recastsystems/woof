@@ -1,12 +1,12 @@
 # Storm cells as objects: `woof cells`
 
-WOOF writes fields. A person deciding about a storm -- a forecaster, a
+WOOF-ArWen writes fields. A person deciding about a storm -- a forecaster, a
 researcher, a verification script -- needs objects: *this* cell, how
 old it is, how fast its updraft is, whether it is still growing, where it
 will be in twenty minutes. `woof cells` is the door that turns a run's
 history into those objects and the per-cell numbers a decision reads.
 
-## What titan is, and what WOOF adds
+## What titan is, and what WOOF-ArWen adds
 
 **titan** is a Rust implementation of the TITAN storm-cell
 engine: three-dimensional identification of convective cells in a
@@ -15,7 +15,7 @@ including splits and merges, a lineage graph, trend estimation, and
 forecast footprints at fixed lead times. It reads checksummed Cartesian
 volumes and writes an analysis bundle (`frames.jsonl`, `tracks.json`,
 `lineage.json`, `objects.geojson`, `forecasts.geojson`, `summary.json`).
-It is a separate program that WOOF does not ship: `woof` does not
+It is a separate program that WOOF-ArWen does not ship: `woof` does not
 vendor it, depend on it or reimplement any part of it. The `analyze` door
 is optional. When no titan binary is installed it is off, and says so in
 one plain message; `export` and `catalog` work without it.
@@ -33,7 +33,7 @@ tracker's Kalman velocity state at that scan; on a constant-velocity
 test storm the trend is exact and the state is not, so read the trend
 for how fast a cell is moving.
 
-**WOOF** adds what a radar never sees and a model always has, sampled
+**WOOF-ArWen** adds what a radar never sees and a model always has, sampled
 inside each cell's own footprint (the grid columns under titan's 3-D
 voxels):
 

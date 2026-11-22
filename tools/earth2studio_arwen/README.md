@@ -1,6 +1,6 @@
 # earth2studio-arwen
 
-WOOF (a CUDA port of WRF-ARW, package `woof`) and hex (a CUDA port of
+WOOF-ArWen (a CUDA port of WRF-ARW, package `woof`) and hex (a CUDA port of
 MPAS-Atmosphere, package `woof hex`) for [NVIDIA Earth2Studio](https://github.com/NVIDIA/earth2studio).
 
 - **`WoofHistory`** is an Earth2Studio data source over a woof or woof hex
@@ -9,10 +9,10 @@ MPAS-Atmosphere, package `woof hex`) for [NVIDIA Earth2Studio](https://github.co
   (`u10m`, `t2m`, `msl`, `z500`, `q850`, ...) on the 0.25 degree lattice
   Earth2Studio's global models use, so any Earth2Studio diagnostic,
   downscaler or tracker can run on a physics forecast.
-- **`ArWen`** is an Earth2Studio prognostic model. Each step runs one WOOF
+- **`ArWen`** is an Earth2Studio prognostic model. Each step runs one WOOF-ArWen
   forecast over a latitude-longitude box, started from the state Earth2Studio
   hands it, with lateral boundaries from any Earth2Studio data source, and
-  returns WOOF's state in the same variables one boundary interval later.
+  returns WOOF-ArWen's state in the same variables one boundary interval later.
 
 Earth2Studio has no plugin registry; its extension points are the
 `DataSource` and `PrognosticModel` protocols. Both classes satisfy them
@@ -54,23 +54,23 @@ run.diagnostic(times, 0, px, dx, src, NetCDF4Backend("gust.nc"))
 any other Earth2Studio variable id. The export runs once per run folder and
 is cached beside it.
 
-## WOOF as an Earth2Studio prognostic model
+## WOOF-ArWen as an Earth2Studio prognostic model
 
 ```python
 import earth2studio.run as run
 from earth2studio.data import ARCO
 from earth2studio.io import NetCDF4Backend
-from earth2studio_arwen import WOOF
+from earth2studio_arwen import WOOF-ArWen
 
-model = WOOF((30, -105, 44, -89), boundary=ARCO(), dx_km=3.0, margin_deg=2.0)
+model = WOOF-ArWen((30, -105, 44, -89), boundary=ARCO(), dx_km=3.0, margin_deg=2.0)
 run.deterministic(["2024-05-21T12"], 1, model, ARCO(), NetCDF4Backend("arwen.nc"))
 ```
 
 The state is z, t, u, v, q on 13 pressure levels plus t2m, u10m, v10m and
 msl (the variables woof's `earth2-pl13-q-netcdf-v1` profile reads), on the
-0.25 degree points of the box. woof fits a WOOF domain inside the box,
+0.25 degree points of the box. woof fits a WOOF-ArWen domain inside the box,
 takes the land surface from the ERA5 analysis at the initialization (keyless),
-and runs the forecast on the GPU. Inside the domain the output is WOOF's
+and runs the forecast on the GPU. Inside the domain the output is WOOF-ArWen's
 forecast; the ring between the domain and the box edge is the boundary
 source's state at the output time. A run whose inputs are byte-identical to a
 finished one is reused.

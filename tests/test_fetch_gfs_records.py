@@ -79,7 +79,12 @@ def _host(monkeypatch, *, absent_index=(), source="gfs"):
     served = {}
     for hour in range(0, 25, 3):
         data, index, _ = _object(hour, source)
-        url = fetch.gfs_object_url(CYCLE, hour, source)
+        try:
+            url = fetch.gfs_object_url(CYCLE, hour, source)
+        except ValueError:
+            # A lead outside the source's declared archive ladder (GDAS
+            # posts f000 to f009 only; door item 11's row) has no object.
+            continue
         served[url] = data
         served[url + ".idx"] = index.encode()
     asked = []

@@ -88,9 +88,12 @@ def test_tile_constructor_allocates_only_requested_static_planes(topo, gwd):
     cfg = replace(multigpu.forced_config(37, 29, 8), topo_wind=topo, gwd_opt=gwd)
     terrain = np.zeros((cfg.ny, cfg.nx), np.float64)
     static = _tile_terrain_drag_static(cfg, terrain)
-    assert set(static) == {"HGT_M", *required_static_fields(topo, gwd)}
+    from woof.static.orographic import drag_static_fields
+    # The default gwd_opt = 1 generation (WRF v4.8.0) also carries ELVMAX.
+    wanted = drag_static_fields(topo, gwd, cfg.gwdo_version)
+    assert set(static) == {"HGT_M", *wanted}
     assert static["HGT_M"] is terrain
-    for name in required_static_fields(topo, gwd):
+    for name in wanted:
         assert static[name].shape == terrain.shape
         assert static[name].dtype == np.float32
         assert np.count_nonzero(static[name]) == 0

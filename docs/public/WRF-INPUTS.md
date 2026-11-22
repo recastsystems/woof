@@ -1,7 +1,7 @@
 # Use existing WPS or WRF inputs
 
-Native WOOF preparation remains the recommended path for new forecasts. Existing
-WPS and `real.exe` scripts can also hand their files to the same WOOF forecast
+Native WOOF-ArWen preparation remains the recommended path for new forecasts. Existing
+WPS and `real.exe` scripts can also hand their files to the same WOOF-ArWen forecast
 runtime.
 
 After `real.exe`, keep `wrfinput_d0*`, `wrfbdy_d01`, and the producing
@@ -22,9 +22,9 @@ A run directory whose `namelist.input` says `restart = .true.` restarts
 from wrf.exe's own file name with plain `woof run --wrfinput wrf-run` (or
 `woof run wrf-run`). The state, soil and snow, held radiation, PBL and
 cumulus persistence, accumulators and clock come from the file; moist theta
-is converted to WOOF's dry theta. The run ends where the namelist ends;
+is converted to WOOF-ArWen's dry theta. The run ends where the namelist ends;
 `--run-seconds` sets the window after the restart instant. State the file
-holds for a scheme WOOF cannot continue, or a scheme that differs from the
+holds for a scheme WOOF-ArWen cannot continue, or a scheme that differs from the
 one that wrote it, is refused by name. NCAR's v4.4 benchmark folders
 (https://www2.mmm.ucar.edu/wrf/users/benchmark/v44/, for example
 `v4.4_bench_conus12km.tar.gz`, 517 MB, 3.2 GB unpacked) run as shipped.
@@ -52,7 +52,7 @@ steps (for NCAR's 1 h restart leg, 50 steps from step 550). The `Timing for
 main` lines keep WRF's own step numbers.
 
 After WPS `metgrid.exe`, keep `met_em.d0*.nc` and the intended
-`namelist.input` together. WOOF performs its native initialization:
+`namelist.input` together. WOOF-ArWen performs its native initialization:
 
 ```console
 woof run --met-em metgrid-run --outdir forecast
@@ -64,7 +64,7 @@ algorithm. Both `auto_levels_opt = 1` and `2` are supported; `max_dz`, `dzbot`,
 `dzstretch_s`, and `dzstretch_u` retain their namelist values. Omitted controls
 take the WRF defaults (option 2, 1000 m, 50 m, 1.3, and 1.1). The resolved
 grid and control values are recorded with the forecast. `--vertical-grid native`
-explicitly chooses WOOF's native profile instead when no eta list is given.
+explicitly chooses WOOF-ArWen's native profile instead when no eta list is given.
 
 Native model-level mappings can declare `model_top_pressure_pa`, the interface
 above the highest mass level. This lets a native analysis initialize the model
@@ -94,7 +94,7 @@ controls fail with the missing capability named; the adapter does not silently
 replace explicit physics. `--run-seconds 600` shortens a run within its supplied
 forcing coverage.
 
-Both routes use WOOF's shared clocks, physics setup, output, health checks, and
+Both routes use WOOF-ArWen's shared clocks, physics setup, output, health checks, and
 restart machinery. Input hashes, actual humidity/soil interpretation, selected
 physics, and initialization choices are recorded under `forecast/input`; users
 do not copy hashes into a launch command. The metgrid path prices initialization
@@ -132,8 +132,8 @@ A moist-theta engine checkpoint continues identically to an uninterrupted run in
 
 The first `wrfbdy_d01` record of an export is the coupling of the exported `wrfinput_d01` itself, as `real.exe` always writes it. A preparation whose start state comes from a separate analysis (`--initial-inputs`) built its boundary from the boundary source, so that first record and its tendency are rewritten the way WRFDA's `da_update_bc` rewrites them after an analysis: the values become the new start's coupling and the tendency still reaches the prepared boundary at the end of the first interval; later records are the prepared ones unchanged. When the preparation forces the Thompson-aerosol numbers at the boundary (`mp_physics = 28` with aerosols from input), `QNWFA_B*` and `QNIFA_B*` carry those tables; run WRF with `use_aero_icbc = .true.` to use them. Exports written by 2.8.6 or earlier with `--initial-inputs` held another atmosphere in that first record (stock WRF's outer row jumped by up to 10 m/s and 8 K in its first minute on a 3 km RAP crop, and `run --wrfinput` refused the pair), and mp 28 exports held zero aerosol tables; write them again.
 
-What the files hold: WRF 4.0 through 4.7.1 `real.exe` writes `wrfinput` `T` as dry theta-300 under both settings and `THM` as the prognostic (moist theta-300 under `use_theta_m = 1`, equal to `T` otherwise), and `wrfbdy` `T_BXS` and its siblings couple the prognostic with dry column mass. At option 0 WOOF reads dry initial `T` and converts a moist boundary with its own vapour and mass. At option 1 it retains native `THM` and moist boundary values. Import checks that the first boundary record equals the coupling of the initial file's selected representation. A stock WRF 4.6.1 pair passes at both settings bit for bit. A `real.exe` build that fuses multiply-adds rounds that rebuild differently; the difference is bounded by a few FP32 steps of the full theta (a few hundred K) times the column mass, and the check allows that bound at each point. The refusal `wrfbdy T west does not match initial wrfinput_d01` states what was compared and how far apart the two files are, and names the case where the boundary holds dry theta under `USE_THETA_M = 1`: WRF 3.7 to 3.9.1.1 `real.exe` wrote that (`use_theta_m` entered the namelist in 3.7; no `THM` variable; its solver converted at run time), WRF 4.x never does. `use_theta_m = 0` in the producing namelist remains a fine setting: the files then hold dry theta everywhere and the import applies no vapour conversion.
+What the files hold: WRF 4.0 through 4.7.1 `real.exe` writes `wrfinput` `T` as dry theta-300 under both settings and `THM` as the prognostic (moist theta-300 under `use_theta_m = 1`, equal to `T` otherwise), and `wrfbdy` `T_BXS` and its siblings couple the prognostic with dry column mass. At option 0 WOOF-ArWen reads dry initial `T` and converts a moist boundary with its own vapour and mass. At option 1 it retains native `THM` and moist boundary values. Import checks that the first boundary record equals the coupling of the initial file's selected representation. A stock WRF 4.6.1 pair passes at both settings bit for bit. A `real.exe` build that fuses multiply-adds rounds that rebuild differently; the difference is bounded by a few FP32 steps of the full theta (a few hundred K) times the column mass, and the check allows that bound at each point. The refusal `wrfbdy T west does not match initial wrfinput_d01` states what was compared and how far apart the two files are, and names the case where the boundary holds dry theta under `USE_THETA_M = 1`: WRF 3.7 to 3.9.1.1 `real.exe` wrote that (`use_theta_m` entered the namelist in 3.7; no `THM` variable; its solver converted at run time), WRF 4.x never does. `use_theta_m = 0` in the producing namelist remains a fine setting: the files then hold dry theta everywhere and the import applies no vapour conversion.
 
 ## `fine_input_stream` on the WRF doors
 
-`fine_input_stream = 2` is WRF's delayed-nest-start stream: the nest takes only its static and masked land-surface fields from its own input and interpolates the rest from the parent. `import-namelist`, `run --wrfinput` and `run --met-em` all accept it and announce it at the terminal as a declared divergence. The delayed child starts at its declared start time either way; what differs is where its masked surface state comes from, which in WOOF is the child's own-grid analysis rather than a `real.exe` `wrfinput`. `fine_input_stream = 0`, WRF's other defined value, is what WOOF already does for every domain and is recorded without a divergence. An index WRF does not define is refused by name, with both defined values stated. The RW-WPS support report and the importer read this answer from one function, so a namelist pair the report passes is a pair the importer imports.
+`fine_input_stream = 2` is WRF's delayed-nest-start stream: the nest takes only its static and masked land-surface fields from its own input and interpolates the rest from the parent. `import-namelist`, `run --wrfinput` and `run --met-em` all accept it and announce it at the terminal as a declared divergence. The delayed child starts at its declared start time either way; what differs is where its masked surface state comes from, which in WOOF-ArWen is the child's own-grid analysis rather than a `real.exe` `wrfinput`. `fine_input_stream = 0`, WRF's other defined value, is what WOOF-ArWen already does for every domain and is recorded without a divergence. An index WRF does not define is refused by name, with both defined values stated. The RW-WPS support report and the importer read this answer from one function, so a namelist pair the report passes is a pair the importer imports.

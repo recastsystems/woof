@@ -523,7 +523,7 @@ def execute_fullstep_lts(forecast, *, native_execute, policy, host, schedule, ca
                 "cards were given, so it would run the same-host ranks, which have no balance-series sampler")
         # One class: the unchanged native executor (one card, or the same-host
         # ranks when several cards were given), before any class object exists.
-        # Its one-card step carries the IAU hook since lane W1 (woof.hex.iau_native),
+        # Its one-card step carries the IAU hook (woof.hex.iau_native),
         # which retired the refusal that stood here for want of one.
         if iau is not None or balance_series:
             native_kwargs.update(iau=iau, balance_series=balance_series)

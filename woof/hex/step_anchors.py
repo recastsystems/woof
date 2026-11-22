@@ -5,7 +5,7 @@ RK3 certificate at order 2 would conceal different first-stage timesteps,
 coefficient reuse and scalar density weights, so a row names exactly the
 schedule its native schedule bits and device contract receipts measured.
 
-RETIRED AS A GATE (owner ruling 2026-10-10).  ``require_step_anchor`` refused any schedule without a row; this
+RETIRED AS A GATE (2026-10-10).  ``require_step_anchor`` refused any schedule without a row; this
 module now only answers whether the run's schedule matches one, and the run
 writes that answer into its receipt.  Native MPAS dry-step agreement is measured with explicit tolerances by
 verify-dycore. A schedule certificate alone does not establish agreement.

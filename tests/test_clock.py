@@ -1,6 +1,6 @@
 """Phase-5 Task 9 (lane L2): integer-tick clocks + flat schedule executor.
 
-Architecture section C pins (docs/superpowers/specs/
+Architecture section C pins (docs/internal/specs/
 2026-07-16-phase5-nesting-architecture.md, 2026-07-16 amendment):
 
 - schedule pin: the flat op table equals an INDEPENDENT reference

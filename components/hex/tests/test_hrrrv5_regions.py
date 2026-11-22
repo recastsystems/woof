@@ -71,6 +71,10 @@ def test_country_prepare_skips_the_parent_init_and_runs_the_producer(tmp_path, m
     monkeypatch.setattr(region_static, "build_parent_static", lambda **kw: {"built": True})
     monkeypatch.setattr(mesh_point, "admit_pair", lambda *a, **k: {})
     monkeypatch.setattr(mesh_point, "resolve_geog", lambda explicit: tmp_path / "geog")
+    # a geography that holds the fork static's datasets: the region reads that before its first source hour
+    from woof.hex.mpasphys.rrfs import cold_start_rrfs
+    for name in cold_start_rrfs.static_geog_datasets(cold_start_rrfs.producer_for_suite("hrrrv5")[1]).values():
+        (tmp_path / "geog" / name).mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(ugwp_oro, "prepare_for_forecast", lambda *a, **k: None)
     monkeypatch.setattr(mesh_rows, "describe_generated", lambda **kw: {})
     monkeypatch.setattr(mesh_rows, "describe_cull", lambda **kw: {})

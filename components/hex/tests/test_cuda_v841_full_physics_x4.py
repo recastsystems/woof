@@ -115,11 +115,11 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         "src/hexcore/snapshot_transfer.py": "7064e74719933894c9d92dbfe06190b404801cd72ecc5e4fe2447b66124c5efb",
         "src/hexcore/history_ready.py": "287840b7ece3cb97185340f3e161c997bbfd9a11233ff5da4198cca42e1f9523",
         "src/hexcore/history_writer.py": "570c9124745a8d8325a35c11da17e58036bfcf2e3117a5be502dec196a9905f0",
-        "src/hexcore/cuda_arwen_helper_scope_v2.py": "641e8b77427a7c2f8eff374daa37e09a034fc45271d1dac67c3e39d03e3814e9",
+        "src/hexcore/cuda_arwen_helper_scope_v2.py": "03f122b7835a92536c52218713744bd1bfc0385cf88ac102a3295fe3f9ae9c4e",
         "src/hexcore/radiation_source_sets.json": "4fdb41a8102a0c4891771ed476d2eb7cf870e89a66c1a2dd4a92b8cd42dac802",
-        "src/hexcore/data/profiles/engine-helper-sets.v1.json": "2e7e727e78357bcd847100dea32450467e08359a01d374eb1a6619e851a61ca6",
+        "src/hexcore/data/profiles/engine-helper-sets.v1.json": "b82f00a5c8382372f250073a67992bc2b23f93797107522a8a1d8e70931e24c5",
         "src/hexcore/step_anchors.py": (
-            "13f8bf3361b3fc5c25805d05d48e3c59841050e3d372c03c96f1498133399b72"
+            "8c91f50ea56df0eff70589e5423de42f41a371994647d641eff06aa9500807a0"
         ),
         "src/hexcore/data/dycore-step-anchors.v1.json": (
             "f9a102a3f4fd848e95bf9fabe5a5ccd0579ba01de739de9e7da8e4ed7930e62d"
@@ -134,7 +134,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
             "8dc6e9a3d8e88c231bc8d738f80a1655839aed2478b56ccc5038ab4daba7cfb5"
         ),
         "src/hexcore/cuda_physics_v841.py": (
-            "8140553c0bec161af26c5c4f66ff8a54f1f18762810d36460cf447996ee64b44"
+            "d2299191244cdcccf52a4052cc2b2d7cd2ccbaa139ea59a7eef112138b1a7cb7"
         ),
         # Re-frozen 2026-08-26 for the convection ruling: the physics cadence
         # table reports convection: None when no scheme is selected; and again
@@ -149,13 +149,13 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # Re-frozen 2026-10-05 for the startup lane (host-preparation cache);
         # the rationale lives beside the runner's pin.
         "src/hexcore/cuda_driver.py": (
-            "f453eee1152aa33392b09ecfde1d16ee33ec53cf17d754ecd076736088630fea"
+            "6e9362bfe5c530368a27c68cbf4a723d34c5f92f5d1420e79f942ee59e6643b9"
         ),
         # New pin (startup lane, 2026-10-05): the frozen driver executes host
         # preparation through this module; the rationale lives beside the
         # runner's pin.
         "src/hexcore/prep_cache.py": (
-            "9e2014bee45c4e42e16b7afe5e8c7f6df5ef1ebf2f62a6269c01692aa6cc095e"
+            "38e6bbbfdeceb117468ad6d577dabfc281cbba137633bcdf59e99e04fe9a9092"
         ),
         "src/hexcore/cuda_backend/recovery.py": (
             "1a5a85585ebc72867904f852ee54c541ace5fc2ac26f0ef89dabd179096cc041"
@@ -169,9 +169,9 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # of the two digest gates is an admission-time refusal, not a test.
         # Measured inert by AST; the rationale lives beside the runner's pin.
         "src/hexcore/config_v841.py": (
-            "1cee9d6702785a4226805ab133aa7e7112ac6fcdb234cf3eef44a87e2c3a2933"
+            "bdcf59df14ae57b587eb58654d891978b2c972dce56b45c068299af06938ff0e"
         ),
-        # New pin (convection ruling, 2026-08-26): the frozen config admits
+        # New pin (the convection rule by spacing): the frozen config admits
         # config_convection_scheme from this module and the timestep registry
         # keys on the selection it produces; the rationale lives beside the
         # runner's pin.
@@ -181,9 +181,9 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # of the two digest gates is an admission-time refusal, not a test.
         # Measured inert by AST; the rationale lives beside the runner's pin.
         # Re-frozen 2026-10-11: variable-resolution meshes decided per cell;
-        # the rationale lives beside the runner's pin.
+        # the rationale lives beside the runner's pin.  Re-frozen 2026-11-17: the rule's text only.
         "src/hexcore/convection_admission.py": (
-            "33372d55a763e50428d3742af895d19c9ff8c000ef7814ee52ac757554e602f0"
+            "cad0d80621e3101e12e2e07c409a196d477352bfe7b0df1097ba693eaa835690"
         ),
         # New pin (the timestep-anchor campaign): the frozen config ADMITS config_dt from this
         # module, so the pinned config's meaning depends on these bytes.
@@ -206,7 +206,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # citations name the lab host neutrally; the rationale lives beside the
         # runner's pin.
         "src/hexcore/dt_admission.py": (
-            "77abfa300cf131704d56914011771993ee4574b489f6a4b54d32a8f742b17d20"
+            "f4be4df0d09b297f68ec68fd5a48e5532231fb43461ab4f82b3308fcf5d499e4"
         ),
         # New pin (surface/PBL cadence, 2026-08-26): this module decides
         # config_bldt_seconds, a knob the frozen registry keys on; the
@@ -228,12 +228,12 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # export became declinable (default armed).  The rationale lives
         # beside the runner's pin.
         "src/hexcore/cuda_arwen_physics_v841.py": (
-            "23de7db623fba0fae2c9ad92d26b99b47475edd28f8b72bfa6e3e317503aa2c0"
+            "19af656ad8df9924ac81459ce7b0eeb8b68ee1a0c680446ace9aec127a269821"
         ),
         # New pin 2026-10-05 (New Tiedtke row); the rationale lives beside the
         # runner's pin.
         "src/hexcore/cuda_ntiedtke_column_v841.py": (
-            "6be7219b39c2e0f9732342631c0ab27c438ea6126ea9faf97b45c6c22080c2ea"
+            "eff1bae9f5399163a8617d8fe819c70ea948841f50ffa10773b6460ded5442d9"
         ),
         "src/hexcore/cuda_seam_snapshot_v841.py": (
             "a05fdda5ef82b0d77b1af63d4354953660f3d5b80470d7915bb647f41d191019"
@@ -241,7 +241,7 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
         # Re-frozen for the regional CPU authority lane; the
         # rationale lives beside the runner's pin.
         "src/hexcore/mixing.py": (
-            "1fd749a6c2a8599acf9bac7b2fc9764c0cb8ceb428be50b19a4e93e3a094d554"
+            "025a09079f180ed38529bb329c32b60abe43351d576d99ceaaf3bba355f679be"
         ),
         # Re-frozen for the regional CPU authority lane, and again
         # 2026-10-05 for the startup lane (host-preparation cache); the
@@ -250,14 +250,14 @@ def test_frozen_source_hashes_and_adapter_contract_are_exact() -> None:
             "e6bad617c0a1e8dc3672eab985ac80d0c9885dc5381e38497d070f7714d985b7"
         ),
         "src/hexcore/cuda_horizontal.py": (
-            "f94137176db65d24df0d9ff1d491c278d6c835bb08cd76dc43c5cfcbf323a345"
+            "97b3ec1656518db03bccfe14c4fbf562dd7a407994ca31c8e2d4462943881b9c"
         ),
         "src/hexcore/cuda_horizontal_v841.py": (
             "1a5fae3d6055a710de7d7ce216dddb9bee7c2e4ee72cf4e6a959e2401dfe0cb7"
         ),
         # Current d15ea3482cc5 cache-key correction; archived proofs unchanged.
         "src/hexcore/cuda_transport_v841.py": (
-            "5bf88077aeb7f63f66c83d997ec9a1e4af8f1d9e64ce19741efa63cfd1addb87"
+            "30c8082b6bb7e92fb76d5d0049e8ee045fd090da3bc8fc47db781d82b1fa422e"
         ),
         "src/hexcore/cuda_transport.py": (
             "013ed46f8ef3bcc1a445b2e81135e262c23c49950e52e5b62b22e4274644b15e"
@@ -1208,9 +1208,9 @@ def test_restart_localization_gates_precede_first_resumed_step() -> None:
     f001 = source.index("identity = require_bitwise_restart_identity(")
     assert worker_spawn < restored_f030 < step16 < f001
     assert '"F030 restored MPAS atmosphere"' in source
-    assert '"F030 restored WOOF backend"' in source
+    assert '"F030 restored WOOF-ArWen backend"' in source
     assert '"F030 restored GF advective forcing"' in source
-    assert '"first resumed step 16 WOOF backend"' in source
+    assert '"first resumed step 16 WOOF-ArWen backend"' in source
     assert '"restart_arm_fresh_process": True' in source
 
     worker_source = inspect.getsource(runner._execute_restart_worker)

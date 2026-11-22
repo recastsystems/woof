@@ -180,7 +180,10 @@ STATE_SERIALIZED_ATTRS = (
     "etanew_restart_state", "etanew_tbpvs", "etanew_tbpvs0", "etanew_restart_dt",
     "e_sgs", "qke_adv", "aerocu", "pek_adv", "pep_adv",
     "keps_tke_adv", "keps_diss_adv", "keps_tpe_adv",
-) + _FSBM_BIN_SPECIES + TRACER_NAMES
+) + _FSBM_BIN_SPECIES + TRACER_NAMES + (
+    # WRF v4.8.0 dynamic lightning: the advected energies, flash counts and
+    # LPI (registry.dyn_light restart 'r'). Absent unless the package is on.
+    "light_ne", "light_pe", "light_neu", "lpos", "lneg", "lneu", "lpi2d", "lpi3d")
 
 # Optional registry-bound column state. Absence keeps existing checkpoints
 # unchanged. ACPHYS* are carried accumulators and must survive a resume.

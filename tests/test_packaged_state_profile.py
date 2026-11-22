@@ -1,7 +1,7 @@
 """A state-only profile must carry echoes without enlarging the forecast profile.
 
 Breakage: silently reusing the pressure-only profile initializes a clear model,
-while modifying that shared profile expands every WOOF decode and fetch.
+while modifying that shared profile expands every WOOF-ArWen decode and fetch.
 """
 import json
 from woof.source_authorities import packaged_authorities

@@ -1,4 +1,4 @@
-"""EXPERIMENTAL (WOOF v1.2): radar observation operators.
+"""EXPERIMENTAL (WOOF-ArWen v1.2): radar observation operators.
 
 Deliberately CPU-only: this module imports no CuPy, so it stays outside
 the ``gpu`` marker and the whole file runs on a machine with no device.

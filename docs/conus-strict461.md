@@ -13,7 +13,7 @@ and modified Tiedtke 6 remain active. Radiation is called every 9.9 minutes.
 The bitwise referee is WRF 4.6.1 at
 `d66e442fccc04111067e29274c9f9eaccc3cef28`, Ubuntu 24.04, gfortran 13.3,
 glibc 2.39, with `-O2 -fno-fast-math -ffp-contract=off -fno-tree-vectorize`
-and no libmvec. It runs on 12 MPI ranks with decomposition 3 x 4. WOOF runs
+and no libmvec. It runs on 12 MPI ranks with decomposition 3 x 4. WOOF-ArWen runs
 one RTX 5090 with strict numerics, default `GPUWM_WRF_GLIBC=2.39`, libmvec
 off and a logged per-run radiation column batch of 512. This batching keeps
 every scheme active. No second strict decomposition was run.

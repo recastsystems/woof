@@ -60,6 +60,10 @@ def _normalize_units(units: str, knob: str) -> str:
     return normalized
 
 
+#: How far past a pole a source latitude may sit and still be read as the pole (about 11 m).
+POLE_ROUNDING_TOLERANCE_DEGREES = 1.0e-4
+
+
 def _angles_to_radians(
     latitude: Any,
     longitude: Any,
@@ -75,12 +79,16 @@ def _angles_to_radians(
         raise ValueError("latitude and longitude must be finite")
     normalized = _normalize_units(units, "coordinate_units")
     if normalized == "degrees":
-        if np.any(np.abs(lat) > 90.0 + 1.0e-10):
-            raise ValueError("latitude lies outside [-90, 90] degrees")
         lat = np.deg2rad(lat)
         lon = np.deg2rad(lon)
-    elif np.any(np.abs(lat) > np.pi / 2.0 + 1.0e-12):
-        raise ValueError("latitude lies outside [-pi/2, pi/2] radians")
+    # MPAS stores latCell as float32, and float32(pi/2) is 4.37e-8 rad past the pole: every global mesh with
+    # a pole cell carries one. Within POLE_ROUNDING_TOLERANCE_DEGREES of a pole is rounding and is clamped to
+    # the pole (as rw_mpas::window does); further out is a broken file and is refused.
+    limit = np.pi / 2.0 + np.deg2rad(POLE_ROUNDING_TOLERANCE_DEGREES)
+    if np.any(np.abs(lat) > limit):
+        raise ValueError("latitude lies outside [-90, 90] degrees by more than the "
+                         f"{POLE_ROUNDING_TOLERANCE_DEGREES} degree pole-rounding tolerance")
+    lat = np.clip(lat, -np.pi / 2.0, np.pi / 2.0)
     return lat, lon
 
 

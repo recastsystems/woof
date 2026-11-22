@@ -141,7 +141,7 @@ def test_the_centre_never_comes_from_argmin_psfc(tool):
 
     Surface pressure is low over high ground; taking a centre from
     argmin(PSFC) once put a hurricane on Jamaica's Blue Mountains at
-    804 mb.  For a WOOF run the centre comes from track.csv; the stock
+    804 mb.  For a WOOF-ArWen run the centre comes from track.csv; the stock
     WRF fallback reduces to sea level and masks land.
     """
     import inspect

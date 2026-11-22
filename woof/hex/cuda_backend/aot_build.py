@@ -237,7 +237,7 @@ def numerics_gaps(entries, fast_only=()):
 #: (tempo_phase_v303.phase_source, kernels tempo_phase_a..e; rrfs/tempo-yolo 0a09dec9), because strict
 #: TEMPO is the warp-per-column module, bitwise to native RRFS-MPAS.  Module S (tempo_rrfs_tail) carries
 #: the warp fallback, so it pairs with the strict warp module and is not listed.
-FAST_ONLY_FAMILIES = frozenset({"tempo_rrfs_phase"})
+FAST_ONLY_FAMILIES = frozenset({"tempo_rrfs_phase", "tempo_rrfs_phase_v325"})
 
 
 def catalog_numerics_gaps(catalog_rows):
@@ -300,7 +300,7 @@ def catalog_recipe(entry, compiler=None):
     return recipe({**entry, "options": options})
 
 
-def physics_inventory(numerics=None):
+def physics_inventory(numerics=None, *, mynn_math_source=None):
     """Direct MYNN, MYNN-EDMF and sfclay images, in exact and corrected forms.
 
     Raw NVRTC call sites are not KernelCache declarations and were absent from
@@ -315,17 +315,32 @@ def physics_inventory(numerics=None):
     from woof.hex.mpasphys import ntiedtke_v842 as ntiedtke
     from woof.hex.mpasphys import ysu_v842 as ysu
     from woof.hex.mpasphys import ysu_gwdo_v842 as ysu_gwdo
+    from woof.hex.mpasphys import kim_gwdo_2026 as kim_gwdo
     from woof.hex.mpasphys.rrfs import sfclay_mm5 as rrfs_mm5
     from woof.hex.mpasphys.rrfs import bl_mynnedmf_c942418 as edmf
     from woof.hex.mpasphys.rrfs import smoke_9652bbf as smoke, smoke_resident
     from woof.hex.cuda_fp32 import CUDA_FTZ_HELPERS
     from woof.hex.mynn_glibc_math import mynn_glibc_source
 
+    # A pinned replay deck may supply a historical math header. Its source
+    # remains distinct from the default header and needs its own pack rows.
+    mynn_maths = (resources.mynn_maths(resources._vendored_maths())
+                  if mynn_math_source is None else mynn_math_source)
+
     declarations = [
         ("ntiedtke", ntiedtke.cuda_source(), ntiedtke.CUDA_OPTIONS, "kern.cu"),
         ("ysu", ysu.cuda_source(ysu.shared_device_math_header()), ysu.COMPILER_OPTIONS, "kern.cu"),
+        # MMM-physics 550b5b4 (WRF v4.8.0's YSU top-down cap, mmm_version.py): the correct-mode default.
+        ("ysu", ysu.cuda_source(ysu.shared_device_math_header(), "550b5b4"), ysu.COMPILER_OPTIONS, "kern.cu"),
         ("bl_mynn_adapter", bl.ADAPTER_CUDA_SOURCE, bl.MYNN_CUDA_OPTIONS, "kern.cu"),
     ]
+    # The limited-area boundary module (cuda_regional_v841._direct_regional_module) asks the direct bridge for
+    # "nvrtc.direct.<source digest>"; the inventory held it only under its module name, which that bridge never
+    # asks for.  THE BREAKAGE THIS ENDS (hex 0.5.0 gate, 2026-11-09): every limited-area run compiled it in each
+    # rank and worker process (1.8 s in each of 8 processes of a fresh-install regional run, every run: its
+    # request is not cached on disk).
+    from woof.hex import cuda_regional_v841 as regional
+    declarations.append(("regional_lbc", regional.CUDA_REGIONAL_SOURCE, regional.REGIONAL_CUDA_OPTIONS, "kern.cu"))
     # One MYNN-EDMF image per RRFS pin the route table names (resources_build.rrfs_mynnedmf_images), so the
     # pack carries the hrrrv5 default pin's image, not only the 1d6e370e one.
     import importlib
@@ -340,13 +355,17 @@ def physics_inventory(numerics=None):
     # without changing either the kernel text or the process's numerics mode.
     from woof.hex.mpasphys.driver_v842 import correct_source
     mode = _hex_numerics.mode() if numerics is None else _hex_numerics.normalise(numerics)
-    for corrections in (frozenset(), frozenset({"RP7"})):
+    # Every subset of the correct-mode text corrections (RP7 always in correct mode; RP8 with mixlength 1; either
+    # can be skipped by config_physics_correct_skip), so no correct-mode run compiles MYNN at its first call.
+    from itertools import combinations
+    _ids = sorted(bl.MYNN_TEXT_CORRECTIONS)
+    for corrections in (frozenset(c) for n in range(len(_ids) + 1) for c in combinations(_ids, n)):
         numerical = correct_source(bl.MYNN_MODULE_CUDA, bl.MYNN_TEXT_CORRECTIONS,
                                    corrections, "bl_mynn hex-cuda")
         if mode == "fast":
             numerical = bl._dynamic_columns(numerical)
         declarations.append(("bl_mynn", CUDA_FTZ_HELPERS
-                             + resources.mynn_maths(resources._vendored_maths())
+                             + mynn_maths
                              + bl.MYNN_ARRAY_SUPPORT + numerical,
                              bl.MYNN_CUDA_OPTIONS, "kern.cu"))
     for corrections in ((), ("RP3",)):
@@ -357,6 +376,15 @@ def physics_inventory(numerics=None):
         ])
     declarations.append(("rrfs_sfclay_mm5", rrfs_mm5.cuda_source(),
                          mm5.COMPILE_OPTIONS, "rrfs_mm5.cu"))
+    # Both supported MYNN-SFC pins call NVRTC directly, outside the AST inventory.
+    # hrrrv5 selects v6.1; its source must be present even when no recorded recipe
+    # has exercised that suite. Wave feedback changes the source as well.
+    from woof.hex.mpasphys.rrfs import sf_mynnsfc_v600, sf_mynnsfc_v610
+    for surface in (sf_mynnsfc_v600, sf_mynnsfc_v610):
+        for waves in (False, True):
+            declarations.append(("rrfs_sf_mynnsfc", surface.cuda_source(waves=waves),
+                                 ("--std=c++17", "--fmad=false", "--ftz=false",
+                                  "--prec-div=true", "--prec-sqrt=true"), "kern.cu"))
     noah_source = (noah._device_math_source() + noah._CORE_CUDA + noah._ENTRY_CUDA
                    + noah._LANDUSE_CUDA + noah._MPAS_IO_CUDA + noah._STATE_CUDA)
     noah_source = noah._shared_tables_source(noah_source)
@@ -372,7 +400,7 @@ def physics_inventory(numerics=None):
                          "mpas_rrtmg_sw_v842.cu"))
     rows = [{**recipe({"source": source,
                        "options": list(_hex_numerics.options(options, numerics=numerics)),
-                       **({"cache_in_memory": True} if family == "ysu" else {}),
+                       **({"cache_in_memory": True} if family in {"ysu", "rrfs_sf_mynnsfc"} else {}),
                        "route": "direct-nvrtc", "filename": filename}), "physics_family": family}
             for family, source, options, filename in declarations]
     # One image per ported SMOKE pin: 9652bbf (1d6e370e row) and 5d2c71e2 (the shipping 44c0849 row).
@@ -410,6 +438,17 @@ def physics_inventory(numerics=None):
                                    keep_ftz=True, numerics=numerics)),
                                "route": "direct-nvrtc", "filename": filename}),
                      "physics_family": family})
+    # RUC land surface (ruc_lsm_8c9f1a8._module: the hrrrv5 land model and its sea-ice entry context), compiled
+    # in memory at every run.  THE BREAKAGE THIS ENDS (hex 0.5.0 gate, 2026-11-09): absent here, every hrrrv5 run
+    # compiled it on one core beside its set-up, 7.3 s of a 1 h forecast's 61 s on a fresh install.
+    from woof.hex.mpasphys.rrfs import ruc_lsm_8c9f1a8 as ruc
+    for context in ((), ("-DRUC_ICE_ENTRY_CONTEXT",)):
+        rows.append({**recipe({"source": ruc.shared_math_source() + ruc.CUDA_SOURCE,
+                               "options": [*_hex_numerics.options(ruc.CUDA_OPTIONS, keep_ftz=True, numerics=numerics),
+                                           *context],
+                               "cache_in_memory": True,
+                               "route": "direct-nvrtc", "filename": "kern.cu"}),
+                     "physics_family": "rrfs_ruc_lsm"})
     # MPAS and RRFS standard vertical grids, with production workspace storage.
     for levels in (55, 59):
         for native_dx in (False, True):
@@ -418,6 +457,12 @@ def physics_inventory(numerics=None):
                                    "cache_in_memory": True,
                                    "route": "direct-nvrtc", "filename": "ysu_gwdo_v842.cu"}),
                          "physics_family": "ysu_gwdo"})
+            # The KIM drag (MMM 63c806d + MPAS PR #1409, kim_gwdo_2026._module): the correct-mode default drag.
+            rows.append({**recipe({"source": kim_gwdo.kernel_source(levels, native_dx),
+                                   "options": list(_hex_numerics.options(kim_gwdo.COMPILE_OPTIONS, numerics=numerics)),
+                                   "cache_in_memory": True,
+                                   "route": "direct-nvrtc", "filename": "kim_gwdo_2026.cu"}),
+                         "physics_family": "kim_gwdo"})
         for corrections in ((), ("WB3",)):
             source = thompson.cuda_source(device_math_source=resources.thompson_maths(resources._vendored_maths()),
                                           max_levels=levels, corrections=corrections, workspace=True, numerics=numerics)
@@ -481,16 +526,52 @@ def physics_inventory(numerics=None):
                            "options": list(_hex_numerics.options(tempo.COMPILE_OPTIONS, numerics=numerics)),
                            "route": "direct-nvrtc", "filename": "kern.cu"}),
                  "physics_family": "tempo_rrfs"})
+    # The default TEMPO, tempo_v3.2.5 (tempo_v325.launch_mpas: the warp module in both numerics). THE BREAKAGE
+    # THIS ENDS: absent here, every default hrrrv5 run NVRTC-compiled it on one core at the first microphysics
+    # step (78 s strict, verification host RTX 5090 host, 2026-11-09).
+    from woof.hex.mpasphys.rrfs import tempo_v325
+    rows.append({**recipe({"source": tempo_v325.warp_source(resources.tempo_maths(resources._vendored_maths()),
+                                                             max_levels=TEMPO_RRFS_LEVELS, numerics=numerics),
+                           "options": list(_hex_numerics.options(tempo_v325.COMPILE_OPTIONS, numerics=numerics)),
+                           "route": "direct-nvrtc", "filename": "kern.cu"}),
+                 "physics_family": "tempo_rrfs_v325"})
+    # The same module as correct mode (the default) compiles it: with the fork corrections tempo_v325 applies as
+    # text (fork_corrections; TP4).  THE BREAKAGE THIS ENDS: the row above is the uncorrected text, which only a
+    # run that skips TP4 asks for, so every default strict hrrrv5 run compiled the corrected module on one core at
+    # its first microphysics step.
+    rows.append({**recipe({"source": tempo_v325.warp_source(resources.tempo_maths(resources._vendored_maths()),
+                                                             max_levels=TEMPO_RRFS_LEVELS, numerics=numerics,
+                                                             corrections=tempo_v325.CORRECTIONS),
+                           "options": list(_hex_numerics.options(tempo_v325.COMPILE_OPTIONS, numerics=numerics)),
+                           "route": "direct-nvrtc", "filename": "kern.cu"}),
+                 "physics_family": "tempo_rrfs_v325"})
     # TEMPO's reflectivity of a given state (tempo_refl_v303: the f000 frame of a correct-mode TEMPO forecast
-    # and the state analysis posterior observers). It compiles the same strict text under both numerics, so it is declared
-    # once, with the strict rows; the pack serves it by its text to a fast run too. THE BREAKAGE THIS ENDS:
-    # absent here, every correct-mode TEMPO forecast compiled it on one core beside its set-up.
-    if (numerics or _hex_numerics.mode()) == "strict":
-        from woof.hex.mpasphys.rrfs import tempo_refl_v303 as tempo_refl
-        rows.append({**recipe({"source": tempo_refl.module_source(TEMPO_RRFS_LEVELS),
-                               "options": list(tempo_refl.module_options()),
+    # and the state analysis posterior observers). It asks for the same text and strict options under both
+    # numerics, but the engine drops --fmad=false from every compile of a fast process (woof.numerics
+    # effective_options), and the pack is selected by those final options: a fast run asks for the row without it.
+    # THE BREAKAGE THIS ENDS: absent here, every correct-mode TEMPO forecast compiled it on one core beside its
+    # set-up; with only the strict row, every FAST one still did (options_mismatch, 2.2 s of a fresh-install
+    # hrrrv5 run, hex 0.5.0 gate, 2026-11-09).
+    from woof.hex.mpasphys.rrfs import tempo_refl_v303 as tempo_refl
+    refl_options = [option for option in tempo_refl.module_options()
+                    if (numerics or _hex_numerics.mode()) == "strict" or option != "--fmad=false"]
+    rows.append({**recipe({"source": tempo_refl.module_source(TEMPO_RRFS_LEVELS),
+                           "options": refl_options,
+                           "route": "direct-nvrtc", "filename": "kern.cu", "cache_in_memory": True}),
+                 "physics_family": "tempo_rrfs_refl"})
+    rows.append({**recipe({"source": tempo_refl.module_source(TEMPO_RRFS_LEVELS, "v3.2.5"),
+                           "options": refl_options,
+                           "route": "direct-nvrtc", "filename": "kern.cu", "cache_in_memory": True}),
+                 "physics_family": "tempo_rrfs_refl_v325"})
+    # The same two modules as a default (correct mode) run compiles them: with the snow-moments correction
+    # (TP5, tempo_refl.REFL_CORRECTIONS).  THE BREAKAGE THIS ENDS: with only the two rows above, every default
+    # TEMPO forecast compiled its f000 reflectivity module on one core beside its set-up.
+    for version, family in (("v3.0.3", "tempo_rrfs_refl"), ("v3.2.5", "tempo_rrfs_refl_v325")):
+        rows.append({**recipe({"source": tempo_refl.module_source(TEMPO_RRFS_LEVELS, version,
+                                                                  tempo_refl.REFL_CORRECTIONS),
+                               "options": refl_options,
                                "route": "direct-nvrtc", "filename": "kern.cu", "cache_in_memory": True}),
-                     "physics_family": "tempo_rrfs_refl"})
+                     "physics_family": family})
     # The same NGW image contains initialization, column execution and writeback.
     # RRFS L60 otherwise compiled it for 599.7 s at first use on NVRTC 13.4.
     from woof.hex.mpasphys import ugwp_ngw_v842 as ngw
@@ -510,6 +591,19 @@ def physics_inventory(numerics=None):
                                ("tempo_rrfs_tail", tempo_phase.tail_source(maths, TEMPO_RRFS_LEVELS, inline))):
             rows.append({**recipe({"source": source,
                                    "options": list(_hex_numerics.options(tempo.COMPILE_OPTIONS, numerics="fast")),
+                                   "route": "direct-nvrtc", "filename": "kern.cu"}),
+                         "physics_family": family})
+        # The same two modules for the default TEMPO, v3.2.5 (tempo_phase_v325._modules).
+        from woof.hex.mpasphys.rrfs import tempo_phase_v325
+        # Each twice: as correct mode (the default) compiles it, with tempo_v325's fork corrections (TP4), and the
+        # uncorrected text a run that skips TP4 asks for.
+        fixed = tuple(tempo_v325.CORRECTIONS)
+        for family, source in (("tempo_rrfs_phase_v325", tempo_phase_v325.phase_source(maths, TEMPO_RRFS_LEVELS, inline)),
+                               ("tempo_rrfs_tail_v325", tempo_phase_v325.tail_source(maths, TEMPO_RRFS_LEVELS, inline)),
+                               ("tempo_rrfs_phase_v325", tempo_phase_v325.phase_source(maths, TEMPO_RRFS_LEVELS, inline, fixed)),
+                               ("tempo_rrfs_tail_v325", tempo_phase_v325.tail_source(maths, TEMPO_RRFS_LEVELS, inline, fixed))):
+            rows.append({**recipe({"source": source,
+                                   "options": list(_hex_numerics.options(tempo_v325.COMPILE_OPTIONS, numerics="fast")),
                                    "route": "direct-nvrtc", "filename": "kern.cu"}),
                          "physics_family": family})
     from woof.hex.mpasphys.rrfs import mp_nssl2m as nssl, nssl_math
@@ -637,9 +731,10 @@ def compile_entry(row, arch):
                     nvrtc.compileProgram(program, raw_options)
                     blob, mapping = nvrtc.getCUBIN(program), None
                     from .compile_contract import NvrtcObservation, _object_record
+                    flags = tuple(option for option in raw_options if not str(option).startswith("-I"))
                     raw_evidence = {
                         "status": "resolved", "method": "raw nvrtc.compileProgram with explicit options",
-                        "observations": [NvrtcObservation(row["source_sha256"], raw_options, 0,
+                        "observations": [NvrtcObservation(row["source_sha256"], flags, len(raw_options) - len(flags),
                                                            _object_record(blob)).as_dict()]}
                 except Exception as error:
                     raise RuntimeError(nvrtc.getProgramLog(program)) from error
@@ -716,7 +811,7 @@ def _prior_bytes(row):
     """Peak compiler memory assumed for a module before one of its images is measured.
 
     Most images take 0.5-1.5 GiB; a few physics units (MYNN, MYNN-EDMF) take tens of GiB.  THE
-    BREAKAGE THIS BALANCES (a test host, 2026-11-02 and 2026-11-06): a pool that started several of
+    BREAKAGE THIS BALANCES (verification host, 2026-11-02 and 2026-11-06): a pool that started several of
     the heavy units at once was OOM-killed, and a 48 GiB prior for every large source let one
     compile run at a time on a 24-core machine.  The prior is modest; the live room (running
     jobs' measured RSS), at most six unmeasured large units at once (WOOF_HEX_AOT_LARGE_AT_ONCE),
@@ -935,6 +1030,32 @@ def _compile_jobs(jobs, *, workers, identity, job_dir, reserve_bytes):
     return [results[i] for i in range(len(jobs))]
 
 
+def without_include_paths(row):
+    """A pack row whose compile evidence names no folder of the machine that built it.
+
+    THE BREAKAGE THIS PREVENTS (0.6.2's check): the raw-route rows recorded every ``-I`` option with the builder's
+    own folders in ``effective_compile`` (``-I/home/<builder>/.../site-packages/cupy/_core/include``), so the
+    published packs, and every run receipt that copies a row's evidence, named the build machine's home folder.
+    Evidence keeps the flags without the include folders and counts them, as the NVRTC capture does
+    (``compile_contract._observation``); rows reused from an earlier pack are rewritten the same way.
+    """
+    evidence = row.get("effective_compile")
+    observations = evidence.get("observations") if isinstance(evidence, dict) else None
+    if not isinstance(observations, list) or not any(
+            isinstance(o, dict) and any(str(f).startswith("-I") for f in o.get("effective_flags") or ())
+            for o in observations):
+        return row
+    cleaned = []
+    for observation in observations:
+        if isinstance(observation, dict) and isinstance(observation.get("effective_flags"), list):
+            flags = [f for f in observation["effective_flags"] if not str(f).startswith("-I")]
+            observation = {**observation, "effective_flags": flags,
+                           "include_path_count": int(observation.get("include_path_count") or 0)
+                           + len(observation["effective_flags"]) - len(flags)}
+        cleaned.append(observation)
+    return {**row, "effective_compile": {**evidence, "observations": cleaned}}
+
+
 def build(output, *, entries=None, architectures=ARCHITECTURES, base_pack=None, workers=None,
           prune=False, job_dir=None, reserve_bytes=8 << 30):
     """Build requested images, optionally extending a verified shared pack.
@@ -1007,7 +1128,7 @@ def build(output, *, entries=None, architectures=ARCHITECTURES, base_pack=None, 
     if nvrtc_build(banner) == "unavailable" or not build_id_accepted(nvrtc_build_id(banner)):
         raise ValueError("NVRTC build banner could not be measured for the wheel")
     compiled = [{**row, "nvrtc_banner": banner} for row in compiled]
-    write(output, identity, [*retained, *compiled])
+    write(output, identity, [without_include_paths(row) for row in (*retained, *compiled)])
     return {"modules": len(rows), "entries": len(retained) + len(compiled),
             "compiled": len(compiled), "reused": len(reused), "retained": len(retained),
             "architectures": list(architectures)}

@@ -5,6 +5,10 @@
 //! they need a GET and a byte ceiling and nothing else. The agent is the
 //! same one (same pure-Rust TLS, same timeouts) because two HTTP clients
 //! in one binary is two sets of timeout behavior to reason about.
+//!
+//! Every GET here goes through `rw_http`: bounded backoff with jitter on
+//! 429/502/503/504 honouring Retry-After, and a per-host gap shared across
+//! processes (the 2026-11-09 rw_asos 429 defect).
 
 use std::error::Error;
 use chrono::{DateTime, Utc};
@@ -33,9 +37,7 @@ pub fn get_bytes(
     url: &str,
     subject: &str,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut response = agent
-        .get(url)
-        .call()
+    let mut response = rw_http::get(agent, url)
         .map_err(|e| err(format!("{subject}: GET {url} failed: {e}")))?;
     let status = response.status().as_u16();
     if !(200..300).contains(&status) {
@@ -51,6 +53,26 @@ pub fn get_bytes(
         return Err(err(format!("{subject}: {url} answered with an empty body")));
     }
     Ok(bytes)
+}
+
+/// GET `url` as UTF-8 text through the URL-keyed body cache (`rule` says
+/// how long a cached body may answer). Returns the text and whether it was
+/// a cache hit (no request sent). Only bodies `accept` approves are cached.
+pub fn get_text_cached(
+    agent: &ureq::Agent,
+    url: &str,
+    subject: &str,
+    rule: rw_http::CacheRule,
+    accept: &dyn Fn(&[u8]) -> bool,
+) -> Result<(String, bool), Box<dyn Error>> {
+    let fetched = rw_http::get_bytes_cached(agent, url, MAX_RESPONSE_BYTES, rule, accept)
+        .map_err(|e| err(format!("{subject}: GET {url} failed: {e}")))?;
+    if fetched.bytes.is_empty() {
+        return Err(err(format!("{subject}: {url} answered with an empty body")));
+    }
+    let text = String::from_utf8(fetched.bytes)
+        .map_err(|e| err(format!("{subject}: {url} is not UTF-8: {e}")))?;
+    Ok((text, fetched.cache_hit))
 }
 
 /// GET `url` as UTF-8 text.
@@ -86,9 +108,7 @@ pub fn get_with_last_modified(
     client: &ureq::Agent,
     url: &str,
 ) -> Result<PublishedBytes, Box<dyn Error>> {
-    let mut response = client
-        .get(url)
-        .call()
+    let mut response = rw_http::get(client, url)
         .map_err(|e| err(format!("GET {url} failed: {e}")))?;
     let status = response.status().as_u16();
     if !(200..300).contains(&status) {

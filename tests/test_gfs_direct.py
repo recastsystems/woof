@@ -1895,7 +1895,7 @@ def test_a_scheme_the_wrf_files_cannot_carry_still_prepares_its_forecast(
     """`woof go` from GFS stopped in preparation for Kessler, Milbrandt-Yau
     and WDM6 with "unsupported direct-export microphysics: stock-WRF
     wrfinput export for mp_physics=1 is not available on this route",
-    although WOOF runs all three and the forecast reads only the prepared
+    although WOOF-ArWen runs all three and the forecast reads only the prepared
     cache.  The unchanged-WRF files are now refused by name in the proof
     and the preparation completes, as a domain tree's always has."""
 

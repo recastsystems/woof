@@ -22,6 +22,7 @@
 
 pub mod build;
 pub mod grid;
+pub mod gwdo_wps281;
 pub mod highres;
 pub mod hydrofabric;
 pub mod polar_halo;
@@ -29,6 +30,7 @@ pub mod scalar;
 pub mod sfire;
 pub mod soil;
 pub mod wrf_history;
+pub mod wetland;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;

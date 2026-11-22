@@ -18,7 +18,7 @@
       "card_sm": 70,
       "card_threads_per_sm": 1536,
       "card_name_contains": "5070 Ti",
-      "provenance": "2026-11-01 RTX 5070 Ti; gpuwm 2.9.11 with hex 0.4.12 candidate; fast numerics; public forecast entry point with separate allocation censuses",
+      "provenance": "2026-11-01 RTX 5070 Ti; gpuwm 2.9.11 with a hex 0.4.12 pre-release build; fast numerics; public forecast entry point with separate allocation censuses",
       "samples": [
         {
           "cells": 40962,
@@ -147,7 +147,7 @@
       "card_sm": 70,
       "card_threads_per_sm": 1536,
       "card_name_contains": "5070 Ti",
-      "provenance": "2026-11-01 RTX 5070 Ti; gpuwm 2.9.11 with hex 0.4.12 candidate; fast numerics; public forecast entry point with separate allocation censuses",
+      "provenance": "2026-11-01 RTX 5070 Ti; gpuwm 2.9.11 with a hex 0.4.12 pre-release build; fast numerics; public forecast entry point with separate allocation censuses",
       "samples": [
         {
           "cells": 40962,
@@ -327,7 +327,7 @@
       "card_sm": 70,
       "card_threads_per_sm": 1536,
       "card_name_contains": "5070 Ti",
-      "provenance": "2026-11-01 RTX 5070 Ti; gpuwm 2.9.11 with hex 0.4.12 candidate; strict numerics; public forecast entry point with separate allocation censuses",
+      "provenance": "2026-11-01 RTX 5070 Ti; gpuwm 2.9.11 with a hex 0.4.12 pre-release build; strict numerics; public forecast entry point with separate allocation censuses",
       "samples": [
         {
           "cells": 40962,
@@ -360,7 +360,7 @@
       "card_sm": 170,
       "card_threads_per_sm": 1536,
       "card_name_contains": "5090",
-      "provenance": "RTX 5090, fast numerics, compact allocation: 40,962 cells 2026-11-02 (hex 0.5.0 fold, 24 h); 149,322-cell 96 -> 3 km zoom globe 2026-11-04 (hex 0.4.12 candidate, GFS and IFS starts); 163,842 cells 2026-11-01 (low-VRAM candidate, three 24 h pairs)",
+      "provenance": "RTX 5090, fast numerics, compact allocation: 40,962 cells 2026-11-02 (hex 0.5.0 fold, 24 h); 149,322-cell 96 -> 3 km zoom globe 2026-11-04 (a hex 0.4.12 pre-release build, GFS and IFS starts); 163,842 cells 2026-11-01 (low-VRAM pre-release build, three 24 h pairs)",
       "samples": [
         {
           "cells": 40962,

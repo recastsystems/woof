@@ -70,3 +70,41 @@ changelog. The WOOF-physics route still runs rank threads.
 The forecast door forwards `--checkpoint-hours 3` and `--restart-from CHECKPOINT` to the single-card, same-host rank and one-card full-step LTS executors. A same-host checkpoint is written at a drained history boundary and includes every rank's local state, halos, saved diagnostics, physics restart state and pending dynamics tendencies. Resume with the original `--start-time` and final `--hours`, the same grid, init, static, partition, backend and configuration. Its identity rejects a different constructor or physics selection before constructing ranks.
 
 `--jedi-background` and `--da-analysis` reach the executor too. The same-host rank path still refuses them: it does not assemble rank-local physics fields and edge winds into the global JEDI contract or scatter a recoupled analysis to rank halos. Multi-card full-step LTS also refuses cycling because class-to-rank checkpoint transfer does not persist backend accumulators or pending tendencies. One-card LTS supports cycling. These are remaining implementation gaps.
+
+## Ranks on several hosts
+
+`woof hex forecast ... --hosts hostA:0,hostB:0` runs one rank process per
+listed card on the MPAS-physics route, across machines (cards `a-b`, or joined
+with `+`). The command runs on the first host, which holds rank 0 and writes
+every output file. The door starts every other host with `ssh`
+(`WOOF_HEX_MULTIHOST_SSH` replaces the ssh command, for example to start it
+inside a card queue), so each host needs the same installation, inputs and
+folders at the same paths, and the hosts must reach each other over the network.
+Every host needs NCCL, which the gpu extras do not install:
+
+```sh
+pip install nvidia-nccl-cu12
+```
+
+`NCCL_SOCKET_IFNAME` names the network interface when a host has more than one.
+A launcher that starts every host itself sets `WOOF_HEX_MULTIHOST_EXTERNAL=1` on
+the first and `WOOF_HEX_MULTIHOST_HOST_INDEX=N` on each other one, with the same
+`MASTER_ADDR` (the first host's address), `MASTER_PORT` and
+`WOOF_HEX_MULTIHOST_TOKEN` on all. `local0:0,local1:0` runs two virtual hosts on
+one machine; their halos still take NCCL's network path.
+
+`--checkpoint-hours` seals rank shards on every host: rank 0's under `--out`,
+each other host's under its own `--out/.multihost/host<N>/` when the door
+started it (under its own `--out` when a launcher did). Resume with the same
+`--hosts` and `--restart-from <out>/checkpoint.fNNN.pkl`; each host restores its
+ranks from its own disk.
+
+Measured on 0.6.2 (120 km globe, GFS 2026-11-19 12Z, 6 h with a 3 h seal, one
+rank on an RTX 4090 host and one on an RTX 5070 Ti host on a home network): in
+strict numerics the two hosts wrote the words of two ranks on one RTX PRO 6000
+(0 of 706,509,363 history and diagnostics words different), and the resume from
+each host's own seal those of the run that never stopped (0 of 302,789,727). In
+fast numerics, the default, the door's ssh start and a launcher's start wrote
+the same words and the resume was exact, but fast words depend on the card
+family: on these two cards they differ from the RTX PRO 6000's from the first
+boundary-layer call on. No speed is claimed for several hosts.

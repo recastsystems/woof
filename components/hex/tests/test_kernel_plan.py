@@ -812,3 +812,24 @@ def test_the_catalog_starts_the_longest_sources_first():
     rows = [dict(id="small", arguments=dict(source="x" * 10)), dict(id="noah", arguments=dict(source="x" * 9000)),
             dict(id="timed", arguments=dict(source="x"), seconds=3.0)]
     assert [row["id"] for row in sorted(rows, key=kernel_plan._compile_priority)] == ["timed", "noah", "small"]
+
+
+def test_compile_pool_default_is_capped_by_available_memory(monkeypatch):
+    """32 spawn compile workers peaked at 13-15 GB host RSS for one cold
+    compile (jacobbieker/woof#239): the default holds COMPILE_WORKER_BYTES
+    per worker within COMPILE_MEMORY_SHARE of the available memory; the
+    variable overrides the memory cap."""
+    from woof.ingest import preparation_workers
+    monkeypatch.delenv(kernel_plan.WORKERS_ENVIRONMENT, raising=False)
+    monkeypatch.setattr(kernel_plan.os, "sched_getaffinity", lambda pid: set(range(32)), raising=False)
+    monkeypatch.setattr(preparation_workers, "host_available_bytes", lambda *a, **k: 16 << 30)
+    assert kernel_plan._workers() == 8              # 16 GiB * 0.5 / 1 GiB
+    monkeypatch.setattr(preparation_workers, "host_available_bytes", lambda *a, **k: 1 << 29)
+    assert kernel_plan._workers() == 1              # never below one
+    monkeypatch.setattr(preparation_workers, "host_available_bytes", lambda *a, **k: 1 << 40)
+    assert kernel_plan._workers() == 32             # the cores bind first
+    monkeypatch.setattr(preparation_workers, "host_available_bytes", lambda *a, **k: None)
+    assert kernel_plan._workers() == 32             # unknown memory: cores only
+    monkeypatch.setattr(preparation_workers, "host_available_bytes", lambda *a, **k: 4 << 30)
+    monkeypatch.setenv(kernel_plan.WORKERS_ENVIRONMENT, "12")
+    assert kernel_plan._workers() == 12

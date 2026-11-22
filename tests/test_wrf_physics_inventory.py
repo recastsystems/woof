@@ -120,8 +120,8 @@ def test_unknown_package_fails_closed_with_actionable_message():
         pytest.raises(ValueError, stock_wrf_physics_inventory, 37).value)
     assert "28" in message, (
         "the refusal must list mp_physics=28 among the evidenced schemes")
-    assert "says NOTHING about running the scheme in WOOF" in message, (
-        "the refusal is export-only and must say so: WOOF's forecast route "
+    assert "says NOTHING about running the scheme in WOOF-ArWen" in message, (
+        "the refusal is export-only and must say so: WOOF-ArWen's forecast route "
         "runs every scheme the physics registry publishes as implemented, "
         "and this message used to read as though it did not (audit R-014)")
 
@@ -351,7 +351,9 @@ def test_mp28_is_reachable_through_every_inventory_front_door():
     # 50 joined this tuple with the P3 front-door landing on top of the
     # mp=50 CUDA merge `b47a400a5`; the pin is extended rather than relaxed,
     # and the P3 row has its own exact-content gates below.
-    assert supported_stock_wrf_mp_physics() == (2, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15, 18, 24, 26, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 97, 106)
+    # 1 (Kessler, kesslerscheme moist:qv,qc,qr) joined for the WRF 4.8.0 capture
+    # inputs (A071 runs Kessler); 27/29/95/96 had joined without this pin moving.
+    assert supported_stock_wrf_mp_physics() == (1, 2, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15, 18, 24, 26, 27, 28, 29, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106)
 
     report = stock_wrf_physics_inventory(28).as_report()
     assert report["schema"] == "rw-wps.stock-wrf-physics-inventory.v1"

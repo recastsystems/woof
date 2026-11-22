@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import pickle
+import sys
 from copy import copy, deepcopy
 from pathlib import Path
 import time
@@ -80,7 +81,7 @@ class PoolWords:
     def written_words(self):
         """Only the words put_field wrote, never a field get_field merely read from the member's own inputs.
 
-        THE BREAKAGE THIS PREVENTS (box-aws2x 2026-10-24, MPAS-route storm-following, member statics from a
+        THE BREAKAGE THIS PREVENTS (a two-card cloud machine, 2026-10-24, MPAS-route storm-following, member statics from a
         WPS_GEOG with MODIS lakes): restore_physics reads the target's land-use classes from the hydrated
         static, so ``data`` held its raw ivgtyp with class 21. Handed over as carrier words, it overwrote the
         ranks'/classes' lake fold (runtime_v842.fold_lake_class) and every moved segment died at its first
@@ -173,8 +174,22 @@ def weights_for_waves(route, weights):
     return weights
 
 
-def prepare_moving(route, inputs, config, layout, payload, arguments):
+def prepare_moving(route, inputs, config, layout, payload, arguments, *, partitions=None):
+    """The global restore before the ranks start.  ``partitions``: the ranks' partitions (same-host ranks), so a
+    direct carrier (checkpoint_shards_v842, GPUWM_HEX_DIRECT_SHARD_RESTORE) can hand each rank its own shard."""
     mesh, grid, profiles, state, reference, saved, names = inputs
+    direct = None if route.carrier is None else route.carrier.get('direct_shards')
+    if direct is not None:
+        from . import checkpoint_shards_v842 as shards
+        why = shards.direct_matches(direct, layout, names, partitions)
+        if why is None:
+            return _prepare_direct(route, inputs, config, layout, direct)
+        if direct['manifest'].get('mirror'):
+            raise ValueError(shards._joined_refusal(direct['path'], direct['directory'], direct['manifest'], why))
+        began = time.perf_counter()
+        route.carrier = shards.assemble_direct(direct)
+        print(f'woof hex: GPUWM_HEX_DIRECT_SHARD_RESTORE: assembled on rank 0 instead ({why}); '
+              f'{time.perf_counter() - began:.1f} s', file=sys.stderr, flush=True)
     bind_inputs = getattr(route, 'bind_inputs', None)
     if bind_inputs is not None:
         bind_inputs(inputs, config)
@@ -244,6 +259,28 @@ def prepare_moving(route, inputs, config, layout, payload, arguments):
         ocean_pwp=None if getattr(session, 'ocean_pwp', None) is None else session.ocean_pwp.restart_state())
 
 
+def _prepare_direct(route, inputs, config, layout, direct):
+    """prepare_moving for a direct carrier on the partitions that sealed it: nothing global is restored here.  Each
+    rank reads its own shard (DistributedMoving._direct_piece) for its atmosphere, pools, window, surface service,
+    ocean and continuation; the parent keeps only the clock and the alarms (rank_carrier)."""
+    bind_inputs = getattr(route, 'bind_inputs', None)
+    if bind_inputs is not None:
+        bind_inputs(inputs, config)
+    route.begin(None)
+    control = (None if route.control is None else
+        dict(directory=route.control.directory, seal_every_seconds=route.control.seal_every_seconds))
+    worker_route = copy(route)
+    worker_route.control = None
+    worker_route.carrier = rank_carrier(route.carrier)
+    shards = dict(directory=direct['directory'], ranks=direct['ranks'], shards=direct['shards'])
+    print(f"woof hex: GPUWM_HEX_DIRECT_SHARD_RESTORE: each of {direct['ranks']} ranks restores its own shard "
+          f"from {direct['directory']}; no assembly on rank 0 (=0 assembles as before)", file=sys.stderr, flush=True)
+    return inputs, dict(route=worker_route, control=control, layout=layout, mesh=inputs[0],
+        vertical=inputs[1].vertical_grid, wave_state=RankZeroOnly(None), restored={},
+        restore_receipt=dict(direct_shard_restore=dict(ranks=direct['ranks'], directory=direct['directory'])),
+        accumulators=None, window=None, surface_service=None, ocean_pwp=None, direct_shards=shards)
+
+
 def project_restored_words(moving, layout, partitions, *, workers=None, gpu=False):
     """The restored carrier words of every partition, in memory, every field on its own worker.
 
@@ -293,6 +330,8 @@ def project_restored_words(moving, layout, partitions, *, workers=None, gpu=Fals
 
 
 def project_restored_pools(moving, layout, partition, local_layout, payload):
+    if moving.get('direct_shards') is not None:
+        return   # the rank reads its own shard (GPUWM_HEX_DIRECT_SHARD_RESTORE)
     restored = project_restored_words(moving, layout, [partition])[0]
     with (Path(payload) / 'moving-restore.pickle').open('wb') as handle:
         pickle.dump(restored, handle, protocol=5)
@@ -401,7 +440,7 @@ def gather_pool_words(comm, layout, partitions, wanted, local_field, *, maps=Non
     THE BREAKAGE THIS PREVENTS: the frame and the carrier export gathered field by field and level by level (two
     barriers each) and rebuilt every partition's sorted id maps per call, about 11 s per frame on the
     storm-following 3 km region (23 s on a free-threaded host), three times a moving segment on the MPAS route
-    against nothing on the WOOF route (MPAS-ROUTE-SPEED-2026-10-24).  The words written are the same.
+    against nothing on the WOOF-ArWen route (MPAS-ROUTE-SPEED-2026-10-24).  The words written are the same.
     """
     keys = pool_keys(layout, wanted)
     gathered = comm.gather([local_field(row, level) for row, level in keys], root=0)
@@ -554,16 +593,87 @@ class DistributedMoving:
     def begin(self, start):
         self.route.begin(start)
 
+    def _direct_piece(self):
+        """This rank's own sealed words (GPUWM_HEX_DIRECT_SHARD_RESTORE), read once against the manifest's hash."""
+        piece = getattr(self, '_piece', None)
+        if piece is None:
+            direct = self.prepared.get('direct_shards')
+            if direct is None:
+                return None
+            from . import checkpoint_shards_v842 as shards
+            rank = int(self.comm.Get_rank())
+            began = time.perf_counter()
+            piece = self._piece = shards.read_shard(direct['directory'], direct['shards'][rank])
+            self._piece_seconds = time.perf_counter() - began
+        return piece
+
     def resume_dycore(self, **values):
-        # Global remapping ran once before rank projection and CUDA upload.
-        return values['state'], values['saved'], None
+        piece = self._direct_piece()
+        if piece is None:
+            # Global remapping ran once before rank projection and CUDA upload.
+            return values['state'], values['saved'], None
+        # The rank's own atmosphere as it sealed it.  A padded solve extent (a limited-area dycore's garbage element)
+        # keeps this run's own value past the sealed words; no solved column reads it.
+        from ..driver import DrySavedDiagnostics
+        from ..state import PrognosticState
+
+        def words(sealed, current):
+            if sealed.shape == current.shape:
+                return np.ascontiguousarray(sealed, dtype=current.dtype)
+            if sealed.shape[:-1] != current.shape[:-1]:
+                raise ValueError(f'direct shard restore: rank {self.comm.Get_rank()} sealed {sealed.shape}, '
+                                 f'this run holds {current.shape}')
+            out = np.array(current, copy=True)
+            n = min(current.shape[-1], sealed.shape[-1])
+            out[..., :n] = sealed[..., :n]
+            return np.ascontiguousarray(out)
+        state, saved = values['state'], values['saved']
+        state = PrognosticState(*(words(piece['state'][name], getattr(state, name)) for name in mv.STATE_FIELDS),
+                                time_seconds=float(self.offset_seconds))
+        saved = DrySavedDiagnostics(**{name: words(piece['saved'][name], getattr(saved, name))
+                                       for name in mv.SAVED_FIELDS})
+        return state, saved, None
 
     def restore_physics(self, session, layout, weights, mesh):
+        piece = self._direct_piece()
+        if piece is not None:
+            return self._restore_direct(session, layout, piece)
         with (session.hydration.payload / 'moving-restore.pickle').open('rb') as handle:
             restored = pickle.load(handle)
         apply_restored(session, restored)
         self._accumulators = restored.get('accumulators')
         return self.prepared['restore_receipt']
+
+    def _restore_direct(self, session, layout, piece):
+        """The rank's own sealed pools, window, surface service and ocean into its session, and its continuation (scheme
+        flags, start hour, IAU window; the accumulators on its owned cells) onto its route's carrier."""
+        rank = int(self.comm.Get_rank())
+        carried = {(row['pool'], row['name']) for row in self.route.carried_rows(layout)}
+        pool_name = {(row['pool'], row['name']): row['pool_name'] for row in layout.fields}
+        pools = {}
+        for (pool, name, level), value in zip(piece['keys'], piece['pools']):
+            if (pool, name) in carried and (pool, pool_name[pool, name]) in session.native._fields:
+                pools[pool, pool_name[pool, name], level] = value
+        owned = int(self.partitions[rank].n_owned_cells)
+        # The window and the accumulators on the owned cells, as project_restored_words hands them to a rank.
+        window = piece.get('window')
+        window = None if window is None else {key: np.ascontiguousarray(np.asarray(value)[..., :owned])
+                                              for key, value in window.items()}
+        apply_restored(session, dict(pools=pools, window=window, service=piece.get('service'),
+                                     ocean=piece.get('ocean')))
+        continuation = piece.get('continuation')
+        self._accumulators = None
+        if continuation is not None:
+            kept = {key: value for key, value in continuation.items() if key != 'output_accumulators'}
+            physics = dict(self.route.carrier.get('physics') or {}, continuation=kept)
+            self.route.carrier = dict(self.route.carrier, physics=physics)
+            sums = continuation.get('output_accumulators')
+            if sums:
+                self._accumulators = {name: np.ascontiguousarray(np.asarray(value)[..., :owned])
+                                      for name, value in sums.items()}
+        seconds = getattr(self, '_piece_seconds', None)
+        self._piece = None
+        return dict(self.prepared['restore_receipt'], rank=rank, pools=len(pools), shard_read_seconds=seconds)
 
     # The rest of the one-card resume, which runtime_v842 calls after the physics init, on this rank's session.
     # THE BREAKAGE THIS FIXES: this class had none of them, so runtime_v842's restore_alarm_phase call failed every
@@ -604,6 +714,11 @@ class DistributedMoving:
             for name, value in owned.items():
                 buffer = diagnostics.buffers.get(('diag', name))
                 if buffer is None:
+                    # A word a diagnostic carries itself (woof.hex.hailcast's 'hailcast:*': the updraft count and
+                    # mask, the hour's maxima), on this rank's owned cells as its resume takes them.  THE BREAKAGE
+                    # THIS FIXES (0.6.2): they were dropped here, so a resumed rank run started HAILCAST's
+                    # count at zero (3 km Iowa storm box, two ranks: 1,246 HAILCAST words off the straight run).
+                    local[name] = np.asarray(value)
                     continue
                 words = np.array(diagnostics.cp.asnumpy(buffer), copy=True)
                 words[..., :count] = value
@@ -674,8 +789,14 @@ class DistributedMoving:
         rank, size = self.comm.Get_rank(), self.comm.Get_size()
         writer = getattr(self, '_shards', None)
         if writer is None:
-            writer = self._shards = shards.ShardWriter(rank, size,
-                                                       aborted=lambda: getattr(self.comm, 'aborted', None))
+            writer = self._shards = shards.ShardWriter(
+                rank, size,
+                aborted=lambda: getattr(self.comm, 'aborted', None),
+                multihost_connect=getattr(self.execution, 'multihost_connect', None),
+                rendezvous=getattr(self.execution, 'multihost_rendezvous', None),
+                mirror_ranks=getattr(self.execution, 'multihost_mirror_ranks', None),
+                mirror=bool(getattr(self.execution, 'multihost_mirror', False)),
+            )
         writer.wait()
         route, layout = self.route, self.prepared['layout']
         token = self.comm.bcast(os.urandom(16).hex() if rank == 0 else None, root=0)

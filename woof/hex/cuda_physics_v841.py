@@ -106,13 +106,13 @@ _AUTHORITY_DOCUMENT = {
         "execution_provenance",
     ],
     "execution_provenance": (
-        "immutable exact pinned WOOF aggregate execution identity, with optional "
+        "immutable exact pinned WOOF-ArWen aggregate execution identity, with optional "
         "external YSU-GWDO execution/composition identity and four-byte validation"
     ),
     "post_rk_wsm6": [],
     "wsm6_sr_roundoff": {
         "source": (
-            "pinned WOOF woof/core/physics.py:_wsm6_sr_roundoff_limit and "
+            "pinned WOOF-ArWen woof/core/physics.py:_wsm6_sr_roundoff_limit and "
             "woof/core/kernels/wsm6.cu"
         ),
         "meaning": (
@@ -172,7 +172,7 @@ CUDA_PHYSICS_V841_CONTRACT_SHA256 = sha256(
 #: (the assembly's reword_identity.py verify proves it key for key).  As
 #: 1.0.0 froze it: 332899f6.
 _FROZEN_WSM6_PHYSICS_CONTRACT_SHA256 = (
-    "3266241aea0d2481093bf7f1ed7617ca83301937dc89fa2229a6dcf30de11b69"
+    "63bee3eb7619876e423005401a4389f23563776dd94067c23667ece61e6567d5"
 )
 if CUDA_PHYSICS_V841_CONTRACT_SHA256 != _FROZEN_WSM6_PHYSICS_CONTRACT_SHA256:
     raise AssertionError(

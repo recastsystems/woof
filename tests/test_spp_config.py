@@ -25,7 +25,8 @@ def test_spp_flags_have_integer_boolean_contract(name, value):
 
 
 @pytest.mark.parametrize("name,selectors", [
-    ("spp_conv", {"cu_physics": 3}),
+    # GF SPP is GFDRV's; WRF v4.8.0's GFL call carries no pattern.
+    ("spp_conv", {"cu_physics": 3, "cu_gf_version": "wrf_461"}),
     ("spp_pbl", {"bl_pbl_physics": 5, "sf_sfclay_physics": 5}),
     ("spp_lsm", {"sf_surface_physics": 3}),
 ])

@@ -555,7 +555,7 @@ def test_the_product_catalog_is_listable_without_a_wrfout(capsys, monkeypatch):
     args = argparse.Namespace(
         wrfout=[], list_products=True, pair=None, engine="matplotlib",
         products="all", timeidx="all", out=Path("out"), dpi=150,
-        size="1200x900", heavy=False, source_label="WOOF", explain=False)
+        size="1200x900", heavy=False, source_label="WOOF-ArWen", explain=False)
     assert render.render_main(args) == 0
     out = capsys.readouterr().out
     assert "product catalog" in out

@@ -25,6 +25,8 @@ import re
 
 import pytest
 
+import site_support
+
 from woof.hex import engines
 from woof.hex.engines import GEOMETRY, EngineRefusal, locate, resolve
 
@@ -58,7 +60,7 @@ def _renderer_row(directory, binary, **extra):
 
 @pytest.fixture(scope="module")
 def hexsetup():
-    import setuptools
+    setuptools = site_support.setuptools_or_skip("loading setup.py's bridge bundling")
 
     original = setuptools.setup
     setuptools.setup = lambda *args, **kwargs: None
@@ -150,6 +152,66 @@ def test_without_a_pinned_directory_or_a_carrying_engine_nothing_is_bundled_and_
     root = _pinned_root(tmp_path, {"rw_mpas_geometry": b"g", "rw_mpas_stream": b"s", "rw_mpas_static": b"t"})
     monkeypatch.delenv("WOOF_HEX_ENGINE_BRIDGES", raising=False)
     monkeypatch.setattr(hexsetup, "engine_source", lambda: None)
+    assert hexsetup.engine_bridges(root) == []
+    assert "NOT BUNDLED" in capsys.readouterr().err
+
+
+def _released_root(tmp_path: Path, files: dict[str, bytes]) -> Path:
+    root = _pinned_root(tmp_path, files)
+    pins_path = root / "src/hexcore/data/engine-bridges.json"
+    pins = json.loads(pins_path.read_text())
+    pins["release_assets"] = {"repository": "example/hex", "tag": "engine-bridges-test"}
+    pins_path.write_text(json.dumps(pins))
+    return root
+
+
+def _serve(hexsetup, monkeypatch, files: dict[str, bytes], asked: list[str]):
+    import io
+    import urllib.request
+
+    def opening(url, timeout=None):
+        asked.append(url)
+        return io.BytesIO(files[url.rsplit("/", 1)[1]])
+    monkeypatch.setattr(urllib.request, "urlopen", opening)
+    monkeypatch.setattr(hexsetup.sys, "platform", "linux")
+    monkeypatch.setattr(hexsetup.platform, "machine", lambda: "x86_64")
+    monkeypatch.delenv("WOOF_HEX_ENGINE_BRIDGES", raising=False)
+    monkeypatch.setattr(hexsetup, "engine_source", lambda: None)
+
+
+def test_a_source_build_with_no_bridges_named_fetches_the_pinned_release_bytes(hexsetup, tmp_path, monkeypatch):
+    # hex 0.6.0 candidate: pip install of the source on a box bundled none of the nine bridges, so a door --init
+    # run could not make its forecast from that wheel alone. The build now fetches them as publish.yml does.
+    files = {"rw_mpas_geometry": b"\x7fELF geometry", "rw_igra2": b"\x7fELF igra2"}
+    root = _released_root(tmp_path, files)
+    asked = []
+    _serve(hexsetup, monkeypatch, files, asked)
+    bundled = hexsetup.engine_bridges(root)
+    assert sorted(path.name for path in bundled) == sorted(files)
+    assert all(path.read_bytes() == files[path.name] for path in bundled)
+    assert asked == [f"https://github.com/example/hex/releases/download/engine-bridges-test/{name}"
+                     for name in sorted(files)]
+    assert {path for path in hexsetup.bundled_engine_bridges(root) if path.is_file()} == set(bundled)
+
+
+def test_a_fetched_bridge_whose_bytes_are_not_pinned_stops_the_build(hexsetup, tmp_path, monkeypatch):
+    files = {"rw_mpas_geometry": b"\x7fELF geometry"}
+    root = _released_root(tmp_path, files)
+    _serve(hexsetup, monkeypatch, {"rw_mpas_geometry": b"\x7fELF another build"}, [])
+    with pytest.raises(SystemExit, match="is not the pinned"):
+        hexsetup.engine_bridges(root)
+
+
+def test_with_no_network_a_source_build_says_not_bundled(hexsetup, tmp_path, monkeypatch, capsys):
+    import urllib.error
+    import urllib.request
+
+    root = _released_root(tmp_path, {"rw_mpas_geometry": b"g"})
+    _serve(hexsetup, monkeypatch, {}, [])
+
+    def offline(url, timeout=None):
+        raise urllib.error.URLError("offline")
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
     assert hexsetup.engine_bridges(root) == []
     assert "NOT BUNDLED" in capsys.readouterr().err
 
@@ -340,6 +402,9 @@ def test_source_prebuilts_match_this_tree_so_publish_can_build():
     converter = files["rw_mpas_convert"]["provenance"]
     assert converter["patch_sha256"] == hashlib.sha256((ROOT / "engine-patches/chemistry-products.patch").read_bytes()).hexdigest()
     assert converter["recipe_sha256"] == hashlib.sha256((ROOT / "tools/build_chemistry_converter.sh").read_bytes()).hexdigest()
+    # 0.6.2: the converter `woof hex render` runs first maps the HAILCAST fields the forecast writes by default.
+    assert converter["hailcast_patch_sha256"] == hashlib.sha256(
+        (ROOT / "engine-patches/rw-mpas-hailcast-field.patch").read_bytes()).hexdigest()
     sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
     for name, row in files.items():
         assert re.fullmatch(r"[0-9a-f]{64}", row["sha256"]) and row["provenance"]["sha256"] == row["sha256"]
@@ -358,3 +423,26 @@ def test_source_prebuilts_match_this_tree_so_publish_can_build():
     crate = ROOT / "tools/rustwx/crates/rw-sfc-series"
     assert files["rw_sfc_series"]["provenance"]["sources"] == {
         str(p.relative_to(crate)).replace(os.sep, "/"): sha(p) for p in sorted(crate.rglob("*")) if p.is_file()}
+
+
+def test_the_pinned_converter_draws_a_global_start_with_a_float32_pole_cell():
+    """The converter every release pins must carry engine commit f717cd5e2c.
+
+    THE BREAKAGE THIS PREVENTS (2026-11-11): every hex release up to 0.5.0 pinned rw_mpas_convert
+    c38b6f95..., built from an engine without that commit, and ``woof hex render`` refused every global
+    x1.40962 start: "mesh cell 2 sits at latitude 90.00000250447816, outside [-90, 90]" (latCell is float32 and
+    its nearest value to pi/2 lies 2.5e-06 degree past the pole), then "--window mesh" refused a uniform globe,
+    then init.nc had no time stamp. f717cd5e2c clamps a latitude within 1e-4 degree of a pole, draws a uniform
+    globe at its own spacing and takes an unstamped file's time from its first xtime. Re-pinning the converter
+    from an engine without it puts the refusal back in every global render.
+    """
+    row = json.loads(PINS.read_text(encoding="utf-8"))["source_prebuilts"]["files"]["rw_mpas_convert"]
+    fix = "f717cd5e2c9399e75e2233593547f58729f5dad9"
+    assert row["provenance"]["engine_fixes"]["global-start-float32-pole"] == fix
+    assert row["sha256"] != "c38b6f950e7fc69793dee6c368737c768c4914af36590060c135d5f5b2d9e998"
+    assert row["gpuwm_source_rev"] == row["built_source_rev"] == fix
+    # (WOOF 1.1.7) the engine source this table records is the gpuwm commit it was built from (the data keeps
+    # its bytes in WOOF's rename; the rename had moved only this literal)
+    assert row["provenance"]["engine_source"] == f"gpuwm {fix}"
+    assert row["provenance"]["sha256"] == row["sha256"] and row["provenance"]["bytes"] == row["bytes"]
+    assert re.fullmatch(r"[0-9a-f]{64}", row["cargo_lock_sha256"])

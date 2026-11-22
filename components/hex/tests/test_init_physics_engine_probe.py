@@ -125,3 +125,31 @@ def test_a_suite_aware_engine_that_fails_reports_its_own_error(monkeypatch, tmp_
     monkeypatch.setattr(init_physics.subprocess, "run", failing)
     with pytest.raises(subprocess.CalledProcessError):
         init_physics.aerosol_status(tmp_path / "rw_mpas_init", _init(tmp_path / "init.nc"))
+
+
+def test_registry_only_selectors_have_no_table_row_and_need_no_legacy_metadata(monkeypatch, tmp_path):
+    """THE BREAKAGE (hex 0.6.1; fork jacobbieker/woof PR 379): a generic-seam selector named by its
+    registry option id has no suite-table row, and the door stopped with a bare KeyError on it
+    (``--physics-suite arwen_mpas_column --physics mp_physics=2``) before the forecast opened."""
+    from woof.hex import init_physics
+    from woof.hex.physics_suites import load_table, resolve_physics
+
+    # (WOOF 1.1.7 round 4) resolve_physics plans mp_physics=2 on the engine's column seam, which imports CuPy;
+    # test_physics_suites.py skips the same way on a CPU runner
+    pytest.importorskip("woof.core.mpas_column_suite")
+    options = load_table()["options"]
+    assert "lin-mp2" not in options["config_microp_scheme"]
+    assert "ssib" not in options["config_lsm_scheme"]
+    selectors = resolve_physics("arwen_mpas_column", {"mp_physics": "2"}).selectors
+    assert selectors["config_microp_scheme"] == "lin-mp2"
+    init = _init(tmp_path / "init.nc", scheme="lin-mp2")
+    calls = _engine(monkeypatch, tmp_path, NEW_USAGE)
+    monkeypatch.setattr(init_physics, "_synthetic_source",
+                        lambda path: pytest.fail("Lin asked for climatology"))
+    # A registry-only microphysics under the frozen Noah-MP land column.
+    assert init_physics.prepare_forecast_init(
+        init, tmp_path / "out.nc", _physics("sf_noahmp", "lin-mp2"), None) == (init, None)
+    assert [c[1] for c in calls] == ["--aerosol-status"]
+    # A registry-only land surface carries no legacy soil column to replay.
+    assert init_physics.prepare_forecast_init(
+        init, tmp_path / "out2.nc", _physics("ssib"), None) == (init, None)

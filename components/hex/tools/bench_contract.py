@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import importlib
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import socket
 import sys
@@ -39,7 +40,7 @@ def main():
     original = driver.run_deck
     os.environ["WOOF_RUN_ID"] = args.label
     def emit(stage,phase,attrs):
-        visible = (os.environ.get("WOOF_CARD") or os.environ.get("GPU_MUTEX_CARDS", "").split(",")[0]
+        visible = (os.environ.get("WOOF_CARD") or card_queue.get(card_queue.CARDS).split(",")[0]
                    or os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")[0])
         record = {"v":1,"t_utc":datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00","Z"),
             "t_mono":time.monotonic(),"host":socket.gethostname(),"rental_id":os.environ.get("WOOF_RENTAL_ID"),

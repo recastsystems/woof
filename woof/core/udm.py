@@ -1,10 +1,20 @@
-"""WRF 4.7.1 UDM (MP27), with its retained initialized table words."""
+"""WRF UDM (MP27), with its retained initialized table words.
+
+The kernel is generated from WRF 4.7.1; ``udm_version = "wrf_480"`` (the
+default) composes WRF 4.8.0's two statement changes into it
+(woof.mp_generations), and ``"wrf_471"`` compiles the generated source as is.
+"""
 from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
 
 import numpy as np
+
+from woof.core.device_cache import cuda_cache
+
+#: WRF source generation (woof.mp_generations); RunConfig.udm_version.
+DEFAULT_GENERATION = "wrf_480"
 
 DATA = Path(__file__).resolve().parents[1] / "data/udm"
 VOLUME = "th q qc qr qi qs qg qh nn nc nr den pii p delz re_cloud re_ice re_snow".split()
@@ -39,10 +49,39 @@ def tables(device):
     return owner, pointers
 
 
-def launch_driver(fields, scalars, *, first=False, radar=False):
+def module_source(capacity: int, version: str = DEFAULT_GENERATION) -> str:
+    """The exact source :func:`module` hands to NVRTC for one tier."""
+    from woof.core import kernels
+    from woof.mp_generations import udm_header
+    if version == "wrf_471" and capacity == 64:
+        return kernels.module_source("udm")
+    return udm_header(kernels.module_source_int_defines(
+        "udm", (("UDM_COLUMN_KMAX", capacity),)), version)
+
+
+@cuda_cache(maxsize=None)
+def _module_480(capacity: int, version: str):
+    from woof.core.kernels import compile_noftz_module
+    return compile_noftz_module(
+        "udm", module_source(capacity, version),
+        f"woof.core.kernels:udm[UDM_COLUMN_KMAX={capacity},UDM_WRF=480]")
+
+
+def module(capacity: int, version: str = DEFAULT_GENERATION):
+    """The compiled tier; ``wrf_471`` is the loader's own module, unchanged."""
+    from woof.core.kernels import load_module, load_module_int_defines
+    from woof.mp_generations import generation
+    generation("udm_version", version)
+    if version == "wrf_471":
+        return (load_module("udm") if capacity == 64 else
+                load_module_int_defines("udm", (("UDM_COLUMN_KMAX", capacity),)))
+    return _module_480(capacity, version)
+
+
+def launch_driver(fields, scalars, *, first=False, radar=False,
+                  version: str = DEFAULT_GENERATION):
     """The complete retained native boundary; C-order float32 (k,j,i)."""
     import cupy as cp
-    from woof.core.kernels import load_module, load_module_int_defines
     from woof.core.wsm_family import check_volume, check_surface
     shape = fields["q"].shape
     nz, ny, nx = shape
@@ -53,12 +92,11 @@ def launch_driver(fields, scalars, *, first=False, radar=False):
     if len(scalars) != 19:
         raise ValueError("UDM driver requires its 19 native scalar arguments")
     capacity = next(n for n in (64, 128, 256) if nz <= n)
-    module = (load_module("udm") if capacity == 64 else
-              load_module_int_defines("udm", (("UDM_COLUMN_KMAX", capacity),)))
+    kernels = module(capacity, version)
     owner, tp = tables(cp.cuda.Device().id)
     fp = cp.asarray(np.array([fields[n].data.ptr for n in VOLUME + SURFACE + OPTIONAL], dtype=np.uint64))
     s = cp.asarray(np.asarray(scalars, dtype=np.float32))
-    module.get_function("udm_step")(((ny * nx + 31) // 32,), (32,),
+    kernels.get_function("udm_step")(((ny * nx + 31) // 32,), (32,),
         (fp, s, np.int32(nz), np.int32(ny * nx), np.int32(first), np.int32(radar), tp))
 
 
@@ -100,7 +138,9 @@ def apply(state, cfg, dt, *, refl_10cm_due=False):
     for name in ("re_cloud", "re_ice", "re_snow", "refl_10cm"):
         fields[name] = state.scratch(shape, "udm_" + name)
     save_pre_mp_theta(state)
-    launch_driver(fields, scalar_arguments(dt, cfg.wdm6_ccn_conc), radar=refl_10cm_due)
+    from woof.mp_generations import selected
+    launch_driver(fields, scalar_arguments(dt, cfg.wdm6_ccn_conc), radar=refl_10cm_due,
+                  version=selected(cfg, "udm_version"))
     if refl_10cm_due:
         stash_refl_10cm(state, fields["refl_10cm"])
     moist_physics_finish(state, cfg, theta, dt)

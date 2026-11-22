@@ -317,6 +317,14 @@ class ProcessHaloTransport(SameHostTransport):
             self._word_kernel.compile()
             self._copy_stream = xp.cuda.Stream(non_blocking=True)
             self._stage_streams = {peer: xp.cuda.Stream(non_blocking=True) for peer in neighbours}
+            # GPUWM_HEX_HALO_PARALLEL_RECV (speed_words, off: every receive copy queued on the one copy stream): each
+            # peer's host-to-card receive copy on its own stream, joined on the copy stream before the unpack, so a
+            # peer that arrives late no longer holds back the copies of peers that are ready.  The bytes copied and
+            # the unpack are the same; only the stream a receive copy is queued on changes.
+            from .speed_words import HALO_PARALLEL_RECV, on as _word_on
+            self._recv_streams = ({peer: xp.cuda.Stream(non_blocking=True) for peer in neighbours}
+                                  if _word_on(HALO_PARALLEL_RECV) else None)
+            self._digest_cache = {} if self._recv_streams is not None else None
             for peer in neighbours:
                 sock, flag_fd = links[peer]
                 sock.settimeout(self.timeout)
@@ -438,7 +446,11 @@ class ProcessHaloTransport(SameHostTransport):
             schema = self._schema(self.rank, fields)
             self._generation += 1
             generation = self._generation
-            digest = hashlib.blake2b(repr((tag, schema)).encode(), digest_size=16).digest()
+            digest = None if self._digest_cache is None else self._digest_cache.get((tag, schema))
+            if digest is None:
+                digest = hashlib.blake2b(repr((tag, schema)).encode(), digest_size=16).digest()
+                if self._digest_cache is not None and len(self._digest_cache) < 4096:
+                    self._digest_cache[(tag, schema)] = digest   # the same (tag, schema) gives the same digest
             # The round check, before this round queues anything: publish this round's chain to every neighbour and
             # compare every neighbour that has got here first.  No wait for a neighbour that has not.
             self._round_check.advance(generation, digest, tag)
@@ -496,6 +508,7 @@ class ProcessHaloTransport(SameHostTransport):
                     if self.measure_gpu:
                         receive_start = xp.cuda.Event()
                         receive_start.record(copy)
+                    landed = []
                     for peer, packet in buffers.recv.items():
                         size = int(packet.buffer.nbytes)
                         key = (peer, schema)
@@ -519,15 +532,30 @@ class ProcessHaloTransport(SameHostTransport):
                             if host is None:
                                 raise SameHostTransportError(f"rank {peer} never shared its buffer for this schema")
                             flags = self._flags[peer]
-                            self._driver.wait_geq(copy, flags["ready_in"], generation)
+                            receive = copy
+                            if self._recv_streams is not None:
+                                # The previous round's unpack of these buffers is the last reader of this packet.
+                                receive = self._recv_streams[peer]
+                                previous = getattr(buffers, "process_unpacked", None)
+                                if previous is not None:
+                                    receive.wait_event(previous)
+                            self._driver.wait_geq(receive, flags["ready_in"], generation)
                             xp.cuda.runtime.memcpyAsync(packet.buffer.data.ptr, host.address, size,
-                                                        xp.cuda.runtime.memcpyHostToDevice, copy.ptr)
-                            self._driver.write_value(copy, flags["consumed_in"], generation)
+                                                        xp.cuda.runtime.memcpyHostToDevice, receive.ptr)
+                            self._driver.write_value(receive, flags["consumed_in"], generation)
+                            if receive is not copy:
+                                done = xp.cuda.Event(disable_timing=True)
+                                done.record(receive)
+                                landed.append(done)
                             received_bytes += size
+                    for done in landed:
+                        copy.wait_event(done)
                     self._copy_packets(fields, buffers.recv.values(), buffers.recv_batch, scatter=True, stream=copy)
                     owners.extend((buffers.recv_batch.descriptor, *buffers.recv_batch.owners))
                     unpacked = xp.cuda.Event(disable_timing=not self.measure_gpu)
                     unpacked.record(copy)
+                    if self._recv_streams is not None:
+                        buffers.process_unpacked = unpacked
                 if interior_work is not None:
                     # Pack is ordered before the caller's work; the unpack runs on the copy stream.
                     interior_work()
@@ -593,6 +621,8 @@ class ProcessHaloTransport(SameHostTransport):
             self._copy_stream.synchronize()
             for staging in self._stage_streams.values():
                 staging.synchronize()
+            for receive in (getattr(self, "_recv_streams", None) or {}).values():
+                receive.synchronize()
             if self.measure_gpu and self._error is None:
                 # Drain only: the last rounds' compute-stream wait events, so their timings are kept.
                 for entry in self._retained:

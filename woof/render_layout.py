@@ -10,7 +10,7 @@ one is to read filenames::
     out/case/png/arwen_wrf_20260520_18z_f000_d04-100m_composite_reflectivity.png
     ... 10,869 more
 
-The layout below replaces that.  It is WOOF's 2026-08-06 ruling -- case
+The layout below replaces that.  It is WOOF-ArWen's 2026-08-06 ruling -- case
 folder, then domain, then product subfolders, organised AT RENDER TIME
 rather than tidied afterwards -- with the reporter's timestamp request
 slotted into it as the leaf grouping::
@@ -257,7 +257,7 @@ def fs_path(path, *, descend: bool = False) -> str:
     On Windows a path at or past :data:`_MAX_PATH` is refused by the
     ordinary API, and every one of this module's callers turns that
     refusal into the same degradation: the picture is left where the
-    engine dropped it, flat at the render root.  That is WOOF's
+    engine dropped it, flat at the render root.  That is WOOF-ArWen's
     2026-08-06 layout ruling inverted by nothing but arithmetic, and it
     is SELECTIVE -- it takes the longest product names first, so one
     frame of a set escapes the tree while its neighbours file correctly
@@ -533,7 +533,7 @@ def delivered_name(name: str, *, domain: str | None,
             geopotential_height_700hpa_38d0bbbc4b4b7e87_valid_...png
 
     That is not untidiness, it is a delivery defect.  A real one measured
-    310 characters, and while :func:`fs_path` lets WOOF write and read
+    310 characters, and while :func:`fs_path` lets WOOF-ArWen write and read
     past MAX_PATH, it does nothing for the tools the delivery is OPENED
     with: Explorer, ``tar``, and the readers a recipient's own script
     imports all refuse the path.  The picture is filed correctly and

@@ -2,7 +2,7 @@
 
 Authority: MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_bl_myjpbl.F:1-1784
 and MPAS-Model-rrfs/src/core_atmosphere/physics/physics_wrf/module_sf_myjsfc.F:1-1302.
-Common WRF arithmetic blocks are reused from the pinned WOOF kernels;
+Common WRF arithmetic blocks are reused from the pinned WOOF-ArWen kernels;
 fork precision, constants, terrain accumulation and shelter winds are separate.
 Arrays use level-major (levels, columns) contiguous single precision storage.
 PINT includes the top interface. LOWLYR is native one-based indexing.

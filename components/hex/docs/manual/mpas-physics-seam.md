@@ -4,7 +4,7 @@ Authority is the pinned MPAS-Model commit f34984b and pinned MMM/UGWP sources.
 Both suites with every slot on the native backend are bitwise against native
 MPAS-A v8.4.2 in every written field (`x1.2562`, 24 h, one process), and so is
 the `convection_permitting` forecast with all ten active slots on hex-cuda;
-the gate decks are in `verification/gates/`. The WOOF default and its pinned
+the gate decks are in `verification/gates/`. The WOOF-ArWen default and its pinned
 source/receipts retain their existing contract.
 
 ## Slots and registration
@@ -14,7 +14,7 @@ defaults, resolves `suite` selectors from the existing MPAS suite table and
 applies `mpas_atmphys_control.F:92-332` checks. The table block `mpasphys_v842`
 routes `mesoscale_reference`, `convection_permitting`, and `none` to the new
 backend. `route_namelist` selects an explicit native suite through this table,
-returning `None` for the existing default or WOOF suites. The public forecast door consumes these explicit suite routes.
+returning `None` for the existing default or WOOF-ArWen suites. The public forecast door consumes these explicit suite routes.
 
 | Slot | MPAS selector | Position |
 | --- | --- | --- |
@@ -46,11 +46,11 @@ MPAS option names. Each table row names its `backend_selector`, such as
 `config_convection_backend='hex-cuda'`. Without overrides every slot takes the
 route's default above. An explicit adapter override must agree with the namelist when
 both name the same slot. The real forecast door passes the native namelist and backend group to this
-resolver before the existing WOOF path.
+resolver before the existing WOOF-ArWen path.
 
 A selection of Noah-MP v5.0 runs only with `--licence-opt-in ucar-noahmp`
 (`woof.hex.licence_gate`); UGWP and the fork's NOAA GSL physics are not gated
-(owner ruling 2026-10-14: US Government code). The library resolvers are not
+(US Government code). The library resolvers are not
 gated, so module replays are unchanged.
 
 Register a launcher with `registry.register(slot, mpas_scheme_name, 'hex-cuda',
@@ -225,7 +225,7 @@ The additive `mpasphys_rrfs` table section selects
 `woof.hex.mpasphys.rrfs.driver_rrfs`, pin set `rrfs`, and dycore path
 `v8.3.1-noaa`. Authority is RRFSx/MPAS-Model
 `1d6e370e7b43a332074809f170532a216c2212fb`, with the eight submodule pins
-recorded in the row. It is separate from the existing WOOF RRFS preset and
+recorded in the row. It is separate from the existing WOOF-ArWen RRFS preset and
 MPAS-A v8.4.2 provider. Existing table sections and the default are unchanged.
 The native `hrrrv5` spelling routes to the fork. The explicit
 `rrfs_mesoscale_reference`, `rrfs_convection_permitting`, and `rrfs_none`
@@ -334,16 +334,41 @@ shared arithmetic statements for MYNN-EDMF and aerosol-aware TEMPO
 Their selectors never substitute a shared scheme implementation for a fork
 scheme. Their cache compiles directly through NVRTC with `--fmad=false`,
 `--ftz=false`, `--prec-div=true`, and `--prec-sqrt=true`; CuPy RawModule's
-forced FTZ would change native subnormals. WOOF/dynamics compilation is
+forced FTZ would change native subnormals. WOOF-ArWen/dynamics compilation is
 unaffected. This local cache can be replaced by f4's identical strict cache
 when that module lands.
 
 `required_extensions` in a driver receipt states the matched-run constraint:
-WOOF, WOOF physics, moving domains, and regional extras must be disabled by
+WOOF, ArWen physics, moving domains, and regional extras must be disabled by
 the forecast owner. It does not claim that the real door has enforced them.
 Only a completed real-door forecast receipt may state the actual resolved
 extension settings and scientific identity. Source/orchestration unit tests
 and synthetic CUDA replays do not establish RRFS-M0.
+
+### MYNN suite version on the RRFS 44c0849 route
+
+`config_mynn_version` (in the hex backend group `&hex_mpasphys`, or
+`--physics config_mynn_version=...`) picks the MYNN code the `rrfs-44c0849`
+route runs. It is a hex option, never written into a native namelist.
+
+| value | MYNN-EDMF | MYNN-SFC | use |
+|---|---|---|---|
+| `mynn-v6.1` (default) | v6.1.1 (NCAR/MYNN-EDMF 2b2da61) | v6.1.0 (NCAR/MYNN-SFC a038a9e) | the latest upstream releases |
+| `mynn-sfc-v6.1.0` | c6d08709 (the pin) | v6.1.0 | the surface-layer half on its own |
+| `pinned` | c6d08709 | v6.0.0 b66187f | the 44c0849 referee: bitwise to native RRFS-MPAS 44c0849 |
+
+Defaults are the latest upstream scheme versions and pins are for bitwise
+proof, so every bitwise claim and gate against native 44c0849 names
+`config_mynn_version='pinned'` on the hex side. A run that names no version
+takes `pinned` where the pin is what runs anyway: a module replay (the native
+library is the 44c0849 pin), a run that puts a MYNN slot on `native-cpu`, or a
+suite with no MYNN slot active. A run that names a v6.1 version with a MYNN slot
+on `native-cpu` is refused. Each version is proven by a strict module replay
+against the upstream tag built standalone (`tools/rrfs_mynn_v61_replay`). The
+run prints one start-up line beginning `MYNN SUITE VERSION:` naming the version
+and the commits it ran. A run on any version other than `pinned` records
+`mynn_version`, `mynn_version_modules` and the version's submodule pins in its
+receipt.
 
 ## Public native forecast and hydration
 
@@ -445,7 +470,7 @@ Resources survive provider.begin(), which clears only per-call field views.
 MPAS carrier preparation uses its own `MpasPhysicsKernelCache`. It compiles
 through direct NVRTC with `--fmad=false --ftz=false --prec-div=true
 --prec-sqrt=true` and records actual compiler entry evidence. Its scope is
-physics conversion and carriers; the dynamics cache and default WOOF route
+physics conversion and carriers; the dynamics cache and default WOOF-ArWen route
 retain their existing compiler behavior. When the integrator's additive
 `KernelCache.raw_kernel(..., mpas_strict=False)` API is present, the MPAS cache
 explicitly passes `mpas_strict=True`. The default remains false. Scheme
@@ -520,7 +545,7 @@ six-field GFL transaction commits device carriers, exchanges native
 views before the slot continues. Empty MPI1 rings retain their index and the
 native exchange still executes. Prepared rank-4 `(i,k,j,species)` storage is
 exposed as `(species,k,i)` and copied back without touching inactive padding.
-Scheme arithmetic remains in the owning lane.
+Scheme arithmetic remains in the scheme's own port.
 
 ### RRFS native initialization tables
 
@@ -607,11 +632,11 @@ missing output or unchanged field cannot prove the switch.
 
 The native trace collector, actual extension resolution sidecar, fault runner
 and verifier sidecar retention are still required integration work. Until they
-produce fresh evidence, the lane's reproduce script cannot return success. Unit
+produce fresh evidence, the reproduce script cannot return success. Unit
 fixtures validate this audit contract only; they are not forecast receipts.
 
-The visual proof rule also applies to this driver lane. The maintainers' delivery
-helper (`rrfs_forecast_sheets.py verify-mpas`, kept with the proof-lane harness and
+The visual proof rule also applies to this driver. The maintainers' delivery
+helper (`rrfs_forecast_sheets.py verify-mpas`, kept with the proof harness and
 not distributed) runs inside the proof GPU queue when sheets need the fresh
 outputs: it delegates to the unchanged verifier and real model door, records the
 ordinary receipt, and retains owned output until comparison and inspection
@@ -625,19 +650,19 @@ manifest through a file reference, fixed difference-table SHA, observations for
 every hash-bound PNG, and an evolution observation. All eight products must exist
 at 6, 12 and 24 hours; additional produced frames and images must also be inspected.
 Manifest deck/native/output hashes must match the actual field-verification
-receipt. This is an artifact audit: it cannot perform visual judgment. The lane
-opens every image and records what it saw; the integrator opens them before
-landing. Renderer maxima never substitute for those observations. Missing sheets
+receipt. This is an artifact audit: it cannot perform visual judgment. Whoever
+runs the proof opens every image and records what it saw, and the images are
+opened again before the change is merged. Renderer maxima never substitute for those observations. Missing sheets
 or inspections fail the complete delivery proof audit.
 
 ### Real RRFS driver boundary replay
 
-The integrator's 2026-10-14 03:00 ruling supersedes the per-lane forecast
-matrix as a landing requirement. The matrix and witness audits above retain
+Since 2026-10-14 the per-scheme forecast matrix is no longer required before a
+change is merged. The matrix and witness audits above retain
 their historical scope. Landing now requires complete bitwise module replay
-from real native-tap inputs, a clean-checkout run of the lane's replay script, and one
+from real native-tap inputs, a clean-checkout run of the scheme's replay script, and one
 24-hour forecast with the implementation enabled and inspected native comparison
-sheets. The integrator owns the headline exact whole-forecast configuration.
+sheets. The headline exact whole-forecast configuration is proven on its own.
 
 `tests/rrfs_driver_dump_replay.py` consumes the complete `physics_get_tend`
 boundary (fork `mpas_atmphys_todynamics.F:65-550`). Rust decodes and writes
@@ -906,7 +931,7 @@ Choosing the mode:
   comma-separated) or `config_physics_correct_skip` leaves one correction out of
   a correct-mode run, for an observation A/B arm.
 - With no mode named, the door uses correct for an MPAS suite route. On the
-  WOOF physics route the same option applies the corrections the installed
+  ArWen physics route the same option applies the corrections the installed
   engine carries (`woof.hex.correct_mode`) and lists the rest as named gaps; a
   skip list naming a finding that route never applies is refused, because the
   arm would be identical to its control.
@@ -926,14 +951,14 @@ The findings (`CORRECTIONS_V842`, clusters mpas-rad-pbl-lsm-seaice and mpas-wate
 
 | Id | Native defect | On this tree | Follow-up owner of the gap |
 |---|---|---|---|
-| RP6 | `config_pbl_interval` stretches the surface/PBL step but the schemes are still called every step, so they integrate interval/dt times too long | Fixed: the surface layer, ocean mixed layer, land surface, sea ice, PBL and GWDO are called when the PBL alarm rings, and the land surface and sea ice receive every step's precipitation since their last call. Gaps: Noah-MP (it must step by `dt_pbl`), and a native-file restart (the window cannot be held in the pristine restart stream) | p17-noahmp; the MPAS integrator with f3's checkpoint provider |
+| RP6 | `config_pbl_interval` stretches the surface/PBL step but the schemes are still called every step, so they integrate interval/dt times too long | Fixed: the surface layer, ocean mixed layer, land surface, sea ice, PBL and GWDO are called when the PBL alarm rings, and the land surface and sea ice receive every step's precipitation since their last call. Gaps: Noah-MP (it must step by `dt_pbl`), and a native-file restart (the window cannot be held in the pristine restart stream) | hex Noah-MP land-surface port (sf_noahmp); hex restart (a checkpoint that carries the surface precipitation window) |
 | RP4 | `config_mynn_tkeadvect=true` resets TKE to a field MPAS never advects | Fixed by refusal: correct mode refuses the option, as the native correct-mode build does | none |
-| RP1 | MYNN removes cloud water, ice and snow on every call | Fixed in the hex-cuda MYNN slot (p12): the exact inverse of the forward conversion, word for word the native correct-mode build. Gap: native-cpu MYNN, which runs pristine v8.4.2 | p12-bl-mynn (select the hex-cuda slot) |
-| WB3 | Precipitable water divides the dry density by (1+qv) a second time (0.6 % low on average, up to 1.3 %) | Fixed in the hex-cuda WSM6, Thompson and Kessler slots: each compiles its CUDA text with the one density statement corrected (exact mode compiles the original text); the words equal the native correct-mode build's loop. Gaps: native-cpu microphysics, and Thompson-aerosols, whose hex-cuda slot is not in this tree | p2-wsm6, p3-thompson, p1-kessler, p4-thompson-aerosols (select the hex-cuda slot) |
-| WB5 | WSM6 books the below-ground part of the falling cell at the flat mean while the remap moves it with a sloped profile, so column plus surface water is not conserved | Fixed in the hex-cuda WSM6 slot: the two rain-out statements use the remap's profile; whole columns equal the native correct-mode build word for word (surface precipitation changes, the atmosphere does not). Gap: native-cpu WSM6 | p2-wsm6 (select the hex-cuda slot) |
-| RP3 | Fractional sea ice loses its ice temperature (the blended skin temperature is fed back); active whenever `config_frac_seaice`, which defaults to true | Named gap on the sea-ice and surface-layer slots | p18-seaice; p9-sfclay-mm5 (`sf_monin_obukhov`, `sf_monin_obukhov_rev`); p10-sf-mynn (`sf_mynn`) |
+| RP1 | MYNN removes cloud water, ice and snow on every call | Fixed in the hex-cuda MYNN slot: the exact inverse of the forward conversion, word for word the native correct-mode build. Gap: native-cpu MYNN, which runs pristine v8.4.2 | hex MYNN-EDMF boundary-layer port (bl_mynn) (select the hex-cuda slot) |
+| WB3 | Precipitable water divides the dry density by (1+qv) a second time (0.6 % low on average, up to 1.3 %) | Fixed in the hex-cuda WSM6, Thompson and Kessler slots: each compiles its CUDA text with the one density statement corrected (exact mode compiles the original text); the words equal the native correct-mode build's loop. Gaps: native-cpu microphysics, and Thompson-aerosols, whose hex-cuda slot is not in this tree | hex WSM6, Thompson, Kessler and aerosol-aware Thompson microphysics ports (mp_wsm6, mp_thompson, mp_kessler, mp_thompson_aerosols) (select the hex-cuda slot) |
+| WB5 | WSM6 books the below-ground part of the falling cell at the flat mean while the remap moves it with a sloped profile, so column plus surface water is not conserved | Fixed in the hex-cuda WSM6 slot: the two rain-out statements use the remap's profile; whole columns equal the native correct-mode build word for word (surface precipitation changes, the atmosphere does not). Gap: native-cpu WSM6 | hex WSM6 microphysics port (mp_wsm6) (select the hex-cuda slot) |
+| RP3 | Fractional sea ice loses its ice temperature (the blended skin temperature is fed back); active whenever `config_frac_seaice`, which defaults to true | Named gap on the sea-ice and surface-layer slots | hex sea-ice port (seaice slot); hex MM5 surface-layer port (`sf_monin_obukhov`, `sf_monin_obukhov_rev`); hex MYNN surface-layer port (`sf_mynn`) |
 
-Named gaps are never refusals (coordinator ruling 2026-10-14). A finding is
+Named gaps are never refusals. A finding is
 applied whole or not at all: when any active slot it lives in has an
 implementation that does not declare it (a native-cpu slot never can; a hex-cuda
 slot declares the ids in its table descriptor's `corrections`), the run keeps the

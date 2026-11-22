@@ -82,7 +82,7 @@ def test_the_gates_admit_a_range_of_closures_not_one_profile():
 
 # ---------------------------------------------------------------------------
 # D1: the gray-zone partition sweep instrument (campaign spec
-# docs/superpowers/specs/2026-08-02-sase-grayzone-campaign.md, I1).
+# docs/internal/specs/2026-08-02-sase-grayzone-campaign.md, I1).
 # CPU-only: what is tested is the scoring arithmetic and the declared
 # constants -- integrating the sweep is the campaign's own GPU job and
 # its receipts are the evidence for that half.

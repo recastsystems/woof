@@ -756,6 +756,16 @@ __device__ void dev_vege_flux(const float *in, const float *p, int isnow,
     if (snowh > 0.05f && tg > PH_TFRZ) {
         tg = opt_stc == 3
             ? FA(FM(FS(1.0f, fsno), tg), FM(fsno, PH_TFRZ)) : PH_TFRZ;
+        // Correct-mode SN1 (gpuwm/correct_mode.py): EVG at the reset ground
+        // temperature. The WRF land reset keeps ESTG from the discarded,
+        // warmer TG, so a sunlit melting snowpack evaporates as if warm and
+        // its 2 m mixing ratio goes to zero or below. WRF's own glacier
+        // reset (:1092-1105, kernels/noahmp_glacier.cu) re-evaluates it.
+#ifdef GPUWM_NOAHMP_MELT_RESET_ESAT
+        t = tdc(tg);
+        dev_esat(t, &esatw, &esati, &dsatw, &dsati);
+        estg = (t > 0.0f) ? esatw : esati;
+#endif
         irg = FS(FS(FM(cir, p4f(tg)), FM(FM(emg, FS(1.0f, emv)), lwdn)),
                  FM(FM(FM(emg, emv), PH_SB), p4f(tv)));
         shg = FM(csh, FS(tg, tah));

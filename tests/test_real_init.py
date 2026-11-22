@@ -397,10 +397,10 @@ def test_hrrr_soil_depth_nodes_are_interpolated_to_noah_midpoints():
     target = np.array([0.05, 0.25, 0.70, 1.50])
     np.testing.assert_allclose(
         soil.soil_temperature[:, 0, 0], 280.0 + 2.0 * target,
-        rtol=0.0, atol=1.0e-13)
+        rtol=2.5e-7, atol=0.0)  # REAL storage, as real.exe holds the start soil
     np.testing.assert_allclose(
         soil.soil_moisture[:, 0, 0], 0.10 + 0.05 * target,
-        rtol=0.0, atol=1.0e-13)
+        rtol=2.5e-7, atol=0.0)  # REAL storage, as real.exe holds the start soil
     assert soil.deep_soil_temperature[0, 0] == 281.0
 
     with pytest.raises(KeyError, match="SOILT and SOILW together"):
@@ -1905,7 +1905,7 @@ def test_mp28_real_ingest_through_initialize_physics_fills_exactly_once():
 def wif_dataset():
     """WRF's monthly WIF aerosol dataset, or skip.
 
-    WOOF does not redistribute the 225 MB file, so the default-path test
+    WOOF-ArWen does not redistribute the 225 MB file, so the default-path test
     can only run where a copy exists.  It is located the same way the
     PRODUCT locates it -- through the resolver's own search order -- so the
     fixture cannot pass on a path the shipping code would not have found.
@@ -1925,7 +1925,7 @@ def test_mp28_real_ingest_receipt_announces_the_synthetic_fallback(
     """A run on the synthetic profile SAYS SO, by name, in its receipt.
 
     RE-BASELINED (development branch).  This test used to assert that the
-    ingest receipt agreed with the published DEVIATION -- that WOOF had no
+    ingest receipt agreed with the published DEVIATION -- that WOOF-ArWen had no
     QNWFA/QNIFA ingest lane and that real.exe FATALs the configuration.
     Both clauses are now false of the default, so pinning them would pin the
     defect.  What must not drift apart is the pair that is still real: a run

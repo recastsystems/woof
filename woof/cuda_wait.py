@@ -2,7 +2,7 @@
 
 CUDA's default ("auto") scheduling spins the waiting host thread whenever the
 process has fewer active contexts than the host has cores, which is every
-WOOF run.  So a GPU-bound forecast held one host core at 100 % for its whole
+WOOF-ArWen run.  So a GPU-bound forecast held one host core at 100 % for its whole
 step loop while the card did the work: every ``synchronize``, ``.get()``,
 event wait and ``cudaFree`` busy-polled.  Measured on an RTX 5070 Ti host (
 gpuwm 2.9.8, a 3 km GFS nest forecast, card at 100 %): the forecast's main

@@ -308,6 +308,12 @@ def test_go_readiness_answers_the_configs_window(tmp_path, monkeypatch, capsys):
     config.write_text('[fetch]\nsource = "gefs"\ncycle = "2026-09-29T12"\n'
                       'hours = 12\ncadence = 3\n', encoding="utf-8")
     monkeypatch.setattr(fetch, "_head_answer", posted((CYCLE, 0)))
+    # The window is asked while it posts: on the wall clock the cycle is
+    # now weeks old, and a lead every archive answers absent past its late
+    # time is refused, not waited on (door item 11).
+    from woof import source_readiness
+    monkeypatch.setattr(source_readiness, "_utc_now",
+                        lambda: CYCLE + timedelta(hours=4))
     args = cli.build_parser().parse_args(["go", str(config), "--readiness"])
     assert go_cli.go_main(args) == 75
     document = json.loads(capsys.readouterr().out)

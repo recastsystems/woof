@@ -461,7 +461,7 @@ def _hold_domain_carrier(dst: np.ndarray, src, name: str, k: int) -> None:
     ``global_keys`` carriers such as the 3D PWP status word
     ``fields/_pwp_status`` (shape (1,)) have no rows: scattering them raised
     "IndexError: tuple index out of range" at the start of a streamed
-    forecast with sf_ocean_physics = 2 (the 48 h default;
+    forecast with sf_ocean_physics = 2 (then the 48 h default;
     2026-10-21).  Slab 0's words are kept and a slab that built different
     words is refused.
     """
@@ -711,7 +711,7 @@ SURFACE_CARRIERS: dict = {
 
 def composite_reflectivity(store, geo_store, cfg, *, slab_rows: int = 64,
                            refl_stash: str = "absent"):
-    """Column-maximum REFL_10CM (dBZ), computed out of core, WOOF's own way.
+    """Column-maximum REFL_10CM (dBZ), computed out of core, WOOF-ArWen's own way.
 
     ``woof.core.refl.compute_refl_10cm`` is the model's diagnostic and this
     calls it -- it is not re-derived here.  What is arranged here is only

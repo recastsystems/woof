@@ -59,35 +59,23 @@ def _choices_of(parser, option: str) -> tuple[str, ...]:
     return ()
 
 
-def _nowcast_offers() -> tuple[str, ...]:
-    import tools.da_nowcast as door
-
-    return _choices_of(door.build_parser(), "--physics-profile")
-
-
 def _wizard_offers() -> tuple[str, ...]:
     from woof.cli import build_parser
 
     return _choices_of(build_parser(), "--physics-profile")
 
 
-def test_both_doors_offer_the_same_suites():
-    """The nowcast door's first stage IS the configuration door.
+def test_the_configuration_door_offers_every_shipped_suite():
+    """What the configuration door offers is the one derived table.
 
-    A name one offers and the other refuses is a run that dies in
-    argument parsing with no physics reached, which is what the Kessler
-    probe's two rows did.  Both read one derived table.
+    A storm-nowcast door read the same table until gpuwm 3.0.3 removed it
+    with the local data assimilation; a name one door offered and another
+    refused was a run that died in argument parsing with no physics reached.
     """
 
-    nowcast = _nowcast_offers()
     wizard = _wizard_offers()
-    assert nowcast, "the nowcast door offers no suite at all"
     assert wizard, "the configuration door offers no suite at all"
-    assert set(nowcast) == set(wizard), {
-        "only the nowcast door offers": sorted(set(nowcast) - set(wizard)),
-        "only the configuration door offers": sorted(
-            set(wizard) - set(nowcast))}
-    assert set(nowcast) == set(shipped_profiles())
+    assert set(wizard) == set(shipped_profiles())
 
 
 def test_every_offered_suite_resolves_a_runtime_product():

@@ -1,10 +1,10 @@
-"""``woof cells``: storm cells as objects, over WOOF history.
+"""``woof cells``: storm cells as objects, over WOOF-ArWen history.
 
-WOOF writes fields; a meteorologist deciding on a storm needs OBJECTS
+WOOF-ArWen writes fields; a meteorologist deciding on a storm needs OBJECTS
 -- this cell, its track, how old it is, whether it is growing, where it
 will be in twenty minutes.  That object layer is titan, a Rust
 implementation of the TITAN storm-cell engine (identification,
-tracking, lineage, trend, forecast footprints) that WOOF does not ship:
+tracking, lineage, trend, forecast footprints) that WOOF-ArWen does not ship:
 the analyze door is optional and off when no titan binary is installed.
 This package is the seam between the two:
 

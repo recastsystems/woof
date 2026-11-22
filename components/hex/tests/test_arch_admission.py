@@ -598,8 +598,8 @@ def test_kernel_cache_contraction_pin_is_architecture_independent():
 
     # The NVRTC contraction pin is part of the strict numerical contract on
     # every architecture, not an sm_120 accident.  The cache's default base is
-    # the process's numerics mode (fast by default, strict the opt-in: owner
-    # ruling 2026-10-16), and the probe compiles with the same mode.
+    # the process's numerics mode (fast by default, strict the opt-in),
+    # and the probe compiles with the same mode.
     assert KernelCache.__init__.__kwdefaults__["base_options"] is None
     assert numerics.kernel_base("strict") == ("--std=c++17", "--fmad=false")
     assert arch_admission.NUMERIC_ROUTE_OPTIONS == numerics.kernel_base("strict")

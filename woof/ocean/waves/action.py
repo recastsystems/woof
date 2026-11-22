@@ -127,15 +127,25 @@ class ActionSolver:
         from woof.certify.kernel_manifest import record_module
         record_module(f"woof.ocean.waves:action:{self.source_pack}:{self.nf}:{self.nd}:{b.name}",
                       source=source,options=options,module=self.module)
+        # The DIA exchange and the basin/partition sums run in a fixed order (ordered.cu): the same state and
+        # forcing give the same words on every run and executor. Its float atomicAdd form did not.
+        from .ordered import OrderedDia, compile_module
+        _,_,self.ordered_module=compile_module(key=f"woof.ocean.waves:ordered:{self.source_pack}:{self.nf}:{self.nd}",
+            nf=self.nf,nd=self.nd,dia_coefficient=packs[self.source_pack]['dia_coefficient'])
+        self._dia=OrderedDia(self.ordered_module,self.frequency_ext,self.df_ext,self.nd,
+                             math.log(self.spectral.ratio),diagonal=True)
+        self.ordered_reductions="woof"
         names=("wave_geometry","wave_gather","wave_water_level","wave_depth_rate","wave_convert",
                "wave_boundary","wave_frequency","wave_moments","wave_wind","wave_wind_fused","wave_shelter",
                "wave_saturation","wave_depth_breaking","wave_breaking_weight","wave_source_rates","wave_sources","wave_reconstruct",
-               "wave_smooth","wave_watershed","wave_label_jump","wave_basin_energy",
-               "wave_choose_basins","wave_merge_basins","wave_diagnose","wave_station_spectra","wave_station_bulk",
+               "wave_smooth","wave_watershed","wave_label_jump",
+               "wave_choose_basins","wave_station_spectra","wave_station_bulk",
                "wave_dia_moments","wave_zero","wave_copy","wave_clock","wave_timer","wave_forcing_bracket",
-               "wave_tail","wave_extend_dia","wave_contract_dia","refract","wave_dia_rates",
+               "wave_tail","wave_extend_dia","wave_contract_dia","refract",
                "wave_budget_capture","wave_budget_sources","wave_turn","wave_refract","wave_refract_geometry","wave_wind_mask","wave_limiter_reset","wave_copy_group")
         self.kernels={name:self.module.get_function(name) for name in names}
+        self.kernels["wave_merge_basins"]=self.ordered_module.get_function("wave_merge_basins_ordered")
+        self.kernels["wave_diagnose"]=self.ordered_module.get_function("wave_diagnose_ordered")
         # All views are constructed once, before graph capture. No per-step
         # device allocations or host scalar reads are needed for tiling.
         self._batches=[]
@@ -340,9 +350,8 @@ class ActionSolver:
             np.int32(a.nc),np.int32(self.nfx)))
         self._zero(self.dia_rate)
         self._zero(self.dia_diagonal)
-        self._launch("wave_dia_rates",a.nc*self.nfx*self.nd,(self.dia_energy,self.dia_rate,self.dia_diagonal,self.frequency_ext,self.df_ext,a.depth,
-            self.legacy_moments,np.int32(a.nc),np.int32(self.nfx),np.int32(self.nd),
-            np.float32(math.log(self.spectral.ratio))))
+        self._dia.launch(self.dia_energy,self.dia_rate,self.dia_diagonal,self.frequency_ext,self.df_ext,a.depth,
+            self.legacy_moments,a.nc)
         if self._budget and a.budget_active:
             b=self._budget
             self._launch("wave_budget_sources",b["previous"].size,(a.state,self.frequency,a.moments,a.wind_beta,self.loss,
@@ -494,9 +503,8 @@ class ActionSolver:
         self._launch("wave_dia_moments",a.nc,(a.moments,self.legacy_moments,np.int32(a.nc)))
         self._launch("wave_extend_dia",a.nc*self.nfx*self.nd,(a.state,self.frequency_ext,self.dia_energy,np.int32(a.nc),np.int32(self.nfx)))
         self._zero(self.dia_rate);self._zero(self.dia_diagonal)
-        self._launch("wave_dia_rates",a.nc*self.nfx*self.nd,(self.dia_energy,self.dia_rate,self.dia_diagonal,
-            self.frequency_ext,self.df_ext,a.depth,self.legacy_moments,np.int32(a.nc),np.int32(self.nfx),
-            np.int32(self.nd),np.float32(math.log(self.spectral.ratio))))
+        self._dia.launch(self.dia_energy,self.dia_rate,self.dia_diagonal,self.frequency_ext,self.df_ext,a.depth,
+            self.legacy_moments,a.nc)
         local=cell%self.batch_cells
         return {"wind_beta_per_s":a.wind_beta[local],"loss_per_s":self.loss[local],
                 "seed_efth_per_s":self.seed[local],"dia_efth_per_s":self.dia_rate[local,:self.nf],

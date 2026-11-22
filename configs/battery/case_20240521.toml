@@ -38,10 +38,10 @@
 # exporter refuses when any soil temperature is below 273.15 K on the branch
 # that synthesizes SH2O from SMOIS.  This is a late-May case, and the check
 # is recorded as a checked fact in the case entry receipt rather than left
-# to be discovered on a node.  The WOOF arm is unaffected either way.
+# to be discovered on a node.  The WOOF-ArWen arm is unaffected either way.
 #
 # ROUTE STATUS: the composition is ADMITTED by every static gate with zero
-# refusals (docs/public/receipts/obsbattery/B4-WOOF-HRRR-ROUTE.json, after
+# refusals (docs/public/receipts/obsbattery/B4-WOOF-ArWen-HRRR-ROUTE.json, after
 # the wave's route motion and the registered profile
 # thompson-mp8-ysu-mm5-noah-rrtmg-legacy-v1).  Re-run
 # tools/battery_route_preflight.py against THIS file for the case's own

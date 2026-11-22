@@ -5,7 +5,6 @@ import numpy as np
 
 p=argparse.ArgumentParser();p.add_argument('--value',type=float,required=True)
 p.add_argument('--out',type=Path,required=True);a=p.parse_args()
-assert os.environ.get('GPU_MUTEX_LANE')=='port-tuning-knobs'
 assert os.environ.get('CUDA_VISIBLE_DEVICES')
 from woof.knobs import physics
 physics.activate({'physics.rrtmg.radius_ice':a.value})

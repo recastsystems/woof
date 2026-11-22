@@ -15,7 +15,7 @@ registered rule (AC-P4.2: any screen outside its band is a finding that
 blocks the blessing, not a number to re-band) those findings block the
 blessing. The findings section below is the status of record; the numbers
 live in
-`docs/superpowers/receipts/grayzone/P4-CAMPAIGN-20260804.md`.
+`docs/internal/receipts/grayzone/P4-CAMPAIGN-20260804.md`.
 
 ## Findings (the campaign's verdict on this configuration)
 
@@ -114,7 +114,7 @@ The configuration ships as a configuration: importable, per-domain,
 refused nowhere it should not be, and pinned against the shipped tree by
 `tests/test_grayzone_nest_config.py`. It ships **with the findings
 above, unblessed**: the registered interface instrument
-(`docs/superpowers/receipts/grayzone/P4-INTERFACE-REGISTRATION-20260804.md`)
+(`docs/internal/receipts/grayzone/P4-INTERFACE-REGISTRATION-20260804.md`)
 scored it, two screens read out of band, and the blessing waits on the
 owner's adjudication of Finding 1. No band was widened and no number was
 softened to say otherwise.

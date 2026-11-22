@@ -8,6 +8,8 @@ from types import SimpleNamespace as NS
 import numpy as np
 import pytest
 
+import site_support
+
 
 @pytest.fixture
 def stream_bridge():
@@ -17,6 +19,8 @@ def stream_bridge():
         restart_v842._bridge()
     except engines.EngineRefusal:
         pytest.skip('requires the rw_mpas_stream bridge (staged, installed or WOOF_HEX_RW_MPAS_STREAM)')
+    site_support.current_bridge_or_skip(restart_v842._STREAM_ENGINE, b'ordered_metadata',
+                                        'ordered metadata', 'writing the restart stream')
 
 
 def test_physics_refusal_survives_worker_serialization():

@@ -9,7 +9,7 @@ with its includes (diagnostics, Registry_noahmp.xml, Registry_tempo.xml, registr
 
 Developer proof tool: installed forecasts read only its small output and never fetch or compile the fork.
 
-    python tools/framework_metadata_rrfs.py --source $MPAS_LANES/ref/rrfs/MPAS-Model-rrfs \
+    python tools/framework_metadata_rrfs.py --source $HEX_REFERENCE_ROOT/ref/rrfs/MPAS-Model-rrfs \
         --output src/hexcore/data/mpasphys-framework-rrfs --scratch /tmp/fw-rrfs
 """
 import argparse

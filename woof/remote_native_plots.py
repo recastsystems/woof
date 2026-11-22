@@ -669,7 +669,7 @@ def sync(args, command, stream_command):
                 "expected_manifest_sha256": value["run_manifest"]["sha256"]}
             ra._download(stream_command, request, path, {"size_bytes": panel["bytes"], "sha256": panel["sha256"]})
             transferred += panel["bytes"]
-    title = f"WOOF native plots · d{args.domain:02d} · {value['valid_time']}"
+    title = f"WOOF-ArWen native plots · d{args.domain:02d} · {value['valid_time']}"
     body = ''.join(f'<figure><a href="{html.escape(_panel_name(row["slug"]))}"><img loading="lazy" src="{html.escape(_panel_name(row["slug"]))}" alt="{html.escape(row["slug"])}"></a><figcaption>{html.escape(row["slug"].replace("_", " "))}</figcaption></figure>' for row in panels)
     gallery = directory / "index.html"
     gallery.write_text('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>' + html.escape(title)

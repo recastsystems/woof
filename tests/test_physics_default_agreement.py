@@ -305,7 +305,7 @@ def test_every_door_names_one_default_and_the_run_takes_every_suite_a_door_choos
         assert all(sub_km == finer for sub_km, finer in below), (source, below)
 
 
-#: Local DA rungs (woof.local_da.derive_rung): rung 1 runs 3 km and rung 10 is the first at 750 m.
+#: Local DA rungs (gpuwm.local_da.derive_rung): rung 1 runs 3 km and rung 10 is the first at 750 m.
 LOCAL_DA_SCALES = (1, 10)
 
 
@@ -316,49 +316,6 @@ def _local_da_sources():
 
     return [row["source"] for row in catalog()["sources"]
             if "automatic" in (row.get("initialization_modes") or [])]
-
-
-@pytest.mark.parametrize("source", _local_da_sources())
-def test_the_local_da_door_binds_the_default_row_at_its_rungs_grid(source):
-    """A local DA rung reads the one default row at its own spacing, as the physics check does.
-
-    Its configuration read the row with no grid, so a 750 m rung bound the source's own default (YSU and
-    Noah) where every other door binds the sub-km row (Thompson, MYNN and RUC), and every cycle restarted
-    through a four-layer soil the sub-km suite does not run.
-    """
-
-    from datetime import datetime, timedelta, timezone
-
-    from woof import physics_catalog as pc
-    from woof.config import validated_soil_layer_count
-    from woof.local_da import Card, Request, configuration, derive_rung
-    from woof.physics_menu import default_profile_for
-
-    # A settled cycle every catalogued source still serves: two days back, at 12Z.
-    epoch = (datetime.now(timezone.utc) - timedelta(days=2)).replace(hour=12, minute=0, second=0, microsecond=0)
-    epoch = _served(source, epoch)
-    below = []
-    for scale in LOCAL_DA_SCALES:
-        where = f"{source} at local DA rung {scale}"
-        request = Request(epoch=epoch.strftime("%Y-%m-%dT%H:%M:%SZ"), point=tuple(_point(source)),
-                          card=Card(vram_gib=24.), source=source, scale=scale)
-        rung = derive_rung(request, scale)
-        text, _wps, exp, _background = configuration(request, rung, background_probe=lambda url: True)
-        grid = pc.experiment_grid(text)
-        assert grid["finest_dx_km"] == pytest.approx(rung["dx_m"] / 1000.0) and grid["domains"] == 1, where
-        table = default_profile_for(source, rung["dx_m"], grid["domains"])
-        assert pc.check({"source": source, **grid})["default_suite"] == table, where
-        root = exp.root.run
-        assert _suite(table) == tuple(int(getattr(root, key)) for key in SUITE_KEYS), (where, table)
-        # The soil every cycle restarts through is the bound land surface's own.
-        assert int(root.num_soil_layers) == validated_soil_layer_count(root.sf_surface_physics), where
-        below.append((table == THOMPSON_MYNN_RUC_RTE_RRTMGP_PROFILE_ID, rung["dx_m"] < 1000.0))
-    if default_profile_for(source, 3000.0, 1) == THOMPSON_MYNN_RUC_RTE_RRTMGP_PROFILE_ID:
-        # A source whose own default is this suite takes it on both rungs.
-        assert all(sub_km for sub_km, _finer in below), (source, below)
-    elif default_profile_for(source, 750.0, 1) == THOMPSON_MYNN_RUC_RTE_RRTMGP_PROFILE_ID:
-        # The spacing override binds on 750 m when the coarse default differs.
-        assert all(sub_km == finer for sub_km, finer in below), (source, below)
 
 
 def test_analysis_archive_catalog_preserves_inventory_scoped_initialization():

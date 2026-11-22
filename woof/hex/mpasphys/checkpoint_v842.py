@@ -34,7 +34,8 @@ def persistent_names(config):
     for slot, scheme in (getattr(config, 'selectors', None) or {}).items():
         if not config.active(slot):
             continue
-        entry = (slots.get(slot, {}).get('cuda_entries') or {}).get(scheme) or {}
+        from .driver_v842 import slot_cuda_entry
+        entry = slot_cuda_entry(config, slots, slot, scheme) or {}
         if not entry.get('module'):
             continue
         declared = getattr(import_module('.' + entry['module'], __package__), 'PERSISTENT_FIELDS', None) or {}
@@ -536,10 +537,18 @@ def resolve_route(arguments, text, config=None):
     if route.frame_seconds <= 0:
         raise ValueError('native checkpoint history interval must be positive')
     if restart is not None:
-        path = Path(restart).expanduser().resolve()
+        # A host the door started for --hosts (ssh, or a local<N> virtual host) sealed its shards and rank 0's
+        # manifest mirror under the sealing run's folder/.multihost/host<N>/, its own --out; it is handed rank 0's
+        # path. THE BREAKAGE THIS PREVENTS (0.6.2): such a host looked for its shards beside rank 0's
+        # checkpoint and refused every --restart-from ("1 of its 2 rank shards are not on this host"); only the
+        # moving carrier took its own copy (moving_v842). An external launch names its own path and is unchanged.
+        from .checkpoint_shards_v842 import joined_carrier
+        path = Path(joined_carrier(str(Path(restart).expanduser().resolve())))
         if route.carrier_path and Path(route.carrier_path).resolve() != path:
             raise ValueError('CLI and moving environment name different native restart carriers')
-        route.carrier_path, route.carrier = str(path), load_carrier(path)
+        from .checkpoint_shards_v842 import direct_restore_for
+        with direct_restore_for(arguments, route):
+            route.carrier_path, route.carrier = str(path), load_carrier(path)
         route.origin_time = route.carrier['origin_time']
         route.offset_seconds = float(route.carrier['time_seconds'])
         valid = datetime.strptime(route.origin_time, TIME_FORMAT) + timedelta(seconds=route.offset_seconds)

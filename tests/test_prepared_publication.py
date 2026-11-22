@@ -379,7 +379,7 @@ def test_metadata_accepts_companion_dynamic_version_file(publication, tmp_path, 
 
 @pytest.mark.parametrize("archive_kind", ["wheel", "sdist"])
 def test_metadata_compares_utf8_readme_without_replacement_characters(publication, tmp_path, archive_kind):
-    repo, artifact = metadata_fixture(tmp_path, readme="# WOOF\n\nWeather in °F, native maps.\n", archive_kind=archive_kind)
+    repo, artifact = metadata_fixture(tmp_path, readme="# WOOF-ArWen\n\nWeather in °F, native maps.\n", archive_kind=archive_kind)
     result = publication.check_metadata(artifact, "woof", VERSION, repo)
     assert result["project"] == "woof"
 

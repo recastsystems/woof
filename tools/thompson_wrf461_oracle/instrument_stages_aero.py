@@ -31,7 +31,7 @@ def rate_block():
     """Stage A only: the DOUBLE rain rates :3058-3067 sums, per level."""
     names = ",".join(RAIN_RATES)
     values = ", ".join(f"{n}(st_k)" for n in RAIN_RATES)
-    return f"""!..WOOF rain-rate dump.  WRITE STATEMENTS ONLY.
+    return f"""!..WOOF-ArWen rain-rate dump.  WRITE STATEMENTS ONLY.
       inquire(file='rain-rates.csv', exist=st_exists)
       open(newunit=st_unit, file='rain-rates.csv',                      &
            status='unknown', position='append', action='write')
@@ -49,7 +49,7 @@ def rate_block():
 
 
 def block(stage):
-    return f"""!..WOOF stage-tendency dump ({stage}).  WRITE STATEMENTS ONLY.
+    return f"""!..WOOF-ArWen stage-tendency dump ({stage}).  WRITE STATEMENTS ONLY.
       inquire(file='stage-tendencies.csv', exist=st_exists)
       open(newunit=st_unit, file='stage-tendencies.csv',                &
            status='unknown', position='append', action='write')

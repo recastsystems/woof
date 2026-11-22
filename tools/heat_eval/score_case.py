@@ -407,7 +407,7 @@ def arm_lead_classes(root: Path, case: planmod.Case, arm: planmod.Arm) -> list[s
 
 def score_case(root: Path, case: planmod.Case, plan: str, arm_ids: Sequence[str] | None,
                stations_on: bool, radar_on: bool, commit: str) -> dict:
-    from woof.local_da_score import CachedCompositeSource
+    from woof.verify.obs.nowcast import CachedCompositeSource
     from woof.obs.mrms_fetch import MrmsCompositeCache
     from woof.verify.obs import registration as reg
 

@@ -75,7 +75,7 @@ def test_real_tc_tracks_schema_selection(tmp_path):
 
 @pytest.mark.parametrize('change,match',[
     ({'dt_seconds':18},'radiation interval'),
-    ({'fine_km':1,'background_km':48},'power of two'),
+    ({'fine_km':1,'background_km':48,'geometry':1},'power of two'),   # the ladder's rule (geometry 2 has none)
     ({'fine_radius_km':2},'fine radius'),
     ({'hours':float('nan')},'finite number'),
     ({'cycle':'2022-09-28T03'},'exactly at'),

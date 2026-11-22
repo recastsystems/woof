@@ -12,7 +12,7 @@ p.add_argument('--source', type=Path, required=True)
 p.add_argument('--init', required=True, help='ISO UTC initialization')
 p.add_argument('--hours', type=int, required=True)
 p.add_argument('--cadence-hours', type=int, default=1)
-p.add_argument('--arm', help='WOOF product prefix')
+p.add_argument('--arm', help='WOOF-ArWen product prefix')
 p.add_argument('--domain', type=int, default=3)
 p.add_argument('--allow-partial', action='store_true')
 p.add_argument('--out', type=Path, required=True)
@@ -31,7 +31,7 @@ if a.format == 'native':
         rows.append((seconds, fix['lat'], fix['lon'], fix['vmax10_ms'], fix['mslp_min_hpa']))
 else:
     if not a.arm:
-        p.error('--arm is required for WOOF')
+        p.error('--arm is required for WOOF-ArWen')
     for path in sorted(a.source.glob(f'{a.arm}-d{a.domain:02}-*.json')):
         row = json.loads(path.read_text())
         stamp = row['valid_time']

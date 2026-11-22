@@ -43,7 +43,7 @@ restart_interval_s = 0.0
 # and prints the `woof sim` line that runs the forecast and draws every
 # product from each output as it lands.  Run again, it prepares into the
 # next free configs/era5_l137_regional_demo-prepared-N and keeps inputs.json
-# while the folder's files are unchanged; after they or this WOOF's
+# while the folder's files are unchanged; after they or this WOOF-ArWen's
 # decoders change it writes a new inputs.json and names the one it
 # replaced.  Each preparation keeps its own copy of the manifest it was
 # made from.

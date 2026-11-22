@@ -102,6 +102,17 @@ pub struct ProjectedPlaceLabelOverlay {
     pub style: ProjectedPlaceLabelStyle,
 }
 
+/// A translucent banded fill under the contour lines (see
+/// [`crate::request::ContourFillLayer`]): `cmap` maps each value to its
+/// band colour, clear below the first band.
+#[derive(Clone, Debug)]
+pub struct ContourFillOverlay {
+    pub data: Vec<f64>,
+    pub ny: usize,
+    pub nx: usize,
+    pub cmap: crate::colormap::LeveledColormap,
+}
+
 #[derive(Clone, Debug)]
 pub struct ContourOverlay {
     pub data: Vec<f64>,

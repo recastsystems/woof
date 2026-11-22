@@ -206,7 +206,7 @@ def score_day(request, *, reader, work, audit=None, grib_bridge=None):
     # found ... t2" (feat/stochastic-physics, 2026-10-29).
     t2_name = request.get("t2_variable", "t2")
     if t2_name not in ("t2", "t2m"):
-        raise ValueError("t2_variable must be t2 (WOOF route) or t2m (MPAS suite route)")
+        raise ValueError("t2_variable must be t2 (WOOF-ArWen route) or t2m (MPAS suite route)")
     for roster in (control, stochastic):
         members = {}
         for member, spec in roster.items():

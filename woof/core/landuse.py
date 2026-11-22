@@ -448,8 +448,18 @@ def surface_snow_albedo(cfg, static, params) -> np.ndarray:
         return monthly_snow_albedo(static["SNOALB"], static["LANDMASK"])
     from woof.core.noah import noah_initial_snow_albedo
 
-    return noah_initial_snow_albedo(
+    value = noah_initial_snow_albedo(
         static["SNOALB"], static["LU_INDEX"], params, rdmaxalb=cfg.rdmaxalb)
+    if cfg.rdmaxalb and "LANDMASK" in static:
+        # rdmaxalb keeps real.exe's SNOALB, and real.exe sets every water
+        # point (LANDMASK < 0.5) to 0.08 (module_initialize_real.F:1236-1239,
+        # as monthly_snow_albedo).  Geogrid's percent is 0 there, so the met_em
+        # door wrote SNOALB = 0 over water where native WRF writes 0.08: the
+        # WRF tutorial's January 2000 case differed in 2,029 of 4,380 words of
+        # F000 SNOALB, every one a water point (15 Nov).  Land is unchanged.
+        water = np.asarray(static["LANDMASK"], dtype=np.float32) < np.float32(0.5)
+        value = np.where(water, np.float32(0.08), value).astype(np.float32)
+    return value
 
 
 def ruc_fractional_seaice(cfg) -> bool:

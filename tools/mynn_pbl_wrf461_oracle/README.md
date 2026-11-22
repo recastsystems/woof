@@ -50,7 +50,7 @@ oracle alone does not admit `bl_pbl_physics=5`.
 columns. Its `snow_anvil` column sets `FLAG_QS=.TRUE.`, carries nonzero snow
 with no cloud ice above the inversion, and records `sqs3d` alongside every
 input and output. This directly pins the wrapper/driver snow plumbing against
-the unmodified WRF v4.6.1 source rather than inferring it from the WOOF port.
+the unmodified WRF v4.6.1 source rather than inferring it from the WOOF-ArWen port.
 The source tree is tag `v4.6.1` at
 `d66e442fccc04111067e29274c9f9eaccc3cef28`; GNU Fortran 13.3.0 produced
 the 300-row fixture. The following SHA-256 values are the historical

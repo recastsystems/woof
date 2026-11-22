@@ -999,11 +999,19 @@ def test_a_platform_wheel_beside_the_pair_is_measured_not_ignored(
 # ---------------------------------------------------------------------
 # 2.8.1's fetch route table named the lab host that watched the posting
 # times in 20 measured rows, and nothing read a wheel's data files for
-# one.  The names are assembled so this file carries none.
-_HOST = "weather-" + "node-" + "2"
+# one.  The lab hosts' names are private: they come from the never-shipped
+# work/release_private_markers.py, and so does the rule that refuses them, so
+# a published snapshot (no work/ folder) skips the tests that plant them.
+from tools.release_exclusions import private_test_controls as _private_test_controls
+
+_CONTROLS = _private_test_controls()
+_HOST = _CONTROLS.get("site_host", "")
+_needs_private_hosts = pytest.mark.skipif(
+    not _HOST, reason="the private host rule is not in this tree (published snapshot)")
 _LAN = "192." + "168.68.1"
 
 
+@_needs_private_hosts
 def test_a_wheel_data_member_naming_a_private_machine_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1027,6 +1035,7 @@ def test_a_wheel_data_member_naming_a_private_machine_is_refused(
 
 # Replaces test_the_wheel_scan_reads_data_members_and_netcdf_not_code
 # (122ce03da): the wheel scan now reads code members too (see the docstring).
+@_needs_private_hosts
 def test_the_wheel_scan_reads_code_data_and_netcdf_not_metadata(
     tmp_path: Path,
 ) -> None:
@@ -1062,6 +1071,7 @@ def test_the_wheel_scan_reads_code_data_and_netcdf_not_metadata(
         ("woof/core/timing.py", "private machine name")]
 
 
+@_needs_private_hosts
 def test_a_frozen_kernel_source_is_allowed_by_its_exact_bytes_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1078,7 +1088,7 @@ def test_a_frozen_kernel_source_is_allowed_by_its_exact_bytes_only(
 
     repo = Path(verify_release_artifacts.__file__).resolve().parents[1]
     rel = "woof/core/kernels/frozen_example.cu"
-    payload = ("// measured on " + "no" + "de-9\n"
+    payload = ("// measured on " + _CONTROLS.get("host", "") + "\n"
                "__global__ void frozen_example() {}\n").encode()
     monkeypatch.setattr(release_exclusions, "PINNED_KERNEL_SOURCES",
                         {rel: hashlib.sha256(payload).hexdigest()})
@@ -1095,6 +1105,7 @@ def test_a_frozen_kernel_source_is_allowed_by_its_exact_bytes_only(
         verify_release_artifacts._refuse_private_hosts(edited, repo)
 
 
+@_needs_private_hosts
 def test_a_pinned_reference_config_is_allowed_by_its_exact_bytes_only(
     tmp_path: Path,
 ) -> None:

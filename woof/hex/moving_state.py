@@ -73,7 +73,7 @@ def remap_atmosphere(payload, weights, *, source_mesh, target_prepared, config, 
     def momentum_branch():
         # Momentum, divergence diagnostics and the interface w map read only the carrier and the map,
         # never the remapped thermodynamics, so they run beside it (THE COST THIS REMOVES: ~4.5 s of
-        # one core after the 18 s thermodynamics, box-aws2x 2026-10-24).  Same calls, same order.
+        # one core after the 18 s thermodynamics, a two-card cloud machine, 2026-10-24).  Same calls, same order.
         return _remap_momentum(payload, weights, source_mesh, target_prepared, momentum_product, mass_map)
     if balanced:
         from .moving_balance import remap_balanced_thermodynamics

@@ -1104,11 +1104,13 @@ def mcica_draws_per_gpoint(overlap, nl):
     return 2 * int(nl) if overlap >= 4 else int(nl)
 
 
-def _lw_mcica_wrapper(ng, nl, cldovrlp, idcor, julday, surface, a):
+def _lw_mcica_wrapper(ng, nl, cldovrlp, idcor, julday, surface, a, held=None):
     """MPAS: module_ra_rrtmg_lw.F:12175-12185,2099-2737. Wrapper McICA (IRNG=0, seed=150).
 
     Every word of the four (columns, layers, 140) slabs is written when an overlap is selected;
     overlap 0 leaves them zero exactly as native's early return over cleared arrays.
+    ``held`` (mcica_seed_rule.Held, this batch's keys) rewrites the seed words by the ``cell`` rule of
+    config_radt_mcica_seed before the sub-columns are drawn; None (the default) is MPAS's pressure rule.
     """
     import cupy as cp
     shape = (ng, nl, 140)
@@ -1120,6 +1122,9 @@ def _lw_mcica_wrapper(ng, nl, cldovrlp, idcor, julday, surface, a):
     _gpu_kernel('mpas_lw_mcica_seeds')(((ng + 127) // 128,), (128,),
         (np.int32(ng), np.int32(nl), np.int32(cldovrlp), np.int32(idcor), np.int32(julday),
          np.int32(150), surface, a, seeds, weights))
+    if held is not None:
+        from .mcica_seed_rule import LONGWAVE
+        held.write(seeds, LONGWAVE)
     draws = mcica_draws_per_gpoint(cldovrlp, nl)
     threads = ng * 140
     _gpu_kernel('mpas_lw_mcica_gpoint')(((threads + 127) // 128,), (128,),
@@ -1169,8 +1174,12 @@ def rrtmg_lwrad_device(model, interfaces, surface, tables, *, icloud,
                        cldovrlp, idcor, julday, has_reqc=0, has_reqi=0,
                        has_reqs=0, o3input=0, pin=None, ozone=None,
                        has_qc3d=True, has_qi3d=True, has_qs3d=True,
-                       has_cldfra3d=True, column_chunk=None, retain_profiles=True):
+                       has_cldfra3d=True, column_chunk=None, retain_profiles=True, mcica_seed=None):
     """MPAS: module_ra_rrtmg_lw.F:11574-12305.
+
+    ``mcica_seed``: None draws each column's sub-columns from MPAS's pressure-digit seeds; a
+    mcica_seed_rule.Held (the ``cell`` rule of config_radt_mcica_seed, keyed in this call's column order)
+    draws them from the cell's global index and the call's time step.
 
     Device-only MPAS wrapper, retaining variable layer counts per column.
     model=(columns,12,model layers); interfaces=(columns,2,layers+1);
@@ -1247,7 +1256,8 @@ def rrtmg_lwrad_device(model, interfaces, surface, tables, *, icloud,
             (i32(ng),i32(nm),i32(nl),i32(icloud),i32(has_reqc),i32(has_reqi),i32(has_reqs),
              i32(o3input),i32(0 if pin is None else pin.size),i32(presence),m,lev_in,
              s,dummy if pin is None else pin,oz,a,lev))
-        cloud,liquid,ice,snow=_lw_mcica_wrapper(ng,nl,cldovrlp,idcor,julday,s,a)
+        cloud,liquid,ice,snow=_lw_mcica_wrapper(ng,nl,cldovrlp,idcor,julday,s,a,
+            None if mcica_seed is None else mcica_seed.take(indices))
         # The solver runs the whole wrapper batch as one chunk (column_chunk=ng): its per-column
         # kernels (setcoef, inatm, final) otherwise launched on ~2,300 columns at a time, a few
         # threads per SM. Chunk width is workspace shape only (solve_device's contract).
@@ -1389,7 +1399,10 @@ def bind_native_pools(provider, call):
             # MPAS: mpas_atmphys_manager.F:204-212 (current native calendar).
             'julday': int(provider.native.get_table('mpas_atmphys_manager.julday')[0][()]),
             'radius_flags': tuple(int(provider['scalar_state'][name])
-                                 for name in ('has_reqc', 'has_reqi', 'has_reqs'))}
+                                 for name in ('has_reqc', 'has_reqi', 'has_reqs')),
+            # config_radt_mcica_seed = 'cell' only (mcica_seed_rule): the solve cells' global indices.
+            'cell_ids': lambda: provider['mesh']['indexToCellID'][:int(
+                provider.session.layout.dimensions['nCellsSolve'])]}
 
 
 def radiation_lw_slot(call):
@@ -1441,11 +1454,13 @@ def radiation_lw_slot(call):
             (np.int32(pressure.size),pressure,pressure_mb))
         diag['o3vmr'][:,:nc]=vinterp_ozn_device(pressure_mb,pin,ozone).T
     packed=radiation_lw_from_mpas(state)
+    from .mcica_seed_rule import held as _held_seed
     result=rrtmg_lwrad_device(*packed,pools['rrtmg_lw_tables'],
         icloud=int(pools['icloud']),julday=int(pools['julday']),
         cldovrlp=opts.cldovrlp,idcor=opts.idcor,has_reqc=opts.has_reqc,
         has_reqi=opts.has_reqi,has_reqs=opts.has_reqs,o3input=opts.o3input,
-        pin=pin,ozone=ozone,retain_profiles=pools.get('retain_lw_profiles', True))
+        pin=pin,ozone=ozone,retain_profiles=pools.get('retain_lw_profiles', True),
+        mcica_seed=_held_seed(call.options, lambda: pools['cell_ids'](), call.itimestep))
     out=radiation_lw_to_mpas(result)
     for name in FLUX_FIELDS:
         diag['olrtoa' if name=='olr' else name][:nc]=out[name]

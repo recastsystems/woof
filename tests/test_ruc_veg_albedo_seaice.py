@@ -312,8 +312,9 @@ def test_prescribed_surface_fields_round_each_real_operation():
     real_input = monthly.astype(np.float32)
     expected = _wrf_monthly_interp(real_input, date)
     legacy = monthly_interp_to_date(monthly, date)
-    assert np.any(legacy.astype(np.float32).view(np.uint32)
-                  != expected.view(np.uint32))
+    # One temporal operator for every start: the static builder's blend is
+    # real.exe's REAL order too (it was float64 and differed in the last place).
+    np.testing.assert_array_equal(legacy.view(np.uint32), expected.view(np.uint32))
     np.testing.assert_array_equal(
         surface_leaf_area(_ruc_config(rdlai2d=True), monthly, date), expected)
     np.testing.assert_array_equal(
@@ -344,10 +345,12 @@ def test_ruc_monthly_snow_albedo_uses_real_division_and_the_water_value():
         surface_snow_albedo(on, static, None),
         monthly_snow_albedo(static["SNOALB"], static["LANDMASK"]))
     off = _ruc_config()
-    np.testing.assert_array_equal(
-        surface_snow_albedo(off, static, None),
-        noah_initial_snow_albedo(static["SNOALB"], static["LU_INDEX"], None,
-                                rdmaxalb=off.rdmaxalb))
+    # rdmaxalb keeps real.exe's SNOALB: the supplied percent on land, 0.08 on
+    # every water point (module_initialize_real.F:1236-1239).
+    expected = noah_initial_snow_albedo(static["SNOALB"], static["LU_INDEX"], None,
+                                        rdmaxalb=off.rdmaxalb)
+    expected[static["LANDMASK"] < 0.5] = np.float32(0.08)
+    np.testing.assert_array_equal(surface_snow_albedo(off, static, None), expected)
 
 
 def test_prescribed_monthly_fields_match_the_compiled_fork():

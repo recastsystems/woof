@@ -102,6 +102,26 @@ mod tests {
         assert!(object_url(SourceId::Aws, &late).unwrap().unwrap().contains("/12/atmos/"));
     }
     #[test]
+    fn gdas_archive_starts_at_the_atmos_layout() {
+        // Door item 11: a GDAS cycle before 2021-03-22 12Z is refused by
+        // the table, not sent to an atmos/ key the archive does not hold.
+        let gdas = |date: &str, hour: u8, lead: u16, product: &str| ModelRunRequest::new(
+            ModelId::Gdas, CycleSpec::new(date, hour).unwrap(), lead, product).unwrap();
+        assert_eq!(object_url(SourceId::Aws, &gdas("20210322", 12, 0, "pgrb2.0p25"))
+                       .unwrap().unwrap(),
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gdas.20210322/12/atmos/gdas.t12z.pgrb2.0p25.f000");
+        assert_eq!(object_url(SourceId::Aws, &gdas("20260502", 0, 3, "pgrb2.0p25"))
+                       .unwrap().unwrap(),
+            "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gdas.20260502/00/atmos/gdas.t00z.pgrb2.0p25.f003");
+        for (date, hour) in [("20210322", 6), ("20210115", 0), ("20190101", 0)] {
+            assert!(object_url(SourceId::Aws, &gdas(date, hour, 0, "pgrb2.0p25"))
+                        .unwrap().is_err(), "{date} {hour}");
+        }
+        // NOMADS keeps no dated rows, and the 1.0 degree product keeps its builder.
+        assert!(object_url(SourceId::Nomads, &gdas("20210115", 0, 0, "pgrb2.0p25")).is_none());
+        assert!(object_url(SourceId::Aws, &gdas("20261001", 0, 0, "pgrb2.1p00")).is_none());
+    }
+    #[test]
     fn forecast_holes_are_refused() {
         for lead in [1, 241, 243] {
             assert!(object_url(SourceId::Gdex,

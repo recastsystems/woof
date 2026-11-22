@@ -158,6 +158,7 @@ import hashlib
 import json
 import math
 import os
+from woof.hex import card_queue
 import re
 from pathlib import Path
 import sys
@@ -297,6 +298,60 @@ CLAIM = (
 _FROZEN_CLAIM_SCHEMES = re.compile(
     r"^WSM6 \+ (?:(?P<cumulus>.+?) \+ )?YSU \+ external YSU-GWDO \+ .* \+ legacy RRTMG$"
 )
+
+
+def refuse_pick_without_cumulus_contract(physics: Any, run_row: Any, config_scheme: str) -> None:
+    """Stop before the mesh is read when the engine has no cumulus contract for this run's microphysics.
+
+    THE BREAKAGE THIS PREVENTS (hex 0.5.0, 2026-11-10): TEMPO picked over ``arwen_mpas_column`` on a zoom
+    globe, where the resolution rule selects Grell-Freitas, on public gpuwm 2.9.13 stopped inside the
+    engine's physics constructor with "KF has no verified phase-output contract for mp_physics=900" and no
+    word on what to do.  The contract is the engine's own (``_cumulus_optional_tendency_components``): it is asked here, not copied,
+    so this stop retires itself on an engine that carries the row (woof ``fix/2913-hex-mp-picks``).
+    MPAS-A's own suites run their cumulus through the MPAS route and are not asked.
+    """
+
+    if physics is None or getattr(physics, "suite", None) is None:
+        return
+    from woof.hex.physics_suites import mpas_suite_names
+    from woof.hex import convection_admission as _convection
+
+    if physics.suite in mpas_suite_names():
+        return
+    try:
+        cu_physics = _convection.cu_physics_for_constructor_scheme(_convection.constructor_scheme(config_scheme))
+        cumulus = _convection.label(config_scheme)
+    except _convection.ConvectionAdmissionError:
+        return
+    if not cu_physics:
+        return
+    try:
+        from woof.core.physics import _cumulus_optional_tendency_components as engine_contract
+    except ImportError:
+        return
+    from types import SimpleNamespace
+
+    try:
+        engine_contract(SimpleNamespace(cu_physics=int(cu_physics), mp_physics=int(run_row.mp_physics)))
+    except ValueError as error:
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            engine = "woof " + version("recast-woof")
+        except PackageNotFoundError:
+            engine = "the installed woof"
+        raise ConfigurationRefusal(
+            "config_microp_scheme",
+            run_row.scheme_name,
+            (
+                f"{run_row.scheme_name} over the {physics.suite} suite runs "
+                f"{cumulus} on this mesh, and {engine} has "
+                f"no cumulus contract for it ({error}).  Update woof to a release that carries the cumulus "
+                "rows for a picked microphysics (gpuwm 2.9.13 does not), or run the pick on a mesh where "
+                "the resolution rule selects New Tiedtke or no convection"
+            ),
+            "an engine whose cumulus scheme admits this microphysics",
+        ) from None
 
 
 def claim_for_physics(claim: str, physics: Any) -> str:
@@ -987,7 +1042,7 @@ def install_capture_labels(labels: Mapping[int, str]) -> None:
 def step_admission_receipt(config: Any) -> dict[str, Any]:
     """Record the evidence for the selected schedule.  Refuses nothing.
 
-    RETIRED 2026-10-10 as a gate (owner ruling).  This used to raise unless a timestep anchor or a dycore step
+    RETIRED 2026-10-10 as a gate.  This used to raise unless a timestep anchor or a dycore step
     certificate held the configuration; it now writes, into the run's
     receipt, whether one does, and whether the run is the native x4
     reference's own schedule.  The cadences the run cannot schedule are
@@ -1145,7 +1200,7 @@ def _build_forecast_config(
 ) -> Any:
     """Build the run's configuration AT THE BOUND MESH'S TIMESTEP.
 
-    THE BREAKAGE THIS PREVENTS, MEASURED (2026-08-26, the proving RTX 5090):
+    THE BREAKAGE THIS PREVENTS, MEASURED (2026-08-26, an RTX 5090):
     this function did not exist and the configuration was constructed from
     its dataclass defaults, so ``config_dt`` was 120.0 no matter what mesh
     was bound.  ``bind_mesh`` rebinds ``DT_SECONDS`` in this module and in
@@ -1331,7 +1386,7 @@ def supplied_undriven_scalars(
     ``driven`` holds the stream's own ``lbc_``-prefixed names, as
     :func:`select_lbc_scalar_names` returns them, so the comparison is made on
     those names.  Comparing the bare species name against it listed every
-    driven mass as undriven in the receipt (rrfs-h-h4a skeptic finding,
+    driven mass as undriven in the receipt (found in review,
     2026-10-05).
     """
 
@@ -2077,6 +2132,7 @@ def prepare_forecast_host(
     arwen_les.validate(config)
 
     run_row = _row_for_scheme(config.config_microp_scheme)
+    refuse_pick_without_cumulus_contract(physics, run_row, config.config_convection_scheme)
     scalar_names = tuple(run_row.names())
     surface_accumulators = tuple(item.name for item in run_row.surface_accumulators)
     # The loader's dynamics mesh and evidence, served from a verified snapshot
@@ -2230,7 +2286,7 @@ def prepare_forecast_host(
     )
     if arwen_les.active(config):
         constructor_values["pbl_scheme"] = None
-        constructor_receipt["turbulence"] = "resident cuda_les_v842; WOOF surface fluxes"
+        constructor_receipt["turbulence"] = "resident cuda_les_v842; WOOF-ArWen surface fluxes"
     # physics.mode (woof.hex.correct_mode; MODE-KEY.md).  Exact adds nothing to
     # the mapping, so the sealed constructor and its identity are unchanged.
     from woof.hex import correct_mode as _correct_mode
@@ -2983,6 +3039,14 @@ def write_jedi_background(
         n_levels=int(N_LEVELS),
         soil_levels=int(soil_levels),
         valid=valid,
+        require_native_land=True,
+    )
+    if "pblh" not in snapshot["arrays"]:
+        raise jedi_contract.ContractRefusal("background requires actual committed live pblh; no init fallback")
+    jedi_contract.add_live_geometry(
+        fields, provenance, pblh=snapshot["arrays"]["pblh"],
+        zgrid=host["prepared"].vertical.zgrid,
+        n_cells=int(N_CELLS), n_levels=int(N_LEVELS),
     )
     record = jedi_contract.write_background(
         output_root / f"mpasout.{label}.nc",
@@ -3102,7 +3166,7 @@ def _mixing_treatment_proof(driver: Any, executed_steps: int) -> dict[str, Any]:
     if les is not None:
         return {"active": True, "lane": "resident_cuda_les_v842",
                 "closure": driver.config.config_les_model,
-                "surface": "WOOF surface-layer device fluxes",
+                "surface": "WOOF-ArWen surface-layer device fluxes",
                 "pbl": "off", "calls": dict(les.counts),
                 "scalar_order": list(les.names),
                 "native_pools": False}
@@ -3273,7 +3337,12 @@ def execute_forecast(
     # longer pins sm_120 (``required_compute``), because that pin named no
     # breakage.  The receipt records whether the card holds an anchor
     # (``architecture`` below, woof.hex.cuda_backend.arch_admission).
-    capability = require_cuda(min_compute=(12, 0), cache_dir=cache_root)
+    from woof.hex.cuda_backend.cupy_cache import forecast_directory
+
+    # The box's kernel image cache, not this run's scratch (WOOF_HEX_SHARED_KERNEL_IMAGES;
+    # fork jacobbieker/woof PR 488).
+    images = forecast_directory(cache_root)
+    capability = require_cuda(min_compute=(12, 0), cache_dir=images)
     import cupy as cp
 
     # ``required_free_bytes`` is the forecast door's own admission sum,
@@ -3296,7 +3365,7 @@ def execute_forecast(
             stochastic_bytes + tc_allowance)
     else:
         memory = proof.gpu_memory_admission(cp, minimum=int(required_free_bytes))
-    cache = KernelCache(capability=capability, cache_dir=cache_root)
+    cache = KernelCache(capability=capability, cache_dir=images)
     # RRFS v2 stage H6: a resumed run (plain restart or DA-cycling restart).
     stochastic_restart = None
     start_step = 0
@@ -3474,7 +3543,11 @@ def execute_forecast(
     from woof.hex.cuda_subcycle_graphs import graph_policy, graphs_enabled
     graph_requested = graphs_enabled(int(N_CELLS))
     graph_controller = None
-    if graph_requested and lts_attachment is None and fullstep_shadow is None:
+    # Local time stepping's rate classes are launches of the same subcycle, chosen on the host by the
+    # sub-step and stage alone, so they capture and replay with it (fork jacobbieker/woof PR 473;
+    # WOOF_HEX_CUDA_GRAPHS_LTS=0: eager, the path through hex 0.6.1).
+    lts_graphs = lts_attachment is None or os.environ.get("WOOF_HEX_CUDA_GRAPHS_LTS", "1") != "0"
+    if graph_requested and lts_graphs and fullstep_shadow is None:
         from woof.hex.cuda_subcycle_graphs import attach_subcycle_graphs
 
         graph_controller = attach_subcycle_graphs(stack["driver"])
@@ -3497,7 +3570,7 @@ def execute_forecast(
     install_step_gate_batch(stack, cp)
     labels = schedule["labels"]
     steps = int(schedule["steps"])
-    # Incremental analysis update on this executor (lane W1): one class, every cell and
+    # Incremental analysis update on this executor: one class, every cell and
     # edge, the same hook the full-step class executor uses.  None leaves the step loop
     # exactly as before.
     iau_forcing = None
@@ -3528,6 +3601,10 @@ def execute_forecast(
         balance_view = _Namespace(classes=[_Namespace(driver=stack["driver"], n_owned_cells=int(N_CELLS),
                                                       tables=_Namespace(rate=1))])
         balance.sample(balance_view, float(start_step) * float(DT_SECONDS), cp)
+    # The external-tendency table (woof.hex.ad.external_tendency), when one is given, is uploaded here, before the
+    # step loop, so a recording holds it in boundary 0. Unset: nothing happens.
+    from woof.hex.ad import external_tendency as _external_tendency
+    _external_tendency.preload(cp)
     static = proof._static_output_fields(host)
     tc_session = None
     if tc_climate is not None:
@@ -3867,7 +3944,7 @@ def execute_forecast(
     snapshot_seconds = 0.0
     card_attrs = {"card": time_ledger.card_index(), "card_count": 1,
                   "visible_device": os.environ.get("CUDA_VISIBLE_DEVICES"),
-                  "mutex_cards": os.environ.get("GPU_MUTEX_CARDS")}
+                  "mutex_cards": card_queue.get(card_queue.CARDS, None)}
 
     def inspect_pending_health() -> None:
         nonlocal pending_health, health_seconds, late_health_error
@@ -4264,7 +4341,8 @@ def execute_forecast(
             "fully_replayed_committed_steps": graph_full_steps,
             "partly_replayed_committed_steps": graph_partial_steps,
             "subcycles": None if graph_controller is None else graph_controller.receipt(),
-            "skip_reason": "local_timestep_controller" if lts_attachment is not None else None,
+            "skip_reason": ("local_timestep_controller" if lts_attachment is not None and not lts_graphs
+                            else None),
         }} if graph_requested else {}),
         "cuda_graphs_policy": graph_policy(int(N_CELLS)),
         "architecture": architecture_status(capability.compute).as_dict(),
@@ -4657,7 +4735,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "MEASURED NEGATIVE, kept only so the measurement reproduces: hold "
-            "the frozen-WOOF physics seam's device residency in pinned host "
+            "the frozen-ArWen physics seam's device residency in pinned host "
             "memory across the dynamics half of every step.  It moves 786.8 "
             "MiB and releases 735.4 MiB of it, and on x1.40962 it still made "
             "the allocator's reservation WORSE -- 4068.7 MiB with the park "
@@ -4665,7 +4743,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "the instantaneous peak, is what a card has to provide.  Alone it "
             "changes neither number, since the peak is inside phase-1 physics "
             "where the tier is being read.  Those absolutes were measured "
-            "2026-08-20 at WOOF seam pin 629ddb6f0, BEFORE the Grell-Freitas "
+            "2026-08-20 at WOOF-ArWen seam pin 629ddb6f0, BEFORE the Grell-Freitas "
             "local-memory frame cut; the A/B sign is what carries, and "
             "re-running the park at pin 0d04db712 is NOT MEASURED.  Do not "
             "reach for this as an optimisation.  Also not bit-identity: "
@@ -4901,7 +4979,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "the physics state it resumes against would not exist"
         )
     if args.restart_from is not None and not Path(args.restart_from).is_file():
-        parser.error(f"--restart-from {args.restart_from} is not a file")
+        # A joined --hosts host on its own disk holds only its own copy (.multihost/host<N>/, checkpoint_v842).
+        from ..mpasphys.checkpoint_shards_v842 import joined_carrier
+        if not Path(joined_carrier(str(Path(args.restart_from).expanduser().absolute()))).is_file():
+            parser.error(f"--restart-from {args.restart_from} is not a file")
     if args.da_analysis is not None and not Path(args.da_analysis).is_file():
         parser.error(f"--da-analysis {args.da_analysis} is not a file")
     if args.jedi_soil_levels not in (4, 9):
@@ -5210,6 +5291,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "static": Path(args.static).expanduser().absolute(),
         "init": Path(args.init).expanduser().absolute(),
     }
+    # The learned correction (woof.hex.ad.learned_correction) is installed on the external-tendency slot only when
+    # WOOF_HEX_LEARNED_CORRECTION names a checkpoint. Unset (the default): nothing is imported or installed.
+    if os.environ.get("WOOF_HEX_LEARNED_CORRECTION"):
+        from woof.hex.ad import learned_correction as _learned_correction
+        _learned_correction.install_from_env(paths["init"], getattr(args, "dt", None))
     arwen_checkout = proof.resolve_arwen_checkout(args.arwen_checkout)
     # Resolved first: a selection behind the column-suite seam that no
     # profile row names registers its synthesized backend row here.
@@ -5369,7 +5455,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             or arwen_git_after != arwen_git_before
         ):
             raise RuntimeError(
-                "source, authority, or WOOF bytes changed during preflight"
+                "source, authority, or WOOF-ArWen bytes changed during preflight"
             )
         print(
             json.dumps(
@@ -5436,7 +5522,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         or authority_after != authority_before
         or arwen_git_after != arwen_git_before
     ):
-        raise RuntimeError("source, authority, or WOOF bytes changed during execution")
+        raise RuntimeError("source, authority, or WOOF-ArWen bytes changed during execution")
     payload = {
         **provenance,
         "status": (

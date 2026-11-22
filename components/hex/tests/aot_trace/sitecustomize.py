@@ -10,7 +10,7 @@ import time
 
 def install():
     destination = os.environ.get("WOOF_HEX_AOT_TRACE_DIR")
-    if not destination or not os.environ.get("GPU_MUTEX_CARDS"):
+    if not destination or not os.environ.get("CARD_QUEUE_CARDS"):
         return
     from cupy_backends.cuda.libs import nvrtc
     create = nvrtc.createProgram

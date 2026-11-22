@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 
 ref = Path(sys.argv[1]).resolve()
 wf = ref / 'wf/rrfs-workflow'
-old = Path(__import__('os').environ['MPAS_LANES']) / 'ref/rrfs/decks/x1.2562-20230331-generated-v1/suite-hrrrv5'
+old = Path(__import__('os').environ['HEX_REFERENCE_ROOT']) / 'ref/rrfs/decks/x1.2562-20230331-generated-v1/suite-hrrrv5'
 new = ref / 'decks/x1.2562-6h'
 def nml(file):
     out = {}
@@ -58,7 +58,7 @@ for filename in sorted(set(p.name for p in (old / 'stream_list').iterdir()) | se
     b = set((new / 'stream_list' / filename).read_text().split()) if (new / 'stream_list' / filename).exists() else set()
     for key in sorted(a ^ b):
         lines.append(f'| {filename}:{key} | {"present" if key in a else "absent"} | {"present" if key in b else "absent"} | {introduced(key, "fix/stream_list/hrrrv5/" + filename)} |')
-old_init = Path(__import__('os').environ['MPAS_LANES']) / 'ref/rrfs/cases/approved-canonical-global-ruc9-v1/x1.2562-soil9/2023-03-31_12.00.00/case7/namelist.init_atmosphere'
+old_init = Path(__import__('os').environ['HEX_REFERENCE_ROOT']) / 'ref/rrfs/cases/approved-canonical-global-ruc9-v1/x1.2562-soil9/2023-03-31_12.00.00/case7/namelist.init_atmosphere'
 new_init = ref / 'cases/x1.2562/case7-pointer-witness/namelist.init_atmosphere'
 assert nml(old_init) == nml(new_init)
 lines += ['', 'Init namelist: 0 added, removed or changed assignments against the old canonical case7 namelist. Target workflow template substituted with the old canonical variables (case7, GFS58, RUC9, levels59, L60 vertical file). Case9 changes init_case=9 and end_time=13Z, and input stream reads case7-init.nc instead of static.nc. All other template keys are preserved.',

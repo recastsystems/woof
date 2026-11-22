@@ -53,6 +53,20 @@ def region_request(args):
         point = f"{drawn['center_deg'][0]},{drawn['center_deg'][1]}"
         args.radius_km = float(drawn["radius_km"])
         drawn = None
+    from . import mesh_ask
+    try:
+        generator = mesh_ask.door_generator(args)
+    except mesh_ask.MeshAskRefusal as error:
+        raise MpasPortError(str(error)) from error
+    if not (point or polygon or drawn):
+        # A registered row or region names a mesh that is already made: it keeps the generator it was
+        # made with.  Geometry 2, the default since 0.6.2, applies to a region drawn at run time.
+        generator = mesh_ask.generator_request({}, 1)
+    if getattr(args, "geometry", None) == 2 and not (point or polygon or drawn):
+        raise MpasPortError(
+            "--geometry 2 builds a region drawn at run time (--point, --polygon, --ellipse or --shape); a "
+            "registered row or region names a mesh that is already made, and its generator is not this door's "
+            "to change")
     if not (region or point or polygon or drawn):
         return load_row(args.row, args.table)
     table = REGIONS if args.table == TABLE else args.table
@@ -70,7 +84,13 @@ def region_request(args):
             raise MpasPortError("point must be LAT,LON") from error
         radius = getattr(args, "radius_km", None)
         if not (-90 <= lat <= 90 and -180 <= lon <= 180 and radius and math.isfinite(radius) and 0 < radius < 10000):
-            raise MpasPortError("point latitude/longitude or radius is outside the finite geographic range")
+            raise MpasPortError("point latitude/longitude or radius is outside the finite geographic range" + (
+                f"; --point takes LAT,LON, and read the other way round {lon:g},{lat:g} is a valid point"
+                if not -90 <= lat <= 90 and -90 <= lon <= 90 and -180 <= lat <= 180 else ""))
+        from .mesh_point import swapped_point_refusal
+        swapped = swapped_point_refusal(lat, lon)
+        if swapped is not None:
+            raise MpasPortError(swapped)
         geometry = {"kind": "cap", "center_deg": [lat, lon], "radius_km": radius}
         half = math.degrees(radius / 6371.229)
         south, north = max(-90, lat-half), min(90, lat+half)
@@ -107,10 +127,36 @@ def region_request(args):
     resolution = {}
     fine = getattr(args, "fine_dx_m", None)
     background = getattr(args, "background_km", None)
-    if fine is not None or background is not None:
+    if generator["geometry"] == 2:
+        # Geometry 2 has no halving ladder: the region is built at the spacing asked on the background asked,
+        # whatever their ratio (--background-fit has nothing to move).  The geometry is part of the region's
+        # identity, so a geometry 2 region never reuses a geometry 1 region's prepared mesh, or the reverse.
+        fine = float(fine if fine is not None else row["mesh"]["fine_dx_m"])
+        background = float(background if background is not None else row["mesh"]["background_km"])
+        if not 0.0 < fine / 1000.0 < background:
+            raise MpasPortError(f"--fine-dx-m {fine:g} m is not finer than the {background:g} km background, so "
+                                "there is nothing to refine")
+        step = min(float(row["mesh"]["dt_seconds"]), 6.0 * fine / 1000.0)
+        resolution = {"fine_dx_m": fine, "background_km": background, "dt_seconds": step,
+                      "generator": {"geometry": 2, **({"ramp_onset": generator["ramp_onset"]}
+                                                      if generator["ramp_onset"] else {})}}
+    elif fine is not None or background is not None:
         from .mesh_point import ladder_rungs
         fine = float(fine if fine is not None else row["mesh"]["fine_dx_m"])
         background = float(background if background is not None else row["mesh"]["background_km"])
+        fit = getattr(args, "background_fit", None)
+        if fit not in (None, "exact"):
+            # Any fine spacing: the fine spacing is kept and the background moves onto its halving ladder
+            # (woof.hex.mesh_ask.fit_to_ladder); the move is printed, and is part of the region's identity.
+            from . import mesh_ask
+            try:
+                moved = mesh_ask.fit_to_ladder(background, fine / 1000.0, fit)
+            except mesh_ask.MeshAskRefusal as error:
+                raise MpasPortError(str(error)) from error
+            if moved["moved"]:
+                print(f"mesh: background asked {background:g} km, built {moved['built_km']:g} km, the "
+                      f"{fit} spacing the {fine:g} m region halves up to", flush=True)
+            background = float(moved["built_km"])
         ladder_rungs(background, fine)
         step = min(float(row["mesh"]["dt_seconds"]), 6.0 * fine / 1000.0)
         resolution = {"fine_dx_m": fine, "background_km": background, "dt_seconds": step}
@@ -191,14 +237,59 @@ def _producer_init_argv(args, value):
 
 
 def _measured_first_guess(met, declared):
+    """The first guess the init or the boundaries read: the row's, with the level counts measured on the files.
+
+    A boundary met directory's endpoints (lbc_producer's source-endpoints.json) each name their decode receipt, whose
+    effective_first_guess counts the levels the decode actually wrote; the boundaries read the largest, which every
+    file fits under (the regional door's table stage does the same). THE BREAKAGE THIS PREVENTS (2026-11-13, the
+    first hex region from ICON): ICON's 19 pressure levels plus the 8 its GFS upper-air donor adds above 30 hPa made
+    27-level boundary files, and rw_mpas_lbc, told the row's 19, refused them ("raise --nfglevels to at least 27").
+    """
     from .regional_door import _first_guess
-    return _first_guess({"source": {"first_guess": declared}, "paths": {"met": str(met)}})
+    guess = _first_guess({"source": {"first_guess": declared}, "paths": {"met": str(met)}})
+    endpoints = Path(met) / "source-endpoints.json"
+    if endpoints.is_file():
+        counts = []
+        for item in json.loads(endpoints.read_text(encoding="utf-8")).get("endpoints", []):
+            receipt = Path(item.get("receipt", ""))
+            effective = (json.loads(receipt.read_text(encoding="utf-8")).get("effective_first_guess") or {}
+                         if receipt.is_file() else {})
+            if effective.get("nfglevels"):
+                counts.append(int(effective["nfglevels"]))
+        if counts:
+            guess["nfglevels"] = max(int(guess["nfglevels"]), max(counts))
+    return guess
+
+
+def region_generator_words(row):
+    """The generator's words for a region row's mesh: nothing for geometry 1, the row's own under geometry 2."""
+    asked = _region_ask(row)
+    return [] if asked is None else list(asked["generator"]["words"])
+
+
+def _region_ask(row):
+    """A geometry 2 region as the mesh row it is (woof.hex.mesh_ask): one zone, the region's own outline, at the
+    spacing asked on the background asked.  None for geometry 1."""
+    generator = row["mesh"].get("generator")
+    if not generator or int(generator.get("geometry", 1)) != 2:
+        return None
+    from . import mesh_ask
+    mesh = row["mesh"]
+    try:
+        return mesh_ask.expand({"kind": mesh_ask.ROW_KIND, "name": row["id"], "background_km": mesh["background_km"],
+                                "zones": [{"name": "region", "shape": row["geometry"], "fine_dx_m": mesh["fine_dx_m"]}],
+                                "generator": dict(generator)})
+    except mesh_ask.MeshAskRefusal as error:
+        raise MpasPortError(str(error)) from error
 
 
 def region_specification(row):
     """Use the generator's admitted halving ladder for table resolution."""
     from .mesh_point import ladder_spec, ladder_rungs
     mesh = row["mesh"]
+    asked = _region_ask(row)
+    if asked is not None:
+        return asked["spec"]
     if row["geometry"]["kind"] == "cap":
         return ladder_spec(tuple(row["geometry"]["center_deg"]), fine_dx_m=mesh["fine_dx_m"],
             radius_km=row["geometry"]["radius_km"], background_km=mesh["background_km"], name=row["id"])
@@ -222,7 +313,7 @@ def _suite_parent_init(value, parent_init, mesh):
     """The parent init completed for the planned forecast's physics suite, or None when it needs nothing.
 
     THE BREAKAGE THIS PREVENTS (3 km region from GFS 2026-10-23 18Z f348 with
-    rrfs_v2_dev, box L, 2026-10-24): RUC integrates 9 soil levels, the init
+    rrfs_v2_dev, 2026-10-24): RUC integrates 9 soil levels, the init
     writes Noah's 4, and the forecast door replays the soil from the init's
     recorded source analysis -- which a CUT init does not carry, so every
     RRFS-shape region refused ("ruc needs 9 soil levels; mesh.init.nc has 4 and
@@ -310,10 +401,34 @@ class _SourceBesideMesh:
                     pass
 
 
+def refuse_producer_geog_missing(args, value):
+    """A producer suite's start (hrrrv5, the rrfs_* suites) builds its own static from the geography: read that the
+    geography holds its datasets before any source hour is fetched.
+
+    THE BREAKAGE THIS PREVENTS (a front-door run of the sealed 0.6.0 candidate, 2026-11-15): on a machine whose
+    geography held the door's own datasets but not the fork static's (MODIS 15 s land use among them), ``country
+    --source icon --forecast-arg=--physics-suite=hrrrv5`` built the mesh and fetched and decoded seven ICON hours
+    (186 s, 5.1 GB) before the init, the last stage of the preparation, named the missing datasets. A region with
+    its own ``--static`` is left to the init, which reads whether that file already carries the fork's fields."""
+    command = value["commands"].get("producer_init")
+    if not command or getattr(args, "static", None):
+        return
+    from .mesh_point import resolve_geog
+    from .mpasphys.rrfs.cold_start_rrfs import producer_for_suite, refuse_missing_static_geog
+
+    def word(flag):
+        return command[command.index(flag) + 1] if flag in command else None
+    found = producer_for_suite(word("--physics-suite"), pin_set=word("--physics-pin-set"))
+    if found is None:
+        return
+    refuse_missing_static_geog(found[1], resolve_geog(args.geog).expanduser().absolute(),
+                               word("--deep-soil-temperature"))
+
+
 def _prepare_region(args, value, status):
     from .lbc_producer import produce_source_endpoints
-    if args.endpoint_workers < 1:
-        raise MpasPortError("endpoint workers must be positive")
+    refuse_producer_geog_missing(args, value)   # before the first source hour is fetched
+    args.endpoint_workers = country_endpoint_workers(getattr(args, "endpoint_workers", None))
     source = _SourceBesideMesh(value["boundary_endpoints"], args.work_dir.resolve() / "boundary-met",
                                args.endpoint_workers, produce_source_endpoints)
     try:
@@ -362,7 +477,7 @@ def _prepare_region_stages(args, value, status, source):
     # A file at the destination is not evidence for this request. The store
     # keys the current geometry/engine and grid/geography before reusing bytes.
     measured("mesh", lambda: run_or_fetch([engine("rw_mpas_mesh"), "--spec", str(spec), "--out", str(grid),
-                      "--receipt", str(parent / "mesh-receipt.json"), "--clobber"]))
+                      "--receipt", str(parent / "mesh-receipt.json"), "--clobber", *region_generator_words(row)]))
     # The parent's static from the cut's halo and the parent's terrain (woof.hex.region_static: a new box spent
     # 15.5 min here building the whole parent globe's static for a 600 km region); the whole parent's static
     # only when the halo does not hold.
@@ -452,7 +567,30 @@ def _prepare_region_stages(args, value, status, source):
                    boundary_first_guess=guess)
     return measured("lbc", lambda: main(boundary))
 
+def country_endpoint_workers(requested=None, cpus=None) -> int:
+    """Source hours a region downloads and decodes at once: ``--endpoint-workers`` when given, else half the CPUs this
+    process may use (affinity and cgroup quota), at least 2 and at most 8: the regional door's rule for its leads
+    (regional_door._table_decode_workers), so both region doors read their source alike.
+
+    THE BREAKAGE THIS PREVENTS (WOOF hex regions, 2026-11-13): the country door read two source hours at a time on
+    every host, so an ICON region on a 16-vCPU box waited on two DWD downloads at a time (DWD serves each download
+    slowly) and an ERA5 region on two whole-globe downloads at a time, while the CPUs had room for more. Measured on
+    a test host held to 16 cores, 6 h regions, seconds from the start until the six boundary hours were ready: ICON
+    (2026-11-13 12Z, r 1200 km) 426 and 482 at 2 at once, 323 at 4, 233 at 8; ERA5 (2011-04-26 06Z, r 2650 km, on a
+    home line that tops out near 90 MB/s) 399 to 534 at 2, 444 at 4, 380 to 475 at 8, no clear gain on that line.
+    Peak anonymous memory at 8: 12.2 GiB (ICON), 17.2 GiB (ERA5). The boundary files are byte-identical at 2, 4 and 8."""
+    if requested is not None:
+        if requested < 1:
+            raise MpasPortError("endpoint workers must be positive")
+        return int(requested)
+    if cpus is None:
+        from .cpu_budget import available_cpus
+        cpus = available_cpus()
+    return max(2, min(8, int(cpus) // 2))
+
+
 def plan(args):
+    args.endpoint_workers = country_endpoint_workers(getattr(args, "endpoint_workers", None))
     try:
         issued = datetime.strptime(args.cycle, "%Y-%m-%dT%H")
     except ValueError as error:
@@ -471,6 +609,19 @@ def plan(args):
     _, source = resolve_regional_source(getattr(args, "source", None) or row["init_source"], source_table)
     row = copy.deepcopy(row)
     row["init_source"] = source["id"]
+    if "geometry" in row and source.get("blend"):
+        # THE BREAKAGE THIS PREVENTS: a blend row has no first guess and no boundary cadence of its own (its halves
+        # are two other rows), so a region asked for with one ended in "declares no forecast cadence for its
+        # boundaries", or with --boundary-source in a Python traceback (KeyError 'first_guess').
+        blend = source["blend"]
+        raise MpasPortError(
+            f"{source['id']} is a blended start ({blend['inside']} inside, {blend['outside']} outside), not a source a "
+            f"region is built from. Build the region from a global source first (--source gfs), then blend its start: "
+            f"woof hex init-source --source {source['id']} --cycle {args.cycle} --grid WORK/mesh.grid.nc "
+            "--static WORK/mesh.static.nc --outside-init WORK/mesh.init.nc --out-dir BLEND (on a producer suite such "
+            "as hrrrv5 the region's init is WORK/rrfs-init/init.nc; add the same --physics-suite), and run the "
+            "forecast from BLEND/init.nc with the region's own boundaries (docs/init-sources.md, Blended starts). "
+            "Nothing was built")
     if "geometry" not in row and source.get("coverage") == "limited_area":
         raise MpasPortError(f"{source['id']} covers a limited area; choose a country with regional geometry")
     if "geometry" not in row and (getattr(args, "boundary_source", None) or getattr(args, "boundary_cycle", None)):
@@ -508,6 +659,16 @@ def plan(args):
     # step rule below and the region's init completion see the suite the forecast runs.
     extra = ensure([str(item) for item in getattr(args, "forecast_arg", None) or ()], mesh.get("fine_dx_m"))
     named = forecast_arg_physics(extra)
+    # The cold init is built for the profile the forecast runs: a named profile's init row (hrrr-like and
+    # hrrr-like-aerosol take nc, nifa and nwfa from the monthly aerosol climatology) is forwarded to init-source, as
+    # the point and zoom-globe doors forward it (mesh_plan_door, physics_default.init_flags). THE BREAKAGE THIS
+    # PREVENTS (2026-11-15, a 12 km region from GFS with --forecast-arg=--physics-profile=hrrr-like): the region
+    # prepared for 84 s, its init had no aerosol fields, and the forecast refused at its start ("physics profile
+    # 'hrrr-like' needs prepared init fields ['nifa', 'nwfa']"), so no region could run either profile.
+    from .physics_default import init_flags
+    profile_flags = init_flags(extra)
+    if "--physics-profile" in profile_flags:
+        initialization += profile_flags
     from .physics_default import door_step
     step = door_step(named, mesh["dt_seconds"], mesh.get("fine_dx_m"))
     forecast = ["forecast", "--mesh", mesh["id"], *common, "--init", str(init),
@@ -754,6 +915,7 @@ def _run_stage(name, args, value, status, stages=(), state=None):
         if joined is not None:
             status.note(joined["note"])
             print(json.dumps(joined), flush=True)
+            state["scoring"] = joined
             return {**joined, "returncode": 0}
     command = list(value["commands"][name])
     if name == "forecast" and "producer_init" in value["commands"] and "--orographic-statistics" not in command:
@@ -830,8 +992,10 @@ def run_country(args):
                 timing["card_given_back"] = gpu_work_done()
                 if "score" in stages:
                     from .observation_scorecard import door_scorecard
-                    timing["observation_scoring"] = door_scorecard(root / "forecast", config)
-        status.done(f"{args.row} {args.cycle}: {', '.join(stages)}")
+                    timing["observation_scoring"] = state["scoring"] = door_scorecard(root / "forecast", config)
+        from .observation_scorecard import say_scoring, stages_done_text
+        status.done(f"{args.row} {args.cycle}: {stages_done_text(stages, state.get('scoring'))}")
+        say_scoring("country", stages, state.get("scoring"))   # the terminal's last line
         return 0
     except MpasPortError as error:
         status.refused(str(error))
@@ -870,10 +1034,18 @@ def add_country_parser(commands):
                              "under --background-km (default the table's 30 km)")
     parser.add_argument("--background-km", type=float, default=None,
                         help="with --fine-dx-m: the ladder's coarsest spacing (default the table's 120 km)")
+    parser.add_argument("--background-fit", choices=("exact", "nearest", "finer", "coarser"), default=None,
+                        help="with --fine-dx-m: when it does not halve into --background-km, keep the fine spacing "
+                             "and move the background onto its ladder (default exact: refuse, naming both)")
+    from . import mesh_ask as _mesh_ask
+    _mesh_ask.add_generator_arguments(parser)
     parser.add_argument("--source", help="init-source row override, used for init and every boundary endpoint")
     parser.add_argument("--source-table", type=Path)
     parser.add_argument("--member", type=int)
-    parser.add_argument("--endpoint-workers", type=int, default=2)
+    parser.add_argument("--endpoint-workers", type=int, default=None,
+                        help="source hours (the start and each boundary time) downloaded and decoded at once. "
+                             "Default: half the CPUs this process may use, at least 2 and at most 8 "
+                             "(country_endpoint_workers)")
     parser.add_argument("--table", type=Path, default=TABLE)
     parser.add_argument("--cycle", required=True, help="YYYY-MM-DDTHH, the init cycle")
     parser.add_argument("--lead-hours", type=int, default=0, metavar="H",

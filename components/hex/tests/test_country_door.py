@@ -305,12 +305,40 @@ def test_region_maps_stream_while_the_forecast_runs_and_the_full_pass_skips_them
 
 def test_an_mpas_v842_suite_region_takes_the_plain_parent_init(tmp_path, monkeypatch):
     """country --forecast-arg=--physics-suite=convection_permitting: the parent init is not completed through the
-    WOOF column seam (which refuses cld_fraction); the MPAS suite route runs from the plain init."""
+    WOOF-ArWen column seam (which refuses cld_fraction); the MPAS suite route runs from the plain init."""
     from woof.hex import country_door, physics_suites
 
     def refuse(*args, **kwargs):
-        raise AssertionError("the WOOF column seam was asked to resolve an MPAS-A v8.4.2 suite")
+        raise AssertionError("the WOOF-ArWen column seam was asked to resolve an MPAS-A v8.4.2 suite")
 
     monkeypatch.setattr(physics_suites, "resolve_physics", refuse)
     value = {"commands": {"forecast": ["forecast", "--init", "x.nc", "--physics-suite=convection_permitting"]}}
     assert country_door._suite_parent_init(value, tmp_path / "init.nc", {"id": "m", "fine_dx_m": 30000.0}) is None
+
+
+def test_a_blended_start_is_refused_as_a_region_source_with_the_route_that_works(tmp_path):
+    """A blend row has no first guess or boundary cadence of its own: the region door says so and names the route,
+    with and without a boundary source (the second ended in a KeyError before)."""
+    base = ["country", "--point", "36.0,-96.0", "--radius-km", "700", "--fine-dx-m", "7500", "--source", "hrrr-gfs",
+            "--cycle", "2026-11-15T12", "--hours", "3", "--work-dir", str(tmp_path / "work"), "--stage", "plan"]
+    for extra in ([], ["--boundary-source", "gfs"]):
+        with pytest.raises(MpasPortError) as refused:
+            plan(build_parser().parse_args(base + extra))
+        words = str(refused.value)
+        assert "hrrr-gfs is a blended start (hrrr inside, gfs-rrfs outside)" in words
+        assert "init-source --source hrrr-gfs --cycle 2026-11-15T12" in words and "--outside-init" in words
+        assert "Nothing was built" in words
+    assert not (tmp_path / "work").exists()
+
+
+def test_a_named_profile_reaches_the_cold_init(tmp_path):
+    """THE BREAKAGE (2026-11-15): --forecast-arg=--physics-profile=hrrr-like prepared an init with no aerosol
+    fields and the forecast refused at its start; the profile's init row was never asked for."""
+    plain = plan(arguments(tmp_path))["commands"]["init"]
+    assert "--physics-profile" not in plain
+    args = arguments(tmp_path)
+    args.forecast_arg = ["--physics-profile=hrrr-like"]
+    value = plan(args)
+    init = value["commands"]["init"]
+    assert init[init.index("--physics-profile") + 1] == "hrrr-like"
+    assert "--physics-profile=hrrr-like" in value["commands"]["forecast"]

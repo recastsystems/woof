@@ -9,6 +9,12 @@ from __future__ import annotations
 import os
 import numpy as np
 
+#: The deepest source column a map takes.  ``sample_layer`` stores a source LAYER INDEX (0..ns-1) in one byte, and
+#: the CUDA kernels read it as ``const unsigned char *layer``, so the bound is the number of byte values, 256, not
+#: the largest byte, 255.  The guard refused ``ns > 255``, so a 256-level column could not be remapped (fork
+#: jacobbieker/woof PR 137).
+MAX_SOURCE_LAYERS = int(np.iinfo(np.uint8).max) + 1
+
 
 def _select_backend(backend):
     """Use CUDA by default when visible; CPU is an explicit reference backend.
@@ -158,7 +164,8 @@ class HeightConservativeMap:
             raise ValueError('height map nominal layer thickness must be positive')
         coo=self.overlap.tocoo();self.rows=coo.row;self.cols=coo.col;self.areas=coo.data
         ns=len(self.source_dzw)
-        if ns>255:raise ValueError('height map has more than 255 source layers')
+        if ns>MAX_SOURCE_LAYERS:
+            raise ValueError(f'height map has more than {MAX_SOURCE_LAYERS} source layers')
         ground_s,top_s=sz[0,self.cols],sz[-1,self.cols]
         ground_t,top_t=tz[0,self.rows],tz[-1,self.rows]
         self.sample_height=np.empty((len(self.target_dzw)+1,len(self.areas)),dtype=np.float64)

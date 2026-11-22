@@ -1,6 +1,6 @@
 """FP64 reference authority for the SASE-L1 dry turbulence core.
 
-Design: docs/superpowers/specs/2026-07-20-sase-design.md.  This module is
+Design: docs/internal/specs/2026-07-20-sase-design.md.  This module is
 the stage-1/2 evidence-ladder artifact: a NumPy, float64, CPU-only
 implementation of the SASE-L1 sensor, dynamic closure, stress model, and
 subgrid-energy budget on a horizontally periodic box.  The eventual CUDA
@@ -1113,7 +1113,7 @@ S3-11b scope; until then the production run lacks the seam BY
 DESIGN.
 
 SASE-M1 amendment (moist stability core; SASE-M spec
-docs/superpowers/specs/2026-07-22-sase-m-design.md section 3, plan
+docs/internal/specs/2026-07-22-sase-m-design.md section 3, plan
 Task S4-1, registered before implementation).  THE DEFECT (confirmed
 by experiment, spec section 1): at gray-zone dx a saturated boundary
 layer that is dry-stable (+4..+9 K/km) but MOIST-unstable (theta_es
@@ -1731,7 +1731,7 @@ amplification).
 
 THE k_base = 0 CASE -- VENT_ANCHOR_RULE = "cloud-base-face-standdown-v1"
 (design doc SASE-M section 4, amendment "a surface-based saturated layer
-stands the limb down"; audit-wave coordinator ruling).  z_f[0] = 0
+stands the limb down"; audit-wave project decision).  z_f[0] = 0
 identically (the module's cumsum convention) and F[0] = +0.0 by the
 interface contract, so face 0 can never normalize a shape: a run based
 in the LOWEST MODEL LEVEL has no cloud base to anchor on, and the
@@ -2891,7 +2891,7 @@ VENT_MIN_RUN_CELLS = 2
 #: derivation).
 VENT_SAT_ADJUST_ITERS = 12
 #: VENT_K_LID_MEMBERSHIP: the registered convention for M2 LAYER
-#: MEMBERSHIP (S4-4 review round-3, coordinator ruling -- design doc
+#: MEMBERSHIP (S4-4 review round-3, project decision -- design doc
 #: SASE-M2 amendment "discrete C9 reading"; EXTENDED round-4 from the
 #: run top alone to the whole structural layer).  A cell is a member
 #: iff the noise-immune TOTAL-WATER test qt = qv + qc >= qs holds,
@@ -2909,7 +2909,7 @@ VENT_K_LID_MEMBERSHIP = "qt-ge-qs-v1"
 #: VENT_ANCHOR_RULE: the registered convention for the M2 SHAPE ANCHOR
 #: and the stand-down it implies (S4-5c; design doc SASE-M section 4,
 #: amendment "a surface-based saturated layer stands the limb down",
-#: audit-wave coordinator ruling).  "cloud-base-face-standdown-v1": the
+#: audit-wave project decision).  "cloud-base-face-standdown-v1": the
 #: grow-zone shape normalizes on the cloud-base face z_f[k_base], and a
 #: run based in the LOWEST MODEL LEVEL -- for which no such face exists,
 #: since z_f[0] = 0 identically -- stands the limb down (bitwise +0.0 on
@@ -4903,7 +4903,7 @@ def plume_vent_flux(theta, qv, qc, p, dz_col, e_sgs, rho1, n2m_mask,
     # -- step 1a: SURFACE-BASED STAND-DOWN ----------------------------
     # VENT_ANCHOR_RULE = "cloud-base-face-standdown-v1" (design doc
     # SASE-M section 4, amendment "a surface-based saturated layer
-    # stands the limb down"; audit-wave coordinator ruling).  The FOURTH
+    # stands the limb down"; audit-wave project decision).  The FOURTH
     # registered stand-down condition, alongside no-LFC, VENT_DEPTH_CAP
     # and k_lid past the column top -- and, like all three of those, it
     # returns bitwise +0.0 on all three rows.
@@ -5043,7 +5043,7 @@ def plume_vent_flux(theta, qv, qc, p, dz_col, e_sgs, rho1, n2m_mask,
         started = started | init
 
     # -- step 4: LFC / NB termination + inversion-base cap ------------
-    # S4-4 review Important-2, AMENDED round-3 (coordinator ruling,
+    # S4-4 review Important-2, AMENDED round-3 (project decision,
     # design doc SASE-M2 amendment): the search territory is bounded to
     # the (robustly-defined) saturated run PLUS its single DISCRETE
     # ENTRAINMENT ZONE cell (k_top + 1, the legitimate and only

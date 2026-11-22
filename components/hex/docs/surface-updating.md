@@ -1,4 +1,4 @@
-# Surface series on the WOOF physics route
+# Surface series on the ArWen physics route
 
 A forecast discovers `surface_series.nc` in its output directory or the
 containing run directory. A series covering the complete forecast window

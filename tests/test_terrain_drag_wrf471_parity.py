@@ -84,11 +84,11 @@ def test_resident_drag_price_equals_the_actual_device_arrays(topo_wind, gwd_opt)
     import cupy as cp
 
     from woof.core.physics_inventory import terrain_drag_array_shapes
-    from woof.core.terrain_drag import build_terrain_drag, required_static_fields
+    from woof.core.terrain_drag import build_terrain_drag, drag_static_fields
 
     cfg = SimpleNamespace(ny=3, nx=5, topo_wind=topo_wind, gwd_opt=gwd_opt)
     plane = np.ones((cfg.ny, cfg.nx), dtype=np.float32)
-    static = {name: plane for name in required_static_fields(topo_wind, gwd_opt)}
+    static = {name: plane for name in drag_static_fields(topo_wind, gwd_opt)}
     drag = build_terrain_drag(
         topo_wind=topo_wind, gwd_opt=gwd_opt, static=static,
         ht=cp.zeros_like(cp.asarray(plane)), xland=cp.asarray(plane),

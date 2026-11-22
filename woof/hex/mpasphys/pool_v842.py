@@ -140,6 +140,9 @@ class RegistryLayout:
             from importlib import import_module
             module, operation = prepare.split(':', 1)
             getattr(import_module(module), operation)(self.root)
+        # MPAS-Model PR #1409 (elvmax, config_gwdo_factor/_nonhyd) only when the run selects bl_kim_gwdo.
+        from .kim_gwdo_2026 import prepare_registry as _kim_registry
+        _kim_registry(self.root, config)
         self.configs = {}
         self.config_kinds = {}
         for option in self.root.findall(".//nml_option"):

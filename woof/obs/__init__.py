@@ -1,4 +1,4 @@
-"""Observations for WOOF: acquisition, geometry, superobbing, and the
+"""Observations for WOOF-ArWen: acquisition, geometry, superobbing, and the
 ``gpuwm-obs.radar-grid`` contract the DA lanes consume.
 
 The pipeline is four stages with a provable artifact between each pair:

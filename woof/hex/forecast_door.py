@@ -490,7 +490,7 @@ def measure_device_memory() -> tuple[int, int]:
             "cannot be measured and a forecast cannot be admitted.  Install "
             'the CUDA lane: pip install "recast-woof[gpu]", whose CUDA 12 '
             "wheel runs on a CUDA 12 or CUDA 13 driver ("
-            '"woof hex[gpu-cu13]" on a CUDA 13 driver also works).  '
+            '"recast-woof[gpu-cu13]" on a CUDA 13 driver also works).  '
             "`woof hex doctor` reads your driver's CUDA major and names the "
             "extra for it."
         ) from None
@@ -685,7 +685,7 @@ def admit_timestep(
 ) -> dict[str, Any]:
     """Answer the timestep half of "will this run?" from the row alone.
 
-    RETIRED 2026-10-10 as an anchor gate (owner ruling).  This used to refuse every timestep the earned-anchor
+    RETIRED 2026-10-10 as an anchor gate.  This used to refuse every timestep the earned-anchor
     registry did not hold.  It now refuses only what the run cannot
     schedule -- a surface/PBL, radiation or cumulus cadence that is not a
     whole number of steps, or a timestep whose multiples are not exact in
@@ -1310,8 +1310,8 @@ def resolve_admission_model(request: "ForecastRequest") -> ShapedFootprintModel:
     if isinstance(supplied, _SuppliedRow):
         return replace(supplied.with_card(card, configuration, rollback_armed=armed), levels=levels)
     from .compact_memory import compact_model
-    from .device_admission import model_for_card
-    qualified = not (getattr(request, 'physics_overrides', ())
+    from .device_admission import model_for_card, physics_overrides_move_footprint
+    qualified = not (physics_overrides_move_footprint(getattr(request, 'physics_overrides', ()))
         or getattr(request, 'physics_backend', 'wsm6_column') != 'wsm6_column'
         or getattr(request, 'local_timestep', False)
         or getattr(request, 'fullstep_local_timestep', False))
@@ -1441,7 +1441,7 @@ def backend_pin_problem(row, checkout: Path) -> str | None:
 def seam_pin_problem(checkout: Path) -> str | None:
     """What stops the frozen row's seam from running on ``checkout``, or None.
 
-    RETIRED 2026-10-10 as a certificate gate (owner ruling; Gate law, Refusals law).  This used to refuse any engine
+    RETIRED 2026-10-10 as a certificate gate (Gate law, Refusals law).  This used to refuse any engine
     whose sixteen seam files were not, byte for byte, the pinned version's:
     "the seam is the whole physics of this model ... so running against
     moved bytes would be running physics nobody proved".  That sentence
@@ -1702,7 +1702,7 @@ def _physics_mode_fields(arguments: argparse.Namespace,
     before any input is read (woof.hex.correct_mode refuses a misspelling).
 
     A run that names no mode takes its preset row's (every shipped row says
-    ``correct``, owner ruling 2026-10-13); ``--physics-mode exact`` is
+    ``correct``); ``--physics-mode exact`` is
     the matched arithmetic, byte for byte."""
 
     from . import correct_mode
@@ -1719,7 +1719,7 @@ def _physics_mode_fields(arguments: argparse.Namespace,
         foreign = [f for f in skip if f not in correct_mode.route_findings("arwen-column")]
         if foreign:
             raise correct_mode.CorrectModeRefusal(
-                f"--physics-correct-skip {foreign} names findings the WOOF route never applies; it "
+                f"--physics-correct-skip {foreign} names findings the WOOF-ArWen route never applies; it "
                 f"applies {sorted(correct_mode.route_findings('arwen-column'))}")
     except correct_mode.CorrectModeRefusal as error:
         raise _refuse(str(error)) from error
@@ -1817,7 +1817,7 @@ def resolve_request(
     # file-free, and ahead of every expensive check.
     #
     # In PREFLIGHT the refusal is collected, not raised.  THE BREAKAGE THIS
-    # PREVENTS (measured 2026-08-26, the proving RTX 5090): asked whether the
+    # PREVENTS (measured 2026-08-26, an RTX 5090): asked whether the
     # 224,210-cell row fits the card, the door exited on the timestep and
     # never printed the memory verdict at all -- so the answer to "will this
     # run?" was half an answer, which is the one thing preflight promises not
@@ -1883,6 +1883,27 @@ def resolve_request(
                   + (f" (this engine lacks {', '.join(dt_selection['engine_lacks'])})"
                      if dt_selection.get("engine_lacks") else "")
                   + "; --dt SECONDS runs a step of your choosing", file=sys.stderr, flush=True)
+    if physics is not None:
+        # TEMPO picked over an ArWen-route suite goes non-physical at long steps on this engine
+        # (woof.hex.global_door.microphysics_step_cap says what was measured and when it retires): a default
+        # step takes its cap and an explicit longer step is refused by name.  MPAS-A's own suites take the
+        # MPAS route, which sub-steps microphysics itself, and are not capped.
+        from .global_door import GlobalDoorError, microphysics_step_cap
+        from .physics_suites import mpas_suite_names
+
+        if physics.suite not in mpas_suite_names():
+            try:
+                micro_selection = microphysics_step_cap(
+                    dt_selection, physics.selectors, radiation_seconds=float(radiation_seconds))
+            except GlobalDoorError as error:
+                raise _refuse(str(error)) from None
+            if str(micro_selection.get("arm", "")).startswith("microphysics "):
+                print(f"woof hex: timestep {micro_selection['dt_seconds']:g} s, under the "
+                      f"{micro_selection['arm']} cap of {micro_selection['cap_seconds']:g} s on the WOOF-ArWen route "
+                      f"(the default was {float(dt_selection['dt_seconds']):g} s): TEMPO over a WOOF-ArWen-route "
+                      "suite goes non-physical at longer steps on this engine; --dt SECONDS at or under the cap "
+                      "runs a step of your choosing", file=sys.stderr, flush=True)
+            dt_selection = micro_selection
     fixed_selection = dt_selection
     dt_selection = lts_step(arguments, dt_selection, float(radiation_seconds))
     # The ArWen route measured the MPAS route's loss on the same mesh (HEX-LTS-REGRESSION-2026-10-27): LTS runs
@@ -2056,7 +2077,7 @@ def resolve_request(
         arguments, row, grid, static, init, collected)
     orographic_statistics = resolve_orographic_statistics(
         arguments, physics, mesh, grid, collected)
-    for problem in microphysics_problems(backend_row, init):
+    for problem in microphysics_problems(backend_row, init, door_completes_init=door_completes_init(physics)):
         if collected is None:
             raise _refuse(problem)
         collected.append(problem)
@@ -2262,7 +2283,7 @@ def resolve_request(
         if iau_route == "hex" and iau_analysis is None:
             raise _refuse("--iau-route hex forms its increment from two recoupled initial-conditions files "
                           "and needs --iau-analysis; an MPAS increment file alone runs --iau-route native")
-    # Retired 2026-10-14 (lane W1): IAU and the balance series needed the active full-step
+    # Retired 2026-10-14: IAU and the balance series needed the active full-step
     # class executor, the only one with a held-tendency hook.  The fixed-step executor has the
     # same hook now (woof.hex.iau_native), and so do the same-host ranks (one class per rank);
     # only the balance series stays on one card (drivers/samehost_forecast_v841.execute_samehost).
@@ -2465,7 +2486,25 @@ def namelist_dycore_problems(
             for line in dycore_disagreements(imported, run_config)]
 
 
-def microphysics_problems(backend_row, init) -> list[str]:
+def door_completes_init(physics) -> bool:
+    """Whether this door completes the init for the run's physics before the driver opens.
+
+    ``prepare_forecast_init`` does, for a run whose physics the suite table resolved (a suite, or scheme choices
+    over one) with a land model the table carries: it adds the species of the chosen microphysics and, for an
+    aerosol-aware one, nwfa and nifa from the monthly climatology.  A backend row or a namelist run has no such
+    resolution and its init is used as supplied, as is the init of an MPAS-A suite.
+    """
+
+    if physics is None:
+        return False
+    from .physics_suites import load_table, mpas_suite_names
+    if physics.suite in mpas_suite_names():
+        return False  # MPAS-A's own suites: the forecast allocates their species; their init is used as supplied
+    lsm = physics.selectors.get("config_lsm_scheme")
+    return load_table()["options"]["config_lsm_scheme"].get(lsm, {}).get("carried") is not None
+
+
+def microphysics_problems(backend_row, init, *, door_completes_init: bool = False) -> list[str]:
     """What stops the selected microphysics before the card, init first.
 
     The init check is a few reads; the table check may acquire TEMPO's pinned
@@ -2473,9 +2512,18 @@ def microphysics_problems(backend_row, init) -> list[str]:
     PREVENTS (release review M3, measured in a fresh HOME): the door downloaded
     the TEMPO tables and only then refused an init without aerosol fields.
     A run its init cannot start acquires nothing.
+
+    ``door_completes_init`` (:func:`door_completes_init`): the init supplied is
+    not the init the driver opens, because this door writes the aerosol fields
+    into its own copy first, so their absence from the supplied file stops
+    nothing.  THE BREAKAGE THIS PREVENTS (2026-11-09): TEMPO picked over the
+    WOOF-ArWen suite (``--physics config_microp_scheme=mp_tempo``) on a door whose
+    cold init is built before the scheme is known (``global``, ``country``, a
+    plain ``forecast --init``) was refused here for fields the same door was
+    about to write.
     """
 
-    aerosol_problem = microphysics_init_problem(backend_row, init)
+    aerosol_problem = None if door_completes_init else microphysics_init_problem(backend_row, init)
     if aerosol_problem is not None:
         return [aerosol_problem]
     table_problem = microphysics_table_problem(backend_row)
@@ -3034,7 +3082,7 @@ def run_default_products(request: ForecastRequest, history: Sequence[Path],
                 f"DEVICE released {released['released_bytes'] / 2**20:.0f} MiB before "
                 f"products; {released['still_in_use_bytes'] / 2**20:.0f} MiB of "
                 f"{released['device_total_bytes'] / 2**20:.0f} MiB still in use on the "
-                f"card (all tenants)", flush=True)
+                f"card (all processes)", flush=True)
     print("PRODUCTS $ " + " ".join(command), flush=True)
     parser = argparse.ArgumentParser(prog="woof hex products")
     add_products_arguments(parser)
@@ -3053,7 +3101,7 @@ def run_default_products(request: ForecastRequest, history: Sequence[Path],
 def history_files(out: Path) -> list[Path]:
     """The history frames the driver wrote, in valid-time order.
 
-    The WOOF route writes ``cuda-history.*.nc``.  The MPAS suite route writes MPAS's own stream files
+    The WOOF-ArWen route writes ``cuda-history.*.nc``.  The MPAS suite route writes MPAS's own stream files
     (``history.*`` or the template its request names), found the way ``native_default_products`` finds them.
     THE BREAKAGE THIS PREVENTS (hex parity run group 7, #27): ``pair --physics-suite ...`` reported
     "frames control 0, treatment 0" beside legs that had each written their frames.
@@ -3489,7 +3537,8 @@ def _run_preflight(request: ForecastRequest, registry: Mapping[str, MeshRow],
     if written is not None:
         print(f"RECEIPT {written}", flush=True)
     else:
-        print(json.dumps(receipt, indent=2, sort_keys=True, default=str))
+        from .correct_mode import terminal_record
+        print(json.dumps(terminal_record(receipt), indent=2, sort_keys=True, default=str))
     for problem in problems:
         print(f"PREFLIGHT REFUSED {problem}", file=sys.stderr)
     print(
@@ -3536,6 +3585,15 @@ def announce_cpu_slots(config: Any) -> None:
         print(warning, file=sys.stderr, flush=True)
 
 
+def announce_mynn_version(config: Any) -> None:
+    """Print, at start-up, which MYNN suite version the run executes (a line beginning ``MYNN SUITE VERSION:``;
+    woof.hex.mpasphys.rrfs.driver_rrfs).  Rows without selectable MYNN versions, and runs with no MYNN slot
+    active, print nothing."""
+    line = getattr(config, "mynn_version_line", lambda: None)()
+    if line:
+        print(line, file=sys.stderr, flush=True)
+
+
 def mpas_suite_lts_refusal(arguments: argparse.Namespace, environ=None) -> str | None:
     """The refusal for a local-time-stepping switch on the MPAS suite route, or None.
 
@@ -3563,7 +3621,7 @@ def mpas_suite_lts_refusal(arguments: argparse.Namespace, environ=None) -> str |
         if any(value is not None for value in knobs.values()):
             return "the requested LTS policy would be ignored; LTS-only knobs need --fullstep-local-timestep"
         return None
-    # Retired (HEX-PHYSICS-PARITY run group 2 #8; owner ruling 2026-10-24: every hex capability works on every physics
+    # Retired (HEX-PHYSICS-PARITY run group 2 #8; every hex capability works on every physics
     # route): full-step LTS runs on this route, active (woof.hex.mpasphys.lts_v842, every rate class with the MPAS
     # suite as its physics) and shadow (the ArWen route's observer on the fixed step).  What stays refused is
     # named below and in lts_v842.admission_refusal.
@@ -3593,14 +3651,14 @@ def run_forecast(arguments: argparse.Namespace) -> int:
 
 
 def _run_forecast_with_outputs(arguments: argparse.Namespace) -> int:
-    # The hex default physics (owner ruling 2026-10-25): a run that names no physics takes MPAS-A's own suite on
+    # The hex default physics (2026-10-25): a run that names no physics takes MPAS-A's own suite on
     # the MPAS route, chosen by mesh (woof.hex.physics_default).  Applied before the roster split, so every member
     # and every segment process decides the same route.  --physics-suite arwen_mpas_column is the ArWen route.
     from . import physics_default
     defaulted = physics_default.apply(arguments)
     if defaulted is not None:
         print(f"woof hex: physics {defaulted['suite']} on the MPAS route (the hex default; "
-              f"--physics-suite {physics_default.arwen_suite()} runs WOOF physics)", file=sys.stderr, flush=True)
+              f"--physics-suite {physics_default.arwen_suite()} runs ArWen physics)", file=sys.stderr, flush=True)
     # Resolve the ocean selector once at the door. No new step dispatcher.
     from .ocean_pwp import forecast_environment
     with forecast_environment(arguments):
@@ -3695,7 +3753,7 @@ def prewarm_native_kernels(config=None) -> None:
     THE BREAKAGE THIS PREVENTS: the suite route never joined the door's kernel plan, so on a cold kernel
     cache its first physics step compiled every slot's NVRTC image one after another on one core while the
     card waited (x1.2562 convection_permitting, 5090, 2026-10-17: step 1 65 s at ~1 core, steady steps
-    under 1 s).  The same recorder and replay the WOOF route uses (kernel_prewarm.install_recorder /
+    under 1 s).  The same recorder and replay the WOOF-ArWen route uses (kernel_prewarm.install_recorder /
     start_replay) now run here, before the pools are decoded, so the previous run's plan compiles on a pool
     as wide as the usable cores while the host prepares; a run with no plan yet records one.
     """
@@ -3929,6 +3987,16 @@ def require_forecast_inputs(arguments: argparse.Namespace, *, native: bool = Fal
     return tuple(files)
 
 
+def mesh_nominal_dx_m(arguments: argparse.Namespace) -> float | None:
+    """The run's nominal mesh spacing: the registered row's, else the spacing the mesh files record (as
+    :func:`bind_native_step` reads it).  ``None`` when neither names one."""
+    registry = load_registry(resolve_repo(getattr(arguments, "repo", None)))
+    row = registry.get(getattr(arguments, "mesh", None))
+    if row is not None:
+        return None if getattr(row, "nominal_dx_m", None) is None else float(row.nominal_dx_m)
+    return _mesh_file_spacing_m(arguments)
+
+
 def bind_native_step(arguments: argparse.Namespace, native_text: str) -> str:
     """The MPAS suite route's ``config_dt``: the namelist's, else the door's own step for the mesh.
 
@@ -3936,7 +4004,7 @@ def bind_native_step(arguments: argparse.Namespace, native_text: str) -> str:
     suite without a namelist ``config_dt`` (``woof hex forecast --physics-suite convection_permitting``,
     ``woof hex global`` with an MPAS suite) ran at MPAS's Registry default, 720 s, on every mesh: on the
     30 km globe (x1.655362, mesh step 180 s) that is four times the stable step (seen 2026-10-16, 6000
-    box: DT_CU = DT_PBL = 720, n_microp = 8).  The step now comes from the rule the WOOF route uses
+    box: DT_CU = DT_PBL = 720, n_microp = 8).  The step now comes from the rule the WOOF-ArWen route uses
     (:func:`mpas_defaults.resolve_dt`: ``--dt`` SECONDS, ``row``, or the mesh's own default for its
     spacing, dividing the radiation interval).  A namelist ``config_dt`` still decides, and an explicit
     ``--dt`` naming a different step is refused as two steps for one run.
@@ -4031,7 +4099,54 @@ def bind_native_dynamics(arguments: argparse.Namespace, native_text: str) -> str
         print("woof hex: MPAS suite dycore schedule " + ", ".join(f"{k}={v}" for k, v in options.items())
               + " (explicit flags)", file=sys.stderr, flush=True)
         native_text = set_namelist_options(native_text, {"nhyd_model": options})
+    native_text = bind_native_damping(arguments, native_text)
     return bind_native_dynamics_overrides(arguments, native_text)
+
+
+#: The door's upper-damping flags, the MPAS &damping option each one names and the flag's default (forecast
+#: parser), which is also MPAS-A v8.4.2's Registry default (Registry.xml:291-325).
+NATIVE_DAMPING_FLAGS = (
+    ("cam_coefficient", "--cam-coefficient", "config_mpas_cam_coef", 0.0),
+    ("cam_damping_levels", "--cam-damping-levels", "config_number_cam_damping_levels", 4),
+    ("rayleigh_u", "--rayleigh-u", "config_rayleigh_damp_u", False),
+    ("damping_start_m", "--damping-start-m", "config_zd", 22000.0),
+)
+
+
+def bind_native_damping(arguments: argparse.Namespace, native_text: str) -> str:
+    """The MPAS suite route's upper damping: each door flag set off its default becomes its &damping option.
+
+    MPAS-A v8.4.2 reads config_mpas_cam_coef and config_number_cam_damping_levels (the CAM viscosity floor in
+    the top levels, mpas_atm_time_integration.F:6400-6402), config_rayleigh_damp_u with
+    config_number_rayleigh_damp_u_levels and config_rayleigh_damp_u_timescale_days (the horizontal Rayleigh
+    damping of u, :6608-6630) and config_zd (the w damping's base) from &damping; the route's dycore runs each of
+    them (cuda_driver.py).  The two Rayleigh knobs without a flag of their own come through ``--dynamics``.
+    THE BREAKAGE THIS PREVENTS (woof hex 0.6.1; fork jacobbieker/woof PR 509): this route returns before
+    resolve_request, the only reader of these four flags, so --cam-coefficient, --cam-damping-levels,
+    --rayleigh-u and --damping-start-m were accepted and never run (on x1.40962 the history was byte-identical
+    with and without them), and a high-top declaration's damping could not run on the MPAS suite.  A flag at its
+    default leaves the namelist (or the Registry default, the same value) in charge; a namelist naming a
+    different value is refused as two values for one run.
+    """
+    from .mpasphys.forecast_v842 import namelist_option, set_namelist_options
+
+    options: dict[str, Any] = {}
+    for attribute, flag, option, default in NATIVE_DAMPING_FLAGS:
+        given = getattr(arguments, attribute, default)
+        if given is None or given == default:
+            continue
+        value = type(default)(given)
+        named = namelist_option(native_text, "damping", option)
+        if named is not None:
+            if not _namelist_value_matches(named, value):
+                raise ValueError(f"{flag} {given} and the namelist {option} {named} name two values for one run")
+            continue
+        options[option] = value
+    if options:
+        print("woof hex: MPAS suite upper damping " + ", ".join(f"{k}={v}" for k, v in options.items())
+              + " (explicit flags)", file=sys.stderr, flush=True)
+        native_text = set_namelist_options(native_text, {"damping": options})
+    return native_text
 
 
 #: The namelist groups ``--dynamics`` reaches on the MPAS suite route: the dycore's own.  The other groups a
@@ -4042,7 +4157,7 @@ NATIVE_DYNAMICS_GROUPS = ("nhyd_model", "damping")
 def native_dynamics_overrides(arguments: argparse.Namespace) -> dict[str, tuple[str, Any]]:
     """``--dynamics KEY=VALUE`` on the MPAS suite route: ``{option: (namelist group, value)}``.
 
-    The same parse and the same refusals as the WOOF route (run_cuda_v841_forecast.build_forecast_config): an
+    The same parse and the same refusals as the WOOF-ArWen route (run_cuda_v841_forecast.build_forecast_config): an
     option with a flag of its own is set there; an option the route's dycore configuration
     (mpasphys.config_v842.NativeMpasDycoreConfigV842) does not carry is refused by name, because its value would
     be recorded and not run.  A whole-number value for a real option is held as a real, as the Registry types it.
@@ -4138,7 +4253,7 @@ def admit_native_device(arguments, config) -> AdmissionVerdict:
     """Price the MPAS route before prewarming or constructing its device pools.
 
     This route returns before resolve_request, so it must not rely on the
-    WOOF route's later gate. Read the actual input shape and free card now.
+    WOOF-ArWen route's later gate. Read the actual input shape and free card now.
     """
     try:
         import cupy as cp
@@ -4150,6 +4265,8 @@ def admit_native_device(arguments, config) -> AdmissionVerdict:
         if error.name != 'cupy':
             raise
         hip = False
+    # The MPAS rank gate (memory_admission.admit) prices a single context with this suite's qualified row too.
+    arguments.native_admission_suite = getattr(config, 'suite', None)
     if getattr(arguments, 'samehost_devices', None) or hip:
         # Full-domain one-context pricing refused valid multi-card layouts
         # before the halo-inclusive rank gate could run. Actual AMD has no
@@ -4164,11 +4281,10 @@ def admit_native_device(arguments, config) -> AdmissionVerdict:
         levels = len(dataset.dimensions['nVertLevels'])
     card = read_card_profile()
     configuration = 'limited-area' if getattr(arguments, 'lbc_dir', None) else 'global'
+    from .mpasphys.memory_admission import qualified_defaults
     model = model_for_run(card, configuration, levels, route='mpas', suite=config.suite,
         rollback_armed=bool(getattr(arguments, 'stop_on_refusal', False)), cells=cells,
-        qualified_defaults=not any(getattr(arguments, key, None) for key in
-            ('physics', 'physics_profile', 'physics_namelist', 'physics_default_backend',
-             'local_timestep', 'fullstep_local_timestep')))
+        qualified_defaults=qualified_defaults(arguments))
     raw_headroom = getattr(arguments, 'headroom_mib', None)
     import math
     if raw_headroom is not None and (not math.isfinite(raw_headroom) or raw_headroom < 0):
@@ -4178,7 +4294,8 @@ def admit_native_device(arguments, config) -> AdmissionVerdict:
     verdict = admission_verdict(mesh=str(arguments.mesh), cells=cells, free_bytes=free,
         total_bytes=total, headroom_bytes=margin, registry={}, model=model,
         stochastic=getattr(arguments, 'stochastic', None))
-    required = route_required_free_bytes(cells, model, margin, route='mpas') + verdict.stochastic_array_bytes
+    required = (route_required_free_bytes(cells, model, margin, route='mpas', suite=config.suite)
+                + verdict.stochastic_array_bytes)
     if required != verdict.required_bytes:
         verdict = replace(verdict, required_bytes=required, admitted=free >= required,
             predicted_bytes=required-verdict.headroom_bytes,
@@ -4196,7 +4313,7 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
     """The ``woof hex forecast`` handler.  Returns the process exit code."""
 
     from .mpasphys.forecast_v842 import native_route, run_forecast as run_native_physics
-    # --analysis (lane W1): check the bundle against the run and rewrite it into the door's own
+    # --analysis: check the bundle against the run and rewrite it into the door's own
     # inputs (--init, or the background with an IAU window, or a DA-cycling restart), so the
     # forecast below is the code a plain --init run executes.
     from .analysis_door import AnalysisDoorRefusal, resolve_analysis
@@ -4208,15 +4325,20 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
     except AnalysisDoorRefusal as error:
         raise _refuse(str(error)) from None
     try:
-        # An MPAS suite route that names no mode runs correct (owner ruling 2026-10-13: correct mode is the
-        # standard; coordinator 2026-10-14: default correct, gaps listed loudly, never refused).
+        # An MPAS suite route that names no mode runs correct (correct mode is the
+        # standard; the default is correct, gaps listed loudly, never refused).
         # --physics-mode exact runs native MPAS v8.4.2 bit for bit; every proof names it.
         native_config, native_text = native_route(arguments, default_mode=PHYSICS_MODE_DEFAULT)
         require_forecast_inputs(arguments, native=native_config is not None)
+        if getattr(arguments, "history_field", None) and native_config is None:
+            # THE BREAKAGE THIS PREVENTS: an added history field the ArWen-physics route's writer never reads
+            # would be accepted and silently not written.
+            raise ValueError("--history-field adds to MPAS's default output stream on the MPAS-physics route; "
+                             "this run is on the WOOF-ArWen-physics route, whose history does not read it")
         if getattr(arguments, "hosts", None) is not None or os.environ.get("WOOF_HEX_HOSTS"):
             if native_config is None:
                 raise ValueError("--hosts runs the MPAS-physics route (--physics-backend mpasphys, the hex default "
-                                 "physics); the WOOF-physics route's ranks share one host's memory "
+                                 "physics); the WOOF-ArWen-physics route's ranks share one host's memory "
                                  "(drivers/samehost_forecast_v841), so they cannot span hosts")
             # Every other host starts now, so its preparation runs beside this host's (woof.hex.multihost).
             from . import multihost
@@ -4228,6 +4350,10 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
             # A run that names a native MPAS library runs this selection on it (forecast_v842.named_library_route).
             if suite_refusal is not None and not named_library_route(arguments, native_config):
                 raise ValueError(suite_refusal)
+            from .mpasphys.forecast_v842 import cpu_slot_refusal
+            cpu_refusal = cpu_slot_refusal(arguments, native_config)
+            if cpu_refusal is not None:
+                raise ValueError(cpu_refusal)
             # A moving region on this route runs through its own move hooks (woof.hex.mpasphys.moving_v842).
             lts_refusal = mpas_suite_lts_refusal(arguments)
             if lts_refusal is not None:
@@ -4245,7 +4371,7 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
                     "A point source runs on a --physics-backend row that declares one (none of the in-tree rows "
                     "does), without --physics-suite")
             if getattr(arguments, "tc_climate", None) is not None:
-                raise ValueError("--tc-climate currently requires the WOOF forecast executor")
+                raise ValueError("--tc-climate currently requires the WOOF-ArWen forecast executor")
             # Retired (named gap W1-G2): the suite route applies IAU now (mpasphys.runtime_v842.SuiteIau, MPAS's
             # atm_add_tend_anal_incr once per step).  The door's IAU flags become MPAS's own &iau group and iau
             # stream input, so a flag run and a namelist run execute the same code.
@@ -4253,13 +4379,14 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
                 from .mpasphys.forecast_v842 import bind_door_iau
                 native_text = bind_door_iau(arguments, native_text)
             # Upstream code under restricted terms (Noah-MP v5.0: UCAR forbids sale) runs only by an opt-in that names
-            # its terms (woof.hex.licence_gate; owner ruling 2026-10-14).  No default selects it.  UGWP and the RRFS
-            # fork's NOAA GSL physics are not gated (owner ruling 2026-10-14: treated as US Government code).
+            # its terms (woof.hex.licence_gate).  No default selects it.  UGWP and the RRFS
+            # fork's NOAA GSL physics are not gated (treated as US Government code).
             from . import licence_gate
             native_config = licence_gate.admit(native_config, arguments)
             admit_native_device(arguments, native_config)
             announce_physics_mode(native_config, arguments)
             announce_cpu_slots(native_config)
+            announce_mynn_version(native_config)
             from .mpasphys.memory_admission import admit as admit_native_memory
             admission = admit_native_memory(arguments)
             print(json.dumps({"native_memory_admission": admission}), file=sys.stderr, flush=True)
@@ -4546,7 +4673,8 @@ def _run_forecast(arguments: argparse.Namespace) -> int:
     if written is not None:
         print(f"RECEIPT {written}", flush=True)
     else:
-        print(json.dumps(receipt, indent=2, sort_keys=True, default=str))
+        from .correct_mode import terminal_record
+        print(json.dumps(terminal_record(receipt), indent=2, sort_keys=True, default=str))
 
     print(
         f"DOOR mesh={request.mesh} steps={request.steps} "
@@ -4666,8 +4794,8 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
         "--physics-backend", default=DEFAULT_BACKEND, metavar="ROW",
         help="mpasphys selects the MPAS suite route (its Registry default is "
              "mesoscale_reference; --physics-suite or a namelist may select another). "
-             "Otherwise, the WOOF-route column-physics backend row this run selects "
-             "(woof.hex.physics_backend_admission); naming a row selects the WOOF "
+             "Otherwise, the WOOF-ArWen-route column-physics backend row this run selects "
+             "(woof.hex.physics_backend_admission); naming a row selects the WOOF-ArWen "
              "route. Its default is the frozen lane. A provider's row runs its own pinned column "
              "batch and may declare extra prognostic scalars and a point "
              "source; an unregistered name is refused naming the rows "
@@ -4679,9 +4807,9 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
              "named (no suite, namelist, --physics override, --convection scheme or "
              "backend row) the run takes the hex default: MPAS-A's own physics on "
              "the MPAS route, the suite picked for the mesh (convection_permitting; "
-             "data/profiles/physics-default.v1.json). arwen_mpas_column runs WOOF "
+             "data/profiles/physics-default.v1.json). arwen_mpas_column runs WOOF-ArWen "
              "physics exactly as a bare run did before 0.4.6; arwen_thompson_column "
-             "and rrfs_v2_dev are the other WOOF-route suites. MPAS's own suite names "
+             "and rrfs_v2_dev are the other WOOF-ArWen-route suites. MPAS's own suite names "
              "(mesoscale_reference, convection_permitting, hrrrv5) run the MPAS route, "
              "and an option hex cannot run is refused by name")
     parser.add_argument(
@@ -4692,8 +4820,15 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
              "config_radt_lw_scheme, config_radt_sw_scheme, config_radt_cld_scheme), "
              "a WOOF generation selector (thompson_version, thompson_fork_snow_fall, "
              "bl_mynn_version, bl_mynn_mixlength, mynn_sfclay_variant, "
-             "rrtmg_cloud_optics_form) or config_frac_seaice. Recorded as an "
-             "override in the receipt. With no --physics-suite it overrides the WOOF "
+             "rrtmg_cloud_optics_form) or config_frac_seaice; on the RRFS 44c0849 route also "
+             "config_mynn_version (mynn-v6.1, the default: MYNN-EDMF v6.1.1 + MYNN-SFC v6.1.0; "
+             "mynn-sfc-v6.1.0; pinned: the 44c0849 MYNN, bitwise to native); on the hrrrv5 route also the "
+             "surface and boundary-layer closures, one at a time and off unless named: "
+             "config_surface_flux_net=r4_a50, config_neural_pbl=v1|v2 (config_neural_pbl_dry_gate=true "
+             "turns v1 into v2), config_autophysics_pbl=v2|v3_bowen|v2_warm_night (the GPUWM_HEX_SURFACE_FLUX_NET, "
+             "GPUWM_HEX_NEURAL_PBL, GPUWM_HEX_NEURAL_PBL_DRY_GATE and GPUWM_HEX_AUTOPHYSICS_PBL words take the "
+             "same values; woof.hex.mpasphys.rrfs.closures). Recorded as an "
+             "override in the receipt. With no --physics-suite it overrides the WOOF-ArWen "
              "suite (arwen_mpas_column); name an MPAS suite to override on the MPAS route")
     parser.add_argument(
         "--physics-namelist", type=Path, default=None, metavar="FILE",
@@ -4705,11 +4840,11 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
              "`woof hex physics import FILE` prints the verdict per option")
     parser.add_argument(
         "--physics-mode", choices=("correct", "exact"), default=None,
-        help="physics.mode on every route. 'correct' (the default when the run names no mode, owner "
-             "ruling 2026-10-13: correct mode is the standard) applies the fixes this tree and the engine "
+        help="physics.mode on every route. 'correct' (the default when the run names no mode: correct "
+             "mode is the standard) applies the fixes this tree and the engine "
              "carry: on an MPAS suite route (--physics-suite or the namelist's config_physics_suite) the "
              "fixes for native MPAS v8.4.2 defects (woof.hex.mpasphys.driver_v842.CORRECTIONS_V842); on the "
-             "WOOF route the engine's corrections (woof.hex.correct_mode: WB4 New Tiedtke dry-mass "
+             "WOOF-ArWen route the engine's corrections (woof.hex.correct_mode: WB4 New Tiedtke dry-mass "
              "coupling, WB5 WSM6 conservative surface integral).  A finding the run cannot apply is listed "
              "as a named gap in the receipt (correct_mode.gaps) and printed at startup, never refused. "
              "'exact' reproduces the matched arithmetic bit for bit; every identity proof names it. "
@@ -4727,7 +4862,7 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--physics-correct-skip", action="append", default=None, metavar="FINDING",
         help="leave one correction out of a correct-mode run (an observation A/B arm), by finding id "
-             "(woof.hex.correct_mode.known_findings: the MPAS driver's CORRECTIONS_V842 and the WOOF "
+             "(woof.hex.correct_mode.known_findings: the MPAS driver's CORRECTIONS_V842 and the WOOF-ArWen "
              "route's engine findings); repeatable or comma-separated. Same key as the namelist's "
              "config_physics_correct_skip")
     parser.add_argument(
@@ -4827,6 +4962,9 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
         help="history cadence; must divide the run into whole steps")
     parser.add_argument("--history-from-minutes", type=float, default=0.0,
                         help="write scheduled history frames starting at this lead minute")
+    parser.add_argument("--history-field", action="append", default=None, metavar="NAME",
+                        help="add a Registry field to MPAS's default output (history) stream on the MPAS-physics "
+                             "route (repeatable); a named --streams file is held as written")
     parser.add_argument(
         "--fingerprint-every", type=int, default=0, metavar="STEPS",
         help="boundary identity fingerprint interval; zero disables recording")
@@ -4854,7 +4992,7 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
                         help="running-max updraft helicity (m2 s-2, reset each history frame). Default: the "
                              "2-5 km maximum (updraft_helicity_max) on both physics routes (MPAS's own on the MPAS "
                              "route). on: also 0-1, 0-2 and 0-3 km AGL (updraft_helicity_max_01/_02/_03; or "
-                             "WOOF_HEX_UH_LAYERS=1). off: none of these on the WOOF route")
+                             "WOOF_HEX_UH_LAYERS=1). off: none of these on the WOOF-ArWen route")
     parser.add_argument("--stochastic", default=None, metavar="JSON",
                         help="per-member SPPT/SKEB configuration, default off; see stochastic.py")
     parser.add_argument("--sppt", action=argparse.BooleanOptionalAction, default=None,
@@ -4895,8 +5033,8 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
              "cannot integrate on convective cases (default: 2d_smagorinsky)")
     parser.add_argument(
         "--convection", default="auto", metavar="SCHEME",
-        help="WOOF-route cumulus selection (a scheme other than auto selects the "
-             "WOOF route when no suite is named): auto, off, gf, ntiedtke, or any cumulus "
+        help="WOOF-ArWen-route cumulus selection (a scheme other than auto selects the "
+             "WOOF-ArWen route when no suite is named): auto, off, gf, ntiedtke, or any cumulus "
              "option of WOOF's physics registry by MPAS name, registry option "
              "id or cu_physics number (kain-fritsch, cu_tiedtke, 6). "
              "The default 'auto' switches the cumulus "
@@ -5015,7 +5153,7 @@ def add_forecast_arguments(parser: argparse.ArgumentParser) -> None:
 
     add_analysis_arguments(parser)
     parser.add_argument("--tc-climate", type=Path, default=None, metavar="RECIPE",
-                        help="opt-in GPU TC tracker and daily GPI; requires global WOOF history "
+                        help="opt-in GPU TC tracker and daily GPI; requires global WOOF-ArWen history "
                              "every six hours including hour zero; see demos/tc-climate.md")
     parser.add_argument(
         "--preflight", action="store_true",

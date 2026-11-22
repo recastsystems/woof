@@ -94,3 +94,16 @@ Timing streams, native per-rank profiles and commands are retained under
 `evidence/port-misc-schemes/{rcon-timing,rcon-native-profile,final}/` in
 the Downloads directory above. Hardware-counter profiling was refused
 with `ERR_NVGPUCTRPERM`; no system permissions were changed.
+
+That cost is a speed defect, not a breakage. 3.0.0 and 3.0.1 refused RCON
+at run start for it while plan review called the same plan launchable;
+from 3.0.2 the run admits `mp_physics=29` as an explicit option, never a
+default, and the speed gap stays open.
+
+RCON reads one initialized table stream, `rcon-wrf471-tables.bin`
+(380,970,392 bytes, pinned by SHA-256): the scheme's lookup tables as a
+native WRF 4.7.1 build holds them after initialization. woof does not
+ship it and no shipped tool builds it. Without it the run refuses by
+name before any step, and plan review reports the same file and the
+places it looked. `woof fetch-tables --schemes rcon --from DIR`
+verifies a copy and installs it.

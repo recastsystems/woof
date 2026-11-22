@@ -14,8 +14,12 @@ REQUEST_DEFAULTS = Path(__file__).with_name("data") / "physics_sources" / "reque
 PHYSICS_SELECTOR_VALUES = {
     "solar_generation": ("wrf_480", "wrf_461"),
     "ysu_version": ("wrf_480", "wrf_461"),
+    "shinhong_version": ("wrf_480", "wrf_461"),
+    "tempo_version": ("v3.2.5", "v3.0.3"),
     "noahmp_snow_age": ("wrf_470", "wrf_461"),
     "urban_water_balance": ("wrf_480", "wrf_471"),
+    "ntu_version": ("wrf_480", "wrf_471"),
+    "udm_version": ("wrf_480", "wrf_471"),
     "thompson_version": ("wrf_461", "wrf_39_noaa"),
     "thompson_fork_snow_fall": ("blend", "wrf_39_noaa"),
     "mynn_sfclay_variant": ("wrf_461", "gsl_wrf39"),
@@ -23,7 +27,7 @@ PHYSICS_SELECTOR_VALUES = {
     "diff_6th_form": ("wrf_461", "noaa_wrf39"),
     "upper_wind_limiter_form": ("wrf_461", "noaa_wrf39"),
     "rrtmg_cloud_optics_form": ("wrf_461", "noaa_wrf39"),
-    "bl_mynn_version": ("wrf_461", "wrf_471", "gsd_41"),
+    "bl_mynn_version": ("wrf_461", "wrf_471", "wrf_480", "gsd_41"),
     "bl_mynn_cloud_tendency_form": ("wrf_461", "gsd_41"),
 
     # ruc_soilprop has no stock-WRF key either. Without an entry here an

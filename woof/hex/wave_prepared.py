@@ -158,7 +158,7 @@ def coordinate_difference(mesh_radians, prepared_degrees, *, longitude=False, xp
     This does not change either coordinate or regrid a field.
 
     The mesh half ulp is a float32 one even when the mesh carries float64
-    angles (the WOOF route reads them from the float64 grid file): the
+    angles (the WOOF-ArWen route reads them from the float64 grid file): the
     preparation reads the float32 native static, so its points went through
     a float32 radian encoding either way, in the static's own range. THE BREAKAGE THIS PREVENTS: every
     ArWen-route run with --waves on over the native global x1.40962 mesh

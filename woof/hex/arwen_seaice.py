@@ -1,4 +1,4 @@
-"""MPAS GPU sea-ice energy balance in the WOOF Noah-MP PBL cadence.
+"""MPAS GPU sea-ice energy balance in the WOOF-ArWen Noah-MP PBL cadence.
 
 Noah-MP skips sea ice. Its sea-ice energy owner is the MPAS Noah sea-ice
 solver, called after the land solver and before PBL and its energy ledger.
@@ -74,7 +74,7 @@ def retire_engine_seaice(seam):
     THE BREAKAGE THIS PREVENTS: gpuwm 2.9.4 turned on its own prognostic
     zero-layer sea ice by default (RunConfig.seaice_prognostic, seeded by
     woof.ocean.seaice.initialize inside the seam's physics initialization),
-    and its ice_step rewrites XICE after the land call. On the WOOF route the
+    and its ice_step rewrites XICE after the land call. On the WOOF-ArWen route the
     MPAS Noah sea-ice solver below (and, in subseasonal runs, the hex mixed
     layer ocean) already owns those columns, so two owners changed the ice
     cover and the next step's Noah-MP census disagreed with the classification

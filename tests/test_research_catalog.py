@@ -298,7 +298,7 @@ def test_all_source_vocabulary_cannot_admit_an_unserved_history_quantity(product
     recipe = deepcopy(CONFIGS["regional-evolution.reference"])
     recipe["diagnostics"] = [product]
     assert product in NATIVE_PRODUCTS
-    with pytest.raises(ValueError, match="not supported by the WOOF history renderer"):
+    with pytest.raises(ValueError, match="not supported by the WOOF-ArWen history renderer"):
         validate_recipe(recipe, known_products=NATIVE_PRODUCTS)
 
 
@@ -448,7 +448,7 @@ def test_a_slug_outside_the_renderers_catalog_is_still_refused():
 
     recipe = deepcopy(CONFIGS["regional-evolution.reference"])
     recipe["diagnostics"] = ["not_a_product_any_engine_carries"]
-    with pytest.raises(ValueError, match="not supported by the WOOF history renderer"):
+    with pytest.raises(ValueError, match="not supported by the WOOF-ArWen history renderer"):
         validate_recipe(recipe, known_products=NATIVE_PRODUCTS)
 
 

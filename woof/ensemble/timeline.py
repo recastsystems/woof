@@ -1,7 +1,6 @@
 """Relay ordinary member step metadata into the shared C1 ledger."""
 from contextlib import contextmanager
 from pathlib import Path
-import os
 
 
 @contextmanager
@@ -9,7 +8,8 @@ def member_timeline(directory, *, member, card):
     from woof.stage_timing import ForecastLedger
     from woof.timeline.ledger import Ledger, _warn
 
-    physical = [part for part in os.environ.get('GPU_MUTEX_CARDS', '').replace(' ', ',').split(',') if part]
+    from woof.core.card_queue import granted_cards
+    physical = granted_cards()
     mapped = int(physical[card]) if card < len(physical) and all(part.isdecimal() for part in physical) else card
     target = Ledger(Path(directory) / 'timeline.jsonl', product='ensemble', card=mapped)
 

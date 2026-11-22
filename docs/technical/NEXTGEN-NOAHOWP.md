@@ -17,7 +17,7 @@ catchment fields. Each launch copies those fields on CUDA and advances the
 resident model. There is no Fortran library on this execution path.
 
 `woof.hydro.noahowp.factory:prepare_exchange` is the coupled alternative.
-WOOF runs its existing parent Noah-MP with its existing atmospheric forcing.
+WOOF-ArWen runs its existing parent Noah-MP with its existing atmospheric forcing.
 No additional atmospheric-forcing or PET stage is required. Preparation binds
 Rust hydrofabric overlap rows and attaches the following parent fields before
 the first LSM call and before checkpoint inventory is sealed:

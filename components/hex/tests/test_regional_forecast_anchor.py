@@ -94,9 +94,9 @@ def test_the_named_forecast_pair_is_masked_digest_identical(receipts):
 SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     "src/hexcore/cuda_driver.py": {
         "recorded": "cb6477ef2fd02ad551e9b6c8af0724c94fc4d90bdc712fff1378d218662f5d04",
-        "current": "f453eee1152aa33392b09ecfde1d16ee33ec53cf17d754ecd076736088630fea",
+        "current": "6e9362bfe5c530368a27c68cbf4a723d34c5f92f5d1420e79f942ee59e6643b9",
         "why": (
-            "convection ruling, 2026-08-26: _v841_physics_cadences reports "
+            "the convection rule by spacing: _v841_physics_cadences reports "
             "convection: None when no cumulus scheme is selected instead of "
             "calling float() on it.  Every configuration these four receipts "
             "recorded selects Grell-Freitas, and on that branch the function "
@@ -133,7 +133,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
             "the dycore a diabatic_theta; nothing these receipts ran supplies "
             "one, so the arithmetic they measured is unchanged"
             "  Moved again 2026-10-14 by the 0.4.0 release scrub: one comment "
-            "line names an owner ruling in place of a person; comment only, no "
+            "line names a decision in place of a person; comment only, no "
             "code line moved"
             "  Moved again 2026-10-15 by rel/hex040-fix-les: the RK step calls "
             "MPAS-A v8.4.2's LES dissipation only when a driver is handed an "
@@ -145,7 +145,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_regional_forecast_v841.py": {
         "recorded": "3aa30ec3c3a11c1152a67d1fcbc8b2d470fd8ac2446ec8f7ec34906873421e88",
-        "current": "45af7bda15a3794b3a1af5b2363513c3f899784ada8aaab4c1dfddf4ff8ed031",
+        "current": "9f9c6028ff358338905fe07fff649ef40b279eb7611994022c9064e8a42c218f",
         "why": (
             "Integration 2026-10-04 adds explicit rank constructor dispatch "
             "and preserves the ordinary constructor. The twelve arithmetic "
@@ -164,7 +164,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
             "never enters open_regional_forecast_v841 at all.  The assembler "
             "is byte-unchanged.  Before that, limited-area physics lane, "
             "2026-08-26: PaddedRegionalHostMesh "
-            "grew what the WOOF physics seam reads and the dycore does not "
+            "grew what the ArWen physics seam reads and the dycore does not "
             "-- coeffs_reconstruct and edgeNormalVectors, which DeviceMesh "
             "has no field for and never uploads -- and it restored the "
             "loader's canonical -1 in the INACTIVE edgesOnCell slots, the "
@@ -184,13 +184,13 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
             "receipt measured can differ.  Re-derived by "
             "tools/repin_source_tables.py"
             "  Moved again 2026-10-14 by the 0.4.0 release scrub: one docstring "
-            "line of open_regional_forecast_v841 names an owner ruling in place "
+            "line of open_regional_forecast_v841 names a decision in place "
             "of a person; docstring only, no code line moved"
         ),
     },
     "src/hexcore/regional_v841.py": {
         "recorded": "e74d345e3a2e02fe6887840e7ad3a8166ea302082e6a505d138c5293fef69a43",
-        "current": "84b3b62a8c7d6ad629f99ed89890384668aee1636be0cdc53831f7a634a4b44d",
+        "current": "9c8ff0ff283c096cf2f5ac9d965bc14f277ee3dbf100383c076ec007920136bd",
         "why": (
             "provenance scrub, 2026-08-27: ONE line of the module "
             "docstring named the machine the native v8.4.1 sources were "
@@ -225,7 +225,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
             "are carried and are not newly measured. "
             "limited-area physics lane, 2026-08-26: the per-launch observer "
             "now carries the MODULE KEY that launched, as well as the kernel "
-            "name.  One KernelCache serves the dycore AND the WOOF physics "
+            "name.  One KernelCache serves the dycore AND the ArWen physics "
             "seam, and the regional garbage discipline was rewriting the "
             "padded column of every float32 argument of every physics launch "
             "-- including the source state arrays it was handed.  It skips "
@@ -326,7 +326,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_horizontal.py": {
         "recorded": "97faf0869a0a5ea9ebbc4c67b3c2d6c68cefdfa10dece73cd204d818962efde4",
-        "current": "f94137176db65d24df0d9ff1d491c278d6c835bb08cd76dc43c5cfcbf323a345",
+        "current": "97b3ec1656518db03bccfe14c4fbf562dd7a407994ca31c8e2d4462943881b9c",
         "why": (
             "0.2.0 package rename, 2026-08-28: the token mpas_port became "
             "hexcore. This file is byte-identical to the copy these receipts "
@@ -393,7 +393,7 @@ SOURCE_DRIFT_SINCE_CAMPAIGN: dict[str, dict[str, str]] = {
     },
     "src/hexcore/cuda_transport_v841.py": {
         "recorded": "55c66759d9c81f65ed71ce77570897c102fd64661da6ad6c37b438b27771ab23",
-        "current": "5bf88077aeb7f63f66c83d997ec9a1e4af8f1d9e64ce19741efa63cfd1addb87",
+        "current": "30c8082b6bb7e92fb76d5d0049e8ee045fd090da3bc8fc47db781d82b1fa422e",
         "why": (
             "2026-10-28 level-parallel integer zero classification: cells then "
             "levels preserve uint32 OR exactly; fast and strict device "

@@ -16,7 +16,7 @@
 #
 # READ docs/public/LES.md BEFORE TRUSTING OUTPUT FROM THIS FILE.  In
 # particular:
-#   * the vertical grid is shared by every domain -- WOOF rejects
+#   * the vertical grid is shared by every domain -- WOOF-ArWen rejects
 #     per-domain vertical keys by construction -- so the 250 m child runs
 #     its 3 km grandparent's 49 levels, about 17 m at the first level and
 #     ~250 m at 3 km.  Vertical resolution, not dx, is what makes this a
@@ -76,7 +76,7 @@
 #
 # The `[fetch]` block at the end names the HRRR cycle this tree was built
 # and measured against.  Point it at another cycle and the geometry still
-# holds; the receipts in docs/superpowers/receipts/les/ do not.
+# holds; the receipts in docs/internal/receipts/les/ do not.
 [experiment]
 name = "les_nest_250m_km3"
 start_time = 2026-08-01T16:00:00
@@ -88,7 +88,7 @@ spec_bdy_width = 5
 restart_interval_s = 0.0
 # JUSTIFY constant-downward-longwave-v1: a COMMITTED EXPERIMENT
 # RECORD.  This file is the exact input of the scored nested-LES runs
-# whose receipts live in docs/superpowers/receipts/les/; its bytes are
+# whose receipts live in docs/internal/receipts/les/; its bytes are
 # the provenance of those numbers, so its physics does not move.  It
 # runs 16Z-23Z, entirely in daylight, but with ra_lw_physics 0 under
 # Noah its downward longwave is a declared 300 W m-2 constant, and now

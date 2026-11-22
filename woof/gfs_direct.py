@@ -2131,11 +2131,15 @@ def prepare_gfs_wrf(
         load_static_highres, apply_prepared_highres, static_highres_identity)
     static_highres = load_static_highres(experiment_config)
     from woof.case_data import (
-        gfs_preparation_policy, optional_case_data_from_config,
+        gfs_preparation_policy_from_config, optional_case_data_from_config,
         preparation_case_policy)
     case_data = optional_case_data_from_config(experiment_config)
+    # [ingest] first: the table a `woof domain` / `woof go` GFS config
+    # can carry (door item 7); [case_data] still answers where it is the
+    # one that declares a key.
     case_policy = {**preparation_case_policy(case_data),
-                   **gfs_preparation_policy(case_data)}
+                   **gfs_preparation_policy_from_config(
+                       experiment_config, case_data)}
     from woof.ingest.water_overlay import (
         load_bound_water_overlay, overlay_snapshot_sequence, verify_overlay_sequence)
     water_overlay, water_overlay_binding = load_bound_water_overlay(
@@ -2801,9 +2805,12 @@ def prepare_gfs_wrf(
         # frozen lake started as open water far below freezing.  The daily
         # observed analysis freezes the lake cells it sees frozen; the
         # provider rides the child catalog so every nest is frozen from the
-        # same analysis.  gfs_lake_ice = "wps" keeps the forcing's ice (the
-        # WPS / real.exe identity arm); an unreadable analysis falls back to
-        # it loudly, for this run only.
+        # same analysis.  It is acquired by the first domain with lake cells
+        # (LakeIceProvider.freeze), so a lake-free tree downloads nothing
+        # (door item 7).  [ingest] gfs_lake_ice = "wps" (woof go
+        # --lake-ice wps) keeps the forcing's ice (the WPS / real.exe
+        # identity arm); an unreadable analysis falls back to it loudly, for
+        # this run only.
         from woof.ingest.lake_ice import resolve_lake_ice_provider
         lake_ice_provider = resolve_lake_ice_provider(
             case_policy["gfs_lake_ice"], times[0],

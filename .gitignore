@@ -47,7 +47,7 @@ woof/libexec/
 woof/data/thompson/tables/freezeH2O.dat
 *.png
 !docs/**
-.superpowers/
+docs/internal/
 .worktrees/
 tools/grib1_bridge/target/
 tools/hrrr_grib2_bridge-*

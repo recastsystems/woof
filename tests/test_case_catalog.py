@@ -113,7 +113,7 @@ def test_missing_builtin_catalog_names_the_installation_remedy(tmp_path, monkeyp
     from woof.cli import main
     monkeypatch.setattr(catalog, "BUILTIN_CATALOG_PATH", tmp_path / "missing.zip")
     assert main(["case-catalog", "default", "--json"]) == 2
-    assert "reinstall WOOF" in json.loads(capsys.readouterr().out)["error"]
+    assert "reinstall WOOF-ArWen" in json.loads(capsys.readouterr().out)["error"]
 
 
 def test_validation_keeps_caller_data_and_accepts_exactly_the_same_text_controls(document):

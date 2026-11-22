@@ -17,7 +17,7 @@ off-domain neighbour from ``config_flags%periodic_x``/``periodic_y``::
 
 The periodic branch reads the halo cell the period fill has loaded from the
 opposite edge; the non-periodic branch names the boundary cell twice, so the
-boundary face carries that cell's own mass.  WOOF wrapped unconditionally
+boundary face carries that cell's own mass.  WOOF-ArWen wrapped unconditionally
 (``i % nx`` / ``(i-1+nx) % nx``, and the j equivalent) regardless of
 ``open_x``/``open_y``/``specified``/``nested``, so on every non-periodic
 domain the west boundary face took its mass from the EAST-most mass column

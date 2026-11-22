@@ -171,7 +171,7 @@ original producer paths. Pass the catalogue's index, consolidated receipt,
 capture receipt and inventory through the existing corresponding options. GNU
 tar/zstd transports opaque records; Rust alone decodes and compares field words.
 GNU/Intel pairwise spreads are debugging evidence only, never a proof bar
-(owner ruling 2026-10-12). Forecast acceptance fixes the process count and
+(since 2026-10-12). Forecast acceptance fixes the process count and
 requires the bitwise or witnessed maths-library tier of the current policy.
 Native compiler spread receipts retain all six recipe pairs per array. They use
 compact JSON; if the complete receipt would exceed 9 MB, a v2 index authenticates

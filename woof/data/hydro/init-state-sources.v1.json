@@ -94,7 +94,7 @@
     },
     "era5-land-cds": {
       "status": "pending-ruling",
-      "reason": "Licence passes (CC-BY-4.0) but every download needs a Copernicus CDS account (retrieve API returns 401 without a token). Account-gated sources wait for a decision (NOTE-hydro.md HYDRO-WORLD hydro-world-licences 2026-10-18T08:54Z). The WOOF user-credential door gpuwm/cds_credentials.py is the candidate access path.",
+      "reason": "Licence passes (CC-BY-4.0) but every download needs a Copernicus CDS account (retrieve API returns 401 without a token). Account-gated sources wait for a decision (NOTE-hydro.md HYDRO-WORLD hydro-world-licences 2026-10-18T08:54Z). The WOOF-ArWen user-credential door gpuwm/cds_credentials.py is the candidate access path.",
       "description": "ECMWF ERA5-Land hourly on 0.1 degrees, the preferred land state source once admitted.",
       "access": {"protocol": "cds", "reader": "netcdf", "account_required": true, "dataset": "reanalysis-era5-land", "first_valid_time": "1950-01-01T00:00:00Z"},
       "licence": {"spdx": "CC-BY-4.0", "status": "verified", "quote": "CDS catalogue record reanalysis-era5-land: CC-BY-4.0 (hydro-world-licences receipt, licences/era5-land/licence.json)", "url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/reanalysis-era5-land", "read_utc": "2026-10-18T08:35:51Z", "attribution": "Contains modified Copernicus Climate Change Service information (ERA5-Land, Munoz-Sabater et al. 2021)."},

@@ -102,6 +102,15 @@ MOVED = {
                                      {"bl_mynn_gsd41_unsquared_qtke"}),
     "mynn_sfclay_variant": (dict(mynn_sfclay_variant="gsl_wrf39"),
                             {"mynn_sfclay_variant"}),
+    # MY1 (3.0.3): on by default, echoed only where the wrf_461 MYNN PBL
+    # reads it, so moving it means running that PBL.  ML1 (the BouLac length
+    # sign) is read by the same PBL and is echoed with it.
+    "mynn_fixes_v61": (dict(bl_pbl_physics=5, sf_sfclay_physics=5),
+                       {"mynn_fixes_v61", "mynn_boulac_down_sign"}),
+    # ML1's second key (3.0.3): on by default, echoed only where the BouLac
+    # (8) or k-epsilon (17) PBL reads it.
+    "pbl_boulac_down_sign": (dict(bl_pbl_physics=8, sf_sfclay_physics=1),
+                             {"pbl_boulac_down_sign"}),
     "cycling": (dict(bl_mynn_version="gsd_41", cycling=True),
                 {"bl_mynn_version", "cycling"}),
     "diff_6th_form": (dict(diff_6th_form="noaa_wrf39", diff_6th_factor2=0.04),
@@ -144,6 +153,10 @@ DEFAULT_OFF = frozenset({
     # 2.9.10: WRF's ghg_input at the engine's fixed gases (0), absent as in
     # a header written before the key (checkpoint_identity).
     "ghg_input",
+    # 3.0.2: the boundary hydrometeor envelope at 25 km, the constant every
+    # earlier run served with, is absent as in a header written before the
+    # key (checkpoint_identity).
+    "lbc_hydrometeor_envelope_km",
     "umove", "vmove",
     # 2.9.11: the Fitch wind-farm controls with farm physics off
     # (labs/windfarm, woof.wind_table.drop_inert_config).
@@ -192,8 +205,32 @@ DEFAULT_OFF = frozenset({
     # is echoed, and "measured" (every earlier header's clock) drops out.
     "bl_mynn_version", "bl_mynn_gsd41_unsquared_qtke", "bl_mynn_cloud_tendency_form",
     "mynn_sfclay_variant",
+    # WRF v4.8.0 MYNN-SFC roughness keys, absent at their Registry defaults.
+    "sf_mynn_sfcflux_land", "sf_mynn_sfcflux_water", "shalwater_z0",
+    # The upstream MYNN v6.1 fixes (correct-mode MY1): default on, echoed
+    # only under the wrf_461 MYNN PBL; this fixture runs no PBL.
+    "mynn_fixes_v61",
+    # WRF v4.8.0 assembly: dynamic lightning (option 0), the gwd_opt = 1
+    # generation and its two keys (gwd_opt 0), and the Shin-Hong generation
+    # and logicals (bl_pbl_physics != 11) are dropped while their scheme is off.
+    "dyn_lightning_option", "coul_pos", "coul_neg", "coul_neu", "j_pos", "j_neg", "j_neu",
+    "gwdo_version", "gwd_dx_factor", "gwd_if_nonhyd",
+    "shinhong_version", "shinhong_nonlocal_flux", "shinhong_scu_mixing", "shinhong_ke_dissipation",
+    # Noah-MP SNICAR optical sets and LAP controls: absent unless opt_alb = 3
+    # selects them (woof.checkpoint_identity).
+    "snicar_ice_ri_opt", "snicar_dust_optics_opt",
+    "snicar_lap_opt", "snicar_lap_table", "snicar_lap_series",
+    # SNICAR incident spectrum, band count and solver, and the Noah-MP wetland
+    # option: absent at their defaults (fold/noahmp-clean wetland/spectra/Toon).
+    "snicar_solarspec_opt", "snicar_bandnumber_opt", "snicar_solver_opt", "noahmp_wetland",
+    # Noah-MP snow conductivity at option 1 and the snow-layer cold-start
+    # profile while Noah-MP is off: absent (woof.checkpoint_identity).
+    "opt_tksno", "noahmp_snow_tinit",
     # TEMPO's optional coupling arms, absent while off.
     "tempo_ml_for_bl_nc", "tempo_surface_emission_before",
+    # The TEMPO generation and its hail switch, absent unless TEMPO runs
+    # v3.2.5 (a header without them ran v3.0.3).
+    "tempo_version", "tempo_hailhyperaware",
     # The RUC sea-ice threshold switch, absent at 0 as in a 2.8.5 header.
     "fractional_seaice",
     # real.exe's seaice_threshold at its 100 K Registry default (converts
@@ -224,6 +261,9 @@ DEFAULT_OFF = frozenset({
     "scalar_adv_opt", "urban_ucm_generation", "urban_treeoption",
     "urban_ttscheme", "urban_fvg", "urban_table_dir", "ysu_version",
     "noahmp_snow_age", "urban_water_balance",
+    # The NTU/UDM source generations (woof.mp_generations) are scheme-scoped
+    # too; this fixture runs neither scheme.
+    "ntu_version", "udm_version",
     # 2.9.0 correct mode (woof/correct_mode.py): default on, but echoed only
     # where its scheme reads it; this fixture runs neither WSM6 nor New
     # Tiedtke, so both are absent, as in a 2.8.9 header.
@@ -234,6 +274,14 @@ DEFAULT_OFF = frozenset({
     # 2.9.7 HN1 (hydrometeor handover numbers): read by Thompson and
     # Morrison only, so absent here, as in a 2.9.6 header.
     "hydrometeor_handover_numbers",
+    # SN1 (Noah-MP snowmelt-reset ESTG): read by Noah-MP only, so absent here.
+    "noahmp_melt_reset_esat",
+    # 3.0.3 ML1 (MYNN BouLac downward length sign): read by MYNN only, so
+    # absent here.
+    "mynn_boulac_down_sign",
+    # 3.0.3 ML1's second key (BouLac and k-epsilon PBL length sign): read by
+    # those PBLs only, so absent here.
+    "pbl_boulac_down_sign",
     # 2.9.7 tc/nest: the nest accumulation archive is echoed only on a nested
     # domain with the archive on (restart._drop_inert_nest_archive); this
     # fixture is not nested, so it is absent, as in a 2.9.6 header.
@@ -296,7 +344,7 @@ DEFAULT_OFF = frozenset({
     'time_step_dfi', 'tracer_adv_opt', 'tracer_mix2_off', 'tracer_mix6_off',
     'tracer_opt', 'tracer_pblmix', 'traj_opt', 'trajectory_input',
     'ts_buf_size', 'tslist', 'tslist_unstagger_winds', 'use_tot_or_hyd_p',
-    'windfarm_deg', 'windfarm_ij', 'windfarm_induction', 'windfarm_overlap_method',
+    'windfarm_deg', 'windfarm_fitch_version', 'windfarm_ij', 'windfarm_induction', 'windfarm_overlap_method',
     'windfarm_wake_model', 'windturbines_spec', 'z_lev_diags', 'z_lev_diags_dfi',
     'z_lev_interval_s', 'z_lev_missing', 'z_levels',
     # The 3.0.0 port folds (WRF 4.7.1 options, irrigation, MAD-WRF, sea-ice
@@ -307,15 +355,24 @@ DEFAULT_OFF = frozenset({
     'grav_settling', 'irr_daily_amount', 'irr_end_julianday', 'irr_freq',
     'irr_num_hours', 'irr_ph', 'irr_start_hour', 'irr_start_julianday',
     'kfeta_trigger', 'madwrf_cldinit', 'madwrf_dt_nudge', 'madwrf_dt_relax',
-    'madwrf_opt', 'momentum_adv_opt', 'ra_call_offset', 'rk_ord',
+    'madwrf_opt', 'momentum_adv_opt', 'opt_runsrf', 'opt_runsub', 'ra_call_offset', 'rk_ord',
     'seaice_albedo_opt', 'seaice_snowdepth_max', 'seaice_snowdepth_min',
     'seaice_snowdepth_opt', 'seaice_thickness_default', 'seaice_thickness_opt',
     'sf_surf_irr_scheme', 'snicar_bc_ppb', 'snicar_bubble_radius_um',
-    'snicar_dust_ppm', 'snicar_ice_density', 'snicar_snowbc_intmix',
+    'snicar_dust_ppm', 'snicar_fresh_grain_opt', 'snicar_ice_density', 'snicar_snowbc_intmix',
     'snicar_snowdust_intmix', 'snicar_snowshape_opt', 'tc_fetch_m',
     'tc_flux_curve', 'tc_horizontal_length_m', 'tc_spray', 'tc_spray_partition',
     'tc_wave_roughness', 'tc_wave_source', 'ua_phys', 'uh_layers', 'waves',
     'waves_options', 'wtddt',
+    # WRF v4.8.0 kim_tofd (port/wrf-480 L07), absent while off.
+    'kim_tofd', 'tofd_factor',
+    # WRF v4.8.0 port: cu_physics=3's generation is dropped from the echo
+    # unless cu_physics=3 runs GFL, so earlier headers keep their identities.
+    'cu_gf_version',
+    # Noah-MP snow compaction C_bd option, dropped at its WRF default 1.
+    'opt_snow_compact',
+    # Noah-MP scale-aware ground SCF selector, absent at its default 1.
+    'opt_scf',
 })
 
 

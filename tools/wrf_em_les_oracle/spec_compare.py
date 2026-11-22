@@ -4,7 +4,7 @@
 The normalisation is the essential part. An unnormalised |fft2|^2 scales as
 N^4, so comparing two fields on different grid counts that way inflates one of
 them by (N1/N2)^4 -- the artifact that put a spurious 1.9 decades into an
-earlier WOOF figure. Here the transform carries 1/N^2, which makes the summed
+earlier WOOF-ArWen figure. Here the transform carries 1/N^2, which makes the summed
 spectrum equal the field variance exactly, and that identity is asserted for
 each field before any slope is quoted.
 """
@@ -61,14 +61,14 @@ def main():
                                                        dx, lo, hi))
     print("%-8s %12s %12s %14s %10s" % ("", "var(real)", "var(spec)",
                                         "Parseval res", "E(k) slope"))
-    print("%-8s %12.6g %12.6g %14.3e %10.4f" % ("WOOF", avr, avs, ar, asl))
+    print("%-8s %12.6g %12.6g %14.3e %10.4f" % ("WOOF-ArWen", avr, avs, ar, asl))
     print("%-8s %12.6g %12.6g %14.3e %10.4f" % ("WRF", wvr, wvs, wr, wsl))
-    print("w variance ratio WRF/WOOF = %.4f" % (wvr / avr))
+    print("w variance ratio WRF/WOOF-ArWen = %.4f" % (wvr / avr))
     print("slope difference = %.4f" % (wsl - asl))
 
     fig, ax = plt.subplots(1, 2, figsize=(12.5, 5.2))
     a = ax[0]
-    a.loglog(ak[1:], aE[1:], color="#2b6cb0", lw=2.0, label="WOOF km_opt=3")
+    a.loglog(ak[1:], aE[1:], color="#2b6cb0", lw=2.0, label="WOOF-ArWen km_opt=3")
     a.loglog(wk[1:], wE[1:], color="#c05621", lw=2.0, ls="--",
              label="WRF em_les km_opt=3")
     kref = ak[lo:hi]
@@ -88,7 +88,7 @@ def main():
     a.axhline(1.0, color="0.6", lw=0.8)
     a.axvspan(ak[lo], ak[hi - 1], color="0.85", alpha=0.35, zorder=0)
     a.set_xlabel(r"$k$  (cycles m$^{-1}$)")
-    a.set_ylabel("WRF / WOOF")
+    a.set_ylabel("WRF / WOOF-ArWen")
     a.set_title("Ratio per wavenumber band")
     a.set_ylim(0, 3)
     a.grid(alpha=0.25, which="both", lw=0.5)

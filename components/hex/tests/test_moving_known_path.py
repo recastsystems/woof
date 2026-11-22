@@ -68,7 +68,7 @@ def test_a_planned_member_is_requested_at_launch_and_the_move_lands_on_its_frame
     controller.plan = controller.plan_known_path()
     requested = []
 
-    def request(centre, why, order=1, admit=None, speculative=False):
+    def request(centre, why, order=1, admit=None, speculative=False, serve_admitted=False):
         name = moving_run.member_name(*st.snap(centre[0], centre[1], 0.25))
         requested.append((name, why))
         controller.state['members'].setdefault(name, dict(status='preparing', center_deg=list(centre), order=order))
@@ -226,7 +226,7 @@ def test_a_move_due_before_the_last_check_waits_instead_of_deferring(tmp_path, m
     monkeypatch.setattr(moving_run.time, 'sleep', lambda seconds: None)
     polls = []
 
-    def request(centre, why, order=1, admit=None, speculative=False):
+    def request(centre, why, order=1, admit=None, speculative=False, serve_admitted=False):
         controller.state['members']['next'] = dict(status='preparing', center_deg=list(centre))
         return 'next'
 

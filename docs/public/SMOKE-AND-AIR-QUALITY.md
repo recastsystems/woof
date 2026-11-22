@@ -1,6 +1,6 @@
 # Smoke, dust and air quality
 
-WOOF can carry wildfire smoke, dust, sea salt, black and organic carbon and
+WOOF-ArWen can carry wildfire smoke, dust, sea salt, black and organic carbon and
 the CAMS air-quality gases through a forecast, at the forecast's own
 resolution. Everything here is off by default: a configuration without
 `chem_sets` runs exactly as it always has, and its wrfout files are byte for

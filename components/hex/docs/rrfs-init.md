@@ -22,6 +22,21 @@ The recipe is one row of `data/profiles/init-producers.v1.json`. A model with it
 row there, not a new code path. Suites with no producer row (the MPAS-A v8.4.2 suites and the
 WOOF-route suites) keep the door's own case-7 init.
 
+Both RRFS producer rows enable `case7.tempo_rap` by default. This also sets
+case 9's `tempo_rap`: the worker retains the mapped QNWFA/QNIFA pair when it
+is available, and uses the monthly climatology otherwise. The native pair
+uses the ordinary scalar horizontal interpolation, nonnegative donors, and
+linear interpolation in height with constant end extrapolation. The existing
+worker treats a globally zero member of the pair as unavailable.
+
+The case-7 stage receipt now includes `aerosol_selection.selected` (`native`,
+`climatology`, or `unknown`) and its source path. This is based on the worker's
+actual audit, not just the requested recipe. The older worker's
+`result.aerosols.source_present` refers to the climatology file; it does not
+say whether native aerosols were present. Forecast TEMPO must retain
+`config_tempo_aerosolaware=true`, as the hrrrv5 suite already does. No forecast
+`tempo_rap` override is needed; that switch belongs to the initializer.
+
 ## Running it
 
 ```bash
@@ -120,7 +135,7 @@ that row is equal to the producer of record, not to a fresh native rerun.
 The referee is the strict single-precision, one-rank init derivative with exactly
 two optional aerosol pointer `NULLIFY` statements carried from the earlier
 approved init correction. The pristine native binary segfaults on these case-7
-inputs. The reference publication labels the carried ruling as confirmation
+inputs. The reference publication labels the carried correction as confirmation
 pending; these results are against the labelled derivative.
 
 | File | Stored values | Different |

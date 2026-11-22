@@ -14,4 +14,4 @@
   these are convection-permitting to sub-kilometer case studies,
   not tornado-resolving simulations.
   Sub-kilometer nests also sit in the PBL gray zone described in
-  [FIRST-LIGHT.md](https://github.com/recastsystems/woof/blob/v2.9.2/docs/public/FIRST-LIGHT.md).
+  [FIRST-LIGHT.md](https://github.com/recastsystems/arwen/blob/v2.9.2/docs/public/FIRST-LIGHT.md).

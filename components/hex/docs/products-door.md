@@ -129,7 +129,7 @@ opened in a browser.
 the run start (`--case` names it). Each view keeps its render manifest
 (engine digests, remap digest, per-frame precipitation budget) in its own
 folder; `points/points.json` holds every number a sounding or meteogram
-drew.
+shows.
 
 ## How mesh fields reach the render grid
 
@@ -191,6 +191,6 @@ parcel from the 2 m state.
 * A uniform mesh's `refined-core` view is not a failure: the converter's
   "no refined region" refusal switches the door to the default regions.
 
-Exit codes: 0 every view and the points drew; 1 a view or the points failed
+Exit codes: 0 every view and the points were drawn; 1 a view or the points failed
 (the manifest's `failed_views` and `points.refusal` say which); 2 a named
 refusal before anything was drawn.

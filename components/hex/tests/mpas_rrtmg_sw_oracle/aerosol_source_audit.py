@@ -1,4 +1,4 @@
-"""Compare MPAS aerosol sources with the archived WOOF HRRR authority.
+"""Compare MPAS aerosol sources with the archived WOOF-ArWen HRRR authority.
 
 Full routine differences remain in the receipt. The two scoped equivalences
 remove only MPAS module imports / IMPLICIT NONE, or explicit RKIND spelling;

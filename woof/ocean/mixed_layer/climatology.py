@@ -277,8 +277,8 @@ def _borrow_beyond_one_degree(indices, latitude, longitude, source_latitude, sou
     tie rule as the one-degree kernel.  Returns ``(farthest km, count)``, or
     ``None`` when every column was covered.
 
-    Named breakage: PWP is the default for forecasts of 48 h and more
-    (a382c235f2), and the fallback refused every continental domain with
+    Named breakage: PWP was then the default for forecasts of 48 h and more
+    (a382c235f2; an explicit choice since door item 6), and the fallback refused every continental domain with
     such water ("WOA18 monthly MLD has no valid value within one degree of
     forecast ocean"): a full-CONUS HRRR 48 h forecast on the fold died
     before its first step (test host, 2026-10-21).

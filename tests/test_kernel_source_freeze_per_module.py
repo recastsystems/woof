@@ -161,6 +161,17 @@ MP28_ACCUMULATOR_REWORK = "lane/cut286-mp28-g3 (2.8.6)"
 # Compiler request strings: batch007-compiled-pin-preview-review.json.
 # Numerical qualification remains in the lane and integration gates.
 BASELINE_PINNED: dict[str, str] = {
+    # WRF-480 L12: WRF v4.8.0 dynamic lightning (module_ltng_lpi / charge),
+    # replayed 0 different against the native 4.8.0 strict referee
+    # (20,148,480 words).
+    "dyn_lightning": "165d37168e5a92462600d3feab781f9d56514643653cdb2d66f5c3142944ff34",
+    # WRF-480 L04: WRF v4.8.0 MYNN-SFC b66187f5, replayed 0 different against
+    # the native 4.8.0 strict referee on A195 captures (648,000 words).
+    "mynnsfc_b66187f": "71e67a30afe5a9fd9672bb5ee52f5669987b274eeb066b4bd26bdc59640c62a1",
+    # WRF-480 L10: WRF v4.8.0 module_wind_fitch.F, both branches with THRUST;
+    # replayed word for word against the native 4.8.0 strict referee
+    # (tools/wind_mav_wrf471_oracle/replay_fitch_480.py, 455,520 words each).
+    "wind_fitch_480": "120961c5e3709441720d41e86ffe03019646788c810862fcdb7cfa1cf87e1b40",
     "gbmpbl": "20fb754c8290e50e8962e2be2786956b7b3ae3fdb0e875860854c8b979811a57",
     # HRRR initial helper: all 3456 native output words, both selectors.
     "gsd_initial_reflectivity": '9f9af95b259d978647dca1992f2b14e4bafaea5c781d269e53dca93fbb2a3419',
@@ -581,8 +592,11 @@ BASELINE_PINNED: dict[str, str] = {
     # 9c57c4ee9 feat(sase): CUDA mirror of the S3-12 additive e^{3/2} dissipation channel, p
     # Re-pinned for A146 (a98f2482e): constant-divisor float divisions
     # spelled __fdiv_rn.  Previously 9c49c1d0.
+    # Re-pinned for the WOOF 1.0.0 text scrub: comments only (punctuation, host
+    # labels), proven equal with comments stripped; the preprocessor drops
+    # comments, so the compiled binary does not move.
     "sase":
-        "af8c732fbc4945c517a965a7dc4c2e931667400064d01072f27728f4a67d7ae8",
+        "60008fb0a0eb8b3475afc74f3a971366e611cceadc681e734e48c4450af77695",
     # a084e0aeb fix(shinhong): the ULP table moved because the kernel compiler did, so it is
     # RE-PINNED 2026-09-30 by the default-pieces speed lane (878435c39):
     # the column arrays move from a 17,160 B per-thread local frame into a
@@ -629,6 +643,12 @@ BASELINE_PINNED: dict[str, str] = {
     # 58dfd599c feat(shinhong): CUDA mirror on the RTX 5090 -- dtheta bitwise, br DAZ counte
     "shinhong_validation":
         "e3714616c403a3f272600499164cf9b0215879d567dadcda31287dd33c600b87",
+    # WRF 4.8.0 Shin-Hong (physics_mmm bl_shinhong.F90, shinhong_version =
+    # "wrf_480"), a new unit: 0 of 543,816 words different from the native
+    # 4.8.0 strict objects (TKE copy-in labelled patch) on the 1,161-column
+    # corpus of tools/shinhong480_oracle, strict build.
+    "shinhong_480":
+        '7b05d0b412eae48e2fbd6ddddb44766b905eb2bad8af187475ac93b30f4263ff',
     # c1563f187 fix(release-scan): the gate reads by content, and sees an escaped path
     # RE-PINNED 2026-09-24 by the WRF v4.6.1 real-column repairs.  What
     # moved is WRF's own rule in each case, cited to module_mp_thompson.F
@@ -971,6 +991,14 @@ BASELINE_PINNED: dict[str, str] = {
     # with SPP) is 0 ULP on every lane on sm_120, strict and default.
     "terrain_drag":
         'f105fc2ba1310dec62d3c2fafd2f4fd3334370cc30bf8864e88986f6c106f3dd',
+    # port/wrf-480-L08: gwd_opt = 1 as WRF v4.8.0 runs it (the revised KIM
+    # drag: ELVMAX blocking levels, kgwdmax cap, gwd_dx_factor,
+    # gwd_if_nonhyd, per-level limiters), compiled after terrain_drag.cu in
+    # its own unit (woof/core/terrain_drag.py _gwdo480_module).  0 of
+    # 139,841,832 words differ from the native WRF v4.8.0 strict referee's
+    # objects (tests/test_gwdo_kim_wrf480_parity.py).
+    "terrain_drag_gwdo480":
+        '1fe0f01ccf3b9258a403fb52ac2062f64bc23d7916fa8b234063bc1a42507fe6',
 
     # ebcf4edd2 development branch: the BEP column (sf_urban_physics=2)
     # (tests/test_urban_bep_wrf471_parity.py)
@@ -1313,7 +1341,9 @@ BASELINE_PINNED: dict[str, str] = {
     'afwa_severe': 'a6261f1227d03fd27ad2a598362d6349fc2d99b05d480e4b32f54b63159a7747',
     'misc_diag_print': 'a71ad9fc19c27755d351c57ecd31999d6b6b0ec14703e66543d54962aa356cf4',
     'noahmp_output': 'ef24fdd73a747b8dec610e8d6420e33f5e5f3a0850447275f11f736aa0243442',
-    'snow_papers': '6910e7580f9d4dcf6c7ee9b53f349ee3c982f075d4d7f2b8cf924ee19ffa6ad6',
+    'snow_papers': '1352163f7a42109d3bfcd3ae8f96eced72153034bd597f811fda9548572f2923',
+    # clean-snicar-lap: snow light-absorbing particles (snicar_lap_opt), opt-in.
+    'snow_lap': '5dfb404296ef4d2d503a8a8b9ebebe7640865f7219e8f5ecbd82570825b2c387',
     # r290 exact-chain intake: source identity, numerical gates separate.
     'etanew': 'c4aaeb0613aac95fd3cdef789dbdd24bf899a56b557775a5e8af80499584a477',
     'idealscmsfclay': '52bc878fab77015d31c79d1c1be7b0af3ee32b9885323f5d7214358c3ee927d6',
@@ -1327,6 +1357,8 @@ BASELINE_PINNED: dict[str, str] = {
     'noah_ua': 'f120ee901eeffec221629ff5dc27b9aabdd8560410822408b2708a7a28291526',
     'noah_ua_sfcdiags': '590b288396d8075e76e880c589c09b151a755ad354a024fb2e026c1ebc0a1549',
     'sfclay_dx2d': '50de22fd147357b3531809dc33f59acfb7ab0bf519d36423c0258b550d83fd8e',
+    # WRF v4.8.0 kim_tofd unit (port/wrf-480 L07): sfclay.cu + GPUWM_SFCLAY_TOFD.
+    'sfclay_tofd': 'cc082df0074b78841c58b2d66ae7ed368da1c1ed5b8e45220bb7529a9a0ea87a',
     # r290 exact-chain intake: source identity, numerical gates separate.
     'rcon': '3d4d3e1b6584c7ea558a75adac9ddf0839d3b6058027b6dae9a9b9d5d0a60e5b',
     'udm': 'bdb41754f151bcfa329e21b3e12c673a0bb9f23f5e3c719baabc088d22d9371a',
@@ -1387,6 +1419,9 @@ PINNED_HEADERS = {
     "urban_ucm480_support.cuh": "6b5db2885a7e00d5c8ec65f7e3857efc9cf30c2264c9e5512020373e891089d6",
     "urban_ucm480.cuh": "bcb062c9ad2854e54ae2205ad898f26aa6153a8144729491577a631ebcc5cfaa",
     "urban_ucm.cu": "ee5bb8e48b297b0d5304047b7d764103a5c22bc1fb307df13670c122c39e588b",
+    # shinhong.cu prepended to the WRF 4.8.0 Shin-Hong unit (shinhong_480);
+    # the same bytes as its own module pin above.
+    "shinhong.cu": "cd650676df874db77b0c52303fe6ad3f37a821d3d818d6423b73f3878e46948b",
     # Lake lower bounds, REAL kinds and division rounding are part of the
     # column contract; test_lake_contract regenerates the WRF statements.
     # ABS sign clearing includes negative zero, subnormals and signed NaNs;
@@ -1568,7 +1603,7 @@ PINNED_HEADERS = {
     'km5_math.cuh': 'd3c096f002a8bca46a3fe4dcf762256f3b80fbb29ec7aa3fe72dd4b0b50fbcab',
     'lin_support.cuh': 'b75aa705f7598bc7131e3891c2f6ff6c81e5b99e5ce06c6303fb7924cdbb395c',
     'lin_wrf.cuh': '3954ddbef0420d1f88f0eba3ae81e5db9df3918a58f60779d1b5055e9ee8c2d0',
-    'mynn_pbl.cu': '0a3cc76ddc7fbdfc9b59d8db1c1365746cc4fd649a1bd7b7ae30c6e455643ba0',
+    'mynn_pbl.cu': '17c4f8c5abb445b2213382c609bfa96ddae9d1c965b28d237b607d9b8b95c58c',
     'nsas_constants.cuh': 'e50bd02c62e11ec3c4bf5619bab6e30805832401df930c1235a136db2fb4c907',
     'radar_backscatter_common.cuh': '7564e059e3e99be94134b97c625d85a9a74fdee872bba193197ade7196d9fd72',
     'refl.cu': '1e2c45699a721b4b042769f9f868d85d8a6eb4960fc547ce9affb59b69f43f66',
@@ -1598,7 +1633,9 @@ PINNED_HEADERS = {
     'nwp_hail_bins.cuh': '00402f3ea6502e6ddd211b70a3fde41d7aa13fb9e657d4f6528c7d8c8b2481d7',
     'rrtmg_aer3.cu': '0ab8dab99a9b49c93699c0e3ce6778d63a6e8e1eb39966a1db49d4847db10dd3',
     'scalar_atan.cuh': '47e93ec8e1f6aa039191962a2add455dec0508f45cf715ec33cc9b65ae97f804',
-    'sfclay.cu': '2110f93e4f5ca9fcdee9c2b41844f81082b333af6081133c7078d8d02c82cbb6',
+    # port/wrf-480 L07: kim_tofd under #ifdef GPUWM_SFCLAY_TOFD (previously 2110f93e).
+    'sfclay.cu': '29be8e5edf5feac9af91b2bc6702ff09fed7be5f0f5414840b4fa5d539fdcca2',
+    'sfclay_tofd.cuh': '91ff0cd9e40eca8f14303bec92e469e1acf9f94ea00c4573ef5b8f49ce9acc73',
     'sfclay_dx2d.cuh': '23210fb4a5482098c8e7c51ad89bdb0cbc086cff54780e29def306d73bd96cc1',
     'thompson_collision_constants.cuh': '01225b95f51e08a3127cd7703ce6915529ac0df7863d104af6193eeb20014e98',
     'uwshcu_cam.cuh': '919657834432f286ee4966dd7626bc9e11d5318397fbf3887b65899aa4d0b962',

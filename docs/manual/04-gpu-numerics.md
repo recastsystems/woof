@@ -2,7 +2,7 @@
 
 The model state is FP32, like WRF's default REAL; no end-to-end bit-identity with
 WRF is claimed anywhere [README.md, current release scope]. Four numerics facts govern how to read
-WOOF results: subnormal handling follows the compile route, FMA contraction and
+WOOF-ArWen results: subnormal handling follows the compile route, FMA contraction and
 library reduction orders scope the determinism claim, dual-run byte comparison is a
 transient-fault screen (not ECC), and restart identity is a published contract.
 
@@ -148,9 +148,9 @@ model under one pinned stack are the stronger configuration where available; two
 cards of different models are not [docs/public/DETERMINISM.md:71-82].
 
 The pin set is eleven items (GPU model/SM/UUID, driver, CUDA/NVRTC, CuPy and
-`CUPY_ACCELERATORS`, NumPy, netCDF4/HDF5, WOOF version and commit, config bytes,
+`CUPY_ACCELERATORS`, NumPy, netCDF4/HDF5, WOOF-ArWen version and commit, config bytes,
 every input artifact's bytes, runner route and I/O mode, output/diagnostic/cadence
-settings). WOOF does not pin these for you: the distribution declares dependency
+settings). WOOF-ArWen does not pin these for you: the distribution declares dependency
 lower bounds and ships no lockfile [docs/public/DETERMINISM.md:90-108].
 
 What is compared [docs/public/DETERMINISM.md:154-224]:
@@ -183,7 +183,7 @@ Determinism results actually measured:
 
 - The reference matched run survived two external process kills; frames produced
   before each kill were byte-compared when regenerated after relaunch:
-  SHA256-identical. WOOF reproduces its own trajectory bit-for-bit under
+  SHA256-identical. WOOF-ArWen reproduces its own trajectory bit-for-bit under
   restart-free relaunch on the same hardware and build
   [docs/public/VERIFICATION.md, historical comparison and limits].
 - LES: two independent 14,400-step `km_opt=2` integrations produced byte-identical

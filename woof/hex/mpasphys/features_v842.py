@@ -77,6 +77,38 @@ class CyclingExecution:
                     backgrounds=self.backgrounds)
 
 
+class CensusWords:
+    """A pool that records every (pool, name, level) a background writer reads, answering each with zeros of the
+    field's global shape and dtype, so the census never needs the words themselves."""
+
+    def __init__(self, layout):
+        self.keys = []
+        self._rows = {(row['pool'], row['pool_name']): row for row in layout.fields if row['kind'] != 'character'}
+
+    def get_field(self, pool, name, *, level=1):
+        import numpy as np
+        if (pool, name, level) not in self.keys:
+            self.keys.append((pool, name, level))
+        row = self._rows[pool, name]
+        return np.zeros(tuple(row['shape']), dtype='<f4' if row['kind'] == 'real' else '<i4', order='F')
+
+
+def background_keys(layout, names):
+    """Every pool word the installed background writer reads (cycling_v842.background_fields, or the writer a
+    process installed in its place), in the order it reads them.
+
+    THE BREAKAGE THIS PREVENTS (3 km storm box on two same-host ranks, 2026-11-13): the rank gather took
+    jedi_contract.BACKGROUND_FIELDS, but the private analysis stream's background_fields also reads hpbl, zgrid, the
+    land census and the MYNN cloud fields. Every history frame was written, then the final background ended the run
+    rc 2 with "boundary did not assemble ('diag_physics', 'hpbl', 1)". The one-card writer reads its own pool, so
+    only the ranks missed them.
+    """
+    from . import cycling_v842
+    census = CensusWords(layout)
+    cycling_v842.background_fields(SimpleNamespace(native=census), layout, names)
+    return census.keys
+
+
 class MpiCycling(CyclingExecution):
     """Owner-only assembly before a single global background write."""
 
@@ -85,35 +117,36 @@ class MpiCycling(CyclingExecution):
     def __init__(self, arguments, layout, execution):
         super().__init__(arguments, layout, execution.inputs)
         self.execution = execution
+        self._keys = None
 
     def output(self, *, step, steps, dt, session, layout, names, out):
         if not background_due(self.arguments, step, steps, dt):
             return
-        import numpy as np
-        from ..jedi_contract import BACKGROUND_FIELDS
-        from .moving_mpi_v842 import PoolWords
-        from .partition_v842 import gather_owned_field
+        from .moving_mpi_v842 import assemble_pool_words
         began = time.perf_counter()
         execution, global_layout = self.execution, self.layout
-        native = PoolWords(global_layout)
-        for row in global_layout.fields:
-            if row['name'] not in BACKGROUND_FIELDS:
-                continue
-            values = session.native.get_field(row['pool'], row['pool_name'])
-            buffers = execution.comm.gather(values, root=0)
-            if execution.rank == 0:
-                words = gather_owned_field(row, global_layout, execution.partitions, buffers)
-                if row['dimensions'] and row['dimensions'][-1] in ('nCells', 'nEdges', 'nVertices'):
-                    words = np.concatenate((words, np.zeros((*words.shape[:-1], 1), words.dtype)), axis=-1)
-                native.put_field(row['pool'], row['pool_name'], words)
+        comm, rank0 = execution.comm, execution.rank == 0
+        # Rank 0 writes, so its writer names the words (a child rank process may not carry a writer rank 0's process
+        # installed in place of cycling_v842.background_fields).
+        if rank0 and self._keys is None:
+            self._keys = background_keys(global_layout, names)
+        keys = comm.bcast(self._keys if rank0 else None, root=0)
+        rows = {(row['pool'], row['pool_name']): row for row in global_layout.fields}
+        local = [session.native.get_field(pool, name) if level == 1 else
+                 session.native.get_field(pool, name, level=level) for pool, name, level in keys]
+        # Every word in ONE collective; rank 0 assembles them on all cores (carrier ABI: native dummy appended).
+        gathered = comm.gather(local, root=0)
         record = None
-        if execution.rank == 0:
+        if rank0:
+            native = assemble_pool_words(global_layout, execution.partitions,
+                                         [(rows[pool, name], level) for pool, name, level in keys], gathered)
             result = write_background(self.arguments, SimpleNamespace(native=native),
                 global_layout, names, step=step, dt=dt, out=out)
             record = dict(step=step, path=result.path, receipt=result.receipt_path,
                 sha256=result.sha256, seconds=time.perf_counter() - began,
-                parallelism=f'{len(execution.partitions)} MPI owner gathers; Rust CDF-5 writer')
-        self.backgrounds.append(execution.comm.bcast(record, root=0))
+                parallelism=f'{len(execution.partitions)} rank owner gather of {len(keys)} fields; '
+                            f'Rust CDF-5 writer')
+        self.backgrounds.append(comm.bcast(record, root=0))
 
 
 def run_native_dynamics(arguments, config, layout, payload, streams, library,

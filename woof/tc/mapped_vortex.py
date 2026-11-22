@@ -1,6 +1,6 @@
 """Vortex relocation and intensity correction of a mapped source's initial frame (TC-VI1).
 
-Breakage it prevents (the storm 2024-10-08, box M, 2026-10-27): WOOF's vortex initialization existed only on the native
+Breakage it prevents (the storm 2024-10-08, box M, 2026-10-27): WOOF-ArWen's vortex initialization existed only on the native
 GFS route (source_cli refused --vortex-init for every other source), so the 36 GEFS members of the moving-nest
 data-assimilation cycle started from their own broad, weak vortices against a 909 hPa, 77 m/s, 9 km-RMW storm. The first analysis
 then had a first guess so far from the recon and TDR core winds that its gross check rejected them, and the forecast

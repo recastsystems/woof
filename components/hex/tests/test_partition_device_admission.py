@@ -147,7 +147,7 @@ def test_require_devices_honours_an_explicit_partition_floor() -> None:
 # the retired constants are gone
 # ---------------------------------------------------------------------------
 def test_the_retired_whole_mesh_constant_is_retired() -> None:
-    """Fixing a defect retires its guards (ruling, 2026-08-25): the 22 GiB
+    """Fixing a defect retires its guards: the 22 GiB
     linear constant died with the L6 re-derivation and must not survive as
     an importable second surface."""
 

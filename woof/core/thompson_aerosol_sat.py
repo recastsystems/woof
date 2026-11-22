@@ -10,7 +10,7 @@ This module owns exactly two device entry points, both compiled from
 
 ``launch_aerosol_rain_evaporation``
     module_mp_thompson.F:3236-3255 + :3384-3388 + :3500-3574 -- a direct
-    port, including the mean-volume-diameter clamp WOOF's mp=8 kernel does
+    port, including the mean-volume-diameter clamp WOOF-ArWen's mp=8 kernel does
     not carry, plus WRF's ``nwfaten += pnr_rev`` and the ``prw_vcd`` gate.
 
 Both are BITWISE against WRF v4.6.1, measured on WRF's own working column
@@ -207,7 +207,7 @@ def launch_aerosol_rain_evaporation(
     """Run WRF's mp=28 rain evaporation, returning one CCN per raindrop.
 
     A direct port of :3236-3255 + :3384-3388 + :3500-3574, including the
-    mean-volume-diameter clamp WOOF's mp=8 kernel does not carry.  ``nwfaten``
+    mean-volume-diameter clamp WOOF-ArWen's mp=8 kernel does not carry.  ``nwfaten``
     may be ``None`` to suppress :3565 (``nwfaten += pnr_rev``), which is what
     makes the aerosol term auditable in isolation.
 
@@ -336,7 +336,7 @@ def probe_rain_evaporation_rates(
     and ``nr_bound`` is the working per-cubic-metre rain number AFTER the
     mean-volume-diameter clamp at :3247-3255.  Pinning all three against an
     instrumented copy of the pristine Fortran is what makes the clamp -- which
-    WOOF's mp=8 kernel does not carry -- auditable in isolation instead of
+    WOOF-ArWen's mp=8 kernel does not carry -- auditable in isolation instead of
     being visible only as a shifted ``nr`` three launchers later.
 
     The four mutable state fields are copied first, so this call is

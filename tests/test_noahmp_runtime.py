@@ -88,6 +88,16 @@ _LATITUDE = 40.0
 _LONGITUDE = -100.0
 
 
+def _host_layout_route(monkeypatch):
+    """Pin the pre-2.9.14 host-classified slab layout, which these tests
+    instrument.  The forecast takes the resident layout for every option set
+    (NoahmpRuntimeParameters.uses_device_surface_layout); the host layout
+    code is kept, unselected, until it is retired."""
+    from woof.core import noahmp_runtime as rt
+    monkeypatch.setattr(rt.NoahmpRuntimeParameters,
+                        "uses_device_surface_layout", lambda self: False)
+
+
 def _build(*, nx: int = 8, ny: int = 6, nz: int = 40, vegtyp: int = _GRASSLAND,
            soiltyp: int = _LOAM, water_columns: int = 2, snow_mm: float = 0.0,
            snow_depth_m: float = 0.0, xice=0.0, radiation=None,
@@ -261,13 +271,17 @@ def test_device_leaves_preserve_the_six_step_carried_state(
     from woof.core.dycore import step
     import woof.core.noahmp_runtime as runtime_module
 
-    device_state, device_cfg, device_driver = _build(**build_kwargs)
+    # The host routines are WRF's arithmetic: both arms name correct-mode
+    # SN1 off so the comparison is of the same function.
+    device_state, device_cfg, device_driver = _build(
+        **build_kwargs, noahmp_melt_reset_esat=False)
     for _ in range(6):
         step(device_state, device_cfg)
 
     monkeypatch.setattr(runtime_module, "LEAF_BATCH_EVALUATOR",
                         runtime_module.evaluate_leaf_batch_on_host)
-    host_state, host_cfg, host_driver = _build(**build_kwargs)
+    host_state, host_cfg, host_driver = _build(
+        **build_kwargs, noahmp_melt_reset_esat=False)
     for _ in range(6):
         step(host_state, host_cfg)
 
@@ -356,7 +370,11 @@ def test_runtime_does_not_execute_the_host_leaves(monkeypatch):
     monkeypatch.setattr(energy_module, "vege_flux", tripwire("VEGE_FLUX"))
     monkeypatch.setattr(energy_module, "bare_flux", tripwire("BARE_FLUX"))
     step(state, cfg)
-    assert driver.last_noahmp_census == {
+    # The resident layout keeps its counts on the device (no per-step host
+    # read) and names its glacier path.
+    census = {k: int(v) for k, v in driver.last_noahmp_census.items()
+              if k != "glacier_path"}
+    assert census == {
         "land": cfg.nx * cfg.ny, "water": 0, "sea_ice": 0, "glacier": 0}
 
 
@@ -368,7 +386,8 @@ def test_the_host_tripwires_would_fire_on_the_host_authority(monkeypatch):
     import woof.core.noahmp_runtime as runtime_module
 
     for leaf in ("vege_flux", "bare_flux"):
-        state, cfg, _driver = _build(nx=4, ny=2, water_columns=0)
+        state, cfg, _driver = _build(nx=4, ny=2, water_columns=0,
+                                     noahmp_melt_reset_esat=False)
         monkeypatch.setattr(runtime_module, "LEAF_BATCH_EVALUATOR",
                             runtime_module.evaluate_leaf_batch_on_host)
 
@@ -1216,6 +1235,9 @@ def test_the_slab_and_staged_paths_write_the_same_slab(monkeypatch, fused_write_
         import woof.core.noahmp_slab_libm as slab_libm
         monkeypatch.setattr(slab_libm, "write_slab_arithmetic",
                             lambda *args, **kwargs: False)
+        # The unfused write-back is the host-classified layout's fallback;
+        # the resident layout requires the fused arithmetic (2.9.14).
+        _host_layout_route(monkeypatch)
     slab = _six_steps(monkeypatch, nx=6, ny=4, water_columns=1,
                       snow_mm=45.0, snow_depth_m=0.16)
     staged = _six_steps(monkeypatch, staged=True, nx=6, ny=4, water_columns=1,
@@ -1262,6 +1284,7 @@ def test_the_slab_write_back_comparison_can_see_a_misrouted_column(
     surface.  Until this is observed being rejected, the chunk gate above is
     a comparison that has never been seen to fail.
     """
+    _host_layout_route(monkeypatch)  # instruments the host-classified write-back
     import woof.core.noahmp_runtime as runtime_module
 
     accurate = _all_written_digest(

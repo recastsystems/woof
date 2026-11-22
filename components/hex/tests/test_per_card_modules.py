@@ -56,7 +56,7 @@ def test_seaice_module_launches_on_the_second_card():
     except Exception:  # noqa: BLE001 - no driver is no card
         cards = 0
     if cards < 2 or os.environ.get("HEX_TWO_CARD_GPU") != "1":
-        pytest.skip("needs two cards under the GPU mutex and HEX_TWO_CARD_GPU=1")
+        pytest.skip("needs two CUDA cards to itself and HEX_TWO_CARD_GPU=1")
     import numpy as np
     from woof.hex.mpasphys import seaice_v842 as si
 

@@ -635,7 +635,13 @@ class LocalTimestepAttachment:
         spec_zone_mask_edge: Any | None = None,
         n_cells_solve: int | None = None,
         in_place: bool = False,
+        native_stored_inverse: bool = False,
     ) -> Any:
+        # The same keywords as CudaHorizontal.divergence_damping_3d, which the
+        # v8.4.1 acoustic loop calls with native_stored_inverse=True (MPAS keeps
+        # 1/dts and multiplies).  THE BREAKAGE (hex 0.6.1, every --local-timestep
+        # run; fork jacobbieker/woof PR 447): the keyword was missing here and
+        # the run stopped at step 0 with a TypeError.
         horizontal = self.driver.horizontal
         if not self._active_edge_lists:
             raise RuntimeError(
@@ -656,11 +662,12 @@ class LocalTimestepAttachment:
         solve_count = horizontal.ncells if n_cells_solve is None else int(n_cells_solve)
         out = rho_u_perturbation if bool(in_place) else rho_u_perturbation.copy()
         for edges, size, effective in self._active_edge_lists:
+            # Formed as the shared kernel forms it (cuda_horizontal), with the
+            # class step dts * rate in place of dts.
+            base = np.float32(2.0) * np.float32(float(config_smdiv)) * np.float32(length)
+            step = np.float32(float(dts) * effective)
             coefficient = np.float32(
-                np.float32(2.0)
-                * np.float32(float(config_smdiv))
-                * np.float32(length)
-                / np.float32(float(dts) * effective)
+                base * (np.float32(1.0) / step) if native_stored_inverse else base / step
             )
             ltsk.launch(
                 "divergence_damping_lts",

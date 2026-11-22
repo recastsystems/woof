@@ -65,13 +65,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .errors import MpasPortError
 
@@ -142,22 +143,64 @@ def _cycle(text: str) -> datetime:
             "init's valid time and every boundary time are counted from") from error
 
 
-def _boundary_step(cadence: Mapping[str, Any], cycle_hour: int, lead: int, hours: int,
+def _ladder_cycle(issued: datetime) -> "datetime | int":
+    """The cycle the posting ladders are read for: the cycle itself, so a dated ladder (a publisher's past range: IFS
+    00/12 UTC runs stopped at f240 before 2024-11-12 06Z) decides; its UTC hour alone on an init_sources that has no
+    dated ladders (no ``ladder_for``), whose ladder lookups take an hour only.
+
+    THE BREAKAGE THIS PREVENTS (2026-11-13 walk): the regional door read the ladders by hour, so a 2024 IFS region
+    past f240 passed its plan and was refused at its first table hour, after the mesh."""
+    from . import init_sources
+
+    return issued if hasattr(init_sources, "ladder_for") else issued.hour
+
+
+def _boundary_step(cadence: Mapping[str, Any], cycle: "datetime | int", lead: int, hours: int,
                    requested: int | None = None) -> int:
     """The boundary step of a region driven by a table source: the finest spacing at which every boundary time is a
     lead the source posts (its ``ladders``, :func:`woof.hex.init_sources.boundary_step`), or ``--boundary-interval-hours``
-    when every boundary time on it is posted; 0 when none is.
+    when every boundary time on it is posted; 0 when none is. The boundary times run on that step from the start
+    through the first one at or past the run's end (:func:`woof.hex.init_sources.boundary_leads`, as the country door's
+    endpoints do), so a run that ends between two posted hours reads the next posted hour past its end and the
+    forecast's boundary pool interpolates to its end in time, as it does between any two boundary times.
 
     THE BREAKAGES THIS PREVENTS: (1) the plan read only ``interval_hours`` (GFS: 6), so ``--lead-hours 3`` on GFS was
     refused although GFS posts every hour to 120 h and its row's ladder says so (2026-10-28: ``woof hex regional
     --cycle 2026-10-27T18 --source gfs --lead-hours 3 --hours 12`` refused). (2) The step was ``interval_hours`` or
     its largest posted divisor, so a 6 h region from GFS, IFS, IFS 0.1 or GEFS got only its start and end boundaries
     though GFS posts hourly and IFS 3-hourly (HRDPS hex sheets, 2026-10-29: "hex from GFS 0.25 deg (6-hourly
-    boundaries)" beside "HRDPS (hourly boundaries)").
+    boundaries)" beside "HRDPS (hourly boundaries)"). (3) The step had to divide the run's length, so a region whose
+    length is not a whole number of its source's posting steps was refused at plan on both doors after the site had
+    quoted it (2026-11-13 walk: ICON 100 h from 00Z, 118 h from 18Z or 10 h from f090; IFS, AIFS and GEFS 25 h; GFS
+    125 h): "... writes no lead at every boundary time from 0 h to 118 h ...".
     """
     from .init_sources import boundary_step
 
-    return boundary_step(dict(cadence), int(cycle_hour), int(lead), int(hours), requested=requested, whole=True)
+    when = cycle if isinstance(cycle, datetime) else int(cycle)
+    return boundary_step(dict(cadence), when, int(lead), int(hours), requested=requested)
+
+
+def _boundary_reach(cadence: Mapping[str, Any], cycle: "datetime | int", lead: int,
+                    requested: int | None = None) -> tuple[int, int]:
+    """``(last, most)``: the cycle's last posted hour, and the longest whole-hour run from ``lead`` that has a boundary
+    step (0 when none), named in the plan's refusal so the caller can pick a length that runs."""
+    from .init_sources import _lead_posted
+
+    forecast = dict(cadence)
+    top = int(forecast.get("max_hours") or 0)
+    last = next((k for k in range(top, -1, -1) if _lead_posted(forecast, cycle, k)), 0)
+    most = next((h for h in range(last - int(lead), 0, -1)
+                 if _boundary_step(forecast, cycle, lead, h, requested)), 0)
+    return last, most
+
+
+def boundary_span(hours: int, step: "int | None") -> int:
+    """Hours from the start to a region's last boundary time: the run's length rounded up to its boundary step (the
+    first boundary time at or past the end); the length itself when there is no step (an intermediate door's hourly
+    series, or a region cut from a kept run)."""
+    import math
+
+    return int(math.ceil(int(hours) / int(step)) * int(step)) if step else int(hours)
 
 
 def _stamp(moment: datetime) -> str:
@@ -186,16 +229,41 @@ def boundary_plan(source, cycle, lead, hours, *, name=None, boundary_cycle=None,
         raise RegionalRefusal(f"{boundary['id']} boundary cycle {text} is later than the run's start "
                               f"{start:%Y-%m-%dT%H}; choose an earlier boundary cycle")
     cadence = boundary.get("forecast") or {}
+    from .lbc_producer import analysis_every_hours
+    analyses = None if cadence else analysis_every_hours(boundary)
     step = None
     if cadence:
-        step = _boundary_step(cadence, issued.hour, offset, hours, requested)
+        posting = _ladder_cycle(issued)
+        step = _boundary_step(cadence, posting, offset, hours, requested)
         if not step:
+            last, most = _boundary_reach(cadence, posting, offset, requested)
             raise RegionalRefusal(
                 (f"--boundary-interval-hours {requested}: " if requested is not None else "")
                 + f"{boundary['id']} boundary cycle {text} writes no lead at every boundary time from "
                 f"{offset} h to {offset + hours} h through the run's end "
-                f"{start + timedelta(hours=hours):%Y-%m-%dT%H}; choose a newer boundary cycle, "
-                "a shorter run or a boundary source that reaches it")
+                f"{start + timedelta(hours=hours):%Y-%m-%dT%H}: its last posted hour is f{last:03d}, and "
+                + (f"the longest run from f{offset:03d} with a posted boundary hour at or past its end is {most} h"
+                   if most else f"no run from f{offset:03d} has a posted boundary step")
+                + "; choose a newer boundary cycle, a shorter run or a boundary source that reaches it")
+    elif analyses:
+        # An analysis series (ERA5: its row's boundaries.analysis_every_hours): every boundary time is the source's
+        # own analysis at that valid time, at the source's time step unless --boundary-interval-hours asks a
+        # multiple of it (lbc_producer.source_endpoint_commands reads the same series for the country door).
+        # THE BREAKAGE THIS PREVENTS (2026-11-13, every hex region from ERA5 on either door): both region
+        # doors refused every ERA5 region at plan ("era5 declares no forecast cadence for its boundaries"), so the
+        # site took and quoted the order and the box stopped before its mesh.
+        if offset:
+            raise RegionalRefusal(
+                f"{boundary['id']} is a reanalysis with an analysis every {analyses} h and no forecast hours: its "
+                f"boundaries are its analyses at each boundary time, so the run starts at one of its analysis "
+                f"times (no --lead-hours, and a boundary cycle equal to the start {start:%Y-%m-%dT%H})")
+        # A step that does not divide the run reads the analysis at the first boundary time past its end, as a
+        # forecast row does (boundary_span).
+        step = int(requested) if requested is not None else analyses
+        if step < analyses or step % analyses:
+            raise RegionalRefusal(
+                f"--boundary-interval-hours {requested}: {boundary['id']} has an analysis every {analyses} h, so a "
+                f"region's boundary step is a whole multiple of {analyses} h")
     elif not (boundary.get("intermediate") or {}).get("row"):
         raise RegionalRefusal(f"{boundary['id']} declares no forecast cadence for its boundaries")
     elif requested is not None:
@@ -205,6 +273,32 @@ def boundary_plan(source, cycle, lead, hours, *, name=None, boundary_cycle=None,
         raise RegionalRefusal(f"{boundary['id']} reaches the region through its own intermediate door, "
                               "which reads one cycle's lead hours from 0; its boundary cycle must match the start")
     return boundary, issued, offset, step
+
+
+def member_rows(source, cycle, boundary, issued, member):
+    """The rows of a region's series that read ``--member`` (the start row and the boundary row, when they declare
+    members), checked before the mesh: a missing member, one outside the row's members, or a member given to rows
+    that declare none, is refused in the init door's own words.
+
+    THE BREAKAGE THIS PREVENTS (2026-11-13, every GEFS region on the regional door): the door took no --member, so
+    after the mesh was built each table hour's init-source refused "source 'gefs' is an ensemble; pass --member".
+    """
+    from .init_sources import Cycle, InitSourceRefusal, template_context
+
+    rows = []
+    for row, when in ((source, cycle), (boundary, issued)):
+        if row.get("members") is None or row["id"] in rows:
+            continue
+        try:
+            template_context(Cycle.parse(when.strftime("%Y-%m-%dT%H")), row, member)
+        except InitSourceRefusal as error:
+            raise RegionalRefusal(str(error)) from None
+        rows.append(row["id"])
+    if member is not None and not rows:
+        raise RegionalRefusal(f"--member {member}: {source['id']}"
+                              + (f" and {boundary['id']}" if boundary["id"] != source["id"] else "")
+                              + " declare no members, so the member would be ignored")
+    return rows
 
 
 def admit_boundary_cycle(source, issued):
@@ -274,11 +368,101 @@ def _parent(args: argparse.Namespace, hours: int) -> dict[str, Any] | None:
             "history": [str(Path(p).absolute()) for p in window], "start": start.strftime("%Y-%m-%dT%H:%M")}
 
 
+def _mesh_row(args: argparse.Namespace) -> dict[str, Any] | None:
+    """``--mesh-spec ROW.json`` expanded (:mod:`woof.hex.mesh_ask`), with the door's own words set from it."""
+
+    path = getattr(args, "mesh_spec", None)
+    if path is None:
+        return None
+    from . import mesh_ask
+
+    given = [f"--{word.replace('_', '-')}" for word in ("point", "shape", "ellipse", "fine_dx_m", "radius_km",
+                                                         "background_km") if getattr(args, word, None) is not None]
+    if given:
+        raise RegionalRefusal(
+            f"--mesh-spec names its own zones, spacing, background and rim; {', '.join(given)} would say them twice")
+    try:
+        asked = mesh_ask.expand(mesh_ask.load_row(path), geometry=getattr(args, "geometry", None),
+                                ramp_onset=getattr(args, "ramp_onset", None))
+    except mesh_ask.MeshAskRefusal as error:
+        raise RegionalRefusal(str(error)) from error
+    if asked["cut"] is None:
+        raise RegionalRefusal(
+            f"{path} is a whole globe; a region needs the row's domain to be "
+            '{"kind": "region", "rim_km": KM} (a globe runs through mesh-plan --global-mesh --spec)')
+    base = next(zone for zone in asked["zones"] if zone["name"] == asked["cut"]["around"])
+    lat, lon = base["centre_deg"]
+    args.point = f"{lat!r},{lon!r}"
+    args.radius_km = (float(base["shape"]["radius_km"]) if base["shape"]["kind"] == "cap"
+                      else math.sqrt(float(base["area_km2"]) / math.pi))
+    args.fine_dx_m = float(asked["anchor_fine_km"]) * 1000.0
+    args.background_km = float(asked["background"]["built_km"])
+    return asked
+
+
+def _mesh_row_reach(asked: Mapping[str, Any], point: tuple[float, float]) -> float:
+    """How far from ``point`` a row's cut and its boundary rings reach, km (the source-coverage check)."""
+
+    import numpy as np
+
+    from . import mesh_ask, mesh_shape
+
+    cut = asked["cut"]["region"]
+    if cut["kind"] == "cap":
+        centre = mesh_shape._xyz(*cut["center_deg"])
+        far = (float(cut["radius_km"])
+               + 6371.229 * float(np.arccos(np.clip(centre @ mesh_shape._xyz(*point), -1.0, 1.0))))
+    else:
+        vertices = mesh_shape._xyz(*mesh_shape._ring(cut).T)
+        far = 6371.229 * float(np.arccos(np.clip(vertices @ mesh_shape._xyz(*point), -1.0, 1.0)).max())
+    rim = asked["cut"]["rim_spacing_km"]
+    # Past the cut each ring is wider than the one inside it where the spacing still grows
+    # (mesh_ask.boundary_ring_reach_km); a row's own rim spacing, when it names one, is the floor. (It read the
+    # background's spacing for a row that names none, which put a geometry-2 800 km region from HRRR 1,640 km out
+    # where its rings end near 1,300 km.)
+    floor = mesh_ask.BOUNDARY_RINGS * float(rim) if rim else 0.0
+    return far + max(floor, mesh_ask.boundary_ring_reach_km(asked))
+
+
+def _geometry_two_reach(args: argparse.Namespace, point: tuple[float, float], radius: float, fine: float,
+                        background: float, words: Sequence[str]) -> float | None:
+    """How far from ``point`` a geometry-2 region's cut and rings reach, from the row the mesh stage will build
+    (mesh-plan's own request for the same words); None when that request cannot be read here."""
+
+    from . import mesh_point
+    from .cli import build_parser
+
+    if getattr(args, "shape", None) is not None:
+        core = ["--shape", str(args.shape)]
+    elif getattr(args, "ellipse", None) is not None:
+        core = [f"--ellipse={args.ellipse}"]
+    else:
+        core = [f"--point={point[0]},{point[1]}", "--radius-km", repr(float(radius))]
+    try:
+        arguments = build_parser().parse_args(["mesh-plan", *core, "--fine-dx-m", repr(float(fine)),
+                                               "--background-km", repr(float(background)), *words])
+        request = mesh_point.request_from_arguments(arguments)
+    except (SystemExit, mesh_point.PointPlanRefusal):
+        return None
+    if request.ask is None or request.ask.get("cut") is None:
+        return None
+    return _mesh_row_reach(request.ask, point)
+
+
 def plan(args: argparse.Namespace) -> dict[str, Any]:
     from . import mesh_shape
     from .mesh_point import drawn_shape, parse_point
 
     row, data_dir = load_row(args.row, args.table)
+    asked = _mesh_row(args)
+    from . import mesh_ask as _mesh_ask
+
+    try:
+        # The door's own geometry words, refused here in the row's words before anything is fetched.
+        geometry_two = int(_mesh_ask.door_generator(args)["geometry"]) == 2
+        geometry_words = _mesh_ask.door_argv(args)
+    except _mesh_ask.MeshAskRefusal as error:
+        raise RegionalRefusal(str(error)) from error
     # A drawn core (--shape/--ellipse) is the region; the circle is --point.
     drawn = drawn_shape(args)
     if drawn is not None and args.point is not None:
@@ -303,13 +487,23 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         source = {"id": "hex-parent", "display_name": "kept hex run",
                   "intermediate": {"row": None}, "first_guess": None}
         cycle = datetime.strptime(parent["start"], "%Y-%m-%dT%H:%M")
+        blend = None
     else:
+        blend = None
         if not getattr(args, "cycle", None):
             raise RegionalRefusal(
                 "--cycle was not given: the source cycle is what the init's valid time and every boundary time "
                 "are counted from (or cut the region from a kept hex run with --parent-*)")
         source_name = args.source or row["init_source"]
         table, source = resolve_regional_source(source_name)
+        if source.get("blend"):
+            # A blend row (HRRR inside its grid over GFS) has no first guess or boundary cadence of its own: the region
+            # runs its outside row for the start, the met and the boundaries, then blends the inside source over that
+            # start at the init stage (blend_start, the global door's route). THE BREAKAGE THIS PREVENTS: --source
+            # hrrr-gfs stopped the plan with KeyError 'first_guess' (18 Nov 2026), so no region could start from
+            # the analysis the forecast work starts from.
+            blend = source["id"]
+            table, source = resolve_regional_source(source["blend"]["outside"])
         cycle = _cycle(args.cycle)
         from .init_sources import admit_cycle
 
@@ -343,6 +537,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
             "would have no boundary file for its last stretch")
     hours = int(hours)
     requested = getattr(args, "boundary_interval_hours", None)
+    member = getattr(args, "member", None)
     if parent is None:
         if lead < 0:
             raise RegionalRefusal(f"--lead-hours {lead} is negative; choose a posted start lead")
@@ -350,12 +545,17 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
             source, cycle, lead, hours, name=getattr(args, "boundary_source", None),
             boundary_cycle=getattr(args, "boundary_cycle", None), requested=requested)
         split = source["id"] != boundary["id"] or cycle != issued
+        members = member_rows(source, cycle, boundary, issued, member)
         if (source.get("intermediate") or {}).get("row") and lead:
             raise RegionalRefusal(f"--lead-hours needs a source that writes forecast leads through its table row; "
                                   f"{source['id']!r} reaches the region through its own intermediate door")
     else:
         if getattr(args, "boundary_source", None) or getattr(args, "boundary_cycle", None) or requested is not None:
             raise RegionalRefusal("a region cut from a kept hex run takes its boundaries from every parent frame")
+        if member is not None:
+            raise RegionalRefusal(f"--member {member} names a member of an ensemble source; a region cut from a "
+                                  "kept hex run starts from that run")
+        members = []
         boundary, issued, boundary_lead, interval, split = source, cycle, lead, None, False
     # Before mesh generation or prefetch: case 7 cannot extrapolate beyond a finite source map.
     if parent is None:
@@ -372,11 +572,29 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
                 np.sin(a)*np.sin(c)+np.cos(a)*np.cos(c)*np.cos(b-d), -1, 1)).max())
         fine = float(args.fine_dx_m if args.fine_dx_m is not None else row["fine_dx_m"])
         background = float(getattr(args, "background_km", None) or row.get("background_km") or DEFAULT_BACKGROUND_KM)
-        spec = ladder_spec(point, fine_dx_m=fine, radius_km=radius, background_km=background)
-        cut = predicted_cull_cells(spec=spec, radius_km=radius, pad_scale=DEFAULT_CULL_PAD_SCALE)
-        reach = cut["cut_radius_km"] + cut["halo_km"]
+        reach = None
+        if asked is not None:
+            reach = _mesh_row_reach(asked, point)
+        elif geometry_two:
+            # The row mesh-plan builds for these words, its rings walked at their own spacing.
+            reach = _geometry_two_reach(args, point, radius, fine, background, geometry_words)
+        if reach is None:
+            # Geometry 2 has no ladder (any ratio of spacings is built), so the reach is read off the one
+            # region it builds; the cut and its halo are the same circle either way.
+            spec = ({"name": "reach", "background_km": background, "regions": [{
+                        "shape": {"kind": "cap", "center_deg": [point[0], point[1]], "radius_km": radius},
+                        "spacing_km": fine / 1000.0, "transition_km": 18.0 * fine / 1000.0}]}
+                    if geometry_two else
+                    ladder_spec(point, fine_dx_m=fine, radius_km=radius, background_km=background))
+            cut = predicted_cull_cells(spec=spec, radius_km=radius, pad_scale=DEFAULT_CULL_PAD_SCALE)
+            reach = cut["cut_radius_km"] + cut["halo_km"]
+        from .hrrr_intermediate import SOURCE_ROWS as _PROJECTED, cap_coverage_refusal
         for candidate in (source, boundary):
             refusal = coverage_refusal(candidate, point, reach, margin_km=30)
+            projected = (candidate.get("intermediate") or {}).get("row")
+            if not refusal and candidate.get("coverage_window") is None and projected in _PROJECTED:
+                # A projected source (HRRR) declares no coverage window; its native grid is the window.
+                refusal = cap_coverage_refusal(_PROJECTED[projected], point, reach)
             if refusal:
                 raise RegionalRefusal(refusal)
     start = cycle + timedelta(hours=lead)
@@ -387,17 +605,36 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     switches = table["run_switches"]
     from .global_door import forecast_arg_physics
     physics_flags = _physics_default_flags(args, source=source["id"], cold=parent is None)
+    from .mpasphys.forecast_v842 import forecast_args_slot_refusal
+    slot_refusal = forecast_args_slot_refusal(physics_flags)
+    if slot_refusal is not None:
+        # The forecast door's own refusal, read before the mesh and any download (forecast_args_slot_refusal).
+        raise RegionalRefusal(slot_refusal + " Nothing was built or downloaded.")
+    producer = _producer_suite({"forecast_args": physics_flags})
+    if args.vertical_spec and producer:
+        # THE BREAKAGE THIS PREVENTS (13 Nov 2026): a producer suite builds its start with
+        # its producer's own vertical grid (L60 for hrrrv5) and never reads the file, so a region asked for other
+        # levels ran on L60 and said nothing.
+        raise RegionalRefusal(
+            f"--vertical-spec {args.vertical_spec} cannot apply to the {producer} suite: its start is built by "
+            f"{producer}'s own producer on that producer's vertical grid (L60 for hrrrv5), which would ignore the "
+            "file. Leave --vertical-spec out to run on that grid, or choose a suite that builds its start from the "
+            "row's vertical grid.")
     if parent is None:
         from .mpasphys.rrfs.cold_start_rrfs import require_boundary_producer
-        require_boundary_producer(getattr(args, "boundary_recipe", None),
-                                  _producer_suite({"forecast_args": physics_flags}))
+        require_boundary_producer(getattr(args, "boundary_recipe", None), producer)
     return {
         "schema": "gpuwm-hex.regional-plan/v1",
         "row": row,
         "source": {"id": source["id"], "display_name": source.get("display_name"),
                    "intermediate_row": (source.get("intermediate") or {}).get("row"),
                    "first_guess": first_guess},
+        # A blend row named by --source: its id (the init stage blends it over the outside row's start), else None.
+        "blend_source": blend,
         "lead_hours": lead,
+        # The ensemble member every series of a row in member_rows reads (init-source --member), else None.
+        "member": member if members else None,
+        "member_rows": members,
         "boundary_source": _source_summary(boundary),
         "boundary_cycle": issued.strftime("%Y-%m-%dT%H"),
         "boundary_lead_hours": boundary_lead,
@@ -405,6 +642,12 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         "boundary_interval_hours": interval,
         "point_deg": list(point),
         "drawn_shape": drawn,
+        # A mesh row (woof.hex.mesh_ask) the mesh stage hands to mesh-plan --spec as written.
+        "mesh_row": None if asked is None else str(Path(args.mesh_spec).expanduser().absolute()),
+        # --geometry / --ramp-onset as the mesh stage passes them on (empty: the generator's default).
+        **({"mesh_generator_argv": geometry_words} if geometry_words else {}),
+        # --mesh-exe: another build of the generator for the mesh stage (the mesh door's own word, passed on).
+        **({"mesh_exe": str(Path(args.mesh_exe).expanduser().absolute())} if getattr(args, "mesh_exe", None) else {}),
         "fine_dx_m": float(args.fine_dx_m if args.fine_dx_m is not None else row["fine_dx_m"]),
         "radius_km": (float(mesh_shape.equal_area_radius_km(drawn)) if drawn is not None else
                       float(args.radius_km if args.radius_km is not None else row["radius_km"])),
@@ -427,6 +670,10 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
                                      else row["history_every_minutes"]),
         "start_time": _stamp(start),
         "stop_time": _stamp(stop),
+        # The last boundary time: the first one on the step at or past the run's end (boundary_span). The boundary
+        # stages read and write the series through it; the forecast stops at stop_time, between its last two.
+        "boundary_hours": boundary_span(hours, interval),
+        "boundary_stop_time": _stamp(start + timedelta(hours=boundary_span(hours, interval))),
         "run_switches": {key: value for key, value in switches.items() if key != "about"},
         "paths": {
             "work": str(root),
@@ -519,7 +766,8 @@ def _start_one_prefetch(args, value, status) -> None:
         if row is None:
             _start_table_decode(args, value, status)
         return
-    hours = [str(hour) for hour in range(0, int(value["lead_hours"]) + int(value["hours"]) + 1)]
+    span = boundary_span(int(value["hours"]), value.get("boundary_interval_hours"))
+    hours = [str(hour) for hour in range(0, int(value["lead_hours"]) + span + 1)]
     argv = [sys.executable, "-m", "woof.hex.regional_door", "--prefetch-source", row, value["paths"]["grib"],
             value["cycle"], str(met), str(max(PREFETCH_STREAMS, int(getattr(args, "workers", 4) or 4))), *hours]
     _PREFETCHES[str(met)] = card_fit.start_stage(argv, name="source-prefetch",
@@ -556,7 +804,8 @@ def _table_decode_workers(args, value) -> int:
     lead of a short run goes at once."""
     from .cpu_budget import available_cpus
 
-    leads = 1 + int(value["hours"]) // max(1, int(value["boundary_interval_hours"]))
+    step = max(1, int(value["boundary_interval_hours"]))
+    leads = 1 + boundary_span(int(value["hours"]), step) // step
     return max(1, min(leads, max(int(getattr(args, "workers", 4) or 4), min(8, available_cpus() // 2))))
 
 
@@ -626,6 +875,17 @@ def _stage_mesh(args, value, status) -> dict[str, Any]:
         status.note(f"mesh already generated in {mesh_dir}")
         return {"returncode": 0, "reused": True}
     lat, lon = value["point_deg"]
+    if value.get("mesh_row"):
+        # The row names its zones, spacing, grading, background and rim; nothing here restates them.
+        argv = ["mesh-plan", "--spec", value["mesh_row"], "--generate", "--out-dir", str(mesh_dir),
+                "--vertical-spec", value["paths"]["vertical_spec"], *value.get("mesh_generator_argv", ())]
+        if value.get("mesh_exe"):
+            argv += ["--mesh-exe", value["mesh_exe"]]
+        if value["card"]:
+            argv += ["--card", value["card"]]
+        if args.geog is not None:
+            argv += ["--geog", str(Path(args.geog).expanduser().absolute())]
+        return {"returncode": _cli(argv, status)}
     if value.get("drawn_shape"):
         # The drawn region rides to the mesh door as the row it resolved to.
         mesh_dir.mkdir(parents=True, exist_ok=True)
@@ -638,7 +898,9 @@ def _stage_mesh(args, value, status) -> dict[str, Any]:
         core = [f"--point={lat},{lon}", "--radius-km", repr(value["radius_km"])]
     argv = ["mesh-plan", *core, "--fine-dx-m", repr(value["fine_dx_m"]),
             "--generate", "--out-dir", str(mesh_dir),
-            "--vertical-spec", value["paths"]["vertical_spec"]]
+            "--vertical-spec", value["paths"]["vertical_spec"], *value.get("mesh_generator_argv", ())]
+    if value.get("mesh_exe"):
+        argv += ["--mesh-exe", value["mesh_exe"]]
     if value.get("background_km") is not None:
         argv += ["--background-km", repr(value["background_km"])]
     if value["card"]:
@@ -672,9 +934,19 @@ def _stage_one_intermediate(args, value, status) -> dict[str, Any]:
         return _stage_intermediate_from_table(args, value, status)
     generated = _generated(value)
     Path(value["paths"]["grib"]).mkdir(parents=True, exist_ok=True)
+    # THE BREAKAGE THIS PREVENTS (0.6.2, 20 Nov 2026): a mesh row's region (3 km to 120 km, rim 300 km at
+    # 12 km) cuts at 420 km and lays its seven boundary rings of 12 km cells outside that, to 505 km; the box
+    # --from-plan draws is the cut radius plus a 30 km margin, so 553 of the cull's 18,320 cells lay outside the
+    # HRRR intermediate and the init stage refused ("lie outside the first guess"). The box is drawn over every
+    # cell of the cull itself (intermediate --grid), the remedy that refusal names; a plan with no cull grid
+    # keeps --from-plan.
+    cull_grid = (generated.get("cull") or {}).get("grid")
+    box = ["--grid", str(cull_grid)] if cull_grid else ["--from-plan", generated["_path"]]
     argv = ["intermediate", "--source", value["source"]["intermediate_row"],
-            "--from-plan", generated["_path"], "--grib-dir", value["paths"]["grib"],
-            "--cycle", value["cycle"], "--hours", f"0-{int(value['lead_hours']) + int(value['hours'])}", "--out-dir", str(met),
+            *box, "--grib-dir", value["paths"]["grib"],
+            "--cycle", value["cycle"], "--hours",
+            f"0-{int(value['lead_hours']) + boundary_span(int(value['hours']), value.get('boundary_interval_hours'))}",
+            "--out-dir", str(met),
             "--workers", str(args.workers)]
     if getattr(args, "source_parameters", None):
         argv += ["--source-parameters", args.source_parameters]
@@ -705,14 +977,24 @@ def _stage_intermediate_from_table(args, value, status) -> dict[str, Any]:
     met.mkdir(parents=True, exist_ok=True)
     first = int(value["lead_hours"])
     step = int(value["boundary_interval_hours"])
-    leads = list(range(first, first + int(value["hours"]) + 1, step))
+    # Through the first boundary time at or past the run's end (boundary_span): a run ending between two posted hours
+    # reads the next one, and the forecast interpolates to its end.
+    leads = list(range(first, first + boundary_span(int(value["hours"]), step) + 1, step))
+    # Each boundary time's (cycle, lead), as lbc_producer.endpoint_clock gives the country door's endpoints: a lead of
+    # the one cycle for a forecast row, the analysis at that valid time (lead 0) for an analysis series (ERA5).
+    from .lbc_producer import endpoint_clock
+    _, row = resolve_regional_source(value["source"]["id"])
+    cycle = datetime.strptime(value["cycle"], "%Y-%m-%dT%H")
 
     def one(lead: int) -> dict[str, Any]:
         out = met / "leads" / f"f{lead:03d}"
         out.mkdir(parents=True, exist_ok=True)
+        when, read = endpoint_clock(row, cycle, lead)
         argv = [sys.executable, "-m", "woof.hex.cli", "init-source", "--source", value["source"]["id"],
-                "--cycle", value["cycle"], "--lead-hours", str(lead), "--out-dir", str(out),
+                "--cycle", when.strftime("%Y-%m-%dT%H"), "--lead-hours", str(read), "--out-dir", str(out),
                 "--stop-after", "decode"]
+        if value["source"]["id"] in (value.get("member_rows") or ()):
+            argv += ["--member", str(value["member"])]
         # Only the initial hour needs a cold land donor. Boundary hours are meteorology,
         # not new cold starts; the analysis-only donor cannot be attached to those leads.
         if lead != first:
@@ -727,6 +1009,13 @@ def _stage_intermediate_from_table(args, value, status) -> dict[str, Any]:
         if target.exists() or target.is_symlink():
             target.unlink()
         target.symlink_to(made[0])
+        if lead != first:
+            # A boundary hour is read only through its intermediate and receipt; its download and composed frames go
+            # (lbc_producer.produce_source_endpoints does the same): ERA5 kept 4 GB of them an hour beside a 1 GB file.
+            import shutil
+            for spent in ("products", "mapped"):
+                if (out / spent).is_dir() and not (out / spent).is_symlink():
+                    shutil.rmtree(out / spent)
         return {"lead_hours": lead, "path": str(target), "source_dir": str(out)}
 
     status.note(f"{value['source']['id']} {value['cycle']} leads {leads[0]}-{leads[-1]} h every {step} h")
@@ -940,7 +1229,10 @@ def _orographic_statistics(args, value, status) -> Path | None:
 def _stage_init_state(args, value, status) -> dict[str, Any]:
     init = Path(value["paths"]["init"])
     from .init_physics import profile_init_matches
-    if init.is_file() and (value.get("parent") or profile_init_matches(init, value.get("forecast_args"))):
+    blended = not value.get("blend_source") or init.with_name("init.outside.nc").is_file()
+    if init.is_file() and blended and (value.get("parent") or profile_init_matches(init, value.get("forecast_args"))):
+        # A blend row's start is present only once the blend wrote it (init.outside.nc beside it). THE BREAKAGE THIS
+        # PREVENTS: a rerun after a failed blend took the outside row's start for the blended one (18 Nov 2026).
         status.note(f"init already present: {init}")
         return {"returncode": 0, "reused": True}
     if value.get("parent"):
@@ -994,7 +1286,46 @@ def _stage_init_state(args, value, status) -> dict[str, Any]:
         # the WPS box); the init moves that donor's moisture onto the suite's own land model.
         argv += ["--deep-soil-keep-above-m", repr(float(deep["keep_above_m"])),
                  "--deep-soil-model", str(deep["soil_model"]), "--deep-soil-donor", str(deep["source_id"])]
-    return {"returncode": _cli(argv, status)}
+    code = _cli(argv, status)
+    if code == 0 and value.get("blend_source"):
+        return _blend_over_init(args, value, status, init, suite_argv)
+    return {"returncode": code}
+
+
+def _blend_over_init(args, value, status, init: Path, suite_argv: list[str]) -> dict[str, Any]:
+    """The blend row's inside source over the region's start (init-source --outside-init): the outside row's init is
+    kept beside it as ``init.outside.nc`` and the blended init takes its place, on the same grid and vertical grid."""
+    generated = _generated(value)
+    outside = init.with_name("init.outside.nc")
+    init.replace(outside)
+    out_dir = init.parent / "blend"
+    argv = ["init-source", "--source", value["blend_source"], "--cycle", value["cycle"],
+            "--out-dir", str(out_dir), "--grid", generated["cull"]["grid"], "--static", generated["cull"]["static"],
+            "--outside-init", str(outside), "--jobs", str(int(getattr(args, "workers", None) or 8))]
+    if int(value.get("lead_hours") or 0):
+        argv += ["--lead-hours", str(int(value["lead_hours"]))]
+    if "--physics-suite" in suite_argv:
+        argv += ["--physics-suite", suite_argv[suite_argv.index("--physics-suite") + 1]]
+    if args.geog is not None:
+        argv += ["--geog", str(Path(args.geog).expanduser().absolute())]
+    code = _cli(argv, status)
+    made = out_dir / "init.nc"
+    if code != 0 or not made.is_file():
+        failed = init.with_name("init.outside-unblended.nc")
+        outside.replace(failed)   # not init.nc: a rerun of the stage must blend again, not reuse the outside start
+        raise RegionalRefusal(f"the {value['blend_source']} blend over the region's {value['source']['id']} start "
+                              f"exited {code}; see init-source in {out_dir} (the unblended start is at {failed}; "
+                              "rerun --stage init)")
+    made.replace(init)
+    # The inside source's download and decoded hours are spent once the blend is written (about 28 GB at 30 km: two
+    # HRRR hours of MET at 6.8 GB each and their GRIB); the receipt names how to make them again.
+    import shutil
+    for spent in ("met", "grib"):
+        shutil.rmtree(out_dir / "inside" / spent, ignore_errors=True)
+    status.note(f"{value['blend_source']}: blended over the {value['source']['id']} start ({init}; the outside "
+                f"start kept at {outside})")
+    return {"returncode": 0, "blend": {"source": value["blend_source"], "outside_init": str(outside),
+                                       "receipt": str(out_dir / "init-source-receipt.json")}}
 
 
 def _physics_default_flags(args, *, source=None, cold=True) -> list[str]:
@@ -1034,7 +1365,8 @@ def _stage_lbc(args, value, status) -> dict[str, Any]:
     switches = value["run_switches"]
     argv = ["lbc", "--grid", value["paths"]["init"], "--met-dir", value["paths"].get("lbc_met", value["paths"]["met"]),
             "--out-dir", str(lbc_dir), "--start-time", value["start_time"],
-            "--stop-time", value["stop_time"], "--nfglevels", str(guess["nfglevels"]),
+            # The series' last boundary time, at or past the run's end (plan boundary_stop_time).
+            "--stop-time", value.get("boundary_stop_time", value["stop_time"]), "--nfglevels", str(guess["nfglevels"]),
             "--extrap-airtemp", switches["extrap_airtemp"], "--use-spechumd", guess["use_spechumd"],
             "--theta-adv-order", str(switches["theta_adv_order"]),
             "--coef-3rd-order", repr(float(switches["coef_3rd_order"])),
@@ -1443,6 +1775,9 @@ def add_regional_parser(commands: argparse._SubParsersAction) -> None:
                         help="start from the source cycle's forecast at lead L: its fields at cycle + L are the "
                              "start state, valid at cycle + L, and its later leads drive the boundary (table "
                              "sources; default 0, the analysis)")
+    parser.add_argument("--member", type=int, default=None, metavar="N",
+                        help="the member of an ensemble source (gefs: 0 is the control, 1-30 perturbed); the "
+                             "start and every boundary hour read it. Required for an ensemble row")
     parser.add_argument("--boundary-source", help="source for lateral boundaries (the start row's default)")
     parser.add_argument("--boundary-cycle", metavar="YYYY-MM-DDTHH",
                         help="boundary source cycle, possibly earlier than the start cycle")
@@ -1452,6 +1787,17 @@ def add_regional_parser(commands: argparse._SubParsersAction) -> None:
                              "fewer leads")
     parser.add_argument("--hours", type=float, default=None, help="forecast length (default: the row's)")
     parser.add_argument("--history-every-minutes", type=int, default=None)
+    parser.add_argument("--mesh-spec", type=Path, default=None, metavar="ROW.json",
+                        help="a mesh row (gpuwm-hex.mesh-ask/v1) with a region domain: zones of any shape and "
+                             "spacing, nesting, grading, background, rim distance and rim spacing; instead of "
+                             "--point/--shape/--ellipse, --fine-dx-m, --radius-km and --background-km. "
+                             "`woof hex mesh-plan --spec ROW.json --plan-only` prices it first")
+    from . import mesh_ask as _mesh_ask
+
+    _mesh_ask.add_generator_arguments(parser)
+    parser.add_argument("--mesh-exe", type=Path, default=None, metavar="FILE",
+                        help="another build of rw_mpas_mesh for the mesh stage (default: the one this install "
+                             "resolves, WOOF_HEX_RW_MPAS_MESH first); passed to mesh-plan as given")
     parser.add_argument("--fine-dx-m", type=float, default=None, help="fine spacing (default: the row's)")
     parser.add_argument("--radius-km", type=float, default=None, help="fine core radius (default: the row's)")
     parser.add_argument("--background-km", type=float, default=None,

@@ -29,7 +29,7 @@ def main():
     try:
         return process.wait(timeout=args.budget_seconds)
     except subprocess.TimeoutExpired:
-        # Stop only this command's explicit PIDs before releasing the GPU mutex.
+        # Stop only this command's explicit PIDs before the card is given back.
         # A killed verifier must not leave its CUDA forecast running underneath.
         descendants = {process.pid}
         parents = {}

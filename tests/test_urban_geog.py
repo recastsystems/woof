@@ -284,7 +284,7 @@ def test_sealed_urban_carrier_reads_back_to_the_carrier_it_sealed(
     # it only for SLUCM (option 1): since ae393b7c3 (development branch)
     # a SLUCM carrier records its urban_fraction algorithm, so its content
     # names its model, and a carrier is identified by its urban model as
-    # well as its legend (coordinator ruling, 2026-10-07).  A BEP/BEM
+    # well as its legend (project decision, 2026-10-07).  A BEP/BEM
     # carrier's echo names no model, so a run-less read reads it as SLUCM
     # and its identity differs by exactly that record; restores and
     # rebuilds pass run_config, as above.
@@ -347,7 +347,7 @@ def test_a_restore_under_another_urban_legend_is_refused_by_name(
 
 def test_a_slucm_carrier_restores_only_under_slucm_on_the_same_legend(tmp_path):
     """A carrier whose content depends on the urban model is identified by
-    the model as well as the legend (coordinator ruling, 2026-10-07).
+    the model as well as the legend (project decision, 2026-10-07).
 
     Since ae393b7c3 (development branch) a SLUCM carrier (option 1) seals
     its urban_fraction algorithm: the built fractions SLUCM reads.  Reused

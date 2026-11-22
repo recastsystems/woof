@@ -76,6 +76,11 @@ def psd_parameters(cfg):
     return {key: value[1][getattr(cfg, value[0])] if isinstance(value, tuple)
             else value for key, value in row.items()}
 
+def tempo_feeds_gsd_hail(cfg):
+    """TEMPO under gsd_diagnostics writes HAIL_MAXK1/HAIL_MAX2D from its own
+    hail PSD (woof/core/tempo.py), as the fork's Thompson does from its."""
+    return bool(cfg.gsd_diagnostics) and int(cfg.mp_physics or 0) == 900
+
 def enabled(cfg):
     return bool(cfg.gsd_diagnostics) or cfg.hailcast_opt == 1 or (cfg.hailcast_opt == -1 and
             cfg.dx <= 4000 and cfg.dy <= 4000 and cfg.mp_physics != 0)
@@ -87,7 +92,8 @@ def scratch_shapes(cfg):
     plane = (cfg.ny, cfg.nx)
     mass = (cfg.nz, cfg.ny, cfg.nx)
     shapes = {slot: plane for slot in PERSISTENT
-              if slot not in PSD_SLOTS or cfg.mp_physics in PSD_ROWS}
+              if slot not in PSD_SLOTS or cfg.mp_physics in PSD_ROWS
+              or tempo_feeds_gsd_hail(cfg)}
     shapes.update({slot: mass for slot in (
         "hail_zero", "hail_temperature", "hail_height", "hail_density")})
     shapes.update(hail_new_mask=plane, hail_new_duration=plane)

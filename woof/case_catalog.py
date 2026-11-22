@@ -56,10 +56,10 @@ def builtin_catalog_path() -> Path:
         try:
             path = data_assets.data_path(BUILTIN_CATALOG_RELATIVE)
         except ImportError as error:
-            raise CatalogError(f"The bundled historical case catalog is missing; reinstall WOOF. {error}") from error
+            raise CatalogError(f"The bundled historical case catalog is missing; reinstall WOOF-ArWen. {error}") from error
     path = Path(path).resolve()
     if not path.is_file():
-        raise CatalogError("The bundled historical case catalog is missing; reinstall WOOF: "
+        raise CatalogError("The bundled historical case catalog is missing; reinstall WOOF-ArWen: "
                            + data_assets.companion_reinstall_command())
     return path
 
@@ -583,7 +583,7 @@ def _with_radiation_token(settings: dict, written_token) -> dict:
 
 def _config_text(raw: dict) -> str:
     from woof.domain_wizard import _render_table
-    parts = ["# Created from a WOOF case catalog through the native domain builder.\n"
+    parts = ["# Created from a WOOF-ArWen case catalog through the native domain builder.\n"
              "# Exact catalog provenance, selected profile and typed overrides are in the .arwen-case.json receipt.\n"]
     for name, value in raw.items():
         if isinstance(value, dict):

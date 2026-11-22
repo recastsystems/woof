@@ -1,7 +1,7 @@
 """A Hex with Regional nest's maps say ``nest 3 km``, not ``d01 3 km``.
 
 The breakage (WOOF, 2026-10-28, hexreg-nest canary run_9a0796b2e9c8e251): the nest is its own one-domain
-WOOF run, so every nest map was headlined ``d01 3 km`` while the site files it as d05.  add-nest now runs
+WOOF-ArWen run, so every nest map was headlined ``d01 3 km`` while the site files it as d05.  add-nest now runs
 the nest's ``woof sim`` with ``GPUWM_GRID_NAME=nest``; the engine stamps it on the frames and the renderer
 prints it in the headline (the domain folder keeps ``d01-3km``).
 """

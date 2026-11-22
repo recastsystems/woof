@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build compiler-family packs from real WOOF compiler request catalogs."""
+"""Build compiler-family packs from real WOOF-ArWen compiler request catalogs."""
 import argparse
 import json
 from pathlib import Path

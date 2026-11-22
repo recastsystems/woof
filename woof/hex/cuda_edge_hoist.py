@@ -42,7 +42,11 @@ import json
 import os
 import threading
 
-HOIST_MIN_EDGES = 30_000
+# 15,000 since fork jacobbieker/woof PR 224: on a 5 km point cull (5,069 columns, 15,394 edges, RTX A6000) the
+# element kernels left the FCT limiter on its one-thread-per-cell and one-thread-per-edge forms, 175 ms of GPU time
+# a step against 127 ms hoisted, with a byte-identical history and final digest.  Below 15,000 edges nothing was
+# measured, so the element kernels stay there.
+HOIST_MIN_EDGES = 15_000
 _LOCK = threading.Lock()
 _CALLS: dict[tuple[str, int], int] = {}
 

@@ -7,7 +7,7 @@ venv. `bind-published-bridges.py` binds the published helper pack on the atlas
 boxes without changing the shared installation. It also includes the native
 MPAS stream writer, whose EngineSpec is outside the ordinary engine list.
 
-`f-box-forecast.py ARM CONFIG` launches one complete prepared WOOF forecast,
+`f-box-forecast.py ARM CONFIG` launches one complete prepared WOOF-ArWen forecast,
 records source/device/config identity, samples resource use asynchronously,
 and runs the collector. The prepared root is `runs/prepared/chain/prep`.
 ARM `base` reads the detached base source in `runs/base-source`; other arms read

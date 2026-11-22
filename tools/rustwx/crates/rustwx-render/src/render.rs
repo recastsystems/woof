@@ -5,9 +5,9 @@ use crate::layout_plan::{CanvasPlan, canvas_plan_for};
 use crate::colormap::LeveledColormap;
 use crate::draw;
 use crate::overlay::{
-    BarbOverlay, ContourOverlay, InverseProjectedGrid, MapExtent, ProjectedGrid,
-    ProjectedPlaceLabelOverlay, ProjectedPointOverlay, ProjectedPolygon, ProjectedPolyline,
-    StreamlineOverlay,
+    BarbOverlay, ContourFillOverlay, ContourOverlay, InverseProjectedGrid, MapExtent,
+    ProjectedGrid, ProjectedPlaceLabelOverlay, ProjectedPointOverlay, ProjectedPolygon,
+    ProjectedPolyline, StreamlineOverlay,
 };
 use crate::presentation::{
     ColorbarOrientation, ProductVisualMode, RenderPresentation, TitleAnchor,
@@ -69,6 +69,9 @@ pub struct RenderOpts {
     pub projected_place_labels: Vec<ProjectedPlaceLabelOverlay>,
     pub projected_points: Vec<ProjectedPointOverlay>,
     pub projected_lines: Vec<ProjectedPolyline>,
+    /// Translucent banded fills drawn over the data raster and under the
+    /// linework and contour lines; empty draws nothing.
+    pub contour_fills: Vec<ContourFillOverlay>,
     pub contours: Vec<ContourOverlay>,
     pub barbs: Vec<BarbOverlay>,
     pub streamlines: Vec<StreamlineOverlay>,
@@ -267,6 +270,7 @@ impl Default for RenderOpts {
             projected_place_labels: vec![],
             projected_points: vec![],
             projected_lines: vec![],
+            contour_fills: vec![],
             contours: vec![],
             barbs: vec![],
             streamlines: vec![],
@@ -4540,6 +4544,86 @@ fn effective_domain_frame_rect(
     }
 }
 
+/// Blend one translucent contour fill onto the map, rasterised through the
+/// same projection branch and sample mode as the data raster beneath it (so
+/// its band edges sit where the contour lines drawn after it do), inside the
+/// same clip.  Drawn before linework, points, barbs and contour lines.
+fn draw_contour_fill(
+    img: &mut RgbaImage,
+    fill: &ContourFillOverlay,
+    opts: &RenderOpts,
+    layout: &Layout,
+    projected_pixels: Option<&[Option<(f32, f32)>]>,
+    clip_mask: Option<&RgbaImage>,
+) {
+    if fill.nx < 2 || fill.ny < 2 || fill.data.len() != fill.nx * fill.ny {
+        return;
+    }
+    let raster = match (
+        projected_pixels,
+        opts.inverse_projected_grid.as_ref(),
+        opts.map_extent.as_ref(),
+    ) {
+        (_, Some(inverse), Some(extent)) => rasterize::rasterize_inverse_projected_grid(
+            &fill.data,
+            fill.ny,
+            fill.nx,
+            &inverse.lat_deg,
+            &inverse.lon_deg,
+            inverse.projector,
+            inverse.clip_bounds,
+            extent,
+            &fill.cmap,
+            opts.raster_sample_mode,
+            layout.map_w,
+            layout.map_h,
+        ),
+        (Some(pixel_points), _, _) => rasterize::rasterize_projected_grid(
+            &fill.data,
+            fill.ny,
+            fill.nx,
+            pixel_points,
+            &fill.cmap,
+            opts.raster_sample_mode,
+            layout.map_w,
+            layout.map_h,
+        ),
+        (None, _, _) => rasterize::rasterize_grid(
+            &fill.data,
+            fill.ny,
+            fill.nx,
+            &fill.cmap,
+            opts.raster_sample_mode,
+            layout.map_w,
+            layout.map_h,
+        ),
+    };
+    for py in 0..layout.map_h.min(raster.height()) {
+        for px in 0..layout.map_w.min(raster.width()) {
+            let src = raster.get_pixel(px, py);
+            if src.0[3] == 0 {
+                continue;
+            }
+            if let Some(mask) = clip_mask {
+                if mask.get_pixel(px, py).0[3] == 0 {
+                    continue;
+                }
+            }
+            draw::blend_pixel(
+                img,
+                (layout.map_x + px) as i32,
+                (layout.map_y + py) as i32,
+                Rgba {
+                    r: src.0[0],
+                    g: src.0[1],
+                    b: src.0[2],
+                    a: src.0[3],
+                },
+            );
+        }
+    }
+}
+
 fn draw_variable_layers(
     img: &mut RgbaImage,
     data: &[f64],
@@ -4740,6 +4824,9 @@ fn draw_variable_layers(
                 );
             }
         }
+    }
+    for fill in &opts.contour_fills {
+        draw_contour_fill(img, fill, opts, layout, projected_pixels, draw_clip_mask);
     }
     let raster_blit_ms = raster_blit_start.elapsed().as_millis();
 
@@ -5897,13 +5984,15 @@ pub(crate) fn center_horizontal_canvas_content(
     img: &RgbaImage,
     background: Rgba,
 ) -> (RgbaImage, i64) {
-    if img.width() <= 2 {
-        return (img.clone(), 0);
-    }
+    center_horizontal_canvas_content_on_rows(img, background, None)
+}
 
+/// The inked columns of `rows` (all rows when None), or None when nothing there is inked.
+fn inked_columns(img: &RgbaImage, background: Rgba, rows: Option<(u32, u32)>) -> Option<(u32, u32)> {
+    let (top, bottom) = rows.unwrap_or((0, img.height()));
     let mut min_x = img.width();
     let mut max_x = 0;
-    for y in 0..img.height() {
+    for y in top.min(img.height())..bottom.min(img.height()) {
         for x in 0..img.width() {
             if !pixel_matches_background(*img.get_pixel(x, y), background) {
                 min_x = min_x.min(x);
@@ -5911,14 +6000,36 @@ pub(crate) fn center_horizontal_canvas_content(
             }
         }
     }
+    (min_x <= max_x).then_some((min_x, max_x))
+}
 
-    if min_x > max_x {
+/// gpuwm addition (VENDOR.md): centre on the inked columns of `rows` only -- the plot rows, map and colour bar, which
+/// are the same picture at every time of a product -- and move the whole canvas by that, as far as keeps every inked
+/// pixel inside it.  Centred on ALL the ink, the header text counted, a frame between hours (a longer header,
+/// "+001:15 | Valid 12/18 13:15Z" against "F001 | Valid 12/18 13Z") had its map moved 23 px further than the hourly
+/// frames' maps, and an animation of a 15-minute run jumped four times an hour (WOOF run_de0c75975bb17140,
+/// 2026-11-10).
+pub(crate) fn center_horizontal_canvas_content_on_rows(
+    img: &RgbaImage,
+    background: Rgba,
+    rows: Option<(u32, u32)>,
+) -> (RgbaImage, i64) {
+    if img.width() <= 2 {
         return (img.clone(), 0);
     }
 
+    let Some((all_min, all_max)) = inked_columns(img, background, None) else {
+        return (img.clone(), 0);
+    };
+    let (min_x, max_x) = rows
+        .and_then(|rows| inked_columns(img, background, Some(rows)))
+        .unwrap_or((all_min, all_max));
+
     let left_margin = min_x;
     let right_margin = img.width().saturating_sub(max_x).saturating_sub(1);
-    let shift = (right_margin as i64 - left_margin as i64) / 2;
+    let room_left = -(all_min as i64);
+    let room_right = img.width() as i64 - 1 - all_max as i64;
+    let shift = ((right_margin as i64 - left_margin as i64) / 2).clamp(room_left.min(0), room_right.max(0));
     if shift == 0 {
         return (img.clone(), 0);
     }

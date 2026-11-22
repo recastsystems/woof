@@ -225,13 +225,13 @@ class CaseFrameWriter:
     #: XLAT/XLONG/MAPFAC/... , the grid's own metadata frame
     metadata: dict[str, np.ndarray]
     global_attrs: dict[str, Any]
-    title: str = "WOOF"
+    title: str = "WOOF-ArWen"
     _dst: dict[str, np.ndarray] = None          # type: ignore[assignment]
 
     # ------------------------------------------------------------- build
     @classmethod
     def capture(cls, state, cfg, grid, static, *, landuse_attrs, start_time,
-                title: str = "WOOF") -> "CaseFrameWriter":
+                title: str = "WOOF-ArWen") -> "CaseFrameWriter":
         from woof.io.wrfout import wrf_global_attrs
         from woof.runtime import _metadata_frame
 

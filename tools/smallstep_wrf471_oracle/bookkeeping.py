@@ -21,7 +21,7 @@ def _face_neighbors(mu, axis, periodic):
 
 
 def face_mass(mu, axis, periodic):
-    """WOOF's declared mean of already-total column masses."""
+    """WOOF-ArWen's declared mean of already-total column masses."""
     a, b = _face_neighbors(mu, axis, periodic)
     return np.float32(0.5) * (a + b)
 
@@ -349,7 +349,7 @@ def main():
     a = parser.parse_args()
     a.output.mkdir(parents=True, exist_ok=True)
     manifest = {"schema": "wrf471-smallstep-bookkeeping-v1", "files": {},
-                "theta_representation": "canonical WRF theta-300 with explicit WOOF full-theta map"}
+                "theta_representation": "canonical WRF theta-300 with explicit WOOF-ArWen full-theta map"}
     for case, raw, metadata in load_cases():
         nz, ny, nx = raw["T"].shape
         for periodic in (False, True):

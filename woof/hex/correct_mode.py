@@ -1,6 +1,6 @@
 """``physics.mode``: the matched arithmetic or the corrected arithmetic.
 
-The shared key of the 2026-10-13 correct-mode work (MODE-KEY):
+The shared key of every route:
 
 ``"exact"``
     The matched arithmetic (native MPAS-A v8.4.2, the engine's WRF/MMM
@@ -10,11 +10,11 @@ The shared key of the 2026-10-13 correct-mode work (MODE-KEY):
     parity configuration names ``exact`` explicitly.
 ``"correct"``
     Every correction the run's code carries, minus ``physics.correct_skip``.
-    This is the default of every entry point hex ships (owner ruling
-    2026-10-13: correct mode is the standard; exact stays one flag away).
+    This is the default of every entry point hex ships (correct mode is
+    the standard; exact stays one flag away).
 
 ONE TABLE OF FINDINGS.  :data:`FINDINGS` names every switchable finding id
-the hex routes know and where its correction lives.  The WOOF column route's
+the hex routes know and where its correction lives.  The WOOF-ArWen column route's
 water-budget corrections live in the woof engine (``woof.correct_mode``);
 the IAU corrections in :mod:`woof.hex.iau_v842`; the boundary corrections in
 the engine's ``rw_mpas_lbc``.  :func:`known_findings` adds the MPAS-suite
@@ -23,7 +23,7 @@ the imported engine's registry when they exist, so a skip list is checked
 against one set of names whichever route runs.
 
 A CORRECTION THE RUN CANNOT APPLY IS A LOUD NAMED GAP, NEVER A REFUSAL
-(release ruling 2026-10-14 for 0.4.0).  When a correct-mode run reaches code
+(since 0.4.0).  When a correct-mode run reaches code
 that does not carry a correction (an engine without ``woof.correct_mode``,
 an engine seam that takes no mode keywords, an ``rw_mpas_lbc`` without
 ``--physics-mode``), the run goes ahead with the matched arithmetic for that
@@ -130,6 +130,11 @@ def known_findings() -> frozenset[str]:
     driver's table and the imported engine's registry (one set of names)."""
 
     names = set(FINDINGS) | set(_port_registry())
+    try:
+        from .mpasphys.rrfs.fork_corrections import FORK_CORRECTIONS
+        names |= set(FORK_CORRECTIONS)
+    except ImportError:
+        pass
     engine = _engine_registry()
     if engine:
         names |= set(engine)
@@ -138,7 +143,7 @@ def known_findings() -> frozenset[str]:
 
 def route_findings(route: str) -> frozenset[str]:
     """The finding ids one route applies: this table's rows for that route, plus,
-    for the WOOF column route, every finding the imported engine carries."""
+    for the WOOF-ArWen column route, every finding the imported engine carries."""
 
     names = {finding for finding, row in FINDINGS.items() if row.get("route") == route}
     if route == "arwen-column":
@@ -174,6 +179,25 @@ def validate(mode: Any, correct_skip: Iterable[str] | None = ()) -> tuple[str, t
     return mode, tuple(skip)
 
 
+def terminal_record(value: Any) -> Any:
+    """``value`` as a forecast prints it in the terminal: every correct-mode gap row without its ``owner`` field.
+
+    The receipt file keeps the field (other programs read it); the line printed when a forecast finishes names each
+    gap, its slot and its reason, which is what a user acts on. The value given is not changed."""
+    if isinstance(value, Mapping):
+        out = {}
+        for key, item in value.items():
+            if key == "gaps" and isinstance(item, list):
+                out[key] = [{k: v for k, v in row.items() if k != "owner"} if isinstance(row, Mapping)
+                            else terminal_record(row) for row in item]
+            else:
+                out[key] = terminal_record(item)
+        return out
+    if isinstance(value, list):
+        return [terminal_record(item) for item in value]
+    return value
+
+
 def report_gaps(gaps: Iterable[CorrectionGap], *, context: str = "") -> list[dict[str, Any]]:
     """Print each gap loudly on stderr, warn once, return the receipt rows."""
 
@@ -184,7 +208,7 @@ def report_gaps(gaps: Iterable[CorrectionGap], *, context: str = "") -> list[dic
         where = f" ({context})" if context else ""
         print(f"CORRECT MODE: named gap {gap.finding} NOT APPLIED{where}: "
               f"{row.get('what', gap.finding)}; slot {row.get('slot', '?')}; "
-              f"{gap.where}: {gap.reason}; owner: {row.get('owner', '?')}",
+              f"{gap.where}: {gap.reason}",
               file=sys.stderr, flush=True)
     if rows:
         warnings.warn(
@@ -252,7 +276,7 @@ def reset_run_record() -> None:
 
 def _rows(gaps: list[CorrectionGap], report: bool) -> list[dict[str, Any]]:
     if report:
-        return report_gaps(gaps, context="WOOF column physics")
+        return report_gaps(gaps, context="WOOF-ArWen column physics")
     return [gap.as_dict() for gap in gaps]
 
 
@@ -275,7 +299,7 @@ def engine_settings(mode: str, correct_skip: Iterable[str] = (), *,
                     seam: Any = None, seam_label: str = "",
                     active_schemes: Iterable[str] | None = None,
                     report: bool = True) -> dict[str, Any]:
-    """The imported engine's resolution for the WOOF column route.
+    """The imported engine's resolution for the WOOF-ArWen column route.
 
     Returns ``{"settings", "receipt", "gaps", "engine_takes_mode"}``.  Exact
     mode returns no settings and no receipt, and imports no engine module.
@@ -383,7 +407,7 @@ __all__ = [
     "DEFAULT_PHYSICS_MODE", "ENGINE_COLUMN_FINDINGS", "FINDINGS", "GAP_SCHEMA",
     "KNOWN_FINDINGS", "LBC_FINDINGS", "OPTIONAL_CONSTRUCTOR_KEYS",
     "PHYSICS_MODES", "PHYSICS_MODE_CORRECT", "PHYSICS_MODE_EXACT",
-    "door_argv", "engine_accepts", "engine_settings", "known_findings",
+    "door_argv", "engine_accepts", "engine_settings", "known_findings", "terminal_record",
     "receipt_block", "report_gaps", "reset_run_record", "route_findings", "run_record",
     "sealed_scalars", "validate",
     "without_mode_keywords",

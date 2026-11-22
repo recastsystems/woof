@@ -863,7 +863,7 @@ def _pid_running(pid):
 @pytest.mark.parametrize("end", ["exit", "kill"])
 def test_compile_workers_end_with_the_process_that_opened_them(end):
     """2026-10-29 08:17-08:21Z (woof hex fix/hex-compile-worker-lifetime, this file's twin): spawn
-    compile workers of runs that had ended (a WOOF prewarm stopped by a signal, hex forecasts OOM-killed)
+    compile workers of runs that had ended (a WOOF-ArWen prewarm stopped by a signal, hex forecasts OOM-killed)
     held 62.5 GB until killed by PID; the OOM killer then took release containers and lanes. The workers must
     also outlive the short-lived thread that submitted to them."""
     import os
@@ -890,3 +890,24 @@ def test_compile_workers_end_with_the_process_that_opened_them(end):
         for pid in workers:
             if _pid_running(pid):
                 os.kill(pid, signal.SIGKILL)   # a red run leaves no orphan behind
+
+
+def test_a_unit_marked_to_keep_subnormals_reaches_the_pool_without_flush_to_zero(monkeypatch, plan_dir):
+    """CuPy appends -ftz=true above the funnel; a pool worker has no hook to take it out again."""
+    from woof.cuda_subnormals import KEY_OPTION, MARKER
+    here = _StubCompiler()
+    _fresh(monkeypatch, here)
+    assert kernel_plan.install(plan_dir=plan_dir, tag_text="urban")
+    marked = MARKER + "void urban() {}"
+    asked = ("-std=c++17", "--ftz=false", KEY_OPTION, "-ftz=true")
+    here._compile_using_nvrtc_no_warning(marked, asked)
+    here._compile_using_nvrtc_no_warning("void other() {}", ("-std=c++17", "-ftz=true"))
+    by_source = {call[0]: call[1] for call in here.calls}
+    assert by_source[marked] == ("-std=c++17", KEY_OPTION, "--ftz=false")
+    assert by_source["void other() {}"] == ("-std=c++17", "-ftz=true")
+    sent = {}
+    monkeypatch.setitem(kernel_plan._state, "compiler_pool", SimpleNamespace(
+        submit=lambda function, arguments, *rest, **named: sent.update(arguments) or concurrent.futures.Future()))
+    monkeypatch.setitem(kernel_plan._state, "worker_identity", {})
+    kernel_plan._submit_compile({"source": marked, "options": list(asked)}, "89", {})
+    assert sent["options"] == ["-std=c++17", KEY_OPTION, "--ftz=false"]

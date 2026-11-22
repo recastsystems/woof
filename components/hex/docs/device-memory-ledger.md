@@ -24,7 +24,7 @@
 > because the peaks they measured are real and are the before arms of the moves
 > between them.
 >
-> **Everything under the 2026-08-20 rule below was measured at the WOOF seam
+> **Everything under the 2026-08-20 rule below was measured at the WOOF-ArWen seam
 > pin `629ddb6f0`, which is BEFORE the Grell-Freitas local-memory frame cut.**
 > The pin moved to `0d04db712` (measured 2026-08-24) and then converged with
 > the engine release line as `26daaab7e` (measured 2026-08-25).
@@ -488,7 +488,7 @@ Counted by owner at x4:
 | `cuda_driver.py` | 6 | 275.6 |
 | remainder (7 files) | 34 | 383.9 |
 
-**The WOOF physics seam owns 265 of the 385 arrays and 3,085.4 MiB of the
+**The ArWen physics seam owns 265 of the 385 arrays and 3,085.4 MiB of the
 5,791.7 MiB resident tier: 53.3 %.** The dycore state the port itself holds
 is the smaller half. What that seam keeps live between steps is four parallel
 tendency sets (`tendencies`, `pbl_tendencies`, `radiation_tendencies`,

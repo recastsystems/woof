@@ -1,0 +1,32 @@
+{
+ "schema": "hexad.record-routes/v1",
+ "default": "derivative",
+ "what": "the forecast route a recording runs: the kernel forms hex picks by environment. Every form of one choice gives the same bits (each is the A/B arm of the other); only the kernels that do the work differ, and the window has derivative rows for one set of them",
+ "routes": {
+  "derivative": {
+   "what": "the kernel forms this release's derivative rows are of (the forms the example plans were recorded on)",
+   "env": {
+    "WOOF_HEX_EDGE_HOIST": "0",
+    "WOOF_HEX_MYNNEDMF_LANES": "16",
+    "WOOF_HEX_PAIR_ADD": "plain",
+    "WOOF_HEX_OZONE_MONTHS": "all",
+    "WOOF_HEX_REGIONAL_ACOUSTIC_SPLIT": "0",
+    "WOOF_HEX_MEMBER_MEMORY": "single",
+    "WOOF_HEX_MEM_ACOUSTIC": "0"
+   },
+   "why": {
+    "WOOF_HEX_EDGE_HOIST": "the hoisted edge and cell forms have no derivative rows",
+    "WOOF_HEX_MYNNEDMF_LANES": "the boundary layer's derivative images are of the 16-lane launch",
+    "WOOF_HEX_PAIR_ADD": "add_pair_inplace_f32 has no derivative row; the plain form is add_inplace_f32 (a 120 km door recording, 2026-11-11)",
+    "WOOF_HEX_OZONE_MONTHS": "ozone_time_pair has no derivative row; the plain form is ozone_time (a 120 km door recording, 2026-11-11)",
+    "WOOF_HEX_REGIONAL_ACOUSTIC_SPLIT": "the regional column solve's four-kernel form (acoustic_column_pre, _sweep, _post_w and _post_rt_regional_v841) has no derivative rows; the one-kernel form acoustic_column_solve_regional_v841 has",
+    "WOOF_HEX_MEMBER_MEMORY": "the compact policy hands pv_apvm_v841_f32 null gradient pointers, which its derivative refuses; single changes no arithmetic",
+    "WOOF_HEX_MEM_ACOUSTIC": "the dycore's short array lifetimes (on by default since 0.4.15) have the last RK stage's recover_cells_f32, recover_edges_f32 and recover_interfaces_f32 write their outputs over their own inputs (rho over rho_pp, rtheta over rtheta_pp, flux_u over ru_avg_p, flux_w over ww_avg_p); the reverse rules of those three kinds add into the input's cotangent and then clear the output's, so on one address the input's share is lost (a 12 km plan's whole-state dot 0.239 after one step, 2026-11-18). 0 keeps the earlier lifetimes, the form every example plan was recorded in: the same kernels, order and words"
+   }
+  },
+  "forecast": {
+   "what": "the installed forecast's own default forms, as gpuwm-hex forecast runs them; a kind with no derivative refuses the recording when it is sealed",
+   "env": {}
+  }
+ }
+}

@@ -139,7 +139,7 @@ def main(argv=None) -> int:
     ap.add_argument("--crop", type=float, nargs=4, default=None,
                     metavar=("WEST", "EAST", "SOUTH", "NORTH"))
     ap.add_argument("--crop-dir", type=Path, default=None)
-    ap.add_argument("--source-label", default="WOOF")
+    ap.add_argument("--source-label", default="WOOF-ArWen")
     ap.add_argument("--heavy", action="store_true")
     ap.add_argument("--boundary-zone", type=int, default=0, metavar="CELLS",
                     help="draw a box CELLS in from the domain edge: "

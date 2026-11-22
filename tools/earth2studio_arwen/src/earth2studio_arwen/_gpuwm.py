@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """How this package reaches woof.
 
-woof (WOOF) and woof hex carry their own CUDA stack, so they usually live
+woof (WOOF-ArWen) and woof hex carry their own CUDA stack, so they usually live
 in a different Python environment from Earth2Studio. This package never
 imports woof: it runs the ``woof`` command of the environment named by
 ``WOOF_PYTHON`` (that environment's interpreter), or the ``woof`` found on

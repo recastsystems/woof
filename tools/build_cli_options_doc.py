@@ -41,6 +41,14 @@ NOTES: dict[str, str] = {
         "terrain, land use and soil at its own spacing by default; "
         "`--parent-terrain` keeps its parent's, interpolated, and "
         "`--geog-root` names the WPS_GEOG tree the child is built from."),
+    "woof check": (
+        "`--met-em DIR` (in place of CONFIG) prices card memory from a "
+        "WPS metgrid directory alone, the input of `woof run --met-em`: "
+        "it reads no WPS_GEOG, so a machine with no geography staged "
+        "gets the memory verdict and not exit 6.  The boundaries are "
+        "priced at the directory's namelist.input `interval_seconds`, and "
+        "with `--vram-gib` the figure is the one `woof check CONFIG "
+        "--vram-gib` gives for the imported namelist pair."),
     "woof go": (
         "`--no-memory-gate` is the only escape from the pre-fetch memory "
         "gate.  The gate runs before the chain downloads anything, and "

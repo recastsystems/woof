@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""WOOF as an Earth2Studio prognostic model.
+"""WOOF-ArWen as an Earth2Studio prognostic model.
 
-WOOF is a CUDA port of WRF-ARW: a regional physics model. As an Earth2Studio
+WOOF-ArWen is a CUDA port of WRF-ARW: a regional physics model. As an Earth2Studio
 ``PrognosticModel`` it advances a state on a regular 0.25 degree latitude-
 longitude box by one boundary interval (6 h for the packaged Earth-2
 profile) per step:
@@ -11,16 +11,16 @@ profile) per step:
    ``earth2-pl13-q-netcdf-v1`` profile reads) is written with Earth2Studio's
    own ``NetCDF4Backend`` as lead 0 of a file, and the boundary source's
    state one interval later as the next lead;
-2. woof prepares and runs WOOF over the box (shrunk by ``margin_deg``) from
+2. woof prepares and runs WOOF-ArWen over the box (shrunk by ``margin_deg``) from
    that file, with the ERA5 analysis at the initialization supplying the land
    surface these variables lack (``woof fetch --source era5``, keyless);
-3. ``woof export --earth2`` writes WOOF's history in the same vocabulary on
+3. ``woof export --earth2`` writes WOOF-ArWen's history in the same vocabulary on
    the same lattice, and the step returns it.
 
-Inside the WOOF domain the output is WOOF's forecast. The ring between the
+Inside the WOOF-ArWen domain the output is WOOF-ArWen's forecast. The ring between the
 domain and the box edge is the boundary source's state at the output time,
-the state WOOF's lateral boundary is relaxed to, so the box is complete and
-the next step can start from it. Every step is a full WOOF run started from
+the state WOOF-ArWen's lateral boundary is relaxed to, so the box is complete and
+the next step can start from it. Every step is a full WOOF-ArWen run started from
 the state it is handed (Earth2Studio's convention: the tensor is the state).
 
 The package names no model and no case: variables, levels and the boundary
@@ -62,7 +62,7 @@ def _lattice(start: float, stop: float, step: float) -> np.ndarray:
 
 
 class ArWen(torch.nn.Module, PrognosticMixin):
-    """WOOF (woof) regional physics forecast as an Earth2Studio prognostic model.
+    """WOOF-ArWen (woof) regional physics forecast as an Earth2Studio prognostic model.
 
     Parameters
     ----------
@@ -74,9 +74,9 @@ class ArWen(torch.nn.Module, PrognosticMixin):
         the output valid times (e.g. ``earth2studio.data.ARCO()`` for ERA5,
         ``GFS()``), or a WoofHistory / another model's output.
     dx_km : float
-        WOOF's grid spacing.
+        WOOF-ArWen's grid spacing.
     margin_deg : float
-        Ring between the box edge and the WOOF domain, filled from ``boundary``.
+        Ring between the box edge and the WOOF-ArWen domain, filled from ``boundary``.
     workdir : path, optional
         Where each step's run folder goes (kept for inspection when ``keep``).
     sim_args : list[str]
@@ -111,7 +111,7 @@ class ArWen(torch.nn.Module, PrognosticMixin):
         self.lon = _lattice(np.floor(west / g) * g, np.ceil(east / g) * g, g)
         self.margin = float(margin_deg)
         if 2 * self.margin >= min(self.lat[0] - self.lat[-1], self.lon[-1] - self.lon[0]):
-            raise ValueError("margin_deg leaves no WOOF domain inside the box")
+            raise ValueError("margin_deg leaves no WOOF-ArWen domain inside the box")
         self.boundary = boundary
         self.dx_km = float(dx_km)
         self.profile = profile
@@ -164,7 +164,7 @@ class ArWen(torch.nn.Module, PrognosticMixin):
         s, n = self.lat[-1] + inset, self.lat[0] - inset
         w, e = self.lon[0] + inset, self.lon[-1] - inset
         if s >= n or w >= e:
-            raise ValueError("the WOOF domain this box needs does not fit inside it; "
+            raise ValueError("the WOOF-ArWen domain this box needs does not fit inside it; "
                              "give a larger area or a smaller margin_deg")
         w180 = ((w + 180.0) % 360.0) - 180.0
         e180 = ((e + 180.0) % 360.0) - 180.0
@@ -258,7 +258,7 @@ class ArWen(torch.nn.Module, PrognosticMixin):
                 break
             inset += over + 0.25
         else:
-            raise RuntimeError(f"no WOOF domain inside the box after 4 fits; last window {receipt.get('domain_window')}")
+            raise RuntimeError(f"no WOOF-ArWen domain inside the box after 4 fits; last window {receipt.get('domain_window')}")
         st["prep"] = _gpuwm.run(
             ["prep", "--source", "earth2", "--input", src.name,
              "--supplement", "physical_analysis_surface_data=analysis/era5-combined.nc",

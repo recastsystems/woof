@@ -1,4 +1,4 @@
-"""Resident NextGen forcing prepared from WOOF or a Rust forcing packet.
+"""Resident NextGen forcing prepared from WOOF-ArWen or a Rust forcing packet.
 
 All geometry/regridding and external decoding finish before stepping. Parent
 fields and catchment views keep their pointers. Each advance enqueues one
@@ -35,7 +35,7 @@ def _module(cp, *, scalar="float"):
 
 
 class PreparedCatchmentForcing:
-    """Area-weight same-card WOOF parent fields in hydrofabric CSR order.
+    """Area-weight same-card WOOF-ArWen parent fields in hydrofabric CSR order.
 
     Parent fields are contiguous float32 arrays with the same grid shape.
     Offsets are uint64, indices uint32 and normalized area weights float64.
@@ -199,7 +199,7 @@ def _parent_field(path, *, state, physics, components):
 def prepare_parent(*, settings, options, state, physics, device_id, mode, components):
     """Optional meteorological aggregation of explicitly named parent fields.
 
-    Coupled WOOF Noah-MP already receives its atmosphere forcing. Its routing
+    Coupled WOOF-ArWen Noah-MP already receives its atmosphere forcing. Its routing
     NextGen exchange is owned by noahowp.factory.prepare_exchange and consumes
     runsrf/runsub/soldrain (mm per LSM step), ET (mm/s) and surface-head storage
     through that owner's slab/CSR API. It does not require this optional

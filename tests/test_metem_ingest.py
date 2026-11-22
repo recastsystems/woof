@@ -179,6 +179,27 @@ def test_filename_and_internal_time_must_agree(tmp_path):
         read_met_em(case(tmp_path,time="2021-06-01_01:00:00"))
 
 
+def test_nocolons_times_record_is_read_like_real_exe(tmp_path):
+    # metgrid with nocolons = .true. in namelist.wps writes the Times
+    # record as YYYY-MM-DD_HH_MM_SS; real.exe reads it, so the door does.
+    c = read_met_em(case(tmp_path, time="2021-06-01_00_00_00"))
+    assert c.valid_time == datetime(2021, 6, 1)
+    with pytest.raises(MetgridRefusal, match="Times.*disagrees"):
+        read_met_em(write_case(tmp_path/"met_em.d01.2021-06-01_01_00_00.nc",
+                               time="2021-06-01_00_00_00"))
+    # The real.exe differential oracle reads the same files, both spellings.
+    from woof.verify.metem_differential import read_metem
+    assert read_metem(case(tmp_path, time="2021-06-01_00_00_00")).valid_time == c.valid_time
+    assert read_metem(case(tmp_path)).valid_time == c.valid_time
+
+
+@pytest.mark.parametrize("record", ["2021-06-01T00:00:00", "2021-06-01_00-00-00",
+                                    "2021-06-01 00:00:00", "2021-13-01_00:00:00"])
+def test_times_record_outside_both_wrf_spellings_is_refused(tmp_path, record):
+    with pytest.raises(MetgridRefusal, match="invalid ASCII Times record"):
+        read_met_em(case(tmp_path, time=record))
+
+
 def test_series_checks_cadence_and_static_identity(tmp_path):
     a=read_met_em(case(tmp_path))
     b=replace(a,path=tmp_path/"later.nc",valid_time=a.valid_time+timedelta(hours=1))
@@ -222,6 +243,55 @@ def test_specific_humidity_does_not_need_or_decode_unused_rh(tmp_path):
     c=read_met_em(case(tmp_path,specific=True,mutate=mutate))
     assert c.lane=="specific_humidity"
     assert "RH" not in c.snapshot.fields and "RH2" not in c.snapshot.fields
+
+
+def test_model_level_rh_without_spechumd_is_read_like_real_exe(tmp_path):
+    """RH, no SPECHUMD, levels that are not isobaric: refused before.
+
+    real.exe forms qv from RH, TT and the 3-D PRES (rh_to_mxrat1,
+    module_initialize_real.F:1113-1142).  The reader forms the matching
+    specific humidity and hands it to the FLAG_SH lane with PRES.
+    """
+    from woof.ingest.metem import RH_DERIVED_LANE
+    def tilt(ds):
+        # Terrain-following levels: each level above the surface spans
+        # 20 hPa across the domain, as on a model-level tape.
+        pres=np.asarray(ds["PRES"][0],np.float64)
+        pres[1:]+=np.linspace(-1000.,1000.,pres.shape[2])[None,None,:]
+        ds["PRES"][0]=pres
+        rh=np.asarray(ds["RH"][0],np.float64)
+        rh[:]=np.linspace(8.,101.,rh.shape[0])[:,None,None]
+        ds["RH"][0]=rh
+    path=case(tmp_path,mutate=tilt)
+    c=read_met_em(path)
+    assert c.lane==RH_DERIVED_LANE
+    fields=c.snapshot.fields
+    assert {"SPFH","Q2","PRES"}<=set(fields)
+    assert "RH" not in fields and "RH2" not in fields
+    with nc.Dataset(path) as ds:
+        tt=np.asarray(ds["TT"][0],np.float64)
+        pres=np.asarray(ds["PRES"][0],np.float64)
+        rh=np.clip(np.asarray(ds["RH"][0],np.float64),0.,100.)
+    # WRF rh_to_mxrat1 (liquid, rh2qv_method 1), transcribed independently.
+    es=.01*rh*6.112*np.exp(17.67*(tt-273.15)/(tt-29.65))
+    qv=np.maximum(.622*es/(pres/100.-es),1e-6)
+    expected=(qv/(1.+qv)).astype(np.float32)
+    np.testing.assert_allclose(fields["SPFH"],expected[1:],rtol=2e-7,atol=0)
+    np.testing.assert_allclose(fields["Q2"],expected[0],rtol=2e-7,atol=0)
+    np.testing.assert_array_equal(fields["PRES"],pres[1:].astype(np.float32))
+    assert float(np.ptp(fields["PRES"][0]))>1000.
+    assert any("not isobaric" in note and "rh_to_mxrat1" in note for note in c.notes)
+    assert c.field_map["rh_to_mxrat1(RH, TT, PRES)[1:]"]=="SPFH"
+    # A series of such files keeps evolving model-level pressure, like
+    # the SPECHUMD lane, instead of demanding one isobaric ladder.
+    snap=replace(c.snapshot,levels_hpa=c.snapshot.levels_hpa+1)
+    later=replace(c,path=tmp_path/"later.nc",valid_time=c.valid_time+timedelta(hours=1),snapshot=snap)
+    check_met_em_series((c,later),interval_seconds=3600,start_time=c.valid_time,end_time=later.valid_time)
+
+
+def test_isobaric_rh_stays_on_the_rh_lane(tmp_path):
+    c=read_met_em(case(tmp_path))
+    assert c.lane=="rh" and "RH" in c.snapshot.fields and "SPFH" not in c.snapshot.fields
 
 
 def test_analyzed_flags_keep_selective_mass_inventory(tmp_path):

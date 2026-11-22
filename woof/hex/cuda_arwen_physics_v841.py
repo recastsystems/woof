@@ -162,19 +162,31 @@ ARWEN_SOURCE_MANIFEST: Mapping[str, str] = MappingProxyType(
 _GLACIER_CUDA_PROVENANCE = (
     "noahmp-glacier/cuda (woof/core/kernels/noahmp_glacier.cu)"
 )
+#: The glacier execution paths an engine may report that are both the CUDA
+#: NOAHMP_GLACIER path.  gpuwm 2.9.x reports the kernel file; gpuwm 3.0 runs
+#: glacier columns inside its device-resident surface slab and reports
+#: ``noahmp-glacier/resident-cuda`` (woof/core/noahmp_runtime.py).  A host
+#: path is still refused.  THE BREAKAGE THIS PREVENTS (hex 0.5.0 on the woof
+#: 3.0.0 candidate 15370d23f9, 2026-11-10): every ArWen-route forecast
+#: stopped at step 0 with "census/provenance differs" although the column
+#: counts were equal.
+_GLACIER_CUDA_PROVENANCES = frozenset({
+    _GLACIER_CUDA_PROVENANCE,
+    "noahmp-glacier/resident-cuda",
+})
 _ISICE_TABLE = 15
 
 _LIMITATIONS = (
     "fa35 exposes one phase-one pressure family: MPAS supplies moist-hydrostatic "
-    "pres_hyd_p/pres2_hyd_p to all WOOF phase-one consumers; cloud fraction "
+    "pres_hyd_p/pres2_hyd_p to all WOOF-ArWen phase-one consumers; cloud fraction "
     "cannot independently receive EOS pressure through the published seam",
     "fa35 legacy RRTMG rebuilds t8w from the constructor's nominal one-dimensional "
     "vertical weights; frozen MPAS t2_p is not a published phase-one argument",
     "legacy RRTMG stages columns through the host on radiation-due calls; this "
-    "occurs at the WOOF-owned radiation cadence rather than every model step",
+    "occurs at the WOOF-ArWen-owned radiation cadence rather than every model step",
     "fa35 Noah-MP consumes the common published phase-one atmosphere; the separate "
     "raw-qv MPAS Noah-MP sounding is prepared and validated but is not accepted by "
-    "the published WOOF call signature",
+    "the published WOOF-ArWen call signature",
     "fa35 GF convective momentum tendencies are not coupled; native MPAS v8.4.1 "
     "does not couple them either (its cu_grell_freitas call carries no "
     "rucuten/rvcuten), so this is native parity rather than a gap",
@@ -421,7 +433,7 @@ class SealedArwenConstructorV841:
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> "SealedArwenConstructorV841":
         if not isinstance(values, Mapping):
-            raise TypeError("WOOF constructor values must be a mapping")
+            raise TypeError("WOOF-ArWen constructor values must be a mapping")
         from . import correct_mode
 
         missing = sorted(_CONSTRUCTOR_KEYS - set(values))
@@ -431,7 +443,7 @@ class SealedArwenConstructorV841:
         )
         if missing or extra:
             raise ValueError(
-                "exact-real WOOF constructor mapping is not exhaustive: "
+                "exact-real WOOF-ArWen constructor mapping is not exhaustive: "
                 f"missing={missing}, extra={extra}"
             )
         nlev = values["n_levels"]
@@ -680,7 +692,7 @@ class SealedArwenConstructorV841:
 
     def arwen_kwargs(self) -> dict[str, Any]:
         if self._seal is not _CONSTRUCTOR_SEAL:
-            raise TypeError("WOOF constructor mapping is not sealed")
+            raise TypeError("WOOF-ArWen constructor mapping is not sealed")
         # Arrays remain the sealed read-only objects.  Arwen copies/uploads
         # them during construction and never receives an adapter-owned mutable
         # static carrier.  The Noah-MP statics are not constructor keywords
@@ -695,7 +707,7 @@ class SealedArwenConstructorV841:
         """The sealed Noah-MP statics to bind after construction (maybe empty)."""
 
         if self._seal is not _CONSTRUCTOR_SEAL:
-            raise TypeError("WOOF constructor mapping is not sealed")
+            raise TypeError("WOOF-ArWen constructor mapping is not sealed")
         return MappingProxyType(
             {
                 name: self._values[name]
@@ -757,7 +769,7 @@ _ADAPTER_AUTHORITY = {
         "step's dynamics and carried in restart state"
     ),
     "constructor": "exhaustive sealed exact-real mapping including native xland, explicit xice_threshold and the row's microphysics_scheme; no defaults",
-    "pin_order": "pin exact WOOF v2 before MPAS KernelCache construction",
+    "pin_order": "pin exact WOOF-ArWen v2 before MPAS KernelCache construction",
     "execution_provenance": (
         "typed aggregate-executed carrier; actual GWDO result identity and 4B gate"
     ),
@@ -847,7 +859,7 @@ def _verify_checkout_root(root: Path) -> engine_pin.EngineIdentity:
     forecast door and ``doctor`` run, so the three surfaces cannot disagree
     about a tree.
 
-    RETIRED 2026-10-10 as a gate (owner ruling; Refusals law): a moved seam file used to raise "pinned Arwen
+    RETIRED 2026-10-10 as a gate (Refusals law): a moved seam file used to raise "pinned Arwen
     source hash mismatch", and a moved ``docs/mpas-seam.md`` "pinned Arwen
     contract surface hash mismatch".  Neither names a breakage -- a digest
     that differs says the engine is another build, not that it cannot run --
@@ -1070,6 +1082,7 @@ class CudaArwenDiagnosticSnapshotV841:
     gwdo: Mapping[str, Any]
     metadata: Mapping[str, Any]
     receipt: Mapping[str, Any]
+    cloud: Mapping[str, Any] = field(default_factory=dict)
 
 
 def history_cumulus_rain_rate(owner: Any, seam: Any, rainc: Any, cp: Any) -> dict[str, Any]:
@@ -1079,7 +1092,7 @@ def history_cumulus_rain_rate(owner: Any, seam: Any, rainc: Any, cp: Any) -> dic
     ``rainc`` and leave no rate on the driver, so this one rule serves every scheme. ``rainc`` is the snapshot's own
     detached copy, held for the next one; the card does one subtraction per history frame and nothing per step.
 
-    THE BREAKAGE THIS PREVENTS (WOOF physics, GFS 2026-10-31 06Z, f006, 120 km global and 96 -> 3 km zoom globe): the
+    THE BREAKAGE THIS PREVENTS (ArWen physics, GFS 2026-10-31 06Z, f006, 120 km global and 96 -> 3 km zoom globe): the
     history carried only ``rainc``, so rw_mpas_convert had no rate to add to REFC and the reflectivity map showed none
     of the tropical rain bands the run's own rain map showed. A run with no cumulus scheme has no accumulator on its
     driver: it writes no field and its frame keeps drawing its volume.
@@ -1107,7 +1120,9 @@ class InitialReflectivityViewV841:
     The engine's operator (``woof.da.obsop.simulated_reflectivity``) reads a
     state shaped ``(nz, 1, ncol)``: the species by their engine names (hex's
     scalar names are those names), full theta as ``thb + thp`` and pressure
-    ``p``, plus a persistent ``scratch`` slot.  This view holds exactly those,
+    ``p``, the dry specific volume ``alt`` (formed as the seam forms it for a
+    step, ``1/rho_dry``; NSSL's diagnostic takes its air density from it), plus
+    a persistent ``scratch`` slot.  This view holds exactly those,
     as read-only reshapes of the hex arrays, and its own scratch, so the
     seam's state is read for nothing and written by nothing.  The melting
     term is copied explicitly from the seam's own answer
@@ -1115,7 +1130,8 @@ class InitialReflectivityViewV841:
     honours ahead of the state's class.
     """
 
-    def __init__(self, *, theta: Any, pressure: Any, species: Mapping[str, Any], melting: bool, cp: Any) -> None:
+    def __init__(self, *, theta: Any, pressure: Any, species: Mapping[str, Any], melting: bool, cp: Any,
+                 rho_dry: Any = None) -> None:
         nz, ncol = (int(n) for n in theta.shape)
         shape = (nz, 1, ncol)
 
@@ -1127,6 +1143,12 @@ class InitialReflectivityViewV841:
         self.thp = column("theta", theta)
         self.p = column("pressure", pressure)
         self.thb = cp.zeros((nz,), dtype=cp.float32)
+        if rho_dry is not None:
+            # THE BREAKAGE THIS PREVENTS (2026-11-09, NSSL two-moment picked over the ArWen suite): the engine's
+            # NSSL reflectivity forms its density as 1/state.alt, the view carried no alt, and the forecast stopped
+            # at its first frame with "AttributeError: alt".  The same quotient the seam hands a step
+            # (woof.core.mpas_column_suite: alt = 1/rho_dry), in the view's own array.
+            self.alt = cp.float32(1.0) / column("rho_dry", rho_dry)
         for name, value in species.items():
             setattr(self, name, column(name, value))
         self.refl10cm_from_melting = bool(melting)
@@ -1147,6 +1169,26 @@ class InitialReflectivityViewV841:
         if buffer is None or tuple(buffer.shape) != shape:
             buffer = self._scratch[slot] = self._cp.zeros(shape, dtype=self._cp.float32 if dtype is None else dtype)
         return buffer
+
+
+def _plain_census(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """The engine's NoahMP census with its counts as Python ints.
+
+    gpuwm 3.0 publishes the column counts as 0-d arrays (``array(10155)``);
+    2.9.x published ints.  The census goes into the step receipt, which is
+    JSON, so a 0-d array stopped every ArWen-route step at its receipt
+    ("Object of type ndarray is not JSON serializable", hex 0.5.0 on the
+    gpuwm 3.0.0 candidate, 2026-11-10).  Only integral 0-d values are
+    converted; anything else is kept as it is and compared as before.
+    """
+
+    plain: dict[str, Any] = {}
+    for key, value in raw.items():
+        kind = getattr(getattr(value, "dtype", None), "kind", "")
+        if getattr(value, "shape", None) == () and kind in ("i", "u"):
+            value = int(value)
+        plain[key] = value
+    return plain
 
 
 class PersistentTwoPhaseCudaPhysicsBackendV841:
@@ -1171,13 +1213,13 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             raise TypeError("prep_geometry must be sealed v8.4.1 MPAS preparation geometry")
         prep_geometry.validate()
         if prep_geometry.n_cells != constructor.n_columns:
-            raise ValueError("preparation geometry and WOOF constructor column counts differ")
+            raise ValueError("preparation geometry and WOOF-ArWen constructor column counts differ")
         if gwdo_static is not None:
             if not isinstance(gwdo_static, CudaYsuGwdoStaticV841):
                 raise TypeError("gwdo_static must be a sealed CudaYsuGwdoStaticV841")
             gwdo_static.validate()
             if gwdo_static.n_cells != constructor.n_columns:
-                raise ValueError("GWDO statics and WOOF constructor column counts differ")
+                raise ValueError("GWDO statics and WOOF-ArWen constructor column counts differ")
             if gwdo_kernel_cache is None:
                 raise ValueError("GWDO activity requires gwdo_kernel_cache")
         elif gwdo_kernel_cache is not None:
@@ -1275,14 +1317,14 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
         }
         missing = sorted(name for name in expected if not hasattr(seam, name))
         if missing:
-            raise TypeError(f"pinned WOOF seam lacks required methods {missing}")
+            raise TypeError(f"pinned WOOF-ArWen seam lacks required methods {missing}")
         public_receipts = ("surface_classification", "last_noahmp_census")
         missing_receipts = sorted(
             name for name in public_receipts if not hasattr(seam, name)
         )
         if missing_receipts:
             raise TypeError(
-                f"pinned WOOF seam lacks v2 public receipts {missing_receipts}"
+                f"pinned WOOF-ArWen seam lacks v2 public receipts {missing_receipts}"
             )
         self._validate_surface_classification(seam)
         # Radiation chunk width only: per-column results are bitwise identical
@@ -1324,7 +1366,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
         for name, host_value in statics.items():
             if fields is None or name not in fields:
                 raise TypeError(
-                    f"the pinned WOOF seam exposes no Noah-MP {name!r} "
+                    f"the pinned WOOF-ArWen seam exposes no Noah-MP {name!r} "
                     "carrier (seam._driver.fields): without it the land "
                     "surface would keep the engine's launch-field fill "
                     f"({NOAHMP_ENGINE_DEFAULT_SHDMAX_PERCENT:g} % vegetation "
@@ -1374,14 +1416,14 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
         selected = self._seam if seam is None else seam
         actual = getattr(selected, "surface_classification", None)
         if not isinstance(actual, Mapping):
-            raise TypeError("WOOF v2 surface_classification is not a mapping")
+            raise TypeError("WOOF-ArWen v2 surface_classification is not a mapping")
         service = getattr(self, "_surface_updates", None)
         expected = (dict(self._constructor.expected_surface_classification())
                     if service is None or seam is not None else dict(service.classification))
         normalized = dict(actual)
         if normalized != expected:
             raise ValueError(
-                "WOOF v2 surface classification differs from sealed native "
+                "WOOF-ArWen v2 surface classification differs from sealed native "
                 f"constructor authority: {normalized} != {expected}"
             )
         return MappingProxyType(normalized)
@@ -1415,15 +1457,32 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
         raw = getattr(self._seam, "last_noahmp_census", None)
         if raw is None:
             if require:
-                raise ValueError("WOOF v2 did not publish a NoahMP execution census")
+                raise ValueError("WOOF-ArWen v2 did not publish a NoahMP execution census")
             return None
         if not isinstance(raw, Mapping):
-            raise TypeError("WOOF v2 last_noahmp_census is not a mapping")
+            raise TypeError("WOOF-ArWen v2 last_noahmp_census is not a mapping")
         expected = PersistentTwoPhaseCudaPhysicsBackendV841.noahmp_routing_census(self)
-        normalized = dict(raw)
+        normalized = _plain_census(raw)
+        # Either engine's CUDA glacier label is published under the one canonical
+        # name the step receipt and require_arwen_v2_surface_execution check.
+        # THE BREAKAGE THIS PREVENTS (hex 0.5.0 on gpuwm 3.0.0,
+        # 2026-11-10T10:21Z): accepting the 3.0 label here but publishing it raw
+        # stopped every ArWen-route forecast at step 1 with "NoahMP
+        # census/provenance changed: glacier_path".
+        if normalized.get("glacier_path") in _GLACIER_CUDA_PROVENANCES:
+            normalized["glacier_path"] = _GLACIER_CUDA_PROVENANCE
+            # gpuwm 3.0 names its glacier path even when no column is glacier;
+            # 2.9.x named it only for glacier columns, and so does every check
+            # downstream.  No glacier column means no glacier execution.
+            # THE BREAKAGE THIS PREVENTS (both-routes matrix on gpuwm 3.0,
+            # 2026-11-10T11:12Z): the ArWen-route region (290 land
+            # columns, 0 glacier) stopped at step 0 on "census/provenance
+            # differs".
+            if normalized.get("glacier") == 0:
+                del normalized["glacier_path"]
         if normalized != expected:
             raise ValueError(
-                "WOOF NoahMP census/provenance differs from executed layout "
+                "WOOF-ArWen NoahMP census/provenance differs from executed layout "
                 f"authority: {normalized} != {expected}"
             )
         return MappingProxyType(normalized)
@@ -1553,8 +1612,8 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             },
             "limitations": list(_LIMITATIONS),
             "nonclaims": [
-                "no claim of separate EOS cloud-pressure routing inside frozen WOOF v2",
-                "no claim of exact MPAS t2_p routing inside frozen WOOF v2 RRTMG",
+                "no claim of separate EOS cloud-pressure routing inside frozen WOOF-ArWen v2",
+                "no claim of exact MPAS t2_p routing inside frozen WOOF-ArWen v2 RRTMG",
                 "no claim that legacy RRTMG is device-resident",
             ],
         }
@@ -1585,9 +1644,9 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
                 f"arwen_phase1.{name}", getattr(output, name), dtype=np.float32, shape=shape
             )
         if float(output.elapsed_seconds) != float(time_seconds):
-            raise ValueError("WOOF held-output time does not equal MPAS candidate start")
+            raise ValueError("WOOF-ArWen held-output time does not equal MPAS candidate start")
         if int(output.step_index) != int(self._seam.step_index):
-            raise ValueError("WOOF held-output step index changed during phase one")
+            raise ValueError("WOOF-ArWen held-output step index changed during phase one")
 
     def _rollback_receipt(self, prior: Mapping[str, Any], armed_text: str) -> dict[str, Any]:
         """The receipt a failed transaction leaves, armed or not."""
@@ -1627,7 +1686,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             self._private_binding_guard()
         except Exception as error:
             self._phase = "broken"
-            raise RuntimeError("failed to reconstruct the pinned WOOF transaction") from error
+            raise RuntimeError("failed to reconstruct the pinned WOOF-ArWen transaction") from error
         self._phase = "boundary"
         self._boundary_snapshot = None
         self._step_start = None
@@ -1719,7 +1778,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             raise ValueError("candidate start time must be finite and non-negative")
         if float(self._seam.elapsed_seconds) != start:
             raise ValueError(
-                "WOOF and MPAS clocks differ at begin_step: "
+                "WOOF-ArWen and MPAS clocks differ at begin_step: "
                 f"{self._seam.elapsed_seconds} != {start}"
             )
         snapshot = (
@@ -1896,7 +1955,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
                     "transaction_boundary_snapshot": snapshot_d2h_bytes,
                 },
                 "copies": {
-                    "arwen_phase1": "published frozen WOOF v2 persistent input/output copies",
+                    "arwen_phase1": "published frozen WOOF-ArWen v2 persistent input/output copies",
                     "transaction_boundary_snapshot_d2h_bytes": snapshot_d2h_bytes,
                     "transaction_boundary_snapshot_d2d_bytes": snapshot_d2d_bytes,
                     "transaction_boundary_snapshot_bytes": snapshot_bytes,
@@ -1989,7 +2048,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
         seam = self._seam
         view = InitialReflectivityViewV841(
             theta=prepared.th_p, pressure=prepared.pres_p, species=species,
-            melting=refl_melting_for(seam._state), cp=cp)
+            melting=refl_melting_for(seam._state), cp=cp, rho_dry=prepared.rho_dry)
         try:
             refl = simulated_reflectivity(view, seam._cfg)
         except NotImplementedError as refusal:
@@ -2127,7 +2186,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
                 phase2_kwargs["v"] = prepared.v_p
             receipt = self._seam.run_phase2(**phase2_kwargs)
             if float(self._seam.elapsed_seconds) != endpoint:
-                raise ValueError("WOOF phase two did not advance to the MPAS endpoint")
+                raise ValueError("WOOF-ArWen phase two did not advance to the MPAS endpoint")
             staged_refl = None
             if refl_10cm_due:
                 staged_refl = receipt.get("refl_10cm")
@@ -2151,7 +2210,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             } | {"RAINC"}
             if set(cumulative) != required:
                 raise ValueError(
-                    "frozen WOOF v2 cumulative precipitation keys changed: "
+                    "frozen WOOF-ArWen v2 cumulative precipitation keys changed: "
                     f"{sorted(cumulative)}, expected {sorted(required)}"
                 )
             radii = self._private_radii(row.radius_names)
@@ -2230,7 +2289,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
                     "effective_radius_snapshot_d2d_bytes": int(
                         sum(value.nbytes for value in radii.values())
                     ),
-                    "cumulative_precipitation": "frozen WOOF v2 public device copies",
+                    "cumulative_precipitation": "frozen WOOF-ArWen v2 public device copies",
                 },
                 "post_rk": {
                     "in_place_species": list(scalar_names),
@@ -2294,11 +2353,11 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             self._last_receipt = {
                 **prior,
                 "phase": "rolled_back",
-                "rollback": "fresh frozen WOOF v2 seam reconstructed from device boundary export",
+                "rollback": "fresh frozen WOOF-ArWen v2 seam reconstructed from device boundary export",
             }
         if scalar_restore_error is not None:
             raise RuntimeError(
-                "WOOF rolled back but unpublished MPAS scalar restoration failed"
+                "WOOF-ArWen rolled back but unpublished MPAS scalar restoration failed"
             ) from scalar_restore_error
 
     def commit_step(self) -> None:
@@ -2407,7 +2466,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             or set(exported) != {"identity", "arrays", "scalars"}
             or not isinstance(exported["arrays"], Mapping)
         ):
-            raise ValueError("frozen WOOF v2 public export_state schema changed")
+            raise ValueError("frozen WOOF-ArWen v2 public export_state schema changed")
         cp = __import__("cupy")
         nlev = self._constructor.n_levels
         ncol = self._constructor.n_columns
@@ -2421,11 +2480,11 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
                 key = f"diag/{name}"
             if key not in export_arrays:
                 if name in _REQUIRED_ARWEN_EXPORT_FIELDS:
-                    raise ValueError(f"frozen WOOF v2 public export lacks required {key!r}")
+                    raise ValueError(f"frozen WOOF-ArWen v2 public export lacks required {key!r}")
                 continue
             host = export_arrays[key] if resident else np.asarray(export_arrays[key])
             if host.dtype != np.dtype(np.float32):
-                raise TypeError(f"frozen WOOF v2 public export {key!r} is not FP32")
+                raise TypeError(f"frozen WOOF-ArWen v2 public export {key!r} is not FP32")
             if name in _SOIL_DIAGNOSTIC_FIELDS:
                 if host.shape == (4, 1, ncol):
                     normalized = host[:, 0, :]
@@ -2433,7 +2492,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
                     normalized = host
                 else:
                     raise ValueError(
-                        f"frozen WOOF v2 public export {key!r} has shape {host.shape}; "
+                        f"frozen WOOF-ArWen v2 public export {key!r} has shape {host.shape}; "
                         f"expected {(4, 1, ncol)} or {(4, ncol)}"
                     )
                 expected_shape = (4, ncol)
@@ -2446,7 +2505,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
                     normalized = host
                 else:
                     raise ValueError(
-                        f"frozen WOOF v2 public export {key!r} has shape {host.shape}; "
+                        f"frozen WOOF-ArWen v2 public export {key!r} has shape {host.shape}; "
                         f"expected a singleton-ny {(ncol,)} field"
                     )
                 expected_shape = (ncol,)
@@ -2478,7 +2537,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
             key != key.upper() or not key for key in public_precip
         ):
             raise ValueError(
-                "frozen WOOF v2 public precipitation inventory changed: "
+                "frozen WOOF-ArWen v2 public precipitation inventory changed: "
                 f"{sorted(public_precip)}"
             )
         precipitation: dict[str, Any] = {}
@@ -2695,7 +2754,7 @@ class PersistentTwoPhaseCudaPhysicsBackendV841:
         if calls < 0 or (self._gwdo_static is None and calls != 0):
             raise ValueError("restart gwdo_calls conflicts with GWDO identity")
         if adapter["last_gwdo_result_persisted"] is not False:
-            raise ValueError("frozen WOOF v2 adapter restart does not persist trajectory-inert GWDO arrays")
+            raise ValueError("frozen WOOF-ArWen v2 adapter restart does not persist trajectory-inert GWDO arrays")
         fresh = self._new_seam()
         from .moving_seaice import prepare_restart_ice
         # A seam payload without arrays (one with no prognostic sea ice) has

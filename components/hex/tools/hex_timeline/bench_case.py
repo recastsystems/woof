@@ -12,6 +12,7 @@ import dataclasses
 import hashlib
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import sys
 import time
@@ -69,7 +70,7 @@ def main():
     args = parser.parse_args()
     config = json.loads((args.input / "case.json").read_text())
     from woof.timeline.ledger import Ledger
-    value = (os.environ.get("WOOF_CARD") or os.environ.get("GPU_MUTEX_CARDS", "").split(",")[0]
+    value = (os.environ.get("WOOF_CARD") or card_queue.get(card_queue.CARDS).split(",")[0]
              or os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")[0])
     ledger = Ledger(product="hex", card=int(value) if value.isdecimal() else None)
     ledger.emit("boot.command", "begin", attrs={"scope": "hex CLI imports and startup"})

@@ -3,7 +3,7 @@
 `woof hex moving` keeps a fine region (for example 3 km, about 450 km in radius) inside a coarse
 global mesh (for example 48 km) on a moving storm. It is something MPAS-Atmosphere does not have.
 The dycore is the MPAS-exact port. The physics is whatever the case selects through the forecast
-door: WOOF physics (the 48 h runs used it, with New Tiedtke convection) or an MPAS-A v8.4.2 suite
+door: ArWen physics (the 48 h runs used it, with New Tiedtke convection) or an MPAS-A v8.4.2 suite
 (see [MPAS physics on a moving region](#mpas-physics-on-a-moving-region)).
 
 How a run works:
@@ -113,7 +113,7 @@ physics namelist, as in a plain MPAS forecast) moves on that suite's own route
 (`woof.hex.mpasphys.moving_v842`). The controller, the case file and the commands are the same.
 
 - **What a move carries.** The dycore state goes through the same conservative, balanced remap as
-  on the WOOF route. The suite's state goes with it: every physics field MPAS writes to its restart
+  on the WOOF-ArWen route. The suite's state goes with it: every physics field MPAS writes to its restart
   stream, plus the time-dependent surface diagnostics. The list is read from MPAS's own Registry,
   not kept by hand. So convection, boundary-layer, land and radiation memory continue across a move.
 - **How it is mapped.** Fields on model levels are mapped in physical height. Land, soil and sea-ice
@@ -173,9 +173,11 @@ convection_permitting with every scheme on the GPU, 2 h, one 357 km move at 1 h)
   bit-identical.
 - These runs used the remap before the balance fix. Against the fixed-region run, two of 15 moves
   exceeded the 1.5 jolt limit: 1.5004 and 1.81.
-- The balance fix brings the reduced test (`woof hex moving check`) from 16.2 to 1.01 on a card
-  (LTS) and from 21.4 to 1.04 on the CPU (ordinary integrator), with mass, heat and tracer kept to
-  1e-9 per move.
+- The balance fix keeps mass, heat and tracer to 1e-9 per move in the reduced test. On 0.6.2,
+  `woof hex moving check --lts` goes from 12.97 to 1.014 on the gentle case and from 152.8 to 1.029
+  on the steep case (an RTX 4090 and an RTX 5070 Ti print the same numbers), and `--device cpu` from
+  19.3 to 1.04 on the gentle case (the ordinary integrator). The jolt report has the first
+  measurement (16.2 to 1.01 and 21.1 to 1.04, gentle case, an RTX 5090).
 - One region split across two cards of one host (`--cards 2`, two RTX PRO 6000, every rate class but
   the finest cut across both cards):
   - `woof hex moving check --lts --cards 2`: worst jolt 1.013, mass, heat and tracer to 4.1e-10 per

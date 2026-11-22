@@ -5,7 +5,7 @@ files are not downloaded but WRITTEN, one valid time at a time, by another
 run beside this one -- a woof hex parent forecast exporting its frames
 (``woof hex export --follow``) is the first such source.
 
-THE BREAKAGE THIS PREVENTS: a WOOF domain driven by a hex parent could only
+THE BREAKAGE THIS PREVENTS: a WOOF-ArWen domain driven by a hex parent could only
 be prepared once the whole parent forecast and its export had finished,
 because ``woof prep --source hex-global`` read a complete frame set.  The
 nest then ran strictly after its parent, so the first nest map came a whole
@@ -121,14 +121,23 @@ class LocalPosting:
                  supplement_roles: Sequence[str] = (),
                  ready_list: Path | None = None, watch: Path | None = None,
                  producer_pid: int | None = None, quiet_minutes: float = 240.0,
-                 poll_seconds: float = 1.0, progress=print) -> None:
+                 poll_seconds: float = 1.0, progress=print,
+                 lead_minutes: int = 60) -> None:
         if (ready_list is None) == (watch is None):
             raise ValueError("give exactly one of --ready-list and --watch")
         ordered = sorted({int(lead) for lead in leads})
         if not ordered or ordered[0] < 0:
             raise ValueError("a local posting needs one or more nonnegative leads")
+        if int(lead_minutes) != lead_minutes or lead_minutes <= 0:
+            raise ValueError("--lead-minutes must be a positive whole number of minutes")
         self.source = str(source)
         self.cycle = cycle
+        #: One lead's span: lead N is valid at cycle + N x this.  An hourly
+        #: posting (the default, and every network fetch) spells nothing
+        #: new, so its declaration and documents are unchanged byte for
+        #: byte; a sub-hourly one (a hex parent's 15-minute frames) states
+        #: its span in the declaration and the schedule.
+        self.lead_minutes = int(lead_minutes)
         self.leads = tuple(ordered)
         self.out = Path(out)
         self.folder = self.out / POSTING_DIRNAME
@@ -148,6 +157,7 @@ class LocalPosting:
             "name_template": name_template,
             "supplement_roles": list(self.supplement_roles),
             "ready": ("ready_list" if self.ready_list is not None else "watch"),
+            **({"lead_minutes": self.lead_minutes} if self.lead_minutes != 60 else {}),
         }
         #: Binds what this posting promised (the same place a network fetch
         #: binds its route table): an as-posted head records it, and the seal
@@ -158,15 +168,17 @@ class LocalPosting:
         self.declaration = declaration
         self.rows = {lead: {
             "lead": lead,
-            "valid_time": _instant(cycle + timedelta(hours=lead)),
+            "valid_time": _instant(self.valid(lead)),
             "expected_at": None, "late_at": None, "first_seen_at": None,
             "fetched_at": None, "endpoint": "local", "state": "scheduled",
             "last_answer": None,
         } for lead in self.leads}
 
+    def valid(self, lead: int) -> datetime:
+        return self.cycle + timedelta(minutes=int(lead) * self.lead_minutes)
+
     def name(self, lead: int) -> str:
-        return self.name_template.format(
-            valid=self.cycle + timedelta(hours=int(lead)), lead=int(lead))
+        return self.name_template.format(valid=self.valid(lead), lead=int(lead))
 
     def relpath(self, lead: int) -> str:
         return f"{FRAMES_DIRNAME}/{self.names[lead]}"
@@ -187,6 +199,7 @@ class LocalPosting:
             "leads": [self.rows[lead] for lead in self.leads],
             "table_sha256": self.declaration_sha256,
             "local_posting": self.declaration,
+            **({"lead_minutes": self.lead_minutes} if self.lead_minutes != 60 else {}),
         }
 
     def write_schedule(self) -> None:
@@ -349,7 +362,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--cycle", required=True, type=parse_cycle,
                         help="the producer's start, YYYY-MM-DDTHH (lead 0)")
     parser.add_argument("--leads", required=True, type=_leads,
-                        help="lead hours, e.g. 0-12 or 0,3,6")
+                        help="leads, in --lead-minutes (default hours), e.g. 0-12 or 0,3,6")
+    parser.add_argument("--lead-minutes", type=int, default=60,
+                        help="one lead's span in minutes (default 60); a hex parent "
+                             "writing every 15 min is posted with --lead-minutes 15")
     parser.add_argument("--out", required=True, type=Path,
                         help="the fetch folder (posting/, frames/, fetch-manifest.json)")
     found = parser.add_mutually_exclusive_group(required=True)
@@ -382,7 +398,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         ready_list=args.ready_list, watch=args.watch,
         producer_pid=args.producer_pid, quiet_minutes=args.quiet_minutes,
         poll_seconds=args.poll_seconds,
-        progress=lambda line: print(line, flush=True))
+        progress=lambda line: print(line, flush=True),
+        lead_minutes=args.lead_minutes)
     if args.print_prep_arguments:
         print(" ".join(posting.prep_arguments()))
         return 0

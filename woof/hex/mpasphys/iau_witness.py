@@ -65,6 +65,30 @@ class IauWitness:
             self.expected[key] += expected[key]*dt
         self.calls += 1
 
+    def before_extra(self, sources, state, increments, zz, index, names, extra_amb, solve, weight):
+        """IAU-ALL scalars: expected rate w (rho_zz dq + q drho/zz) per extra slot, like the moist group."""
+        cp = self.cp
+        nc, _ne = solve
+        cell = lambda a: a[..., :nc].astype(cp.float64)
+        slots = [int(i) for i in index.get()]
+        old = {f'scalar:{n}': cell(sources.scalars[s]) for n, s in zip(names, slots)}
+        rho, dr = cell(state.rho), cell(increments['rho']) / cell(zz)
+        w = float(weight)
+        expected = {f'scalar:{n}': w*(cell(extra_amb[j])*rho + cell(state.scalars[s])*dr)
+                    for j, (n, s) in enumerate(zip(names, slots))}
+        for k, v in old.items():
+            if k not in self.actual:
+                self.actual[k] = cp.zeros_like(v)
+                self.expected[k] = cp.zeros_like(v)
+        return old, expected, slots, names, nc
+
+    def after_extra(self, token, sources, dt):
+        old, expected, slots, names, nc = token
+        for n, s in zip(names, slots):
+            k = f'scalar:{n}'
+            self.actual[k] += (sources.scalars[s][..., :nc].astype(self.cp.float64)-old[k])*dt
+            self.expected[k] += expected[k]*dt
+
     def receipt(self):
         cp = self.cp
         fields = {}

@@ -78,7 +78,7 @@ with the SM count.
 
 ### Which build these numbers belong to
 
-The MPAS port does not carry its own physics: it runs WOOF's, from a
+The MPAS port does not carry its own physics: it runs WOOF-ArWen's, from a
 checkout it is PINNED to. Every frame, store and residue above was
 measured against `e594dc5c5`, and that is **not** the tree this document
 ships in. Commit `35d83fc8c` has since moved `gf`'s column arrays out of
@@ -86,7 +86,7 @@ the per-thread frame into a global workspace, taking it from 22,416 B to
 88 B (NVRTC 13.0.48) and 72 B (13.3.33) -- both under the 1,024 B default
 stack, so the store it prices falls to zero. 29,264 B is that same
 pre-cut source compiled at the `nVertLevels = 55` the port uses;
-22,416 B is the same source at the `nVertLevels = 40` the WOOF frame
+22,416 B is the same source at the `nVertLevels = 40` the WOOF-ArWen frame
 recordings use. Neither is a correction of the other.
 
 The frame and the residues are ONE measurement set, because each residue
@@ -109,7 +109,7 @@ refuses a pin that has reached the cut, and refuses a card whose residue
 names a different checkout from the frame. Re-measuring means taking the
 frame and every residue in one session on one build. On a post-cut build
 the widest LAUNCHED frame is whatever is widest once `gf` is out of the
-way -- on the WOOF side that was `ysu_column` at 9,232 B until its own
+way -- on the WOOF-ArWen side that was `ysu_column` at 9,232 B until its own
 cut landed, then `kf_column` at 9,216 B. Read it; do not assume it.
 
 Both parts measured, float32, nVertLevels = 55, full physics:

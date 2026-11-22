@@ -124,7 +124,7 @@ def test_strict_aerosol_numbers_keep_wrfs_interior_residual(monkeypatch,
                                                             name, strict):
     """The two-domain strict nested-domain mp=28 case (2026-10-28): stock WRF 4.6.1
     writes QNIFA -3.70e-6 at an interior top-layer point at +1 h, and strict
-    WOOF stopped at nifa(43, 94, 47) = -7.236842e-6, edge distance 5,
+    WOOF-ArWen stopped at nifa(43, 94, 47) = -7.236842e-6, edge distance 5,
     under the rim-only floor.  Strict mode admits that word; the default
     route keeps its floor, and both keep finiteness and the ceiling."""
     monkeypatch.setattr(health, "WRF_EXACT", strict)

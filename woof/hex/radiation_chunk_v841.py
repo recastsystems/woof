@@ -28,6 +28,7 @@ ways at 30 km on 2 cards).
 from __future__ import annotations
 
 import os
+from woof.hex import card_queue
 from typing import Any
 
 #: Fraction of the card's total memory the radiation transient may use.
@@ -63,9 +64,9 @@ def chunk_capacity(total_bytes: int) -> int:
     card can exceed that reservation even on a small regional mesh.
     Exclusive execution and execution without a pool use the card capacity.
     """
-    if os.environ.get("GPU_MUTEX_MODE") != "pool":
+    if card_queue.get(card_queue.MODE) != "pool":
         return total_bytes
-    budget = int(os.environ.get("GPU_MUTEX_VRAM_MIB") or 0) * 2**20
+    budget = int(card_queue.get(card_queue.VRAM_MIB) or 0) * 2**20
     return min(total_bytes, budget) if budget > 0 else total_bytes
 
 

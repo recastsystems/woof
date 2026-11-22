@@ -99,7 +99,8 @@ def mm5(driver, atmosphere, cfg):
             atmosphere['p_interface'][0],tsk,f['pblh'],mavail,xland,
             f['lakemask'],result,option=int(cfg.sf_sfclay_physics),dx=cfg.dx,
             dx_field=f.get('dx2d') if int(cfg.sf_sfclay_physics)==1 else None,
-            isfflx=bool(cfg.isfflx),isftcflx=cfg.isftcflx,iz0tlnd=cfg.iz0tlnd)
+            isfflx=bool(cfg.isfflx),isftcflx=cfg.isftcflx,iz0tlnd=cfg.iz0tlnd,
+            **driver._sfclay_form_drag(cfg))
     call(local,f['xland'],f['mavail'],driver.sfclay_result)
     # WRF restores ZNT_HOLD after assigning its temporary 0.0001 value.
     result=SFClayResult(*(f[n+'_sea'] for n in SFCLAY_OUTPUTS))

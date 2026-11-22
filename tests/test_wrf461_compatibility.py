@@ -81,7 +81,10 @@ def _run_config(cell) -> RunConfig:
         "sf_surface_physics": cell.sf_surface_physics,
         "num_soil_layers": (
             9 if cell.sf_surface_physics == 3 else
-            5 if cell.sf_surface_physics == 1 else 3 if cell.sf_surface_physics == 8 else 4),
+            5 if cell.sf_surface_physics == 1 else 3 if cell.sf_surface_physics == 8 else
+            # Pleim-Xiu land defines two soil layers and the run door
+            # refuses any other count before it reaches the pairing laws.
+            2 if cell.sf_surface_physics == 7 else 4),
         "cu_physics": cell.cu_physics,
         # KF keeps its 5-minute template cadence; GF pins cudt to 0 (it
         # runs on the model step) and cumulus-off carries no cadence.
@@ -122,7 +125,10 @@ def test_matrix_has_every_cell_every_citation_and_pinned_counts():
     # Integrated axes: 806,400 cells. Counts were measured in
     # logs/batch008-matrix-counts.json and checked by the full admission walk.
     cells = tuple(iter_compatibility_matrix())
-    assert len(cells) == MATRIX_CELL_COUNT == 806400
+    # MAD-WRF (mp 96) joined the mp axis in 3.0.3 on its Registry line:
+    # 806,400 -> 831,600 and every verdict below scaled by exactly 33/32,
+    # read off the enlarged matrix.
+    assert len(cells) == MATRIX_CELL_COUNT == 831600
     assert len({
         (
             cell.mp_physics,
@@ -173,17 +179,17 @@ def test_matrix_has_every_cell_every_citation_and_pinned_counts():
     # cu_physics=10 adds its independent Registry axis. Counts below were
     # read from the enlarged matrix: 38080 -> 43520, a factor of 8/7.
     assert Counter(cell.verdict for cell in cells) == {
-        WRFVerdict.LEGAL_RECONFIGURED: 49920,
-        WRFVerdict.NOT_EXPRESSIBLE: 74880,
-        WRFVerdict.LEGAL: 252480,
-        WRFVerdict.FATAL: 429120,
+        WRFVerdict.LEGAL_RECONFIGURED: 51480,
+        WRFVerdict.NOT_EXPRESSIBLE: 77220,
+        WRFVerdict.LEGAL: 260370,
+        WRFVerdict.FATAL: 442530,
     }
     # Every represented cumulus value carries its own Registry citation,
     # on the same terms the mp assertion below states.
     assert {cell.cu_physics for cell in cells} == {0, 1, 2, 3, 96, 5, 6, 99, 10, 11, 14, 16, 93, 94, 95}
     # Every represented mp value carries its own Registry citation, so the
     # matrix cannot grow an axis value that is admitted without one.
-    assert {cell.mp_physics for cell in cells} == {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 97, 106}
+    assert {cell.mp_physics for cell in cells} == {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106}
     assert WRF_COMMIT == "d66e442fccc04111067e29274c9f9eaccc3cef28"
 
 
@@ -191,17 +197,21 @@ def test_pbl_surface_layer_authority_covers_every_represented_pair():
     # Twelve cells until Shin-Hong (bl_pbl_physics=11) was admitted; its
     # four cells follow the SHINHONGSCHEME case, which is YSU's isfc=1 law
     # through WRF's own arm (phys/module_physics_init.F:3702-3704).
-    assert len(PBL_SURFACE_LAYER_AUTHORITY) == 48
+    # Plus (0, 89): the ideal SCM surface layer is off the surface-layer
+    # axis (WRF assigns it no isfc, AXIS_EXCLUSIONS), and PBL off is the
+    # one pairing WRF defines for it and the registry admits.
+    assert len(PBL_SURFACE_LAYER_AUTHORITY) == 49
     from itertools import product
     from woof.wrf461_compatibility import PBL_OPTIONS, SURFACE_LAYER_OPTIONS
-    assert set(PBL_SURFACE_LAYER_AUTHORITY) == set(product(PBL_OPTIONS, SURFACE_LAYER_OPTIONS))
+    assert set(PBL_SURFACE_LAYER_AUTHORITY) == (
+        set(product(PBL_OPTIONS, SURFACE_LAYER_OPTIONS)) | {(0, 89)})
     legal = {
         pair for pair, (verdict, _citation)
         in PBL_SURFACE_LAYER_AUTHORITY.items()
         if verdict is WRFVerdict.LEGAL
     }
     assert legal == {
-        (0, 0), (0, 1), (0, 3), (0, 5), (0, 7), (0, 91),
+        (0, 0), (0, 1), (0, 3), (0, 5), (0, 7), (0, 89), (0, 91),
         (1, 1), (1, 91),
         (5, 1), (5, 3), (5, 5), (5, 91),
         (8, 1), (8, 3), (8, 91),
@@ -212,13 +222,30 @@ def test_pbl_surface_layer_authority_covers_every_represented_pair():
     }
 
 
+def _judged_cloud_optics() -> frozenset[int]:
+    """The schemes whose registry row publishes no RTE+RRTMGP coupling.
+
+    Read from the registry rather than typed here: the list grew from
+    FAST_SBM alone to Lin, SBU-YLin, NTU, Eta Ferrier and MAD-WRF, and a
+    hand-kept copy fell behind each time.
+    """
+    from woof.physics_registry import consumer_rows_by_selector
+    return frozenset(
+        mp for mp, row in consumer_rows_by_selector(
+            "microphysics", "cloud_optics").items()
+        if row["rte_rrtmgp_coupling"] is None)
+
+
+_JUDGED_CLOUD_OPTICS = _judged_cloud_optics()
+
+
 def test_every_front_door_tuple_agrees_with_the_wrf_matrix():
     """Sweep the full represented product through RunConfig admission.
 
     The only local refusal of a WRF-legal cell is the separately named
-    WOOF structural seam: an active LSM has no exchange-field writer when
+    WOOF-ArWen structural seam: an active LSM has no exchange-field writer when
     the surface layer is off.  WRF's analytic disposition is "not
-    expressible", not "fatal"; WOOF executes it and governance separately
+    expressible", not "fatal"; WOOF-ArWen executes it and governance separately
     requires the expert acknowledgement.
     """
 
@@ -273,7 +300,7 @@ def test_every_front_door_tuple_agrees_with_the_wrf_matrix():
                     "cu_physics=3 .* requires a PBL scheme")):
                 validate_run_config(cfg)
             observed["arwen-structural-gf-pbl"] += 1
-        elif cell.mp_physics in (2, 13, 30) and cell.radiation == "rrtmg-rte-rrtmgp":
+        elif cell.mp_physics in _JUDGED_CLOUD_OPTICS and cell.radiation == "rrtmg-rte-rrtmgp":
             # A JUDGED cloud-optics exclusion, not a WRF rule (Lin, mp=2, has no
             # effective-radius producer at all): WRF pairs
             # FAST_SBM with RRTMG, but its bin effective-radius integrals
@@ -282,7 +309,7 @@ def test_every_front_door_tuple_agrees_with_the_wrf_matrix():
             # refuses before step 0 and names the legacy-RRTMG remedy; the
             # rrtmg-legacy cells of the same tuples are admitted.
             with pytest.raises((NotImplementedError, ValueError), match=(
-                    "(?:cloud-optics coupling|effective radii).*rrtmg_legacy")):
+                    "rrtmg_legacy")):
                 validate_run_config(cfg)
             observed["arwen-judged-cloud-optics"] += 1
         else:
@@ -358,12 +385,18 @@ def test_every_front_door_tuple_agrees_with_the_wrf_matrix():
     # no LSM or GF-without-PBL structural refusal.
     # Combined axes measured by the full walk in batch003-unit-broad-first.xml.
     # The old pins represented only part of the independently merged axes.
+    # Re-measured in 3.0.3 (831,600 cells) when MAD-WRF joined the mp axis
+    # and the judged cloud-optics set came from the registry: every seam
+    # scales by exactly 33/32, and the judged refusal is 2,054 cells for each
+    # of its six schemes on the axis (Lin, SBU-YLin, FAST_SBM, NTU, Eta
+    # Ferrier, MAD-WRF), where the hand-kept set named three.  Read off the
+    # test-host sweep of 2026-11-13.
     assert observed == {
-        "admitted": 322958,
-        "arwen-judged-cloud-optics": 6162,
-        "arwen-structural": 12000,
-        "arwen-structural-gf-pbl": 4960,
-        "arwen-structural-gfs-rmol": 28800,
-        "ssib-named-constraint": 114720,
-        "wrf-fatal": 316800
+        "admitted": 327081,
+        "arwen-judged-cloud-optics": 12324,
+        "arwen-structural": 12375,
+        "arwen-structural-gf-pbl": 5115,
+        "arwen-structural-gfs-rmol": 29700,
+        "ssib-named-constraint": 118305,
+        "wrf-fatal": 326700
     }

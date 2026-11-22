@@ -14,12 +14,14 @@ import sys
 
 import pytest
 
+import site_support
+
 SETUP = Path(__file__).resolve().parents[1] / "setup.py"
 
 
 @pytest.fixture(scope="module")
 def hexsetup():
-    import setuptools
+    setuptools = site_support.setuptools_or_skip("loading setup.py's wheel tag")
 
     original = setuptools.setup
     setuptools.setup = lambda *args, **kwargs: None

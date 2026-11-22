@@ -35,6 +35,7 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 import os
+from woof.hex import card_queue
 import socket
 from datetime import datetime, timezone
 import hashlib
@@ -1447,7 +1448,7 @@ def _emit(stage, phase, attrs):
     if not path:
         return
     try:
-        visible = (os.environ.get("WOOF_CARD") or os.environ.get("GPU_MUTEX_CARDS", "").split(",")[0]
+        visible = (os.environ.get("WOOF_CARD") or card_queue.get(card_queue.CARDS).split(",")[0]
                    or os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")[0])
         card = int(visible) if visible.isdecimal() else None
         record = {"v": 1, "t_utc": datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"),

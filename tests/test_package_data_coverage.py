@@ -550,9 +550,12 @@ def test_externalized_assets_match_the_fetch_contract() -> None:
     # harness (tools/bench/**, RELEASE-EXCLUDE'd with them; without the
     # MANIFEST.in rows the sdist shipped them without the harness they
     # import).
-    # The private config receipts are also snapshot exclusions. A direct
-    # worktree build inherits them from configs' package-data unless the
-    # sdist explicitly excludes them too.
+    # Private files are not named here: this file and MANIFEST.in are public,
+    # and setup.py drops every RELEASE-EXCLUDE'd file from any sdist or wheel
+    # (tests/test_build_drops_release_excluded.py measures it).
+    assert not [rule for rule in rules if "configs/" in rule], (
+        "MANIFEST.in is a public file and names a configs/ path; a private "
+        "file belongs only in RELEASE-EXCLUDE.txt, which setup.py applies")
     # tests/test_operational_package_excludes_probes.py measures that the
     # sdist really lacks the development probes.
     if (REPO_ROOT / "RELEASE-EXCLUDE.txt").is_file():
@@ -562,14 +565,6 @@ def test_externalized_assets_match_the_fetch_contract() -> None:
             "exclude tests/test_branch_dispositions.py",
             "exclude tests/test_regional_packing_bench.py",
             "exclude tests/test_timeline_qualification.py",
-            "exclude configs/da_rerun_286/recent/active-241/case-plan.json",
-            "exclude configs/da_rerun_286/recent/active-241/authority/authority-receipt.json",
-            "exclude configs/da_rerun_286/recent/large-601-center32p2/case-plan.json",
-            "exclude configs/da_rerun_286/recent/large-601-center32p2/authority/authority-receipt.json",
-            "exclude configs/da_rerun_286/recent/requested-601-center31/case-plan.json",
-            "exclude configs/da_rerun_286/recent/requested-601-center31/authority/authority-receipt.json",
-            "exclude configs/da_rerun_286/recent/native-linux-pricing.json",
-            "exclude configs/da_rerun_286/recent/native-linux-pricing-241.json",
             # The announcement draft: swept in by `recursive-include docs/public
             # *.md`, and it carries the project's own attribution text, which the
             # packet's attribution gate refuses in a public asset (2.9.2 cut).
@@ -616,7 +611,7 @@ def test_externalized_assets_match_the_fetch_contract() -> None:
     # Pin the complete set so exclusions cannot drift silently.
     assert {rule for rule in rules if rule.startswith("prune ")} == {
         "prune recast-woof-data", "prune gpuwm-kernels", "prune gpuwm-kernels-startup",
-        "prune woof/libexec/bridges", "prune tilestream/skeptic", "prune configs/da_rerun_286",
+        "prune woof/libexec/bridges", "prune tilestream/skeptic",
         # 3.0.0 SIZE-01: the native oracle fixtures stay in the repository.
         "prune tests/data/oracles"}, (
         "the root MANIFEST.in's prunes drifted: keep the companion source, "
@@ -640,7 +635,10 @@ def test_the_sdist_ships_the_advertised_installers_and_public_pages(
     expected.update(p for p in docs if p.startswith("docs/public/")
                     and p.endswith(".md") and not p.endswith("-DRAFT.md"))
     for source in ("README.md",):
-        for ref in re.findall(r"docs/[A-Za-z0-9_./-]+",
+        # (WOOF 1.1.7) a top-level docs/ path only: the README also names
+        # components/hex/docs/differentiable/, the hex model's pages in the
+        # repository tree, which is not this root's docs/ folder
+        for ref in re.findall(r"(?<![\w./-])docs/[A-Za-z0-9_./-]+",
                               Path(source).read_text(encoding="utf-8")):
             ref = ref.rstrip(".")
             path = Path(ref)

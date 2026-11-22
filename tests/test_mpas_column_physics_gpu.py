@@ -201,12 +201,47 @@ NOT_YET = {
     # option cannot run on the MPAS column state yet.  Owner: the satmedmf
     # port (serialize the held TKE tendency, then remove this row).
     "pbl.ccpp-tke-edmf": "CCPP TKE-EDMF requires bldt=0",
-    # NAMED GAP RCON-SPEED-01 (3.0.0): woof.config refuses mp_physics=29
-    # for every forecast, not only this seam, until a qualified speed
-    # handoff clears the measured 1.885x-MP28 microphysics stage.  Owner:
-    # the RCON speed lane; this row leaves with that guard.
-    "microphysics.rcon-mp29": "RCON-SPEED-01 speed refusal",
 }
+
+
+def _absent_operator_tables(name) -> list:
+    """Files of a table set woof neither ships nor builds, absent here.
+
+    Read off the option's own registry row (``redistributed_by_gpuwm`` and
+    ``regenerable`` both false) and resolved by plan review's own resolver,
+    so the answer is the one a user's plan gets.  RCON's initialized table
+    stream is the one such set.
+    """
+    from woof.physics_registry import (
+        physics_registry, resolve_asset_requirement)
+    component, _, option_id = name.partition(".")
+    option = physics_registry()["components"].get(component, {}).get(
+        "options", {}).get(option_id, {})
+    absent = []
+    for requirement in option.get("asset_requirements", []) or []:
+        if (requirement.get("redistributed_by_gpuwm") is False
+                and requirement.get("regenerable") is False):
+            resolution = resolve_asset_requirement(requirement)
+            if not resolution["resolved"]:
+                absent += list(resolution["missing"])
+    return absent
+
+
+def test_every_aerosol_family_member_starts_its_aerosol_at_first_contact():
+    """RCON ran the column state with a non-finite lowest-level nwfa.
+
+    Every member of the aerosol-aware Thompson family derives its surface
+    emission from the first real layer depth.  The seam builds its driver
+    on zero placeholder geometry, so that step divides by zero there and
+    must be redone at first contact; mp=29 had no row, kept the infinite
+    nwfa2d and fed it to the lowest level from step 0 (measured on the RTX
+    5090 the day RCON-SPEED-01 was retired; until then the run door
+    refused RCON before any seam was built).
+    """
+    from woof.config import THOMPSON_AEROSOL_FAMILY
+    assert set(THOMPSON_AEROSOL_FAMILY) <= set(suite._FIRST_CONTACT)
+    assert {suite._FIRST_CONTACT[mp] for mp in THOMPSON_AEROSOL_FAMILY} == {
+        "_thompson_first_contact"}
 
 
 @pytest.mark.parametrize("name", sorted(
@@ -216,6 +251,15 @@ def test_every_registry_option_runs_on_the_column_state(name):
     if name in NOT_YET:
         with pytest.raises(Exception):  # noqa: B017 -- recorded breakage
             cases.run(cp, cases.build_named(name), 3)
+        return
+    absent = _absent_operator_tables(name)
+    if absent:
+        # Not installed on this machine, and nothing woof ships can make
+        # it: the option must refuse by name before any step, which is
+        # what a user without the stream meets.
+        from woof.table_assets import MissingTableAssets
+        with pytest.raises(MissingTableAssets, match=absent[0]):
+            cases.build_named(name)
         return
     seam = cases.build_named(name)
     frames = cases.run(cp, seam, 3)

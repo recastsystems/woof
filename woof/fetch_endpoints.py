@@ -406,6 +406,59 @@ def serving_ladder(source_id: str, *, cycle: datetime,
     return covering or dated
 
 
+def layout_refusal(source_id: str, cycle: datetime, *,
+                   now: datetime | None = None,
+                   pinned: str | None = None) -> str | None:
+    """Why no declared object layout serves ``cycle``, or None.
+
+    Among the hosts that keep a cycle this old (the pinned one alone),
+    a host with dated rows in ``rw-wps-archive-layouts.v1.json`` serves
+    only the cycles a row declares.  When none of them declares this
+    cycle, no request for it can succeed and none will by waiting; the
+    answer names each host's declared span and the row that explains
+    the boundary.  None when any keeping host declares the cycle, or has
+    no dated rows (it serves every date it keeps), or when no host keeps
+    the cycle at all (that is the retention refusal's to say).
+
+    THE BREAKAGE THIS PREVENTS (an outside runner on gpuwm 2.9.13,
+    2026-11-11; door item 11): ``woof fetch --source gdas --cycle
+    2021-01-15T00 --readiness`` answered "readiness waiting; expected
+    ready at 2021-01-15T06:48:00Z", exit 75, and the plain fetch waited
+    out its late budget and stopped with exit 75 ("launch the same
+    command again once f000 posts"), for a cycle the archive keeps under
+    a layout the engine does not read.
+    """
+
+    pinned = policy_transport(source_id, pinned)
+    rungs = ladder(source_id)
+    if pinned is not None:
+        rungs = tuple(rung for rung in rungs if rung.name == pinned)
+    if not rungs:
+        return None
+    age = cycle_age_hours(cycle, now)
+    keeping = [rung for rung in rungs if rung.retention_hours is None
+               or age <= float(rung.retention_hours)]
+    if not keeping or any(rung.supports_cycle(cycle) for rung in keeping):
+        return None
+    stamp = cycle.strftime("%Y-%m-%dT%H")
+    spans = []
+    for rung in keeping:
+        for row in rung.layouts:
+            span = f"{rung.name} from {row['record_start']}Z"
+            if row.get("cycle_until"):
+                span += f" until {row['cycle_until']}Z"
+            spans.append(span)
+    rows = [row for rung in keeping for row in rung.layouts]
+    later = [row for row in rows if row["record_start"] > stamp]
+    nearest = (min(later, key=lambda row: row["record_start"]) if later
+               else max(rows, key=lambda row: row["record_start"]))
+    return (f"{source_id.upper()} cycle {stamp}Z is outside every object "
+            f"layout declared for the hosts that keep a cycle this old "
+            f"({'; '.join(spans)}; woof/authorities/"
+            "rw-wps-archive-layouts.v1.json), so it will not appear by "
+            f"waiting. {nearest.get('why', '')}").rstrip()
+
+
 # --------------------------------------------------------------------------
 # Which rung moves the bytes: throughput, probed per object
 # --------------------------------------------------------------------------
@@ -770,6 +823,78 @@ def throttle_policy(host: str) -> Throttle | None:
             f"{TABLE_NAME}: host_policy {host} throttle needs 0 < first_wait_s "
             "<= max_wait_s <= budget_s")
     return policy
+
+
+@dataclass(frozen=True)
+class TransferWatch:
+    """How one host's file transfers are watched and widened: a table row.
+
+    The ``transfer`` object of a ``host_policy`` row.  Two rules, both
+    about a host that is serving slowly rather than refusing:
+
+    * **A slow connection is asked again on a fresh one.**  A read that
+      waits ``idle_s`` for its next byte, or a connection that after
+      ``slow_after_s`` has averaged below ``slow_below_bytes_per_s`` (and
+      would not finish within another ``slow_after_s`` at that rate), is
+      closed and the rest of the file is asked for by byte range on a new
+      connection, up to ``fresh_connections`` times per file.  The bytes
+      already received are kept, so the host is sent one more request and
+      no byte twice.  The last connection is only held to ``idle_s``.
+    * **More files at once only while each one is slow.**  Once ``sample``
+      files of at least ``sample_min_bytes`` from the host have landed, if
+      those last ``sample`` files averaged below ``wide_below_bytes_per_s``
+      (bytes over seconds, summed), up to ``wide_files_in_flight`` files of
+      this host move at
+      once for the rest of the request, never more than this process's
+      share of the box's connection slots.  A fast night keeps the
+      pool's own width.  Smaller files are left out of the sample: their
+      seconds are mostly the connection's set-up, not the host's pace
+      (a normal-night ICON start widened on its first ten files, which
+      include 0.2-0.4 MB invariants, at 1.19 MB/s).
+    """
+
+    host: str
+    idle_s: float
+    slow_after_s: float
+    slow_below_bytes_per_s: float
+    fresh_connections: int
+    wide_files_in_flight: int
+    wide_below_bytes_per_s: float
+    sample: int
+    sample_min_bytes: int
+    why: str
+
+
+@functools.lru_cache(maxsize=None)
+def transfer_watch(host: str | None) -> TransferWatch | None:
+    """The ``transfer`` row ``host`` declares in ``host_policy``, or None."""
+
+    if not host:
+        return None
+    raw = _policy().get(str(host).lower(), {}).get("transfer")
+    if not raw:
+        return None
+    watch = TransferWatch(
+        host=str(host).lower(),
+        idle_s=float(raw["idle_s"]),
+        slow_after_s=float(raw["slow_after_s"]),
+        slow_below_bytes_per_s=float(raw["slow_below_bytes_per_s"]),
+        fresh_connections=int(raw["fresh_connections"]),
+        wide_files_in_flight=int(raw["wide_files_in_flight"]),
+        wide_below_bytes_per_s=float(raw["wide_below_bytes_per_s"]),
+        sample=int(raw["sample"]),
+        sample_min_bytes=int(raw.get("sample_min_bytes", 0)),
+        why=str(_policy().get(str(host).lower(), {}).get("why", "")))
+    # Named breakage: a zero idle wait closes every connection before its
+    # first byte, and a zero sample widens on no evidence at all.
+    if not (watch.idle_s > 0 and watch.slow_after_s > 0 and watch.sample >= 1
+            and watch.fresh_connections >= 0 and watch.wide_files_in_flight >= 1
+            and watch.slow_below_bytes_per_s >= 0 and watch.wide_below_bytes_per_s >= 0):
+        raise ValueError(
+            f"{TABLE_NAME}: host_policy {host} transfer needs idle_s > 0, "
+            "slow_after_s > 0, sample >= 1, fresh_connections >= 0 and "
+            "wide_files_in_flight >= 1")
+    return watch
 
 
 _ERROR_CODE = re.compile(rb"<Code>\s*([A-Za-z0-9_.-]+)\s*</Code>")
@@ -1188,6 +1313,7 @@ __all__ = [
     "SETTLE_BACKOFF_S", "SETTLE_PACE_BUDGET_S", "settled_object_answer",
     "TRANSIENT_ATTEMPTS", "TRANSIENT_WAIT_LIMIT_S", "Throttle", "TransferRefusal",
     "answer_code", "answer_status", "throttle_policy", "throttled",
+    "TransferWatch", "transfer_watch",
     "ask_along_ladder", "transfer_ladder", "transfer_order",
     "transfer_probes", "transfer_reason",
 ]

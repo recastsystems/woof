@@ -11,10 +11,19 @@ def configuration():
                      ra_rrtmg_variant="rrtmg_legacy", wdm6_ccn_conc=5e8)
 
 
-def test_rcon_waits_for_the_measured_speed_gap_to_be_fixed():
-    from woof.config import ConfigurationRefused
-    with pytest.raises(ConfigurationRefused, match="1.885431x MP28"):
-        validate_run_config(replace(configuration(), mp_physics=29))
+def test_rcon_is_admitted_with_its_speed_gap_stated_not_refused():
+    # RCON-SPEED-01 refused mp_physics=29 at this door in 3.0.0 and 3.0.1
+    # for a 1.885431x MP28 stage cost; plan review never carried it, so
+    # every RCON plan was launchable and then refused.  A speed gap is a
+    # defect, not a breakage: the door admits it (3.0.2) and the registry
+    # row still states the measured cost.
+    from woof.physics_registry import physics_registry
+    cfg = validate_run_config(replace(
+        configuration(), mp_physics=29,
+        wdm6_ccn_conc=RunConfig.__dataclass_fields__["wdm6_ccn_conc"].default))
+    assert cfg.mp_physics == 29
+    row = physics_registry()["components"]["microphysics"]["options"]["rcon-mp29"]
+    assert any("1.885431x MP28" in warning for warning in row["warnings"])
 
 
 def test_udm_prognostics_cross_ingest_transport_and_restart_doors():

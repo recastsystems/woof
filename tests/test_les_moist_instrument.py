@@ -1,7 +1,7 @@
-"""The WOOF moist LES case, validated against the banked WRF oracle.
+"""The WOOF-ArWen moist LES case, validated against the banked WRF oracle.
 
 CPU-only, and deliberately so: every claim here is checkable before any
-WOOF moist run exists, which is the order the P1 instrument-accuracy rule
+WOOF-ArWen moist run exists, which is the order the P1 instrument-accuracy rule
 requires (``tools/wrf_em_les_oracle/INSTRUMENT-HISTORY.md``).
 
 Three things are pinned.
@@ -42,7 +42,7 @@ from woof.verify.cases import cloud_topped_boundary_layer as ctbl
 
 _ROOT = Path(__file__).resolve().parents[1]
 _ORACLE = _ROOT / "tools" / "wrf_em_les_oracle"
-_FIXTURES = (_ROOT / "docs" / "superpowers" / "receipts" / "les"
+_FIXTURES = (_ROOT / "docs" / "internal" / "receipts" / "les"
              / "moist-2026-08-04")
 
 #: The banked capped-family draws: the three capped-moist draws of the
@@ -122,7 +122,7 @@ def test_capped_dry_anchor_and_base_asset_reproduce():
     The capped-dry anchor is the control the oracle ran to separate the
     vapour column from everything else; the base asset is the dry matched
     family's own sounding, which is also the file form of the dry case's
-    ``_theta_profile``.  All three from one code path means the WOOF case
+    ``_theta_profile``.  All three from one code path means the WOOF-ArWen case
     cannot be running a different theta profile from the anchor it will be
     compared against.
     """
@@ -217,7 +217,7 @@ def test_reduction_reproduces_the_published_oracle_numbers(name):
     """The transcription, run on the oracle's own arrays, must reproduce
     the numbers the oracle published in its own receipt -- exactly.
 
-    This is the validation that has to pass *before* a WOOF run exists:
+    This is the validation that has to pass *before* a WOOF-ArWen run exists:
     it separates "the two engines disagree" from "the two reductions
     disagree", and it can only be done while one side's arrays are the
     only arrays there are.
@@ -406,7 +406,7 @@ def test_sgs_flux_is_zero_without_a_live_k_field():
 
 def test_sgs_flux_geometry_identity_with_the_oracle_spelling():
     """``2*G/(phi[k+1]-phi[k-1])`` and ``1/(z_mass[k]-z_mass[k-1])`` are one
-    geometry in two spellings -- the WOOF construction and the oracle's.
+    geometry in two spellings -- the WOOF-ArWen construction and the oracle's.
     Stated in the docstring; measured here, because "obviously the same" is
     how unstagger conventions get mixed."""
     rng = np.random.default_rng(3)
@@ -427,7 +427,7 @@ def test_config_matches_the_oracle_matched_moist_namelist():
 
     ``namelist.moist_match_km3_100m`` (sha256 ``55c21819...``) differs from
     the certified dry ``namelist.match_km3_100m`` by exactly two lines,
-    ``mp_physics`` and the iofields filename.  The WOOF config must carry
+    ``mp_physics`` and the iofields filename.  The WOOF-ArWen config must carry
     the same delta over the same dry base.
     """
     cfg = ctbl.make_config()

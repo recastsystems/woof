@@ -35,7 +35,7 @@ The historical component oracles and matched run use WRF v4.6.1
 (commit `d66e442f`); newer ports identify WRF v4.7.1 in their rows.
 The v4.7.1 ensemble comparisons are separate evidence, described in
 [VERIFICATION.md](VERIFICATION.md#verification-and-validation).
-WOOF also has original schemes and couplings
+WOOF-ArWen also has original schemes and couplings
 without a WRF counterpart, including SASE and the RTE+RRTMGP coupling.
 Every option carries a machine-readable maturity label in the physics
 registry (`woof/physics_registry_v2.json`). The registry is the authority
@@ -162,7 +162,7 @@ The same table can live in a TOML file named by `WOOF_PHYSICS_PARAMS` for
 parameter files so fresh workers reconstruct the same resolved values.
 Parameter identity uses existing history attributes, native-restart sidecars,
 checkpoint metadata and preparation-sharing rules. A process uses one set
-across all domains running the selected scheme. These are WOOF experiment
+across all domains running the selected scheme. These are WOOF-ArWen experiment
 controls, not additional WRF namelist keys. Stock WRF scheme selectors enter
 through the namelist importer. Per-cell regions, independent per-domain sets
 and changes during integration are outside this interface.
@@ -298,7 +298,7 @@ evidence remain separate.
 ## Can you compose your own suite? Yes, and it is measured
 
 **The tables on this page are a CATALOGUE, not a gate.** They list the
-suites WOOF ships under a name; they do not list the suites a config
+suites WOOF-ArWen ships under a name; they do not list the suites a config
 may ask for, and they never have. Reading them as a gate has misled
 readers twice -- one outside collaborator and one of this project's own
 agents, who both concluded from a table cell that MYNN could not be run
@@ -323,7 +323,7 @@ So, plainly, and in the order the two routes actually work:
   and the composition they name was reachable before they were added.
 
 The composition space is measured rather than argued.
-`tools/report_physics_composition_walk.py` makes 524371 physics admission
+`tools/report_physics_composition_walk.py` makes 582653 physics admission
 attempts with real experiment TOMLs, pushes every one through
 `woof.experiment.build_experiment` -- the single front door every
 runner reaches a per-domain `RunConfig` through -- and records the
@@ -331,20 +331,24 @@ verdict. `docs/public/receipts/physics-composition-walk.json` is that
 record, and `tests/test_physics_composition_walk.py` regenerates it on
 every release cut and compares it byte for byte. As measured:
 
-- **71078 of 582653 admission attempts are accepted**, covering **71068 distinct
+- **71183 of 582653 admission attempts are accepted**, covering **71173 distinct
   accepted suites**, against 49 registered templates. The presets are a
   corner of the space, not the space.
 - **Every accepted run keeps every switch the file set**, checked
   against the resolved per-domain `RunConfig`. Zero rewrites. An
   admission is never a silent substitution.
 - **Every admitted value of every axis reaches an accepted run**, with
-  one named hold: `mp_physics = 29` (RCON) is ported and admitted by the
-  schema but refused at the forecast door until its speed proof clears
-  (its whole-forecast microphysics stage measures 1.885x MP28).
+  no hold. `mp_physics = 29` (RCON) was held at the run door for its
+  speed in 3.0.0 and 3.0.1; from 3.0.2 it runs as an explicit option.
+  Its whole-forecast microphysics stage still measures 1.885x MP28,
+  which is an open speed defect and the reason it is never a default.
+  It runs only where its initialized table stream is installed, a
+  file woof neither ships nor builds: without it the run refuses by
+  name before any step, and plan review names the same file.
   `ra_lw_physics = 1` (WRF RRTM longwave) was the last unported one;
   1.9 ports it, and it now reaches 7719 distinct accepted suites,
   including 860 paired with Dudhia shortwave.
-- **511575 refusals fall into 48 distinct rules**, every one of which
+- **511470 refusals fall into 47 distinct rules**, every one of which
   names the selector to change, and each of which has a
   demonstrated remedy -- the receipt carries a before/after pair per
   rule showing that doing what the message says reaches an accepted
@@ -460,14 +464,10 @@ missing -- and `validate_physics_plan` mirrors it as
 `consumer-row-missing`.  After the registry carries every row this gate is
 silent; it exists so the next missing row costs a launch, never a run.
 
-One row is outside a `RunConfig`'s field of view: a run configuration
-carries no data-assimilation settings, so `validate_run_config` cannot
-ask whether the active scheme has a radar H(x).  The DA door asks it
-itself, at its own plan review: `RadarAssimilationConfig` reads the
-`radar_da` row when a cycle is configured and refuses, before the first
-analysis, a scheme whose clear-air floor is unread or whose reflectivity
-has no H(x) route, naming the scheme, the reason and the way out
-(velocity-only assimilation, or a scheme with a routed operator).
+One row is outside a `RunConfig`'s field of view: the `radar_da` row
+(each scheme's clear-air floor and reflectivity H(x) route) was read by the
+local data assimilation, which gpuwm 3.0.3 removed. The row is still
+published.
 
 One row publishes a decision rather than a capability, and the receipts
 say so: a scheme whose clear-air floor nobody has read yet
@@ -476,7 +476,7 @@ a scheme whose mixed nest edges have no ported closure
 (`nest_transition.mixed_edge_ported = false`) -- includes MP7's named
 unvalidated hail-water folding edge. Same-scheme MP7 nests run in both
 feedback modes. Native WRF itself sets all microphysics selectors to the
-innermost domain's value; mixed-scheme closure is a WOOF extension.
+innermost domain's value; mixed-scheme closure is a WOOF-ArWen extension.
 
 ## Microphysics (`mp_physics`)
 
@@ -739,7 +739,7 @@ Shin-Hong and Grell-Freitas before their measurements landed.
 Milbrandt-Yau switch: the driver hard-codes continental CCN, all six
 process switches on and WRF's own level ordering, and the scheme body
 hard-codes non-spherical snow and Meyers-plus-contact ice nucleation. So
-mp=9 has exactly one form in WRF v4.6.1 and WOOF ships that one;
+mp=9 has exactly one form in WRF v4.6.1 and WOOF-ArWen ships that one;
 `woof/config.py` refuses by name any request to move one of them,
 because the 154-entry constant table is derived under those settings.
 
@@ -754,7 +754,7 @@ evaluated from the transported `nc`/`ni` on every radiation call
 constants and floors), extended to snow as `1.5/lambda_s` over the
 scheme's exponential snow with the Brandes `m(D)` pair, then merged into
 RRTMGP's one ice species by number exactly as Morrison's row is. This is
-a WOOF coupling with no WRF referent (WRF has no RRTMGP); the two
+a WOOF-ArWen coupling with no WRF referent (WRF has no RRTMGP); the two
 radiation arms therefore radiate different cloud radii for mp=9 by
 design. Skill against observations is the intended referee; no
 observation comparison of the mp=9 radii is published here. A
@@ -763,22 +763,18 @@ variant; nothing has to be switched.
 
 **Reflectivity** comes from the scheme itself: WRF binds its `Zet` output
 straight to `refl_10cm`, so a history frame carries Milbrandt-Yau's own
-dBZ rather than WOOF's generic radar operator. That block updates
-nothing, so it is also available as an observation operator: radar
-assimilation simulates mp=9 reflectivity by running the scheme's own Z on
-the background, and the two are held bitwise equal by a gate. Its
-clear-air floor is **-99 dBZ**, not the -35 the WSM6/Thompson/Morrison
-family floors at, so a clear-air observation assimilated against an mp=9
-H(x) must carry the matching floor; the DA door reads it from the scheme
-and refuses a mismatch rather than manufacturing a 64 dB innovation.
+dBZ rather than WOOF-ArWen's generic radar operator. That block updates
+nothing, so it is also available as an observation operator: the
+simulated-reflectivity operator runs the scheme's own Z on a state, and the
+two are held bitwise equal by a gate. Its clear-air floor is **-99 dBZ**,
+not the -35 the WSM6/Thompson/Morrison family floors at.
 
 **What else mp=9 reaches.** A Milbrandt-Yau domain checkpoints and
 resumes; it nests under, or over, a domain running a different scheme;
 the edge diagnoses the child's twelve moments with the scheme's own
 mass-to-number consistency block, which is the same block the scheme
 would run on its first step, so nothing is invented and nothing is
-borrowed from another scheme; a LETKF analysis knows its six mass/number
-pairs; and the offline downscale lane reads a Milbrandt-Yau parent
+borrowed from another scheme; and the offline downscale lane reads a Milbrandt-Yau parent
 archive for a Milbrandt-Yau child. Changing microphysics between an
 offline parent and its child is a different question and is refused by
 name at that lane. What is still refused is the RTE+RRTMGP pairing above
@@ -791,7 +787,7 @@ is packaged, which says nothing about running the scheme here.
 WRF v4.7.1 has exactly one NSSL scheme. The `mp_physics` values 17, 19, 21
 and 22 are compatibility spellings: WRF rewrites them onto
 `mp_physics = 18` plus explicit flags before any physics runs, printing a
-deprecation caution as it goes. WOOF performs the v4.7.1 rewrite:
+deprecation caution as it goes. WOOF-ArWen performs the v4.7.1 rewrite:
 17 and 22 force predicted CCN, even when the namelist requests zero.
 Options 19 and 21 run native one-moment branches with distinct
 density, fallout, source-process and radar physics. The separate
@@ -811,7 +807,7 @@ Eight modes have a ported numerical path:
 Each one-moment mode accepts either CCN Registry flag. Native `ipconc=0`
 sets `lccn=0` regardless of that flag; an allocated `qnn` remains passive.
 Stock WRF 4.7.1 `real.exe` omits `QNCCN` for option 21. On a cold start
-WOOF initializes its passive compatibility carrier with the native
+WOOF-ArWen initializes its passive compatibility carrier with the native
 `start_em.F:1751-1775` value, `nssl_cccn / 1.221`, before saving the RK copy.
 A supplied field keeps its words; a restart still requires the evolved
 carrier. This input rule is specific to the no-hail, fixed-density,
@@ -821,7 +817,7 @@ run velocities and source processes over cells and fallout over columns,
 species and levels, without per-step host reductions or numerical transfers.
 
 A category a variant does not carry stays exactly absent. WRF gets that
-for free (its Registry never allocates the field) while WOOF allocates
+for free (its Registry never allocates the field) while WOOF-ArWen allocates
 one field set for every mode, so it enforces the absence instead: the
 fields the resolved mode excludes are pinned to zero when the domain is
 built and again on every microphysics step, ahead of the nested-domain
@@ -938,7 +934,7 @@ active, reading, and in one case writing, a field the Registry never
 allocated for the setting the user actually chose. The standing rule is to
 implement the defined behaviour
 and document the divergence rather than reproduce an undefined read, so
-WOOF refuses and says which Fortran line it is refusing.
+WOOF-ArWen refuses and says which Fortran line it is refusing.
 
 ### Thompson aerosol-aware (`mp_physics = 28`): read this before selecting it
 
@@ -1139,7 +1135,7 @@ entry cloud moved the exit `qr` by 32 to 128 ULP). Each was closed by
 applying the tendency once, as WRF does; `wp08-nusweep` now reads 6 ULP,
 inside the gate.
 
-**`wp08-freeze` left this table (2026-09-23).** Its `nr` 2.724e-06 at level 0 (34 ULP) was the rain fallout taking `L_qr` from the post-evaporation mixing ratio: at 0-based level 1 WOOF saw qr = 8.526513e-13 and inherited the level-above fall speeds, where WRF's `:3236` had taken its true branch on the post-source rain and `:3568` left `rr(k)` = 1.174815e-12 above R1, so `:3616` opened. The mp=28 rain evaporation writes a zero reference density where `:3236` failed (and a negative one where `:3568` floored the pair) and the fallout takes `L_qr` from it. Level 0 `nr` then read 4.006e-07 (5 ULP); since the 2.8.6 accumulator rework it is bit-exact. The old gate, reproduced by stripping the hand-off, still returns the published 34 ULP bit for bit (`tests/test_thompson_aerosol_adapter.py::test_the_wp08_freeze_residual_was_the_presence_gate_and_is_repaired`).
+**`wp08-freeze` left this table (2026-09-23).** Its `nr` 2.724e-06 at level 0 (34 ULP) was the rain fallout taking `L_qr` from the post-evaporation mixing ratio: at 0-based level 1 WOOF-ArWen saw qr = 8.526513e-13 and inherited the level-above fall speeds, where WRF's `:3236` had taken its true branch on the post-source rain and `:3568` left `rr(k)` = 1.174815e-12 above R1, so `:3616` opened. The mp=28 rain evaporation writes a zero reference density where `:3236` failed (and a negative one where `:3568` floored the pair) and the fallout takes `L_qr` from it. Level 0 `nr` then read 4.006e-07 (5 ULP); since the 2.8.6 accumulator rework it is bit-exact. The old gate, reproduced by stripping the hand-off, still returns the published 34 ULP bit for bit (`tests/test_thompson_aerosol_adapter.py::test_the_wp08_freeze_residual_was_the_presence_gate_and_is_repaired`).
 
 **No surface accumulation misses, on any fixture.** All seven are
 compared separately and all seven are inside the flat gate on all 22
@@ -1170,7 +1166,7 @@ forms the working rain mass and number that sedimentation consumes
 **twice**: at `module_mp_thompson.F:3237-3238` from the `:3193` τ+1
 density, for every level carrying rain, and again at `:3568`/`:3570` from
 the `:3490` post-condensation density, but only inside the `:3501-3502`
-gate. WOOF was writing the post-condensation density unconditionally, so
+gate. WOOF-ArWen was writing the post-condensation density unconditionally, so
 every level got the `:3568` answer including the levels WRF never rewrote.
 Restoring the level-wise choice closed `aero-drop-evap` (`rainnc` /
 `rainncv` 5.165e-04 → 0.000e+00, `qr` 3.533e-05 → 7.35e-08, `nr`
@@ -1194,7 +1190,7 @@ them exact, so the pin is kept: it makes the instruction sequence WRF's at
 every cell rather than at the cells that flatter the table.
 
 **What changed in the revision before that, and the biggest change was a
-correction to WOOF's own measuring stick, not to WOOF's physics.**
+correction to WOOF-ArWen's own measuring stick, not to WOOF-ArWen's physics.**
 `aero-ice-koop` was published by the registry, this
 page, `PROVENANCE.md` and the evidence document, for four waves, as *the
 largest genuine physics gap in the port*, at `qi` 1.612e-03 / `ni`
@@ -1207,7 +1203,7 @@ function with `rd_over_cp = 287.0/1004.0`, while WRF's own `rcp` is
 (`share/module_model_constants.F:19,:20,:31`), i.e. exactly `2/7`, and
 4774 float32 ULP away from what the harness used. A fixture records
 pressure and temperature; the adapter has to solve for the float32
-`theta` that reproduces that temperature bitwise under WOOF's own
+`theta` that reproduces that temperature bitwise under WOOF-ArWen's own
 `RCP`. Across two Exner constants 4774 ULP apart, that solve does not
 survive: **47 of the deck's 528 entry levels admit an exact `theta`
 under one constant and none under the other** (first published as 40,
@@ -1249,7 +1245,7 @@ is recorded here.** WRF's `real.exe` refuses `wif_input_opt = 0` for
 mp=28, but the current supported climatology route uses the (1, 1)
 WIF/aerosol-input option pair. The old refusal does not make a real-data
 comparison impossible. Such a comparison still needs matched inputs and
-a retained result; its absence limits the evidence label. WOOF does couple
+a retained result; its absence limits the evidence label. WOOF-ArWen does couple
 `nwfa`/`nifa` from the lateral boundary when its aerosol initial state came
 from WRF's monthly WIF climatology; without that dataset a domain with
 external lateral boundaries is refused at the run door, before step 0,
@@ -1288,9 +1284,9 @@ force-back, as WRF does: the same 4 hour run holds the row on its table,
 failed gate:
 [wrf-comparison/mp28-matched-trajectory.md](wrf-comparison/mp28-matched-trajectory.md).
 A doubly periodic single-domain warm-bubble forecast, 120 × 120 × 40 at
-dx = 2 km for 7200 s, with WOOF initialised *from WRF's own `wrfinput_d01`*
+dx = 2 km for 7200 s, with WOOF-ArWen initialised *from WRF's own `wrfinput_d01`*
 (t = 0 field difference exactly zero in ten fields of thirteen, and one
-float32 rounding (2.5e-09 to 2e-08) in the three WOOF derives rather than
+float32 rounding (2.5e-09 to 2e-08) in the three WOOF-ArWen derives rather than
 copies) and run against unmodified WRF v4.6.1
 built twice from identical source. Of the four conditions declared before the
 runs, three pass and **V3 fails**, but the same condition also fails when WRF
@@ -1334,11 +1330,11 @@ fixture (lowest level 250 m, 500 m layers) WRF itself fills 1.478987e+08
 at the bottom and 5.000000e+07 at the top, and 1.254902e+06 /
 5.000002e+05 for the ice nuclei.
 
-WOOF ports that fill exactly, as `woof.core.microphysics.microphysics_init`,
+WOOF-ArWen ports that fill exactly, as `woof.core.microphysics.microphysics_init`,
 gates it against WRF's own post-`thompson_init` snapshot
 (`tests/test_thompson_aerosol_state_gpu.py::test_init_profile_matches_wrf_fixture_101`),
 and **calls it**, once per domain, from
-`woof/core/physics.py::initialize_physics`: WOOF's
+`woof/core/physics.py::initialize_physics`: WOOF-ArWen's
 `module_physics_init.F`, the seam where WRF's `phy_init` calls `mp_init`
 (`:1635`) and `mp_init`'s `CASE (THOMPSONAERO)` arm calls `thompson_init`
 (`:4522-4538`). The call is presence-gated exactly as WRF's is, so a nest
@@ -1424,18 +1420,18 @@ neither is an open deviation and neither is a registry warning:
   `thompson_init` supplies the synthetic fallback described above.
   `taod5502d`/`taod5503d` are radiation-side optical depths, not outputs of
   `mp_gt_driver`.
-- **WRF's own initializer refuses the configuration WOOF runs.**
+- **WRF's own initializer refuses the configuration WOOF-ArWen runs.**
   `dyn_em/module_initialize_real.F:2734-2736` calls
   `wrf_error_fatal('wif_input_opt=0 but mp_physics=28')`, so `real.exe`
   will not build a `wrfinput` for the no-WIF case at all, not even for
   the synthetic-profile variant WRF falls back to internally. The
   *physics* is WRF's line for line; the admission decision is not. A
-  consequence worth stating plainly: a WOOF mp=28 run and a
+  consequence worth stating plainly: a WOOF-ArWen mp=28 run and a
   WIF-initialised WRF mp=28 run are **not** directly comparable, and a
   comparison between them must not be reported as one.
 - **The aerosol lateral boundary condition depends on the WIF
   climatology, and without it the deviation grows with run length.** On
-  a specified (external BC) domain WOOF couples `qv` from boundary
+  a specified (external BC) domain WOOF-ArWen couples `qv` from boundary
   snapshots always, and `nwfa`/`nifa` beside it whenever the run's
   aerosol initial state came from WRF's monthly WIF climatology, which
   is the default whenever `QNWFA_QNIFA_SIGMA_MONTHLY.dat` resolves. When it does
@@ -1473,7 +1469,7 @@ neither is an open deviation and neither is a registry warning:
   0.125) because WRF's clipped microphysics tile means the terminal
   clamp never runs there, and that is what a nest boundary or a `wrfout`
   reader sees; WRF forces `qnwfa`/`qnifa` at the boundary, so in WRF
-  this zero does not arise. This matches WOOF's existing
+  this zero does not arise. This matches WOOF-ArWen's existing
   hydrometeor policy and is documented, not fixed.
 - **PBL aerosol number mixing is selectable.** `scalar_pblmix = 1`
   applies WRF's post-PBL `diff4d` diffusion using the selected PBL
@@ -1524,7 +1520,7 @@ neither is an open deviation and neither is a registry warning:
   and on 2026-09-23, after the 2026-07-28 matched run against WRF.
   That run describes an earlier build, not a byte-frozen current trajectory. Neither is a defect,
   and "make them agree" is the wrong fix in both directions.
-- **`CCN_ACTIVATE.BIN` is distributed with WOOF, and a different copy
+- **`CCN_ACTIVATE.BIN` is distributed with WOOF-ArWen, and a different copy
   is refused.** See the asset note below. It ships, so a clean checkout
   can run every mp=28 device gate against WRF's column fixtures; if it is ever missing, every device gate for the
   scheme (including all 22 column fixtures) skips by name rather than
@@ -1558,7 +1554,7 @@ that is correct and easy to assume is missing:
   (`phys/module_physics_init.F:1005-1006`), and those same three flags
   are the only gate on the block that *computes* the radii
   (`module_mp_thompson.F:1466`), so in WRF a scheme computes them if and
-  only if radiation consumes them. WOOF's RTE+RRTMGP and legacy-RRTMG
+  only if radiation consumes them. WOOF-ArWen's RTE+RRTMGP and legacy-RRTMG
   paths therefore both take Thompson's explicit-radius coupling for 28.
   A scheme that fell through to the Kessler default would not merely
   lose its radii: its ice and snow would stop producing cloud fraction,
@@ -1603,14 +1599,14 @@ Notes with teeth:
   because a physics plan is portable and a staged table set is not. The
   launch stages missing tables on first use. Where automatic staging
   is unavailable, it refuses by name with the command that stages the set.
-- **mp=28 needs a fifth table, and WOOF ships it.**
+- **mp=28 needs a fifth table, and WOOF-ArWen ships it.**
   `CCN_ACTIVATE.BIN` (35,288 bytes, sha256 `f2b8d391...`) is the CCN
   activation lookup.  It is the one Thompson artifact that is *not* a
   `thompson_init` product: `table_ccnAct`
   (`module_mp_thompson.F:5110-5166`) only reads it, and the numbers are
   offline parcel-model output (WRF's own comment at `:5102-5108`), so
-  no recompilation of WRF and no WOOF code path regenerates it.  It is
-  third-party data WRF redistributes; WOOF redistributes the identical
+  no recompilation of WRF and no WOOF-ArWen code path regenerates it.  It is
+  third-party data WRF redistributes; WOOF-ArWen redistributes the identical
   bytes (WRF v4.6.1's own `run/CCN_ACTIVATE.BIN` under WRF's
   public-domain dedication, whose notice ships in
   `woof/data/wrf_radiation/LICENSE-WRF.txt`) so a default install already
@@ -1749,7 +1745,7 @@ leaves were up to 3,746 ULP off and the free-running families up to
 WRF is still missing.
 
 Shin-Hong's entry records four of its own: the `q2xk(kpbl+1)`
-out-of-bounds read WRF performs and WOOF deliberately does not; WRF's
+out-of-bounds read WRF performs and WOOF-ArWen deliberately does not; WRF's
 own `prfac2 = 0/0` NaN reproduced rather than repaired; the
 subnormal-flush branch on CuPy's `-ftz=true` compile route, closed at
 the branch by a double-compare countermeasure with 72 residual flush
@@ -1771,7 +1767,7 @@ snow deviation: that snow mixing ratio was not passed to the
 condensation RH adjustment (WRF's `rh_hack`). **That is no longer
 true, and it was not true of the registry when it was written.**
 `FLAG_QS` is derived from the WRF Registry package inventory and is
-true for every snow-carrying microphysics WOOF ships (6, 8, 10, 18,
+true for every snow-carrying microphysics WOOF-ArWen ships (6, 8, 10, 18,
 28), so MYNN receives the snow field; the mp=28 bullet above records
 the defect that existed while 28 was missing from that set, and its
 closure.
@@ -1875,7 +1871,7 @@ bl_mynn_mixlength must be 1 or 2 (or 0, WRF 4.7.1's, which runs bl_mynn_version 
 
 **One genuine pairing rule, and it points the other way from the usual
 misreading.** The MYNN *surface layer* requires the PBL slot to be MYNN
-or off -- WRF v4.6.1's own restriction, not WOOF's -- so
+or off -- WRF v4.6.1's own restriction, not WOOF-ArWen's -- so
 `sf_sfclay_physics = 5` with YSU is refused, naming the WRF source
 lines:
 
@@ -1888,12 +1884,12 @@ why these pairings are refused:
 ```
 
 The MYNN *PBL* carries no such restriction: 5/91, 5/1 and 5/5 are all
-accepted -- **1422, 1422 and 1890 distinct accepted combinations**
+accepted -- **1422, 1422 and 1905 distinct accepted combinations**
 respectively, counted from the walk receipt's `accepted_combinations`.
 Which field is counted matters, so it is said rather than left to be
-inferred: `mynn_slice.accepted` in the same receipt reads **1891** for
+inferred: `mynn_slice.accepted` in the same receipt reads **1906** for
 the 5/5 pairing because that field counts ATTEMPTS, and the walk
-re-tries its 5/5 anchor suite in a second tier -- 1891 attempts over 1890
+re-tries its 5/5 anchor suite in a second tier -- 1906 attempts over 1905
 distinct configurations. Distinct configurations are what a reader
 asking "what may I compose?" wants, so that is what the three numbers
 above are. Earlier revisions of this page described the 5/5 pairing as
@@ -1941,7 +1937,7 @@ calls (`tests/test_sfclayrev_nonfinite.py`,
 All five run. In plain words: `template` means **a preset exists**, and
 `component-override` means **a preset exists** on the routes that
 declare it and you **type it in your config** anywhere else -- which is
-how the revised MM5 row's 20337 distinct accepted combinations were measured.
+how the revised MM5 row's 20382 distinct accepted combinations were measured.
 Maturity and reachability are separate registry axes, quoted verbatim
 from the registry: `maturity` is the option's evidence tier and
 `reachability.state` is how a NAMED route can offer it. Neither column
@@ -2041,7 +2037,7 @@ runs cannot establish a whole-model speed ranking.
 
 Rust maps for 2024-05-25 19, 20 and 21 UTC show similar thermal and moisture
 boundaries in the two forecasts. Both are warm against ASOS. At 21 UTC,
-temperature RMSE is 4.24 K for WOOF and 4.46 K for native WRF; wind-speed
+temperature RMSE is 4.24 K for WOOF-ArWen and 4.46 K for native WRF; wind-speed
 RMSE is 1.51 and 1.29 m/s. This single case does not establish general skill
 or an isolated SSiB skill change. Radar observations were not used.
 
@@ -2066,7 +2062,7 @@ before relying on any of these over unusual surfaces):
   redistributed, not lost) and is WRF's word under `GPUWM_WRF_EXACT=1`.
 - **Noah near-surface humidity:** after Noah, `SFCDIAGS` diagnoses Q2
   from the surface humidity, moisture flux and exchange coefficient.
-  WRF can produce a nonpositive value from this inversion. WOOF
+  WRF can produce a nonpositive value from this inversion. WOOF-ArWen
   substitutes the lowest model level's water-vapor mixing ratio in that
   case, preserving a nonnegative humidity diagnostic when the atmospheric
   vapor is nonnegative. This is an
@@ -2101,7 +2097,7 @@ defect rather than changing the Noah scheme.
   with the lake model enabled,
   fractional-sea-ice pre/post blend, and radiation-cadence GSW carrier.
   WRF's own uninitialized-`ilnb` read on thin snow (a real WRF defect:
-  the value depends on grid traversal order) is *not* reproduced; WOOF
+  the value depends on grid traversal order) is *not* reproduced; WOOF-ArWen
   passes the defined one-layer answer and documents the divergence.
 
 Urban canopy models (`sf_urban_physics` 1-3): two declared divergences
@@ -2128,7 +2124,7 @@ one line:
   urban, the ocean included; heat and moisture are counted once, and
   WRF's MYJ path (`myjurb`) takes the drag only through `a_u`. On the
   2026-09-29 750 m San Francisco run it slowed the 10 m wind over the sea
-  by 1.25 m/s within two hours. WOOF removes the whole of YSU's own drag
+  by 1.25 m/s within two hours. WOOF-ArWen removes the whole of YSU's own drag
   (`kernels/ysu.cu`), so the drag enters once, through `a_u_bep`, the way
   heat enters through `b_t_bep`. On a column with no buildings the surface
   stress is then the urban-off column's to within 0.2 percent after the
@@ -2375,7 +2371,7 @@ rule moves the land mean by 1 W m-2 at most.
 
 ### WRF RRTM longwave + Dudhia shortwave (1/1)
 
-This is the pair a classic WRF namelist asks for, and until now WOOF had
+This is the pair a classic WRF namelist asks for, and until now WOOF-ArWen had
 no answer for it: every longwave-on option was a coupled adapter owning
 both streams, so a `ra_lw_physics = 1, ra_sw_physics = 1` namelist had
 nowhere to land. It lands now, and it lands as a *composition* rather
@@ -2531,7 +2527,7 @@ radiation defaults and option-off forecast bytes are unchanged.
 | KIAPS SAS | 14 | supported | WRF v4.7.1 `module_cu_ksas.F`, byte-identical to the v4.6.1 module, on a GPU column path. Stock namelist import keeps fixed-step `cudt` and resets it under adaptive stepping as WRF does. Six tendencies, independently rounded RAINCV, held PRATEC and convection levels use the shared driver, restart and history paths. Normal forecasts use fast CUDA math; strict proof uses `GPUWM_NUMERICS=strict` and the native build's `GPUWM_WRF_GLIBC`. A native forecast step-21 capture replayed 45,000 columns, 13,410,000 raw words, with zero differences. The receipt pins the strict source and operands. The separate retained 768-column fixture is constructed. A three-hour 300 by 300, 49-level fast forecast completed 720 steps through `woof go`; 10, 11 and 12 UTC maps were reviewed beside native WRF and ASOS surface observations. The committed `forecast.json` records the single-case scope and stage timing. No radar/rainfall skill, full nested forecast or real ensemble claim is made. See [the oracle record](../../tools/ksas_wrf461_oracle/README.md). |
 | Kain-Fritsch | 1 | supported | outer (>=10 km) domains; packaged lookup table; cudt 5 min in the certified templates |
 | Multiscale Kain-Fritsch | 11 | experimental-runtime | Explicit component override only; never a default. CUDA MSKF with 35 retained carriers, stock namelist import, native warm starts and Rust aerosol input preparation. Strict replay of the retained original native inputs compares 170,368 words with zero differences (107,520 native words plus inactive zero extensions). Fast aerosol-off arithmetic uses CUDA float functions and FMA. The matched RTX PRO 6000 real-forecast stage costs 9.008338 ms versus CU1 2.972674 ms, 3.030382x. The older 6.6714x RTX 4090 result is a column-kernel deck. The current forecast receipt is [cu11-summary.json](../evidence/retime-20261102/cu11-summary.json). Hardware source profiling attributes 55.9% of sampled activity to the extra native binary64 momentum/pressure routine, absent from CU1; this is not a lower bound. Source-bound images and parallel prewarm fix the cold single-core compile: the installed-wheel cold forecast's first step is 19.1382 seconds, with a longest sampled zero/one active-process interval of eight seconds. Positive aerosol selectors use public NASA forcing, written from papers, not bitwise to WRF; the public aerosol measured-cost opt-in is 3.6864x/3.6830x aerosol off; the 1.2x bar remains unmet. Scientific evidence remains none. See [cumulus-mskf.md](../cumulus-mskf.md), [the kernel receipt](../evidence/mskf-20261102-speed/verification.json) and [the cold receipt](../evidence/mskf-20261102-retime/cold-start.json). |
-| KF-CuP | 10 | experimental-runtime | WRF v4.6.1 `module_cu_kfcup.F`, identical to v4.7.1. Full deep/shallow GPU column, perturbation PDF, native held rain/cloud clocks and radiation override. Stock namelists select it independently of CAM5 and read all six CuP controls. Carriers, history, restart, checkpoint, both nest feedback modes and ensemble execution are wired. Strict replay of 64 real native columns at 40 levels compared 52,480 words with zero differences. A six-hour 30 km non-CAM5 WSM3/YSU/Noah/RRTM/Dudhia forecast completed through `woof go`; native and GPU maps were inspected beside ASOS at hours 1, 3 and 6. Raw 2 m temperature RMSE was 2.106/2.002/2.432 K for WOOF and 2.425/1.964/2.277 K for native WRF (208/208/187 paired stations). The older 1.122x callable number was a kernel deck. The matched RTX PRO 6000 whole-forecast CuP stage costs 3.761808 ms versus KF 2.731536 ms, **1.377177x**. It remains an explicit measured-cost opt-in, never a default. A whole-forecast clock profile attributes 22.27% of diagnostic column cycles to the native CuP-only driver, after subtracting nested KF calls: PDF selection, deep/shallow weighting and cloud bookkeeping. This is additional native work, not a binary64 runtime path; it is attribution, not a lower bound. See [the forecast receipt](../evidence/retime-20261102/cu10-fast-summary.json) and [the native work profile](../evidence/retime-20261102/cu10-native-work-private-profile.json). Runtime requires 8 through 128 mass levels. Native non-shallow LNTERMS is undefined; the port initializes it to zero. The inherited extreme-PDF overflow correction remains declared. See [source and proof](../../tools/kfcup_wrf461_oracle/PROVENANCE.md). This single case does not establish general forecast skill; `scientific_evidence` remains `none`. |
+| KF-CuP | 10 | experimental-runtime | WRF v4.6.1 `module_cu_kfcup.F`, identical to v4.7.1. Full deep/shallow GPU column, perturbation PDF, native held rain/cloud clocks and radiation override. Stock namelists select it independently of CAM5 and read all six CuP controls. Carriers, history, restart, checkpoint, both nest feedback modes and ensemble execution are wired. Strict replay of 64 real native columns at 40 levels compared 52,480 words with zero differences. A six-hour 30 km non-CAM5 WSM3/YSU/Noah/RRTM/Dudhia forecast completed through `woof go`; native and GPU maps were inspected beside ASOS at hours 1, 3 and 6. Raw 2 m temperature RMSE was 2.106/2.002/2.432 K for WOOF-ArWen and 2.425/1.964/2.277 K for native WRF (208/208/187 paired stations). The older 1.122x callable number was a kernel deck. The matched RTX PRO 6000 whole-forecast CuP stage costs 3.761808 ms versus KF 2.731536 ms, **1.377177x**. It remains an explicit measured-cost opt-in, never a default. A whole-forecast clock profile attributes 22.27% of diagnostic column cycles to the native CuP-only driver, after subtracting nested KF calls: PDF selection, deep/shallow weighting and cloud bookkeeping. This is additional native work, not a binary64 runtime path; it is attribution, not a lower bound. See [the forecast receipt](../evidence/retime-20261102/cu10-fast-summary.json) and [the native work profile](../evidence/retime-20261102/cu10-native-work-private-profile.json). Runtime requires 8 through 128 mass levels. Native non-shallow LNTERMS is undefined; the port initializes it to zero. The inherited extreme-PDF overflow correction remains declared. See [source and proof](../../tools/kfcup_wrf461_oracle/PROVENANCE.md). This single case does not establish general forecast skill; `scientific_evidence` remains `none`. |
 | Betts-Miller-Janjic | 2 | implemented-unverified | WRF v4.6.1 `module_cu_bmj.F`, including BMJDRV, BMJ, TTBLEX, BMJINIT and SPLINE, on the GPU. Stock namelist import preserves each domain's `cudt` and `bmj_rad_feedback`. Carried efficiency, clouds and rain survive checkpoints, nests and ensembles. Cloud feedback reaches RRTM/Dudhia, legacy RRTMG, RTE+RRTMGP and New Goddard, including mixed or disabled streams. Strict replay of native-run input rows matches 251,244 output and table words exactly; those initial rows are nonconvecting. A separate sounding fixture exercises deep and shallow paths. See [cumulus-bmj.md](../cumulus-bmj.md) for scope and evidence. |
 | Grell-Freitas (scale-aware) | 3 | implemented-unverified | whole GFDRV at the WRF v4.6.1 boundary, CPU and CUDA; a preset selects it (with WDM6 and RTE+RRTMGP) and it is also a per-domain override -- a config writing `cu_physics = 3` is accepted directly; runs on the model step (cudt pinned 0) |
 | Original Tiedtke | 6 | implemented-unverified | WRF v4.6.1 `module_cu_tiedtke.F`, the cumulus of WRF's `physics_suite = 'conus'`, transcribed into one GPU column kernel; its columns match WRF's Fortran word for word in default and strict arithmetic (864 column evaluations, glibc 2.43 referee), and `scientific_evidence` is `none`. Runs on the model step (cudt pinned 0); a config writing `cu_physics = 6` is accepted directly, and the WRF namelist importer reads it, including NCAR's benchmark namelists through `physics_suite`. See [cumulus-cu6.md](../cumulus-cu6.md) |
@@ -2869,7 +2865,7 @@ door says so once, and then continues. `woof go` carries the clause
 inline in the banner it prints before it does anything:
 
 ```
-go: configs/myarea.toml -- source gfs, cycle 2026-08-01T12, 3 h, SASE PBL: EXPERIMENTAL, WOOF-original with no WRF counterpart
+go: configs/myarea.toml -- source gfs, cycle 2026-08-01T12, 3 h, SASE PBL: EXPERIMENTAL, WOOF-ArWen-original with no WRF counterpart
 ```
 
 and both forecast runners print a full sentence to standard error as
@@ -2877,7 +2873,7 @@ the run starts -- `tools/prepared_single_domain_forecast.py`, which is
 the stage `woof go` drives:
 
 ```
-prepared forecast: physics: SASE PBL: experimental, WOOF-original with no WRF counterpart -- the run continues.
+prepared forecast: physics: SASE PBL: experimental, WOOF-ArWen-original with no WRF counterpart -- the run continues.
 ```
 
 and `tools/prepared_domain_tree_forecast.py`, which is how a domain
@@ -2885,7 +2881,7 @@ tree is run (`woof go` refuses a multi-domain config and names this
 runner instead):
 
 ```
-prepared tree: physics: SASE PBL: experimental, WOOF-original with no WRF counterpart -- the run continues.
+prepared tree: physics: SASE PBL: experimental, WOOF-ArWen-original with no WRF counterpart -- the run continues.
 ```
 
 The sentence after the prefix is one string with one definition,
@@ -3330,15 +3326,7 @@ report carries a `radiation.downward_longwave` line naming which of the
 three it is.
 
 **No door emits an asymmetric pairing as a default.** That includes the
-HRRR route, which was the exception through 1.7.1, and the radar-DA
-storm nowcast (`tools/da_nowcast.py` and the auto/launcher doors), which
-was the exception through 1.8.7 --- it defaulted to
-`wsm6-ysu-mm5-noah-no-radiation-v1` on cases that are mostly nocturnal,
-and now defaults to the HRRR route's own
-`thompson-mp8-ysu-mm5-noah-rte-rrtmgp-v1`, because the nowcast's
-background is HRRR. That costs more per member than a Dudhia-only call,
-so a member count or VRAM plan measured before 1.8.8 has to be
-re-measured rather than extrapolated.
+HRRR route, which was the exception through 1.7.1.
 
 The HRRR route's default was `wsm6-ysu-mm5-noah-no-radiation-v1` because
 every full-radiation suite the route's physics gate admits is an mp8 suite,
@@ -3449,7 +3437,7 @@ deliberately, or picks a profile with both streams on.
 to its nearest implemented counterpart, and reports it in a
 structured substitution report rather than silently rewriting:
 
-| WRF namelist asks for | WOOF substitutes | class |
+| WRF namelist asks for | WOOF-ArWen substitutes | class |
 |---|---|---|
 | `ra_lw/sw_physics = 4` (RRTMG) | RTE+RRTMGP (default) or legacy RRTMG (`--rrtmg-variant rrtmg_legacy`) | explicit, token-recorded |
 
@@ -3471,7 +3459,7 @@ closure for the three habit volume pairs. See the [qualification record](../../t
 natively as 9 and runs the WRF v4.7.1 scheme.
 
 Every other unimplemented scheme id is a hard error. Options WRF
-accepts but WOOF does not support -- moving nests, vertical
+accepts but WOOF-ArWen does not support -- moving nests, vertical
 refinement, adaptive time step, `use_theta_m = 1`, non-SINT nest
 interpolation -- are rejected loudly at load; the
 complete register with WRF source citations is
@@ -3493,15 +3481,15 @@ refused with that native reason. In the older source cited by the aerosol port,
 `scalar_pblmix` is forced to 1 **only** when `use_aero_icbc` or
 `use_rap_aero_icbc` is set (`:2477-2495`), and is forced back to 0 on any domain running
 MYNN with `bl_mynn_mixscalars = 1` (`:2497-2511`). All three are debug-
-or warning-level messages, not errors. WOOF's standing posture is to
+or warning-level messages, not errors. WOOF-ArWen's standing posture is to
 refuse where WRF overwrites: a request combining `scalar_pblmix` with
 `bl_mynn_mixscalars = 1` is refused instead of silently overwritten.
 
 The full knob table around the scheme selectors -- every tweakable
 namelist knob, its TOML spelling, default and allowed range, plus the
-keys WOOF pins at a single code-verified value -- is
+keys WOOF-ArWen pins at a single code-verified value -- is
 [CONFIGURATION.md](CONFIGURATION.md). The import report itself is
-three-sectioned (translated / fixed-by-WOOF / not-implemented), so a
+three-sectioned (translated / fixed-by-ArWen / not-implemented), so a
 translated namelist never hides a knob decision.
 
 Noah supports WRF v4.7.1 `lsm_mosaic` through `sf_surface_mosaic = 1`
@@ -3536,7 +3524,7 @@ each checked against WRF's own output words:
   soil moisture, liquid water and temperature into the cell at index
   `NS*mosaic_i` of the tile-stacked soil arrays (`module_sf_noahdrv.F:4151-4153`)
   instead of layer `NS` of tile `mosaic_i`, so from the second tile on it mixes
-  other layers and other tiles, some of them not yet stepped. WOOF averages
+  other layers and other tiles, some of them not yet stepped. WOOF-ArWen averages
   each tile's own four layers. The tile states themselves are WRF's either way.
   Pinned by `tests/test_noah_mosaic_oracle_controls.py` (WRF's index
   reproduces WRF's words, the corrected one differs) and the GPU replay, which
@@ -3546,7 +3534,7 @@ each checked against WRF's own output words:
   evaporation, snowmelt and snow phase-change heat to the cell, and adds the
   accumulated snowfall once per tile, so a cell accumulates the sum over its
   tiles instead of their area mean, about three times too much with three
-  tiles that agree. WOOF weights each tile's increment by its
+  tiles that agree. WOOF-ArWen weights each tile's increment by its
   area and adds snowfall once. Pinned by the single-tile oracle runs in the
   same controls file.
 - **A land cell with no land fraction divides zero by zero.** Where the
@@ -3554,7 +3542,7 @@ each checked against WRF's own output words:
   fractions are all water; WRF moves the water out of the cell's tiles, keeps
   every tile weight at zero, and its area averages give a NaN skin
   temperature and roughness
-  (`module_sf_noahdrv.F:4186, 4195`). WOOF runs such a cell as its own
+  (`module_sf_noahdrv.F:4186, 4195`). WOOF-ArWen runs such a cell as its own
   dominant category, one tile at full weight, which is what plain Noah runs
   there. Pinned by `tests/test_noah_mosaic_init_wrf471.py`.
 

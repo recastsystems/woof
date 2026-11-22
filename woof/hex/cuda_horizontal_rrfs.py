@@ -894,9 +894,7 @@ class CudaHorizontalRRFS(CudaHorizontal):
     # MPAS-Model-rrfs/src/core_atmosphere/dynamics/mpas_atm_time_integration.F:5148-6942 at 1d6e370e.
     def _kernel(self,name):
         """Shared stencil arithmetic; GNU mesh-scaling power, strict NVRTC."""
-        from .cuda_horizontal import _CUDA_SOURCE as shared
-        from .native_powf import CUDA_NATIVE_POWF
-        source=CUDA_NATIVE_POWF+shared.replace('powf(mean_density,','mpas_native_powf_positive(mean_density,')
+        from .cuda_horizontal import _SCALING_GNU_SOURCE as source
         # Generic cache delegation, not a static AOT kernel declaration.
         # The runtime compile manifest authenticates the caller's full source.
         compile_kernel = self.kernel_cache.raw_kernel

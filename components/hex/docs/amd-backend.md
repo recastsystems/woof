@@ -19,6 +19,6 @@ steps 2–6 averaged 0.500902 s on MI300X versus 0.411100 s on RTX 5090,
 including first-use work. These are different tests, and neither proves
 full-physics cross-vendor identity or long-forecast skill. AMD graph capture
 is unavailable; ordered stream launches are used. No multi-card AMD run
-is qualified here. The engine page records all measured speeds, WOOF's
+is qualified here. The engine page records all measured speeds, WOOF-ArWen's
 vendor-transcendental differences, install details and licence notices.
 No ROCm binaries are bundled.

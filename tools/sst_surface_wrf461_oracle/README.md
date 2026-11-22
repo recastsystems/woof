@@ -42,7 +42,7 @@ as branches observed in this forecast.
 
 Cold-start SSTSK is zero: WRF's tools/gen_allocs.c sets initial_data_value
 and the generated SSTSK allocation uses it. No later initializer appears
-in real, physics-init or start-domain. WOOF uses the same zero seed, and
+in real, physics-init or start-domain. WOOF-ArWen uses the same zero seed, and
 the first native forecast captures witness it. A supplied SSTSK or restart
 state overrides cold initialization.
 

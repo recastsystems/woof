@@ -6,7 +6,7 @@ No device is opened here.  What is pinned:
   (TOML), the WRF namelist importer, and the registry option the plan
   review and per-domain overrides read;
 * WRF's one pairing law for the scheme (the BEP/BEM urban fatal,
-  module_physics_init.F:3825-3827) and the WOOF refusals, each naming its
+  module_physics_init.F:3825-3827) and the WOOF-ArWen refusals, each naming its
   breakage;
 * the dispatch row, the checkpoint identity and the vertical bound, each
   held equal to the one authority it restates;

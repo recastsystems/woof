@@ -696,7 +696,6 @@ def test_no_shipped_door_defaults_to_an_asymmetric_pairing():
     nocturnal.
     """
     from woof.domain_interactive import DEFAULT_PHYSICS_PROFILE_BY_SOURCE
-    from tools.da_nowcast import NOWCAST_DEFAULT_PHYSICS_PROFILE
 
     doors = {
         "woof domain (era5)": resolved_physics_profile("era5", None),
@@ -708,7 +707,6 @@ def test_no_shipped_door_defaults_to_an_asymmetric_pairing():
             DEFAULT_PHYSICS_PROFILE_BY_SOURCE["gfs"],
         "woof domain --interactive (hrrr)":
             DEFAULT_PHYSICS_PROFILE_BY_SOURCE["hrrr"],
-        "tools.da_nowcast": NOWCAST_DEFAULT_PHYSICS_PROFILE,
     }
     asymmetric = {}
     for door, profile in doors.items():
@@ -722,78 +720,6 @@ def test_no_shipped_door_defaults_to_an_asymmetric_pairing():
     retired = single_domain_runtime_switches(WSM6_PROFILE_ID)
     assert int(retired["ra_sw_physics"]) > 0
     assert int(retired["ra_lw_physics"]) == 0
-    # And the profile that replaced it resolves through the gate the
-    # nowcast's own runner applies, on every source it can run on --
-    # a default the runner would refuse is not a fix.
-    from woof.prepared_single_domain_forecast import (
-        SUPPORTED_SOURCES, _profile_runtime_switches)
+    # The storm-nowcast doors named above were removed with the local data
+    # assimilation in gpuwm 3.0.3.
 
-    for source in sorted(SUPPORTED_SOURCES):
-        switches = _profile_runtime_switches(
-            source, NOWCAST_DEFAULT_PHYSICS_PROFILE)
-        assert int(switches["ra_lw_physics"]) == 4, source
-        assert int(switches["ra_sw_physics"]) == 4, source
-        # No cumulus: the nowcast runs convection-permitting grids.
-        assert int(switches["cu_physics"]) == 0, source
-
-
-def test_the_nowcast_doors_all_bind_the_same_default():
-    """One owner for the number, because 1.7.1 proved the alternative."""
-    from tools.da_nowcast import NOWCAST_DEFAULT_PHYSICS_PROFILE
-    from tools.da_nowcast_auto import (
-        NOWCAST_DEFAULT_PHYSICS_PROFILE as auto_default)
-
-    assert auto_default == NOWCAST_DEFAULT_PHYSICS_PROFILE
-    assert NOWCAST_DEFAULT_PHYSICS_PROFILE == ROUTE_DEFAULT_PHYSICS_PROFILE
-    import argparse
-    from tools import da_nowcast, da_nowcast_auto, da_nowcast_launcher
-
-    # Exercise each actual CLI registration, including the launcher sibling.
-    root_parser = da_nowcast.build_parser()
-    run_parser = next(action for action in root_parser._actions
-                      if isinstance(action, argparse._SubParsersAction)).choices["run"]
-    auto_parser = argparse.ArgumentParser()
-    da_nowcast_auto.add_run_arguments(auto_parser)
-    launcher_parser = argparse.ArgumentParser()
-    da_nowcast_launcher.add_common(launcher_parser)
-    for parser in (run_parser, auto_parser, launcher_parser):
-        assert parser.get_default("physics_profile") == NOWCAST_DEFAULT_PHYSICS_PROFILE
-    archived = "thompson-mp8-ysu-mm5-noah-rte-rrtmgp-v1"
-    args = root_parser.parse_args([
-        "run", "--site", "qqqq", "--window-end", "latest", "--out", "case",
-        "--physics-profile", archived])
-    assert args.physics_profile == archived
-
-
-def test_nowcast_default_change_does_not_requalify_archived_measurements():
-    """Existing measured records retain their actual physics composition."""
-    import argparse
-    import hashlib
-    import json
-    from pathlib import Path
-    from tools import da_nowcast, da_nowcast_auto, da_nowcast_launcher
-
-    archived = "wsm6-ysu-mm5-noah-no-radiation-v1"
-    fixture = Path(__file__).resolve().parent / "fixtures/nowcast_archived_physics.json"
-    payload = fixture.read_bytes()
-    # 7db661c65, development branch: preserve the historical receipt
-    # composition in public tests; release snapshots exclude evidence/**.
-    assert hashlib.sha256(payload).hexdigest() == (
-        "dfff21eccbb9309af3c3421e3952e740e4bc302eb400137566341457021255e6")
-    provenance = json.loads(payload)
-    assert provenance["schema"] == "gpuwm-nowcast.archived-physics-provenance.v1"
-    assert len(provenance["receipts"]) == 2
-    assert {receipt["physics_profile"] for receipt in provenance["receipts"]} == {archived}
-    assert da_nowcast_launcher.REFERENCE["physics_profile"] == archived
-    assert "does not qualify current" in da_nowcast_launcher.REFERENCE["caveat"]
-
-    root_parser = da_nowcast.build_parser()
-    run_parser = next(action for action in root_parser._actions
-                      if isinstance(action, argparse._SubParsersAction)).choices["run"]
-    auto_parser = argparse.ArgumentParser()
-    da_nowcast_auto.add_run_arguments(auto_parser)
-    for parser in (run_parser, auto_parser):
-        help_text = " ".join(parser.format_help().split())
-        assert "WSM6/Dudhia" in help_text
-        assert "longwave off" in help_text
-        assert "remeasurement" in help_text

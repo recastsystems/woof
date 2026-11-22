@@ -17,25 +17,25 @@ down; `mesoscale_reference`, MPAS's Registry default there, is refused on the
 GPU route until its interface glue is ported). `woof hex physics list` marks
 it as `default`.
 
-**WOOF's physics**, selected with `--physics-suite arwen_mpas_column` (or any
+**WOOF-ArWen's physics**, selected with `--physics-suite arwen_mpas_column` (or any
 suite below, or a `--physics KEY=VALUE` override, an explicit `--convection`
 scheme or a `--physics-backend` row with no suite), is described on this page: a **named suite** plus optional
 **overrides**, read from one table,
 `src/hexcore/data/profiles/mpas-physics-suites.v1.json`. The dycore never reads
-it. WOOF's physics is graded against observations (MRMS, ASOS), not against
+it. WOOF-ArWen's physics is graded against observations (MRMS, ASOS), not against
 MPAS's physics code.
 
 ## The suites
 
 | suite | what runs | seam |
 |---|---|---|
-| `arwen_mpas_column` (the WOOF route's default) | WSM6; hex's convection rule by mesh spacing; YSU over the revised MM5 surface layer; Noah-MP (4 layers); hex's YSU gravity-wave drag; legacy RRTMG with the Xu-Randall cloud fraction | frozen column batch, row `wsm6_column` |
+| `arwen_mpas_column` (the WOOF-ArWen route's default) | WSM6; hex's convection rule by mesh spacing; YSU over the revised MM5 surface layer; Noah-MP (4 layers); hex's YSU gravity-wave drag; legacy RRTMG with the Xu-Randall cloud fraction | frozen column batch, row `wsm6_column` |
 | `arwen_thompson_column` | the default with aerosol-aware Thompson (WRF mp=28) | frozen column batch, row `thompson_aero_column` |
 | `rrfs_v2_dev` | shaped after RRFS v2 (`hrrrv5`): aerosol-aware Thompson; no cumulus (New Tiedtke on the 12 km meshes); MYNN-EDMF over the MYNN surface layer; RUC on 9 soil levels; the GSL orographic drag; legacy RRTMG with MYNN's subgrid cloud | column-suite seam, row `mynn_ruc_gsl_column` |
 
-On this WOOF route, MPAS's own suite names (`mesoscale_reference`,
-`convection_permitting`, `hrrrv5`) also resolve to WOOF's implementation of
-their schemes, exactly as MPAS resolves the selectors; whatever the WOOF
+On this WOOF-ArWen route, MPAS's own suite names (`mesoscale_reference`,
+`convection_permitting`, `hrrrv5`) also resolve to WOOF-ArWen's implementation of
+their schemes, exactly as MPAS resolves the selectors; whatever the WOOF-ArWen
 route cannot run in them is refused by name. For MPAS's own schemes, use the
 MPAS route above. `rrfs_v2_dev` lists every known difference from
 RRFS v2 in its table row, and the run's receipt carries the list.

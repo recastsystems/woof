@@ -498,7 +498,7 @@ WRFRST_DISPOSITIONS: Mapping[str, Disposition] = MappingProxyType({
             ("LNINT", "TSTAR")),
     **_rows("inactive", "native WRF averaged-flux restart needs its history "
             "alarm state, which this importer does not restore; use an "
-            "WOOF checkpoint to preserve the mean, count and pending reset",
+            "WOOF-ArWen checkpoint to preserve the mean, count and pending reset",
             ("AVGFLX_COUNT", "AVGFLX_RUM", "AVGFLX_RVM", "AVGFLX_WWM"),
             _cfg("do_avgflx_em", 0)),
     **_rows("inactive", "single-column-model surface forcing, not selected",
@@ -1850,7 +1850,7 @@ def apply_warm_start_physics(state, driver, restored, cfg) -> OverlayReport:
                     plan = ("fill", name.upper())
                 else:
                     plan = ("cold", 0.0,
-                            "additional WOOF hail output diagnostic; native "
+                            "additional WOOF-ArWen hail output diagnostic; native "
                             "HAILCAST was inactive, so its diagnostic window "
                             "counts from the restart instant")
             if plan is None:

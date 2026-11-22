@@ -522,19 +522,6 @@ class TestAnInstallThatDoesNotHaveIt:
         # is the command that stages it prebuilt.
         assert "cargo build" in message or "fetch-bridges" in message
 
-    def test_the_nowcast_front_door_refuses_the_same_way(self, monkeypatch):
-        import argparse
-
-        from tools.da_nowcast import FrontDoorError, validate_analysis_flags
-
-        self._absent(monkeypatch)
-        args = argparse.Namespace(dealias=True,
-                                  dealias_engine=ENGINE_REGION_GLOBAL,
-                                  dealias_refinement=None)
-        with pytest.raises(FrontDoorError) as error:
-            validate_analysis_flags(args)
-        assert "region_global_dealias" in str(error.value)
-
     def test_the_legacy_engine_still_runs_without_it(self, monkeypatch):
         """Selectable means selectable, including on a box without a build."""
 

@@ -9,7 +9,7 @@ import sys
 
 ref = Path(sys.argv[1]).resolve()
 home = Path.home()
-lanes = Path(os.environ['MPAS_LANES'])
+lanes = Path(os.environ['HEX_REFERENCE_ROOT'])
 old = lanes / 'ref/rrfs/cases/approved-canonical-global-ruc9-v1/x1.2562-soil9/2023-03-31_12.00.00/case7'
 row = json.loads((old / 'MANIFEST.json').read_text())['row']
 wf = ref / 'wf/rrfs-workflow'

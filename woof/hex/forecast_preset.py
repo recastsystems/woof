@@ -112,7 +112,7 @@ class ForecastPreset:
     evidence: str
     #: ``physics.mode`` (:mod:`woof.hex.correct_mode`) the row runs when the
     #: command line names none.  Every shipped row says ``"correct"``: owner
-    #: ruling 2026-10-13, correct mode is the standard (the mode key;
+    #: correct mode is the standard (the mode key;
     #: fixed means default).  ``--physics-mode exact`` still selects the matched
     #: MPAS/WRF arithmetic, byte for byte, and every parity or identity proof
     #: names it explicitly.  Not in :meth:`receipt`: the run's own mode is

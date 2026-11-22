@@ -32,7 +32,7 @@ physics change.
 The height field for the profile fill  (blocking unknown #4, RESOLVED)
 ----------------------------------------------------------------------
 The spec's WP-04 text says "hgt is the MASS-level height (WRF passes z_at_q),
-so use WOOF's mass-level height array, not z8w."  **That reading is wrong,
+so use WOOF-ArWen's mass-level height array, not z8w."  **That reading is wrong,
 and the correction matters over terrain.**  Traced end to end:
 
 * ``phys/module_physics_init.F:4517-4544`` calls ``thompson_init(HGT=z_at_q, ...)``.
@@ -50,7 +50,7 @@ at the lowest ``kte`` full levels -- the array's name is misleading.
 ABSOLUTE 1000 m / 2500 m ``h_01`` thresholds are meant to test, and the profile
 body uses the AGL difference ``hgt(k)-hgt(1)``.
 
-WOOF's exact analogue is ``z8w[:nz]`` where
+WOOF-ArWen's exact analogue is ``z8w[:nz]`` where
 ``z8w = (state.phb + state.php) / G``, which
 ``woof/core/microphysics.py::_apply_thompson`` already materializes at
 lines 470-474 (and ``launch_kessler`` at :389 shows the mass-level form
@@ -263,7 +263,7 @@ def launch_tau1_density(temperature, pressure, qv, rho_out) -> None:
     """TAU+1 density, :3189-3193.
 
     ``temperature``/``qv`` must be the already-updated (post-tendency) fields;
-    WOOF's networks write them in place.  The vapour floor of :3192 is
+    WOOF-ArWen's networks write them in place.  The vapour floor of :3192 is
     re-applied here, so the caller need not.
     """
     _, size = validate_fields({
@@ -364,11 +364,11 @@ def launch_aerosol_state_finalize(qc, nc, nwfa, nifa, ncten, nwfaten,
 
     The buffer to pass is the one :func:`launch_tau1_density` writes when it
     is called immediately AFTER the rain-evaporation launcher and BEFORE
-    sedimentation: WOOF's ``temperature``/``qv`` hold WRF's ``temp(k)``/
+    sedimentation: WOOF-ArWen's ``temperature``/``qv`` hold WRF's ``temp(k)``/
     ``qv(k)`` exactly at that moment, and doing so reproduces WRF's terminal
     ``rho(k)`` bitwise at 501 of those 504 levels (worst 1.2334e-07).
     Recomputing it at the finalize call instead is 5.39e-05 off, because
-    WOOF's ``temperature`` keeps absorbing the melt/freeze cleanup's ``tten``
+    WOOF-ArWen's ``temperature`` keeps absorbing the melt/freeze cleanup's ``tten``
     while WRF's ``temp(k)`` snapshot does not.  See
     ``tests/test_thompson_aerosol_state_gpu.py::
     test_terminal_apply_matches_wrfs_own_terminal_loop_on_every_fixture``,
@@ -513,7 +513,7 @@ def launch_aerosol_init_profile(hgt, nwfa, nifa, nwfa2d, *,
     :func:`aerosol_profile_needs_fill` on each of ``nwfa`` and ``nifa``
     separately.
 
-    ``hgt`` must be WOOF's ``z8w[:nz]`` -- the FULL (w) level height above sea
+    ``hgt`` must be WOOF-ArWen's ``z8w[:nz]`` -- the FULL (w) level height above sea
     level, ``(state.phb + state.php)/G`` -- NOT the mass-level height.  See
     :ref:`the module docstring <wp04-height-field>`: WRF's argument is named
     ``z_at_q`` but ``dyn_em/start_em.F:873`` fills it from the Z-staggered

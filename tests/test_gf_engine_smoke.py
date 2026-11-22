@@ -94,7 +94,7 @@ def test_cu_physics_3_routes_to_grell_freitas_and_steps():
         nx=4, ny=2, nz=16, dx=12000.0, dy=12000.0, ztop=9000.0,
         dt=60.0, run_seconds=0.0, moist=True, mp_physics=10,
         bl_pbl_physics=1, sf_sfclay_physics=91, bldt=0.0,
-        cu_physics=3, cudt_minutes=0.0, ishallow=1))
+        cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=0.0, ishallow=1))
     state = _state_for(cfg)
     driver = initialize_physics(state, cfg, landmask=1.0, tsk=290.0)
     # cu_physics=3 auto-binds the Grell-Freitas adapter, the same
@@ -150,11 +150,11 @@ def test_grell_freitas_requires_a_pbl_scheme_and_pinned_cudt():
                 dt=60.0, run_seconds=0.0, moist=True, mp_physics=10)
     with pytest.raises(ValueError, match="requires a PBL scheme"):
         validate_run_config(RunConfig(
-            **base, cu_physics=3, cudt_minutes=0.0))
+            **base, cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=0.0))
     with pytest.raises(ValueError, match="cudt_minutes=0"):
         validate_run_config(RunConfig(
             **base, bl_pbl_physics=1, sf_sfclay_physics=91,
-            cu_physics=3, cudt_minutes=5.0))
+            cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=5.0))
     with pytest.raises(ValueError, match="Grell-family keys"):
         validate_run_config(RunConfig(
             **base, cu_physics=1, cudt_minutes=5.0, ishallow=1))
@@ -185,7 +185,7 @@ def test_the_driver_refuses_grell_freitas_with_the_pbl_slot_off():
                 dt=60.0, run_seconds=0.0, moist=True, mp_physics=10,
                 bl_pbl_physics=0, sf_sfclay_physics=91,
                 cudt_minutes=0.0)
-    cfg = RunConfig(**base, cu_physics=3)
+    cfg = RunConfig(**base, cu_physics=3, cu_gf_version="wrf_461")
     state = _state_for(cfg)
     with pytest.raises(ValueError, match="KPBL"):
         initialize_physics(state, cfg, landmask=1.0, tsk=290.0)
@@ -207,7 +207,7 @@ def test_native_gf_validation_keeps_order_ownership_and_deferral(monkeypatch):
     cfg = RunConfig(
         nx=4, ny=2, nz=16, dx=12000.0, dy=12000.0, ztop=9000.0,
         dt=60.0, run_seconds=0.0, moist=True, mp_physics=10, bl_pbl_physics=1,
-        sf_sfclay_physics=91, cu_physics=3, cudt_minutes=0.0)
+        sf_sfclay_physics=91, cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=0.0)
     state = _state_for(cfg)
     driver = initialize_physics(state, cfg, landmask=1.0, tsk=290.0)
     names = ("rthcuten", "rqvcuten", "rqccuten", "rqicuten", "rainc")
@@ -324,7 +324,7 @@ def test_gf_overwrites_poisoned_output_slabs(monkeypatch):
         nx=4, ny=2, nz=16, dx=12000.0, dy=12000.0, ztop=9000.0,
         dt=60.0, run_seconds=0.0, moist=True, mp_physics=10,
         bl_pbl_physics=1, sf_sfclay_physics=91,
-        cu_physics=3, cudt_minutes=0.0, ishallow=1)
+        cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=0.0, ishallow=1)
     state = _state_for(cfg)
     driver = initialize_physics(state, cfg, landmask=1.0, tsk=290.0)
     driver.compute(state, cfg)

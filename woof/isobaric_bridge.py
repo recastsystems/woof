@@ -7,7 +7,7 @@ layer-mean height paired with the mass-level pressure reads 4 to 6 m high
 at 500 hPa; this seam is how the Python consumers (the moving-nest vortex
 tracker on a host state, the GNSS-RO refractivity operator, the
 verification diagnostics and the flagship products) read heights the same
-way, from the same code, instead of from a Python copy of it.  WOOF's
+way, from the same code, instead of from a Python copy of it.  WOOF-ArWen's
 Python boundary names regrid/transform as data-path processing, so there is
 no Python implementation behind this seam and no fallback to one.
 

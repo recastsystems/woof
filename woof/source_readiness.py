@@ -518,6 +518,153 @@ def retention_refusal(window: Window, *, now: datetime | None) -> str | None:
             "not appear by waiting")
 
 
+def layout_refusal(window: Window, *, now: datetime | None) -> str | None:
+    """Why no declared object layout serves ``window``'s cycle, or None.
+
+    :func:`woof.fetch_endpoints.layout_refusal` for the window's source,
+    cycle and pinned host, so readiness and the fetch refuse one cycle in
+    the same words.
+    """
+
+    return fetch_endpoints.layout_refusal(
+        window.source, window.cycle, now=now, pinned=window.transport)
+
+
+#: The longest a run waits for its cycle's first hours before it is asked
+#: to.  A day covers the next cycle of every source with a posting row (a
+#: 12-hourly cycle plus its publication lag), which is the furthest ahead
+#: anyone sets a run up on purpose.
+#:
+#: THE BREAKAGE THIS PREVENTS (3.0.3 candidate check, 2026-11-15): a date
+#: typed five days ahead (``--cycle 2026-11-20T00`` on the 15th) was taken,
+#: and ``woof go`` sat waiting four and a half days, its line naming only
+#: a clock time ("scheduled from about 03:30Z") and never the date.
+MAX_START_WAIT = timedelta(hours=24)
+
+#: The flag and the ``[fetch]`` key that ask a run to wait past
+#: :data:`MAX_START_WAIT` (``woof go`` and ``woof fetch`` both take it).
+WAIT_FOR_CYCLE_FLAG = "--wait-for-cycle"
+WAIT_FOR_CYCLE_KEY = "wait_for_cycle"
+
+
+def span_words(span: timedelta) -> str:
+    """A wait in words: ``4 d 12 h``, ``5 h 20 min``, ``40 min``."""
+
+    minutes = max(0, int(round(span.total_seconds() / 60.0)))
+    if minutes >= 24 * 60:
+        # Days are said to the nearest hour: 4 d 7 h 59 min is "4 d 8 h".
+        days, hours = divmod(int(round(minutes / 60.0)), 24)
+        return f"{days} d {hours} h"
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours} h {minutes} min" if minutes else f"{hours} h"
+    return f"{minutes} min"
+
+
+def when_words(moment: datetime, *, now: datetime) -> str:
+    """When a lead is due, said so a reader cannot take it for today.
+
+    ``03:30Z`` for a time today, ``2026-11-20 03:30Z`` for any other day,
+    and, for a time still ahead, how long that is from now
+    (``2026-11-20 03:30Z, in 4 d 12 h``).
+    """
+
+    moment, now = _naive(moment), _naive(now)
+    words = (f"{moment:%H:%M}Z" if moment.date() == now.date()
+             else f"{moment:%Y-%m-%d %H:%M}Z")
+    if moment > now:
+        words += f", in {span_words(moment - now)}"
+    return words
+
+
+def start_due(needs: Sequence[Need]) -> datetime | None:
+    """When the last of a window's start needs is due, or None."""
+
+    stamps = [need.expected_at for need in needs if need.expected_at is not None]
+    return max(stamps) if stamps else None
+
+
+def future_start_refusal(source: str, cycle: datetime, due: datetime | None, *,
+                         now: datetime) -> str | None:
+    """Why a run should not wait for a cycle whose start is far ahead, or None.
+
+    ``due`` is when the window's start needs are due (:func:`start_due`).
+    A wait of at most :data:`MAX_START_WAIT` is the ordinary as-posted
+    wait and is not refused; a longer one is, by naming the cycle's date,
+    when it starts and how long that is, because the likely cause is a
+    mistyped date.  The flag :data:`WAIT_FOR_CYCLE_FLAG` (or the
+    ``[fetch]`` key) waits anyway.
+    """
+
+    if due is None:
+        return None
+    cycle, due, now = _naive(cycle), _naive(due), _naive(now)
+    wait = due - now
+    if wait <= MAX_START_WAIT:
+        return None
+    limit = int(MAX_START_WAIT.total_seconds() // 3600)
+    ahead = (f" is {span_words(cycle - now)} in the future" if cycle > now
+             else " starts far ahead")
+    return (f"{source.upper()} cycle {cycle:%Y-%m-%dT%H}Z{ahead}: its first hours are due "
+            f"about {due:%Y-%m-%d %H:%M}Z, {span_words(wait)} from now "
+            f"({now:%Y-%m-%d %H:%M}Z), and a run waits at most {limit} h for "
+            "its cycle to start unless asked to.\n"
+            "  what to do: if the date is a typo, fix it (--cycle latest takes "
+            "the newest cycle that can start); to wait for this one, pass "
+            f"{WAIT_FOR_CYCLE_FLAG} (or write {WAIT_FOR_CYCLE_KEY} = true in "
+            "the config's [fetch] table).")
+
+
+def archive_hole_refusal(window: Window, answered, *,
+                         now: datetime) -> str | None:
+    """Why an archive's missing object will not appear by waiting, or None.
+
+    ``answered`` is each probed ``(Need, answer)``.  A need answered
+    ``not_posted`` (every host asked answered, and one said the object is
+    not there) is refused when its late time has passed and no host on
+    its source's ladder that keeps a bounded live window still keeps a
+    cycle this old: only archives serve it, and an archive does not fill
+    a hole by waiting.  A host that could not be heard (``not_heard``)
+    never refuses.
+
+    THE BREAKAGE THIS PREVENTS (door item 11, 2026-11-12): an archive
+    cycle with a missing object answered ``waiting`` (exit 75, retry in
+    30 s) years after its late time, so a launcher waited on an object
+    no host will ever post.
+    """
+
+    age = fetch_endpoints.cycle_age_hours(window.cycle, now)
+    for need, answer in answered:
+        if answer.get("answer") != NOT_POSTED:
+            continue
+        if need.late_at is None or now < need.late_at:
+            continue
+        rungs = fetch_endpoints.ladder(need.source)
+        if not rungs:
+            continue
+        live = [rung for rung in rungs if not rung.archive]
+        if live:
+            # A bounded live host still keeps this cycle: it may yet post.
+            if any(rung.covers(age) for rung in live):
+                continue
+        elif rows.posting(need.source).shape != "archive":
+            # Every host keeps cycles forever, but the route posts live
+            # (gfs-pressure, the mapped GFS route): a fresh cycle past its
+            # late time is late, not a hole (item 11 review: it was refused).
+            continue
+        lead = window.start_lead if need.lead is None else need.lead
+        decided = answer.get("url")
+        return (f"{need.source.upper()} cycle {window.cycle:%Y-%m-%dT%H}Z "
+                f"lead {lead} ({need.role}) is not on any host that keeps a "
+                f"cycle this old"
+                + (f" ({decided} answered that it is not there)" if decided else "")
+                + f", and its late time {rows.instant(need.late_at)} has "
+                "passed; only archives keep a cycle this old and an archive "
+                "does not fill a hole by waiting, so this window will not "
+                "start from them")
+    return None
+
+
 def archive_end_refusal(window: Window, *, now: datetime) -> str | None:
     """Why an archive window runs past the archive's declared end, or None."""
 
@@ -611,8 +758,9 @@ def readiness(source: str, cycle: datetime | str, hours: int, *,
         return (_refusal_document(source, named, basis, hours, as_posted,
                                   str(error), checked), REFUSED_EXIT)
     posting = rows.posting(source, provider)
-    refusal = retention_refusal(window, now=checked) or archive_end_refusal(
-        window, now=checked)
+    refusal = (retention_refusal(window, now=checked)
+               or layout_refusal(window, now=checked)
+               or archive_end_refusal(window, now=checked))
     lead_rows = []
     try:
         lead_rows = rows.lead_rows(
@@ -686,12 +834,14 @@ def readiness(source: str, cycle: datetime | str, hours: int, *,
                         start_needs=need_rows)
         return document, READY_EXIT
     answers: dict[int | None, str] = {}
+    answered = []
     waiting = False
     for need in needs:
         if no_probe:
             answer = {"answer": None, "endpoint": None}
         else:
             answer = need_answer(window, need, probe=probe, now=checked)
+            answered.append((need, answer))
         need_rows.append({**need.row(), "answer": answer["answer"],
                           "endpoint": answer["endpoint"]})
         if need.source == source:
@@ -710,6 +860,10 @@ def readiness(source: str, cycle: datetime | str, hours: int, *,
     if ready:
         document.update(state="ready", ready=True)
         return document, READY_EXIT
+    hole = archive_hole_refusal(window, answered, now=checked)
+    if hole is not None:
+        document.update(state="refused", refusal=hole)
+        return document, REFUSED_EXIT
     retry = poll
     if (ready_at is not None and ready_at - ASK_AHEAD > checked
             and (no_probe or not any(fetch_endpoints.policy_uses_aws(need.source)

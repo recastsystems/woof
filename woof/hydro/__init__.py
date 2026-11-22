@@ -1,4 +1,4 @@
-"""GPU-resident NextGen hydrology coupled to WOOF."""
+"""GPU-resident NextGen hydrology coupled to WOOF-ArWen."""
 
 from .driver import ResidentHydroDriver, Stage
 

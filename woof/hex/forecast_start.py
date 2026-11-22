@@ -9,7 +9,7 @@ background, a remap onto a nest).
 One writer for both physics routes: the ArWen-physics driver
 (``drivers/run_cuda_v841_forecast``) and the MPAS-physics route
 (``mpasphys/forecast_v842``).  THE BREAKAGE A SECOND WRITER WOULD BRING BACK:
-until 2026-10-24 only the WOOF driver wrote it, so on the MPAS route
+until 2026-10-24 only the WOOF-ArWen driver wrote it, so on the MPAS route
 ``add-nest`` had no live parent record and fell back to a receipt argv that a
 bare ``woof hex forecast`` run does not have.
 """
@@ -100,7 +100,7 @@ def radar_wait(output, ready):
     The worker advances radar-progress.json only on changed output bytes or
     completed uploads. Slow work can outlast 20 minutes; a missing consumer
     still times out after 20 minutes without progress. No heartbeat or PID
-    keeps this wait alive. Both scratch slots and WOOF encoding use it.
+    keeps this wait alive. Both scratch slots and WOOF-ArWen encoding use it.
     """
     import time
     output = Path(output)

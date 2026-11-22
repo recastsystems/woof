@@ -19,7 +19,7 @@ about skill, of any model, against anything.
 
 ---
 
-## 1. The WOOF HRRR route: VERIFY-FIRST answer is NO
+## 1. The WOOF-ArWen HRRR route: VERIFY-FIRST answer is NO
 
 The battery spec (section 7.2) proposed running each case as a one-domain
 experiment tree through `tools/prepared_domain_tree_forecast.py`, and marked
@@ -238,7 +238,7 @@ runner's receipt and is filed, not done.
 Both venues were occupied when this was written (the 5090 by the LES P3 lane,
 test host 1 by LES P1), so nothing below has been executed. Run in order.
 
-### Venue A. The RTX 5090, WOOF sizing smoke at battery shape
+### Venue A. The RTX 5090, WOOF-ArWen sizing smoke at battery shape
 
 > **Corrected 2026-08-04 after the rented-node smoke** (see the section 6
 > addendum): step 1's original command passed `--cycle`, `--wps-namelist` and
@@ -305,7 +305,7 @@ python -m gpuwm.source_cli --source hrrr --dry-run \
 # 2. assemble the one-domain tree.  For a single-domain battery case this
 #    step exists for the WRF arm -- it publishes wrfinput/wrfbdy and the
 #    per-domain artifact with the canonical surface/* group -- and its
-#    product is NOT the WOOF run input.  The manifest pair is the same
+#    product is NOT the WOOF-ArWen run input.  The manifest pair is the same
 #    one step 1b was given.
 python -m gpuwm.hrrr_hierarchy_direct \
   --root-preparation $SCRATCH/smoke/rootprep \

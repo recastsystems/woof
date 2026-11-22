@@ -114,7 +114,7 @@ def _snapshot_history(state, cfg, grid, valid_time, directory):
     """Use the history owner's layout, precision and scheme diagnostic once.
 
     Native-atmosphere columns require rectilinear geographic axes, moist-air
-    fractions and earth-relative mass winds. A projected WOOF C-grid cannot
+    fractions and earth-relative mass winds. A projected WOOF-ArWen C-grid cannot
     use that contract without rotating/re-staggering its winds and changing
     words. Its temporary history preserves the native grid instead.
     """

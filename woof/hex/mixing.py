@@ -31,6 +31,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from . import rkind_libm
+from .native_powf import powf_native_gnu
 from .errors import ConfigurationRefusal
 from .horizontal import edge_sign_on_cell, edge_sign_on_vertex
 
@@ -312,14 +313,10 @@ def compute_mesh_mixing_scaling(
         half = out_dtype.type(0.5)
         quarter = out_dtype.type(0.25)
         three_quarters = out_dtype.type(0.75)
-        for edge, (cell0, cell1) in enumerate(cells):
-            mean_density = half * (density[cell0] + density[cell1])
-            del2[edge] = out_dtype.type(1.0) / rkind_libm.powf_rkind(
-                mean_density, quarter
-            )
-            del4[edge] = out_dtype.type(1.0) / rkind_libm.powf_rkind(
-                mean_density, three_quarters
-            )
+        # GNU libm powf, as gfortran's RKIND ** (see regional_v841.compute_mesh_scaling_regional).
+        mean_density = half * (density[cells[:, 0]] + density[cells[:, 1]])
+        del2 = (out_dtype.type(1.0) / powf_native_gnu(mean_density, quarter)).astype(out_dtype)
+        del4 = (out_dtype.type(1.0) / powf_native_gnu(mean_density, three_quarters)).astype(out_dtype)
     return MeshMixingScaling(del2=del2, del4=del4)
 
 

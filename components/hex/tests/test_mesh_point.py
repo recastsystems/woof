@@ -263,6 +263,34 @@ def fake_mesh_exe(tmp_path: Path) -> Path:
     return launcher
 
 
+def test_a_geometry_2_plan_carries_the_halo_so_the_source_box_covers_the_cull(fake_mesh_exe: Path, monkeypatch) -> None:
+    """THE BREAKAGE (hex 0.6.2, 2026-11-20): with geometry 2 the default, a plain `woof hex regional --point
+    41.8,-93.8 --fine-dx-m 3000 --radius-km 250 --source hrrr` stopped at its init stage ("243 of the 37482 cells ...
+    lie outside the first guess"): the plan's cull named no halo_km, so the intermediate's box (target_from_plan:
+    the cut plus the halo plus 30 km) stopped short of the seven boundary rings (cells to 394 km, box to 367 km)."""
+    from woof.hex import hrrr_intermediate, mesh_spec_gates
+
+    monkeypatch.setattr(mesh_spec_gates, "gates_from_receipt", lambda spec, receipt, measure=None: {})
+    arguments = build_parser().parse_args([
+        "mesh-plan", "--point", "41.8,-93.8", "--fine-dx-m", "3000", "--radius-km", "250",
+        "--mesh-exe", str(fake_mesh_exe),
+    ])
+    request = mesh_point.request_from_arguments(arguments)
+    assert request.ask is not None   # the default (geometry 2) is the ask path
+    plan = mesh_point.plan_point(request)
+    cull = plan["cull"]
+    # At least the rings at the cut's spacing; each is walked at its own (growing) spacing past the cut.
+    assert cull["halo_km"] >= cull["boundary_rings"] * cull["spacing_at_cut_km"]
+    assert cull["cut_radius_km"] + cull["halo_km"] > 394.0   # the run's outermost cell
+    path = Path(fake_mesh_exe).parent / "plan.json"
+    path.write_text(json.dumps(plan), encoding="utf-8")
+    target, basis = hrrr_intermediate.target_from_plan(
+        path, margin_km=hrrr_intermediate.DEFAULT_MARGIN_KM, spacing_deg=hrrr_intermediate.DEFAULT_SPACING_DEG)
+    assert basis["halo_km"] == cull["halo_km"]
+    reach_deg = (cull["cut_radius_km"] + cull["halo_km"]) / hrrr_intermediate.KM_PER_DEG
+    assert target.south <= 41.8 - reach_deg and target.south + (target.ny - 1) * target.dlat >= 41.8 + reach_deg
+
+
 def test_the_plan_prices_the_parent_the_cull_and_the_card(fake_mesh_exe: Path, monkeypatch) -> None:
     from woof.hex import mesh_spec_gates
 
@@ -277,7 +305,7 @@ def test_the_plan_prices_the_parent_the_cull_and_the_card(fake_mesh_exe: Path, m
     parser = build_parser()
     arguments = parser.parse_args([
         "mesh-plan", "--point", "39.1,-94.58", "--fine-dx-m", "937.5", "--radius-km", "100",
-        "--card", "32gb", "--mesh-exe", str(fake_mesh_exe),
+        "--card", "32gb", "--mesh-exe", str(fake_mesh_exe), "--geometry", "1",   # the ladder's prices
     ])
     request = mesh_point.request_from_arguments(arguments)
     plan = mesh_point.plan_point(request)
@@ -327,6 +355,15 @@ def test_a_cull_that_does_not_fit_the_card_is_refused_before_anything_is_built(
         mesh_point.run_point(arguments)
     text = str(refusal.value)
     assert "refused before anything is built" in text and "reduce --radius-km" in text
+    assert not (tmp_path / "out").exists()
+    # The ladder (geometry 1) also quotes the largest core this card holds.
+    arguments = parser.parse_args([
+        "mesh-plan", "--point", "39.1,-94.58", "--card", "32gb", "--vram-gib", "3", "--geometry", "1",
+        "--generate", "--out-dir", str(tmp_path / "out"), "--mesh-exe", str(fake_mesh_exe),
+    ])
+    with pytest.raises(PointPlanRefusal) as refusal:
+        mesh_point.run_point(arguments)
+    assert "This card holds a core of up to" in str(refusal.value)
     assert not (tmp_path / "out").exists()
 
 

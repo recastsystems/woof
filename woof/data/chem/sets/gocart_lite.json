@@ -4,5 +4,5 @@
   "description": "GOCART-lite: GOCART_SIMPLE without DMS and MSA (no DMS seawater source row) and without the unspeciated P25/P10 (no anthropogenic PM row); 15 species.",
   "wrf_chem_opt": null,
   "wrf_tracer_opt": null,
-  "provenance": "WOOF's default GOCART (DESIGN 1.4); a subset of chem_opt=300"
+  "provenance": "WOOF-ArWen's default GOCART (DESIGN 1.4); a subset of chem_opt=300"
 }

@@ -619,7 +619,7 @@ def test_the_docs_tree_is_tracked_and_non_empty():
     """A guard over an empty list passes forever and proves nothing."""
     docs = _tracked_docs()
     assert len(docs) > 5, docs
-    assert any(d.name == "da-nowcast-quickstart.md" for d in docs)
+    assert any(d.name == "install.md" for d in docs)
 
 
 def test_no_shipped_doc_tells_a_reader_to_install_a_tombstone_wheel():

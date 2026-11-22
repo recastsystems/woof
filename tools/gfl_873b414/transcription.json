@@ -1,0 +1,31 @@
+{
+  "wrf": "06d4240ae989",
+  "gfl": "873b414670323ae766ec4fe1f4b6b5ab891358ed",
+  "scheme_source_sha256": "96e386d197e0a534f97e51ad3fee81653929f7fa3d171b8105dc555ba0c53d48",
+  "modules": [
+    {
+      "source": "phys/GFL/module_cu_gfl_deep.F90",
+      "source_sha256": "68dc04322599209036d05d2e53437f3a12490fc481085e5886756bc002df310e",
+      "referee_unit": "phys/module_cu_gfl_deep.f90",
+      "referee_unit_sha256": "039cb42416283fd2543a390638999e73511867f71fe893e9e0f9e198860a350d",
+      "gnu_tree_sha256": "6f38f00361dde34865de16507b88d1e430517dddd49fd7c47214863dfe43a5fd",
+      "lowered_sha256": "44559a50b1646ab41fe0ab8e89d28c893c8d3e1791eebfb1849727f6b2dfc89f"
+    },
+    {
+      "source": "phys/GFL/module_cu_gfl_sh.F90",
+      "source_sha256": "56f6bd459ec8ae3b2e3ac38457509b617a61a0865a4536ef6fecc349b43154cd",
+      "referee_unit": "phys/module_cu_gfl_sh.f90",
+      "referee_unit_sha256": "901e98265b048b2621cf388217b9bb3132fb3f2d9b3d32019aee8f1e82a708f1",
+      "gnu_tree_sha256": "3a32140e9814e6385c1ce2cd76240b364654663c55146755151bfc6ddbdc3823",
+      "lowered_sha256": "32e6a410bcc0f6904eb05774ff8bff227c2ef1aa3a6b65ef13ec4772fbcc98b8"
+    },
+    {
+      "source": "phys/GFL/WRF/module_cu_gfl_wrf.F90",
+      "source_sha256": "71e927c3f181cc0820d5599a808c8240b83dadae8b28dacedab3b13e7379a484",
+      "referee_unit": "phys/module_cu_gfl_wrf.f90",
+      "referee_unit_sha256": "4baa1249321d9e239b9809fefb26824838929ab7072be82ff2a2970c2a653370",
+      "gnu_tree_sha256": "10eeb82de8c85090117c783d878f7abc6d34cdd14240ac795ff7bde60b06d568",
+      "lowered_sha256": "41e7634ccfd5c8b8ac2054169de5a10134afc14a72d043a935c4a507f608c36f"
+    }
+  ]
+}

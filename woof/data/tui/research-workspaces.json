@@ -190,48 +190,48 @@
     },
     {
       "id": "native-downscale",
-      "title": "WOOF Offline Downscaling",
-      "publisher": "WOOF source documentation",
+      "title": "WOOF-ArWen Offline Downscaling",
+      "publisher": "WOOF-ArWen source documentation",
       "url": "docs/public/DOWNSCALE.md",
       "accessed": "2026-09-06",
       "supports": "Parent physics evidence, exact child surface geometry, cadence ceilings and archived/live nesting differences."
     },
     {
       "id": "native-tracking",
-      "title": "WOOF Domain Tracking Controls",
-      "publisher": "WOOF source",
+      "title": "WOOF-ArWen Domain Tracking Controls",
+      "publisher": "WOOF-ArWen source",
       "url": "tools/arwen-tui/src/domains.rs",
       "accessed": "2026-09-06",
       "supports": "Native pressure/height, UH and reflectivity followers, threshold units, UH fallback and cadence controls."
     },
     {
       "id": "native-corridor",
-      "title": "WOOF CLI Options",
-      "publisher": "WOOF source documentation",
+      "title": "WOOF-ArWen CLI Options",
+      "publisher": "WOOF-ArWen source documentation",
       "url": "docs/public/CLI-OPTIONS.md",
       "accessed": "2026-09-06",
       "supports": "Prepared moving nests require child-resolution statics over the parent corridor."
     },
     {
       "id": "native-scenario",
-      "title": "WOOF Scenario Lab Controls",
-      "publisher": "WOOF source",
+      "title": "WOOF-ArWen Scenario Lab Controls",
+      "publisher": "WOOF-ArWen source",
       "url": "tools/arwen-tui/src/scenario.rs",
       "accessed": "2026-09-06",
       "supports": "Warm-bubble coordinates, theta amplitude >0 K, radius, vertical half-depth and RH-preservation fields."
     },
     {
       "id": "native-output",
-      "title": "WOOF Plot Presets",
-      "publisher": "WOOF source data",
+      "title": "WOOF-ArWen Plot Presets",
+      "publisher": "WOOF-ArWen source data",
       "url": "woof/data/tui/plot-presets.json",
       "accessed": "2026-09-06",
       "supports": "Exact native plot-product identifiers; selected plots do not create unavailable history fields."
     },
     {
       "id": "native-tiles",
-      "title": "WOOF Tiling a Domain",
-      "publisher": "WOOF source documentation",
+      "title": "WOOF-ArWen Tiling a Domain",
+      "publisher": "WOOF-ArWen source documentation",
       "url": "docs/public/TILES.md",
       "accessed": "2026-09-06",
       "supports": "Tile streaming moves a domain through host memory, retains clock/output contracts and adds transfer/host-memory cost."
@@ -2475,7 +2475,7 @@
       "validation_status": "unvalidated",
       "further_analysis": [
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.",
-        "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis."
+        "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis."
       ]
     },
     {
@@ -2528,7 +2528,7 @@
       "validation_status": "unvalidated",
       "further_analysis": [
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.",
-        "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis."
+        "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis."
       ]
     },
     {
@@ -2594,7 +2594,7 @@
       "validation_status": "unvalidated",
       "further_analysis": [
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.",
-        "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis."
+        "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis."
       ]
     },
     {
@@ -3575,7 +3575,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -3625,7 +3625,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -3678,7 +3678,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -3727,7 +3727,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -3777,7 +3777,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -3830,7 +3830,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -3878,8 +3878,8 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
-        "The current WOOF history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+        "The current WOOF-ArWen history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
       ]
     },
     {
@@ -3928,8 +3928,8 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
-        "The current WOOF history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+        "The current WOOF-ArWen history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
       ]
     },
     {
@@ -3981,8 +3981,8 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
-        "The current WOOF history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+        "The current WOOF-ArWen history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
       ]
     },
     {
@@ -4033,7 +4033,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.",
         "Air temperature and 10 m wind are shown separately. Wind chill is not calculated by this history-rendering path and requires separate analysis."
       ]
@@ -4087,7 +4087,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.",
         "Air temperature and 10 m wind are shown separately. Wind chill is not calculated by this history-rendering path and requires separate analysis."
       ]
@@ -4144,7 +4144,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.",
         "Air temperature and 10 m wind are shown separately. Wind chill is not calculated by this history-rendering path and requires separate analysis."
       ]
@@ -4198,7 +4198,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "The plots show temperature, dewpoint and winds separately. The current WOOF history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis."
+        "The plots show temperature, dewpoint and winds separately. The current WOOF-ArWen history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis."
       ]
     },
     {
@@ -4251,7 +4251,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "The plots show temperature, dewpoint and winds separately. The current WOOF history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis."
+        "The plots show temperature, dewpoint and winds separately. The current WOOF-ArWen history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis."
       ]
     },
     {
@@ -4307,7 +4307,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "The plots show temperature, dewpoint and winds separately. The current WOOF history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis."
+        "The plots show temperature, dewpoint and winds separately. The current WOOF-ArWen history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis."
       ]
     },
     {
@@ -4357,7 +4357,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -4409,7 +4409,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -4466,7 +4466,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -4983,7 +4983,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
+        "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
         "The stored 0-3 km lapse-rate plot uses plain temperature. It is not the virtual-temperature lapse rate; the virtual-temperature quantity requires separate analysis.",
         "Air temperature and dewpoint are shown separately. Dewpoint depression is not calculated by this history-rendering path and requires separate analysis.",
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations."
@@ -5039,7 +5039,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
+        "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
         "The stored 0-3 km lapse-rate plot uses plain temperature. It is not the virtual-temperature lapse rate; the virtual-temperature quantity requires separate analysis.",
         "Air temperature and dewpoint are shown separately. Dewpoint depression is not calculated by this history-rendering path and requires separate analysis.",
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations."
@@ -5098,7 +5098,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
+        "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
         "The stored 0-3 km lapse-rate plot uses plain temperature. It is not the virtual-temperature lapse rate; the virtual-temperature quantity requires separate analysis.",
         "Air temperature and dewpoint are shown separately. Dewpoint depression is not calculated by this history-rendering path and requires separate analysis.",
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations."
@@ -5445,7 +5445,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
+        "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations."
       ]
     },
@@ -5499,7 +5499,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
+        "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations."
       ]
     },
@@ -5556,7 +5556,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
+        "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
         "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations."
       ]
     },
@@ -5605,7 +5605,7 @@
       "validation_status": "unvalidated",
       "further_analysis": [
         "Air temperature and relative humidity are shown separately. Heat index is not calculated by this history-rendering path and requires separate analysis.",
-        "The current WOOF history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
+        "The current WOOF-ArWen history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
       ]
     },
     {
@@ -5655,7 +5655,7 @@
       "validation_status": "unvalidated",
       "further_analysis": [
         "Air temperature and relative humidity are shown separately. Heat index is not calculated by this history-rendering path and requires separate analysis.",
-        "The current WOOF history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
+        "The current WOOF-ArWen history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
       ]
     },
     {
@@ -5703,7 +5703,7 @@
       "validation_status": "unvalidated",
       "further_analysis": [
         "Air temperature and relative humidity are shown separately. Heat index is not calculated by this history-rendering path and requires separate analysis.",
-        "The current WOOF history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
+        "The current WOOF-ArWen history renderer does not produce 2 m wet-bulb temperature. Air temperature and humidity are context only; wet-bulb temperature requires a separate calculation."
       ]
     },
     {
@@ -6506,7 +6506,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -6558,7 +6558,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {
@@ -6613,7 +6613,7 @@
       "qualification_status": "unqualified",
       "validation_status": "unvalidated",
       "further_analysis": [
-        "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
+        "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations."
       ]
     },
     {

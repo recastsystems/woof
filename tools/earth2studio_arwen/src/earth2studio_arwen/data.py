@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""WOOF history (WOOF or hex) as an Earth2Studio data source.
+"""WOOF history (WOOF-ArWen or hex) as an Earth2Studio data source.
 
 ``WoofHistory`` reads a woof / woof hex run's history through woof's own
 Earth-2 exporter (``woof export --earth2``), which writes the run in
@@ -35,7 +35,7 @@ def _as_list(value) -> list:
 
 
 class WoofHistory:
-    """A WOOF or hex run's history as an Earth2Studio data source.
+    """A WOOF-ArWen or hex run's history as an Earth2Studio data source.
 
     Parameters
     ----------

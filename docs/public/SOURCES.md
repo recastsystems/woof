@@ -162,7 +162,7 @@ prints the `woof sim` line that runs the forecast and draws every
 product from each output as it lands. Run again, it prepares into the
 next free `CONFIG-prepared-N`, since a folder that exists is never
 written over. It keeps `DIR/inputs.json` while the folder's files are
-unchanged; after they or this WOOF's decoders change it writes a new
+unchanged; after they or this WOOF-ArWen's decoders change it writes a new
 one and says which one it replaced. Each preparation keeps its own copy
 of the manifest it was made from. Adding a hand-staged source is a row
 there, not a code path.
@@ -189,7 +189,7 @@ or `wrf_archive_mapping_required` -- rather than "invalid choice":
 ```
 woof fetch: error: argument --source: --source nam: no fetch route.
   why: the registry row is not runnable (adapter_mapping_required);
-  nothing in this WOOF could read the bytes a download produced.
+  nothing in this WOOF-ArWen could read the bytes a download produced.
   see: `woof sources` for what each registered source can do today.
 ```
 

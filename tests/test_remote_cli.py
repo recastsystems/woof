@@ -13,7 +13,7 @@ from woof import remote_cli as rc
 
 
 def args(**overrides):
-    return Namespace(**{**dict(host="test-host", python="/opt/the model's runtime/bin/python",
+    return Namespace(**{**dict(host="test-host", python="/opt/WOOF-ArWen's runtime/bin/python",
         workspace="/srv/weather space", port=None, identity=None, ssh_config=None,
         remote_action="probe", json=True), **overrides})
 
@@ -191,7 +191,7 @@ def test_transport_preserves_request_and_parses_only_one_envelope(tmp_path):
 
 @pytest.mark.parametrize("body,match", [
     ("print('plain prose')", "Expecting value"),
-    ("print('{}\\n{}')", "one WOOF response"),
+    ("print('{}\\n{}')", "one WOOF-ArWen response"),
     ("print(json.dumps({'schema':'wrong','ok':True,'action':'probe'}))", "incompatible"),
     ("print(json.dumps({'schema':'gpuwm.remote.result.v1','ok':True,'action':'start'}))", "incompatible"),
     ("print(json.dumps({'schema':'gpuwm.remote.result.v1','ok':True,'action':'probe'}));sys.exit(7)", "disagrees"),

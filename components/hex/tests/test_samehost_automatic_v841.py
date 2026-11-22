@@ -289,7 +289,8 @@ def test_rank_ledger_keeps_physical_card_and_rank(tmp_path, monkeypatch):
     module = SimpleNamespace(emit=lambda *args, **kwargs: events.append((args, kwargs)))
     monkeypatch.setitem(sys.modules, "woof.timeline.ledger", module)
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1,3,5,7")
-    monkeypatch.delenv("GPU_MUTEX_CARDS", raising=False)
+    monkeypatch.delenv("CARD_QUEUE_CARDS", raising=False)
+    monkeypatch.setenv("WOOF_CARD_QUEUE_PREFIX", "")
     monkeypatch.delenv("WOOF_TIME_LEDGER", raising=False)
     samehost.rank_event(tmp_path, "forecast.integrate", "begin", 2, 2, attrs={"step": 1})
     assert events[0][1]["card"] == 5
@@ -301,7 +302,7 @@ def test_rank_uuid_mask_uses_mutex_physical_card_indices(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "woof.timeline.ledger", SimpleNamespace(
         emit=lambda *args, **kwargs: events.append(kwargs)))
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-first,GPU-second")
-    monkeypatch.setenv("GPU_MUTEX_CARDS", "3 7")
+    monkeypatch.setenv("CARD_QUEUE_CARDS", "3 7")
     samehost.rank_event(tmp_path, "forecast.integrate", "end", 1, 1)
     assert events[0]["card"] == 7
 

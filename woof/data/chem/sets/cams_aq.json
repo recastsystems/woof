@@ -4,5 +4,5 @@
   "description": "Air quality from CAMS carried at the domain's resolution: ozone, NO2, CO and SO2 transported, mixed and dry-deposited, never produced or destroyed by chemistry. Needs the Atmosphere Data Store credential.",
   "wrf_chem_opt": null,
   "wrf_tracer_opt": null,
-  "provenance": "WOOF set (DESIGN 1.4): no WRF chem_opt carries gases without a mechanism, so no namelist maps onto it."
+  "provenance": "WOOF-ArWen set (DESIGN 1.4): no WRF chem_opt carries gases without a mechanism, so no namelist maps onto it."
 }

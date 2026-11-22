@@ -1,7 +1,7 @@
 # Arbitrary but verified GRIB adapters
 
 `woof adapt` is the user-facing front door for a GRIB2 product that does not
-have a named WOOF adapter. It combines three authorities:
+have a named WOOF-ArWen adapter. It combines three authorities:
 
 1. a WPS Vtable, used only for exact numeric GRIB selector import;
 2. an explicit `rw-wps.descriptor.v1`, which owns field meaning, units, axes,
@@ -91,7 +91,7 @@ woof adapt \
   --output-dir /case/product-adapter
 ```
 
-WOOF uses its vendored GRIB2 inventory and dump tools by default. Installed
+WOOF-ArWen uses its vendored GRIB2 inventory and dump tools by default. Installed
 or development environments may explicitly provide both exact executables
 with `--grib2-inventory` and `--grib2-dump`; supplying only one is refused.
 
@@ -150,10 +150,10 @@ runnable_mapping_not_stock_wrf_certified
 ```
 
 Runnable means the declared mapping and composition are executable by
-WOOF's mapped engine and this exact GRIB inventory passed the ingest battery.
+WOOF-ArWen's mapped engine and this exact GRIB inventory passed the ingest battery.
 It does not mean the descriptor is a correct physical interpretation of the
 files ([adapt-validation-contract.md](adapt-validation-contract.md)). It does
-not mean WOOF produced equivalent `wrfinput`/`wrfbdy` files to an
+not mean WOOF-ArWen produced equivalent `wrfinput`/`wrfbdy` files to an
 unchanged stock WRF toolchain, nor that stock WRF accepted and integrated
 them. Stock-WRF certification is a separate gate keyed to exact retained
 mapping, composition, source, geometry, and evidence hashes. A newly authored

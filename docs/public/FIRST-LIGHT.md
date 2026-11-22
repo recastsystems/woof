@@ -4,10 +4,10 @@ This is the full path from a bare machine to rendered forecast
 products, with real wall-clock timings. Every number on this page was
 measured in a first-time-user acceptance transcript on 2026-07-29:
 RTX 5090 (32 GiB), Windows 11, Python 3.13, a warm pip cache, and no
-prior WOOF state. Your times will vary with network, disk, and card;
+prior WOOF-ArWen state. Your times will vary with network, disk, and card;
 the shape of the path will not.
 
-> WOOF is a research and educational tool, never a substitute for
+> WOOF-ArWen is a research and educational tool, never a substitute for
 > official warnings from your national meteorological service.
 
 ## 0. What you need
@@ -26,7 +26,7 @@ the shape of the path will not.
   (venvs, data, outputs) reached 7.6 GB, dominated by hourly output
   frames at ~198 MB each.
 - Static geography: the WPS_GEOG tree, staged by `woof fetch-geog`
-  (~1.3 GB one-time download, ~16 GB unpacked; see
+  (~2.7 GB one-time download, ~31 GiB unpacked; see
   [DATA.md](DATA.md#static-geography-wps_geog)).
 
 ## 1. Install (measured: a few minutes from clean)
@@ -64,12 +64,12 @@ version:
 POSIX:
 
 ```bash
-git clone https://github.com/recastsystems/woof woof && cd woof
+git clone https://github.com/recastsystems/arwen woof && cd woof
 python -m venv .venv && source .venv/bin/activate
 python -m pip install -e recast-woof-data
 python -m pip install -e '.[gpu-cu12,render]'   # or gpu-cu13
 woof fetch-tables     # optional: the first Thompson run stages missing tables
-woof fetch-geog       # WPS_GEOG static tree: ~1.3 GB down, ~16 GB unpacked
+woof fetch-geog       # WPS_GEOG static tree: ~2.7 GB down, ~31 GiB unpacked
 for workspace in tools/grib1_bridge tools/rustwx tools/zarr_bridge tools/rw_wps tools/region_global_dealias tools/nextgen_hydrofabric tools/nextgen_forcing tools/nextgen_verify tools/hydro_world tools/hydro_world_params tools/nextgen_reservoir_prepare tools/hydro_world_init tools/ocean_prepare tools/rw-bathy tools/wind-table tools/nextgen_output tools/rw_icechunk tools/cam_tables tools/waves_data tools/dfi-runtime tools/tslist_bridge tools/aerosol_grid tools/storm_merge tools/tc_vitals tools/tc_frames_io tools/tc-verify; do
   (cd "$workspace" && cargo fetch --locked && cargo build --release --locked --offline)
 done
@@ -79,12 +79,12 @@ woof doctor
 Windows (PowerShell):
 
 ```powershell
-git clone https://github.com/recastsystems/woof woof; cd woof
+git clone https://github.com/recastsystems/arwen woof; cd woof
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
 python -m pip install -e recast-woof-data
 python -m pip install -e '.[gpu-cu12,render]'   # or gpu-cu13
 woof fetch-tables     # optional: the first Thompson run stages missing tables
-woof fetch-geog       # WPS_GEOG static tree: ~1.3 GB down, ~16 GB unpacked
+woof fetch-geog       # WPS_GEOG static tree: ~2.7 GB down, ~31 GiB unpacked
 foreach ($workspace in 'tools\grib1_bridge', 'tools\rustwx', 'tools\zarr_bridge', 'tools\rw_wps', 'tools\region_global_dealias', 'tools\nextgen_hydrofabric', 'tools\nextgen_forcing', 'tools\nextgen_verify', 'tools\hydro_world', 'tools\hydro_world_params', 'tools\nextgen_reservoir_prepare', 'tools\hydro_world_init', 'tools\ocean_prepare', 'tools\rw-bathy', 'tools\wind-table', 'tools\nextgen_output', 'tools\rw_icechunk', 'tools\cam_tables', 'tools\waves_data', 'tools\dfi-runtime', 'tools\tslist_bridge', 'tools\aerosol_grid', 'tools\storm_merge', 'tools\tc_vitals', 'tools\tc_frames_io', 'tools\tc-verify') {
   Push-Location $workspace; cargo fetch --locked; cargo build --release --locked --offline; Pop-Location
 }
@@ -497,7 +497,7 @@ Every filename carries the domain and its resolution
 (`..._d02-3km_composite_reflectivity_...`; sub-kilometre nests read as
 `_d05-111m_`), so several nests of one run render into one directory
 without colliding, and the plot subtitle carries the same spacing as
-`Δx 3 km`.  Plots are labelled **WOOF**; pass `--source-label` when
+`Δx 3 km`.  Plots are labelled **WOOF-ArWen**; pass `--source-label` when
 rendering wrfout files this model did not produce, so the sheet does
 not claim them.
 

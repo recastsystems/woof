@@ -226,7 +226,9 @@ def test_native_source_identity_rejects_modified_physics():
     'ntu-multi-moment-wrf-v4.6.1-v2-float32-log10-cos-3mom-ice-shape-density-prognostic-aerosol-fixes-f0-f6',
     'ntu-multi-moment-wrf-v4.6.1-v3-own-erf-device-debug-log10-cos-3mom-ice-shape-density-prognostic-aerosol-fixes-f0-f6'])
 def test_ntu_restart_refuses_the_previous_erf_arithmetic(tmp_path,monkeypatch,previous):
-    cfg=config()
+    # The table row is the wrf_471 generation's identity; wrf_480's is its
+    # own (woof.mp_generations, tests/test_mp_generations.py).
+    cfg=replace(config(),ntu_version='wrf_471')
     source=_shim_state(cfg,monkeypatch);_fill_setup(source)
     with monkeypatch.context() as old:
         old.setitem(restart.MICROPHYSICS_ALGORITHM_IDENTITIES,56,previous)
@@ -234,6 +236,18 @@ def test_ntu_restart_refuses_the_previous_erf_arithmetic(tmp_path,monkeypatch,pr
     fresh=_shim_state(cfg,monkeypatch);_fill_setup(fresh)
     with pytest.raises(restart.RestartMismatchError):
         restart.restore_restart(path,fresh,cfg)
+
+
+def test_ntu_restart_refuses_a_generation_change(tmp_path,monkeypatch):
+    """A WRF 4.7.1-generation checkpoint resumes only under ntu_version=wrf_471."""
+    old=replace(config(),ntu_version='wrf_471')
+    source=_shim_state(old,monkeypatch);_fill_setup(source)
+    path=restart.write_restart(tmp_path/'ntu471.npz',source,old)
+    fresh=_shim_state(config(),monkeypatch);_fill_setup(fresh)
+    with pytest.raises(restart.RestartMismatchError,match='ntu_version'):
+        restart.restore_restart(path,fresh,config())
+    same=_shim_state(old,monkeypatch);_fill_setup(same)
+    restart.restore_restart(path,same,old)
 
 
 @requires_gpu

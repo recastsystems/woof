@@ -1,6 +1,6 @@
 # Plots: use `woof render`. It is already the marketing tier.
 
-Do not hand-roll matplotlib styling for forecast imagery. WOOF ships a
+Do not hand-roll matplotlib styling for forecast imagery. WOOF-ArWen ships a
 production renderer and its output is what the project puts in front of
 customers. Anything written from scratch will be worse, and will not match the
 rest of the campaign material.

@@ -495,7 +495,17 @@ __device__ void ke_keps1d(const KeCol &col, int nz, int c, int ncol, float dt,
                     tl = FDIV(FDIV(FADD(q, FSQRT(ke_max(0.0f, FADD(FMUL(q, q),
                               FMUL(FMUL(FMUL(2.0f, bbb), beta), FSUB(te, zdo_sup)))))), bbb), beta);
                 } else if (W(KS_TH, izz) != thi) {
+#if defined(BOULAC_DOWN_SIGN)
+                    // Correct-mode ML1 (RunConfig.pbl_boulac_down_sign, default
+                    // on): the bbb -> 0 limit of the branch above is
+                    // (te - zdo_sup)/(beta*(theta(iz) - theta(izz)))
+                    // (wrf-model/WRF PR 2431).  WRF v4.7.1 module_bl_keps.F
+                    // boulac_length divides by theta(izz) - theta(iz): tl < 0
+                    // and dld short by 2*|tl|.  Exact mode compiles the WRF line.
+                    tl = FDIV(FSUB(te, zdo_sup), FMUL(beta, FSUB(thi, W(KS_TH, izz))));
+#else
                     tl = FDIV(FSUB(te, zdo_sup), FMUL(beta, FSUB(W(KS_TH, izz), thi)));
+#endif
                 } else {
                     tl = 0.0f;
                 }

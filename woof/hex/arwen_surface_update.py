@@ -1,4 +1,4 @@
-"""Alarmed MPAS surface kernels bound to the resident WOOF column fields.
+"""Alarmed MPAS surface kernels bound to the resident WOOF-ArWen column fields.
 
 The arithmetic, monthly calendar, alarms and timed record reader are shared
 with the MPAS route. Only field names and soil storage layouts differ here.
@@ -18,7 +18,7 @@ from .mpasphys.surface_update_v842 import (
 def initialize_fractional_ice(fields, threshold, xp):
     """Seed the mixture consumed by MPAS's fractional-ice rescaling.
 
-    The WOOF constructor fills ALBEDO with 0.2, independently of XICE.
+    The WOOF-ArWen constructor fills ALBEDO with 0.2, independently of XICE.
     Treating that fill as an ice/water mixture can imply an ice albedo above
     one when the initial ice fraction is small. Noah-MP skips those columns,
     so it cannot repair the fill. Use the same ice and water endmembers as

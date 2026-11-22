@@ -13,7 +13,7 @@ discovery, no engine call.  It is pinned against the engine's own
 volume the engine reads, and vice versa.
 
 Kept dependency-free on purpose (``struct``, ``zlib``, ``numpy``): the
-exporter runs wherever WOOF history is, including a box that has no
+exporter runs wherever WOOF-ArWen history is, including a box that has no
 titan binary at all, and writing the stream is not what needs the
 engine.
 """

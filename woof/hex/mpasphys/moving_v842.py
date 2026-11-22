@@ -1,6 +1,6 @@
 """A moving fine region on the MPAS suite route: the move hooks of ``runtime_v842``.
 
-The WOOF route's moving hooks live in its one-card class executor
+The WOOF-ArWen route's moving hooks live in its one-card class executor
 (``woof.hex.drivers.fullstep_lts_forecast_v841``).  This module gives the MPAS-A v8.4.2 suite route
 (``--physics-backend mpasphys``, and the RRFS fork's suite through the same route) the same five
 hooks, driven by the same ``WOOF_HEX_MOVING_*`` switches the moving controller sets
@@ -12,7 +12,7 @@ hooks, driven by the same ``WOOF_HEX_MOVING_*`` switches the moving controller s
 * **carrier export** -- the dycore state and the native pools' physics state, persistent scheme state
   included, are sealed in one carrier (``WOOF_HEX_MOVING_CHECKPOINT_OUT``, and recovery seals);
 * **remapped resume** -- the next member continues from the carrier: the atmosphere through the same
-  conservative, balanced remap as the WOOF route (``woof.hex.moving_state.remap_atmosphere``), every
+  conservative, balanced remap as the WOOF-ArWen route (``woof.hex.moving_state.remap_atmosphere``), every
   carried physics field through the same overlap operator (atmospheric fields in physical height,
   surface and soil state from one coherent donor column of the same land/water/ice role);
 * **clock offset** -- a resumed segment is a native MPAS restart at the carrier's valid time
@@ -136,7 +136,7 @@ def _read_verified(path: Path, size: int, sha256: str, what: str = "moving carri
 
     Returns the uint8 buffer; the caller unpickles from it.  THE COST THIS REMOVES: a full hash pass and then a full
     pickle read of the ~3 GB carrier, one after the other, on one core at the start of every resumed segment
-    (box-aws2x 2026-10-24).
+    (a two-card cloud machine, 2026-10-24).
     """
     import numpy as np
     from concurrent.futures import ThreadPoolExecutor
@@ -189,11 +189,13 @@ def load_carrier(path) -> dict[str, Any]:
     data = _read_verified(path, int(receipt["bytes"]), receipt["sha256"])
     payload = pickle.loads(memoryview(data))
     del data
-    from .checkpoint_shards_v842 import SCHEMA as SHARDED, assemble_sharded
-    if payload.get("schema") == SHARDED:
-        payload = assemble_sharded(path, payload)
+    from . import checkpoint_shards_v842 as shards
+    if payload.get("schema") == shards.SCHEMA:
+        # The assembled payload, or for a same-host resume on the ranks that sealed it (GPUWM_HEX_DIRECT_SHARD_RESTORE,
+        # checkpoint_shards_v842.direct_restore_for) the manifest's direct carrier.
+        payload = shards.restore_sharded(path, payload)
     if payload.get("schema") != SCHEMA:
-        raise ValueError("this moving carrier was sealed on the WOOF route; a moving run keeps one physics "
+        raise ValueError("this moving carrier was sealed on the WOOF-ArWen route; a moving run keeps one physics "
                          "route from its first segment to its last (the case's physics_args select it)")
     return payload
 
@@ -207,7 +209,7 @@ def _write_sealed(path: Path, payload: dict[str, Any], summary: dict[str, Any]) 
 
     class HashingWriter:
         # The receipt hash comes from the bytes as pickle writes them, in order: no second full read of
-        # the ~3 GB carrier on one core after writing it (box-aws2x 2026-10-24).
+        # the ~3 GB carrier on one core after writing it (a two-card cloud machine, 2026-10-24).
         def __init__(self, stream):
             self.stream = stream
 
@@ -387,7 +389,7 @@ class MovingRoute:
                ("GPUWM_HEX_MOVING_ANALYSIS", "GPUWM_HEX_MOVING_BACKGROUND")):
             from ..fullstep_lts_admission import MOVING_ROUTE_REFUSAL
             raise ValueError(f"{MOVING_ROUTE_REFUSAL}, but moving analysis insertion and background "
-                             "export require the single-card active-LTS WOOF route")
+                             "export require the single-card active-LTS WOOF-ArWen route")
         if environ.get("WOOF_HEX_MOVING_ZONE"):
             # THE BREAKAGE THIS PREVENTS: the frozen-far-field zone transfer (woof.hex.moving_zone_state) maps the
             # atmosphere only; on this route every carried physics field would be left on the old member's
@@ -408,11 +410,15 @@ class MovingRoute:
         route.frame_seconds = float(minutes) * 60.0 if minutes else 3600.0
         carrier = absolute("WOOF_HEX_MOVING_CHECKPOINT_IN")
         if carrier:
+            from .checkpoint_shards_v842 import joined_carrier
+            carrier = joined_carrier(carrier)
             if environ.get("WOOF_HEX_MOVING_CHECKPOINT_WAIT"):
                 from ..moving_control import wait_for_carrier
                 wait_for_carrier(carrier, float(environ["WOOF_HEX_MOVING_CHECKPOINT_WAIT"]))
             route.carrier_path = carrier
-            route.carrier = load_carrier(carrier)
+            from .checkpoint_shards_v842 import direct_restore_for
+            with direct_restore_for(arguments, route):
+                route.carrier = load_carrier(carrier)
             route.origin_time = route.carrier["origin_time"]
             route.offset_seconds = float(route.carrier["time_seconds"])
             if route.operator and not route.source_grid:
@@ -593,7 +599,7 @@ class MovingRoute:
                 return finite, mapped, method
 
             # THE COST THIS REMOVES: every carried physics field (vectors first) was mapped one after another on
-            # one thread, 7.9 s of a resumed MPAS-route storm-following segment (box-aws2x 2026-10-24, sampled).
+            # one thread, 7.9 s of a resumed MPAS-route storm-following segment (a two-card cloud machine, 2026-10-24, sampled).
             # The maps are independent calls; they run on all cores, and the native pool writes stay in order.
             largest_donors(weights)  # cached on the map before any task needs it
             jobs = [(_key(row, level), row['dimensions']) for row in rows for level in range(1, row['nlevels']+1)]

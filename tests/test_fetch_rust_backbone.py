@@ -12,7 +12,7 @@ fetch stops and names both numbers until an operator accepts the change
 in one flag, at which point the live count becomes the bar and the
 manifest records that it happened.
 
-**The transport fallback.** A host publishing an inventory this WOOF
+**The transport fallback.** A host publishing an inventory this WOOF-ArWen
 does not recognise costs that host, not the run: ``--transport auto``
 says why and moves on.
 

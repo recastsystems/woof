@@ -6,7 +6,7 @@ arrives and in which latency class that puts it, how an hour's tables are
 cut for the analysis under an information cutoff, and how the volumes are
 recorded.
 
-Design item 2 of the WOOF global DA program (2026-09-06, with the design
+Design item 2 of the Arwen Global DA program (2026-09-06, with the design
 amendments of 01:10 UTC).  Everything on the data path is Rust: the
 fetchers, the decoders (GRIB through the mapped engine, NetCDF-4/HDF5
 through netcrust and hdf5-reader, the fixed-width and CSV archives through
@@ -942,7 +942,8 @@ def _run_door(name: str, arguments: list[str]) -> dict:
             f"that needs it cannot be fetched: {reason}") from None
     result = subprocess.run([str(binary), *arguments], capture_output=True, text=True, errors="replace")
     if result.returncode != 0:
-        tail = [l for l in (result.stderr or "").splitlines() if l.strip()]
+        # rw-http's retry notes ("rw-http: HTTP 429 ... retrying") come before the door's own error.
+        tail = [l for l in (result.stderr or "").splitlines() if l.strip() and not l.startswith("rw-http:")]
         raise RuntimeError(f"{name} {arguments[0]}: {tail[0] if tail else result.returncode}")
     return json.loads(result.stdout)
 

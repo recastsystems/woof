@@ -167,7 +167,7 @@ class ThetaMDecision:
     """The single answer every door gives about ``use_theta_m``.
 
     ``moist_theta`` is true when WRF would integrate the moist theta_m
-    prognostic and WOOF integrates dry theta instead -- a DECLARED
+    prognostic and WOOF-ArWen integrates dry theta instead -- a DECLARED
     DIVERGENCE with ``reason``, never a refusal: the divergence is the
     same on every door, so refusing on one of them and announcing it on
     the others gave one namelist two answers.
@@ -200,7 +200,7 @@ def theta_m_decision(use_theta_m: int, *,
                     "branch"))
     return ThetaMDecision(
         moist_theta=True, route=route,
-        reason=("WRF would integrate moist theta; WOOF integrates dry theta "
+        reason=("WRF would integrate moist theta; WOOF-ArWen integrates dry theta "
                 "and the moist-theta branch is not implemented.  "
                 + _THETA_M_ROUTES[route]
                 + "; the integration itself differs from a use_theta_m = 1 "
@@ -330,7 +330,7 @@ class Substitution:
     """One ratified physics substitution applied by the importer.
 
     ``reason`` is set on a DECLARED DIVERGENCE: the WRF value is admitted
-    and WOOF integrates something else, for a stated reason the user must
+    and WOOF-ArWen integrates something else, for a stated reason the user must
     see (the terminal prints it, the receipt carries it).  A substitution
     without a reason is a package replacement, which the WRF doors refuse
     (:func:`woof.wrfinput_door.require_preserved_wrf_selectors`).
@@ -359,7 +359,7 @@ class DroppedKey:
 class FixedKey:
     """A namelist key validated against the single implemented value.
 
-    The key never reaches the emitted TOML because WOOF has exactly one
+    The key never reaches the emitted TOML because WOOF-ArWen has exactly one
     implemented behavior for it; the importer checked the supplied value
     against that pin and records the pin and its evidence here.  Any
     other value is a hard error, never a silent reinterpretation --
@@ -417,7 +417,7 @@ class SubstitutionReport:
     """Structured record of every non-1:1 importer decision.
 
     ``format`` renders the three explicit knob-parity sections --
-    translated / fixed-by-WOOF / not-implemented -- plus the
+    translated / fixed-by-ArWen / not-implemented -- plus the
     gpuwm-supplied-values footnote (the F2 never-silent last mile).
     ``notices`` carries scheme-generation statements the namelist itself
     cannot express (:data:`GF_SCHEME_GENERATION_NOTICE`): substitutions
@@ -469,7 +469,7 @@ class SubstitutionReport:
                 lines.append(f"  {entry.role} &{entry.section} {entry.key} = "
                              f"{entry.value}: {entry.reason}")
         if self.fixed:
-            lines.append("Fixed by WOOF (validated against the only "
+            lines.append("Fixed by WOOF-ArWen (validated against the only "
                          "implemented value):")
             for f in self.fixed:
                 values = ", ".join(str(v) for v in f.values)
@@ -642,17 +642,17 @@ _MP28_AEROSOL_NAMELIST_KEYS: dict[str, dict[str, str]] = {
             "woof/core/mynn_pbl.py passes flag_qnc/flag_qnwfa/flag_qnifa "
             "as literal False.  WRF SILENTLY forces scalar_pblmix=1 under "
             "mp_physics=28 with use_aero_icbc "
-            "(share/module_check_a_mundo.F:2477-2495); WOOF refuses rather "
+            "(share/module_check_a_mundo.F:2477-2495); WOOF-ArWen refuses rather "
             "than accepting a value it would not honour",
         "grav_settling":
             "WRF SILENTLY forces grav_settling=0 under mp_physics=28 "
             "because the scheme already has gravitational fog settling "
-            "(share/module_check_a_mundo.F:2459-2474); WOOF has no fog "
+            "(share/module_check_a_mundo.F:2459-2474); WOOF-ArWen has no fog "
             "settling option at all, so it refuses the key instead of "
             "accepting a request it would overwrite",
         "wif_fire_emit":
             "no biomass-burning aerosol emission source "
-            "(Registry.EM_COMMON:2657); WOOF's only nwfa2d is "
+            "(Registry.EM_COMMON:2657); WOOF-ArWen's only nwfa2d is "
             "thompson_init's derived surface emission "
             "(phys/module_mp_thompson.F:510)",
         "wif_fire_inj":
@@ -660,9 +660,9 @@ _MP28_AEROSOL_NAMELIST_KEYS: dict[str, dict[str, str]] = {
             "(Registry.EM_COMMON:2659), for the same reason.  Refused even "
             "at its WRF Registry default of 1, because with no emission "
             "source there is no accurate value: 1 describes a vertical "
-            "distribution WOOF never performs",
+            "distribution WOOF-ArWen never performs",
         "dust_emis":
-            "no dust emission source (Registry.EM_COMMON:2591); WOOF's "
+            "no dust emission source (Registry.EM_COMMON:2591); WOOF-ArWen's "
             "nifa2d is identically zero, exactly as "
             "module_mp_thompson.F leaves it",
     },
@@ -1071,7 +1071,7 @@ _NAMELIST_DEFAULTS = {
 
 MIX_FULL_FIELDS_SUBSTITUTION = (
     "WRF perturbation-field mixing is replaced by full-field mixing: "
-    "WOOF has no perturbation-field mixing branch, so turbulent "
+    "WOOF-ArWen has no perturbation-field mixing branch, so turbulent "
     "tendencies can differ.")
 
 # GUI staging templates may leave date components unresolved. The imported
@@ -2445,7 +2445,7 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                 reason=(f"WRF v4.7.1 declares {key} in minutes "
                         "(registry.io_boilerplate) but its alarm setup "
                         f"(share/set_timekeeping_alarms.m4) reads only "
-                        f"{key}_d/_h/_m/_s, so wrf.exe ignores it; WOOF "
+                        f"{key}_d/_h/_m/_s, so wrf.exe ignores it; WOOF-ArWen "
                         "applies it as minutes where the _m entry is 0, the "
                         "rule WRF uses for history_interval.  Write "
                         f"{key}_m to get the same output from wrf.exe.")))
@@ -2862,7 +2862,7 @@ def _translate_namelists(wps: dict, inp: dict, *, wps_path: Path,
                     f"axis, which is {WIF_DATASET_LEVELS} sigma levels "
                     "(QNWFA_QNIFA_SIGMA_MONTHLY.dat, and WRF's Registry "
                     "default is the same 30); a different count describes "
-                    "a dataset WOOF has never decoded, and reinterpreting "
+                    "a dataset WOOF-ArWen has never decoded, and reinterpreting "
                     "it silently would interpolate the wrong column")
 
     dm.finish()

@@ -29,7 +29,7 @@ On a specified-lateral-boundary domain, over a real multi-step integration:
 
 THE REGISTERED LBC DEVIATION, MEASURED
 --------------------------------------
-WOOF carries ``qv`` from an external lateral-boundary snapshot always, and
+WOOF-ArWen carries ``qv`` from an external lateral-boundary snapshot always, and
 ``nwfa``/``nifa`` beside it whenever the run's aerosol initial state came
 from WRF's monthly WIF climatology (``woof/boundary_fields.py``
 ``external_scalar_fields``; ``woof/ingest/lateral_bc.py``
@@ -144,11 +144,11 @@ EFFS_BAND_UM = (9.99, 999.0)
 _INTERIOR_ONLY_NOTE = """
 The bounds are checked on the microphysics-updated INTERIOR only, i.e.
 outside the spec_zone ring.  That is not a convenience: WRF's clipped
-microphysics tiles never touch the ring (solve_em.F:3631-3639), WOOF
+microphysics tiles never touch the ring (solve_em.F:3631-3639), WOOF-ArWen
 reproduces that by bit-restoring it (microphysics.spec_zone_ring_slices),
 and therefore the ring carries whatever TRANSPORT left there -- which on an
 inflow face is exactly zero, below WRF's floor.  Asserting the floor on the
-ring would assert that WOOF violates WRF's tile clipping.  Inside the
+ring would assert that WOOF-ArWen violates WRF's tile clipping.  Inside the
 interior the aerosol floors are asserted on the columns the call updated;
 a column WRF returned from at :2020 is held instead to leaving the call
 with its aerosol above the surface untouched and its droplet number zero.
@@ -656,7 +656,7 @@ def test_g4_a_two_hour_forecast_stays_finite_bounded_and_ring_clean():
 
 @requires_gpu
 def test_g4_spec_zone_ring_is_bit_restored_by_every_microphysics_call():
-    """WRF's clipped tiles never dispatch the ring; neither may WOOF's.
+    """WRF's clipped tiles never dispatch the ring; neither may WOOF-ArWen's.
 
     Checked INSIDE the step, around the microphysics call only.  A whole-step
     before/after comparison cannot make this claim: ``dycore.step`` writes

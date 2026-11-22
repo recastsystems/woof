@@ -1,7 +1,7 @@
 """Every physics combination a plan can name is launchable, or refused by name.
 
 THE QUESTION.  The physics registry (``woof/physics_registry_v2.json``) is
-the one inventory of what WOOF implements.  A user composes seven
+the one inventory of what WOOF-ArWen implements.  A user composes seven
 components from it -- cumulus, land surface, microphysics, PBL, radiation,
 surface layer, turbulence -- on one of the registered runner routes, for
 one of the registered sources.  For every such composition exactly one of
@@ -283,7 +283,12 @@ _LABEL_NOISE = frozenset(
     # Fragments of a selector KEY quoted inside a label ("no km_opt
     # operator"): the word splitter breaks on the underscore, and "opt"
     # is not a scheme.
-    "opt".split())
+    "opt "
+    # "(WRF option 91)" in the MM5 surface-layer labels: "option" is the
+    # word every refusal uses for any scheme, so as a marker it made the
+    # bare control "runner route does not allow this component option to
+    # vary per domain" read as naming one.
+    "option".split())
 
 
 def _scheme_markers() -> list[str]:
@@ -544,6 +549,174 @@ def test_a_radiation_override_on_an_rrtmg_template_resolves_the_receipt_token():
         if report["launchable"]:
             assert run_door(settings, nested=False) is None, radiation
     assert overridden, "no radiation option overrode the RRTMG template"
+
+
+def _both_doors(choice: dict[str, str]) -> tuple[dict, str, list[str]]:
+    route_id = "tools.prepared_domain_tree_forecast"
+    route = REGISTRY["runner_routes"][route_id]
+    report = validate_physics_plan(plan_for(route_id, route, "era5", choice))
+    plan_text = "\n".join(error["message"] for error in report["errors"])
+    run_refusals = [
+        refusal for index, resolved in enumerate(report["resolved_domains"])
+        if (refusal := run_door(resolved["settings"], nested=index > 0))]
+    return report, plan_text, run_refusals
+
+
+def test_the_two_doors_agree_on_the_tuples_3_0_1_split():
+    """The 3.0.1 split, one tuple per family, fast.
+
+    The matrix above found 85 to 101 tuples per cell that plan review
+    called LAUNCHABLE and validate_run_config refused, in three families:
+    RCON (mp=29) on anything, refused only at run start by its speed guard
+    RCON-SPEED-01; and UDM (27) and MAD-WRF (96) on RTE+RRTMGP, whose
+    refused_when rule tools/build_registry.py wrote before the passes that
+    rewrite those two options whole, so the registry shipped without it.
+
+    Now RCON launches at both doors (its guard named a speed gap, not a
+    breakage), and UDM and MAD-WRF are refused at both, each door leading
+    with the RTE+RRTMGP adapter's own recorded reason.
+    """
+    from woof.core.rrtmgp import _NO_CLOUD_OPTICS_COUPLING
+
+    anchor = anchor_components()
+    assert anchor["radiation"] == "rte-rrtmgp", anchor
+
+    report, plan_text, run_refusals = _both_doors(
+        dict(anchor, microphysics="rcon-mp29"))
+    assert report["launchable"] is True, plan_text
+    assert run_refusals == []
+
+    for option_id, selector in (("udm-mp27", 27), ("madwrf-mp96", 96)):
+        report, plan_text, run_refusals = _both_doors(
+            dict(anchor, microphysics=option_id))
+        assert report["launchable"] is False, (option_id, run_refusals)
+        assert run_refusals, (option_id, plan_text)
+        reason = _NO_CLOUD_OPTICS_COUPLING[selector]
+        assert reason in plan_text, (option_id, plan_text)
+        assert all(reason in refusal for refusal in run_refusals), (
+            option_id, run_refusals)
+        assert "rrtmg_legacy" in plan_text and obeys_the_law(plan_text)
+        # The remedy the plan door names clears both doors.
+        legacy = validate_physics_plan(plan_for(
+            "tools.prepared_domain_tree_forecast",
+            REGISTRY["runner_routes"]["tools.prepared_domain_tree_forecast"],
+            "era5", dict(anchor, microphysics=option_id), "rrtmg_legacy"))
+        assert legacy["launchable"] is True, (option_id, legacy["errors"])
+        for index, resolved in enumerate(legacy["resolved_domains"]):
+            assert run_door(resolved["settings"], nested=index > 0) is None
+
+
+def test_pleim_xiu_land_needs_a_surface_layer_at_both_doors():
+    """The fourth 3.0.1 family: Pleim-Xiu land with the surface layer off.
+
+    validate_run_config refuses every active land surface with
+    sf_sfclay_physics=0 (the exchange fields it reads would stay zero);
+    plan review carried that rule for Noah, Noah-MP, RUC and the slab but
+    not for Pleim-Xiu land, whose option the builder writes whole with no
+    constraints, so a sampled PX tuple with PBL and surface layer off was
+    LAUNCHABLE at the plan and refused at run start.
+    """
+    anchor = anchor_components()
+    report, plan_text, run_refusals = _both_doors(dict(
+        anchor, land_surface="pleim-xiu", surface_layer="off", pbl="off"))
+    assert run_refusals and "requires a surface layer" in run_refusals[0]
+    assert report["launchable"] is False, run_refusals
+    assert "exchange fields" in plan_text and obeys_the_law(plan_text)
+    # With its own surface layer and PBL the pairing launches at both.
+    report, plan_text, run_refusals = _both_doors(dict(
+        anchor, land_surface="pleim-xiu", surface_layer="pleim-xiu",
+        pbl="acm2"))
+    assert report["launchable"] is True, plan_text
+    assert run_refusals == []
+
+
+def test_plan_review_names_the_rcon_table_stream_the_run_refuses_without(
+        tmp_path, monkeypatch):
+    """RCON's other door: the table stream the run cannot start without.
+
+    With its speed guard gone the run admits mp_physics=29 and then needs
+    one 381 MB stream woof neither ships nor builds.  Absent, the run
+    refuses by name before any step (woof.tables); the option declared no
+    asset row, so plan review said nothing at all about it.  It now reports
+    the same file, and every root it searched, in ``install_state`` (which
+    by the registry's rule does not change ``launchable``).
+    """
+    from woof.core.rcon import TABLE_BYTES, TABLE_FILENAME
+    from woof.table_assets import MissingTableAssets
+    from woof.tables import _ensure_for_load
+
+    monkeypatch.setenv("WOOF_RCON_TABLE_ROOT", str(tmp_path))
+    choice = dict(anchor_components(), microphysics="rcon-mp29")
+
+    def unresolved(report: dict) -> list[dict]:
+        return [note for note in report["install_state"]
+                if note["code"] == "asset-unresolved"
+                and "rcon" in note["path"]]
+
+    report, plan_text, run_refusals = _both_doors(choice)
+    assert report["launchable"] is True, plan_text
+    assert run_refusals == []
+    notes = unresolved(report)
+    assert len(notes) == len(report["resolved_domains"]), report["install_state"]
+    for note in notes:
+        assert TABLE_FILENAME in note["message"]
+        assert str(tmp_path) in note["message"]
+        assert "fetch-tables" in note["message"]
+    # What the run does with the same settings on the same machine.
+    for resolved in report["resolved_domains"]:
+        with pytest.raises(MissingTableAssets) as refusal:
+            _ensure_for_load(resolved["settings"], fetch=False)
+        assert str(tmp_path / TABLE_FILENAME) in str(refusal.value)
+        assert "fetch-tables --schemes rcon" in str(refusal.value)
+
+    # A file of the pinned size answers plan review (it checks existence
+    # and size; the loader verifies SHA-256 before any table is used).
+    with open(tmp_path / TABLE_FILENAME, "wb") as stream:
+        stream.truncate(TABLE_BYTES)
+    report, plan_text, run_refusals = _both_doors(choice)
+    assert report["launchable"] is True, plan_text
+    assert unresolved(report) == []
+
+
+def test_plan_review_gives_spp_conv_on_grell_freitas_the_run_s_verdict():
+    """The one spp_conv pairing with a consumer gets a verdict, not a crash.
+
+    Plan review calls validate_spp_config on a stand-in that carried no
+    ``cu_gf_version``.  The check reads it only once cu_physics is 3, so
+    spp_conv=1 with Grell-Freitas -- the only pairing the run can accept --
+    ended plan review in an AttributeError.  Both doors now give the same
+    answer: refused by name on the default generation (GFL carries no SPP
+    pattern), launchable where the run itself selects wrf_461 GFDRV.
+    """
+    route_id = "tools.prepared_domain_tree_forecast"
+    route = REGISTRY["runner_routes"][route_id]
+    assert {"spp_conv", "lightning_option"} <= set(
+        route["allowed_parameter_keys"])
+    choice = dict(anchor_components(), cumulus="grell-freitas")
+
+    def both(parameters: dict) -> tuple[dict, list[str]]:
+        plan = plan_for(route_id, route, "era5", choice)
+        for domain in plan["domains"]:
+            domain.setdefault("parameters", {}).update(parameters)
+        report = validate_physics_plan(plan)
+        return report, [
+            refusal for index, resolved in enumerate(report["resolved_domains"])
+            if (refusal := run_door(resolved["settings"], nested=index > 0))]
+
+    report, run_refusals = both({"spp_conv": 1})
+    assert report["launchable"] is False
+    plan_text = "\n".join(error["message"] for error in report["errors"])
+    assert {error["code"] for error in report["errors"]} == {"spp-consumer"}
+    assert run_refusals and all(
+        "spp_conv=1 requires cu_gf_version=wrf_461" in refusal
+        for refusal in run_refusals), run_refusals
+    assert "spp_conv=1 requires cu_gf_version=wrf_461" in plan_text
+
+    # PR92 lightning from the cumulus cloud top makes RunConfig select the
+    # wrf_461 GFDRV, which reads the pattern: launchable at both doors.
+    report, run_refusals = both({"spp_conv": 1, "lightning_option": 11})
+    assert report["launchable"] is True, report["errors"]
+    assert run_refusals == []
 
 
 # ---------------------------------------------------------------------------

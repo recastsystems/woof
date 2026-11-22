@@ -253,8 +253,21 @@ extern "C" __global__ void boulac_column(
                     tl = FDIV(FDIV(FADD(bd, FSQRT(bl_max(0.0f, disc))), bbb),
                               beta);
                 } else if (th[izz] != thi) {
+#if defined(BOULAC_DOWN_SIGN)
+                    // Correct-mode ML1 (RunConfig.pbl_boulac_down_sign,
+                    // default on): the parcel sinks tl into a layer of
+                    // constant theta with energy beta*(theta(iz) -
+                    // theta(izz))*tl, the bbb -> 0 limit of the branch above
+                    // (wrf-model/WRF PR 2431; NCAR/MYNN-EDMF 399f50f for the
+                    // MYNN copy).  WRF v4.6.1 module_bl_boulac.F:606 divides
+                    // by theta(izz) - theta(iz): tl < 0 and dld short by
+                    // 2*|tl|.  Exact mode compiles the WRF line.
+                    tl = FDIV(FSUB(tei, zdo_sup),
+                              FMUL(beta, FSUB(thi, th[izz])));
+#else
                     tl = FDIV(FSUB(tei, zdo_sup),
                               FMUL(beta, FSUB(th[izz], thi)));
+#endif
                 } else {
                     tl = 0.0f;
                 }

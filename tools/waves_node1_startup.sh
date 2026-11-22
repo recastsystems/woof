@@ -6,7 +6,7 @@ export PYTHONPATH="$ROOT" PYTHONDONTWRITEBYTECODE=1 GPUWM_NO_LOCAL_GPU=0
 export CUPY_CACHE_DIR="$LANE/cupy-cache" XDG_CACHE_HOME="$LANE/cache" TMPDIR="$LANE/tmp"
 export WOOF_WAVES_CACHE="$LANE/wave-cache"
 export GPUWM_RW_WAVES_COUPLED_PREPARE="$LANE/bin/rw_waves_coupled_prepare"
-export GPUWM_RW_WAVES_DATA="$LANE/bin/rw_waves_data"
+export WOOF_RW_WAVES_DATA="$LANE/bin/rw_waves_data"
 export WOOF_CPU_PREPROCESS_BRIDGE="$LANE/bin/libgpuwm_preprocess_cpu.so"
 export WOOF_NCWRITE_BRIDGE="$LANE/bin/libnetcdf_writer.so"
 export WOOF_WAVES_BATHYMETRY="$LANE/shared-inputs/etopo2022-bed-60s.nc"

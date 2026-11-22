@@ -1,1 +1,1 @@
-"""WOOF out-of-core tiled streaming prototype."""
+"""WOOF-ArWen out-of-core tiled streaming prototype."""

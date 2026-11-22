@@ -1,6 +1,6 @@
 """Timestep anchors for the v8.4.1 column-physics lane: evidence, not a gate.
 
-RETIRED AS A GATE (owner ruling 2026-10-10).  Nothing in this module refuses a
+RETIRED AS A GATE (2026-10-10).  Nothing in this module refuses a
 run any more for lacking an anchor or for running at cadences an anchor was
 not earned at.  ``anchor_record`` answers whether a configuration matches a
 registered row, and the run writes that answer into its receipt

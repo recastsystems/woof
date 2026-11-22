@@ -210,7 +210,7 @@ GOLDEN_DEVICE_BY_CARD = {
 # supplied-no-gust case bitwise too).  Same seeds, same construction
 # otherwise; tolerances untouched; formulation change registered in
 # the S3-9c task (adversarial review fix; report
-# .superpowers/sdd/task-s3-9c-report.md).
+# docs/internal/sdd/task-s3-9c-report.md).
 #
 # RE-PINNED for S3-9 (geometric dissipation-length blend; F-Y1 Lake
 # Michigan over-coupling): the l_d regime blend of the authority's
@@ -229,7 +229,7 @@ GOLDEN_DEVICE_BY_CARD = {
 # w 4e-16; COL e 1.81e-4, F 6.4e-5, u/v/w <= 1.2e-9 (momentum feels
 # l_d only through the step-2 stress/implicit solve at the shifted
 # e^n).  Same seeds, same construction; formulation change registered
-# in the S3-9 adjudication (.superpowers/sdd/yolo-lake-mechanism.md,
+# in the S3-9 adjudication (docs/internal/sdd/yolo-lake-mechanism.md,
 # controller ledger 2026-07-21).  The f = 0 and f = 1 endpoint
 # arithmetic is BITWISE unchanged (pinned by
 # test_dissipation_length_blend_les_and_rans_limits and every f = 1

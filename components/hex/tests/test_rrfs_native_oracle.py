@@ -17,6 +17,7 @@ from pin_sets import source_files,pin_set,reference_build
 from derived import primitive_components
 from generate_transport import generate
 from fortran_source import EXECUTABLE,first_executable,Statement,Variable
+import site_support
 from test_native_physics_oracle import transport, _build_command
 
 
@@ -755,6 +756,7 @@ end program
 
 def test_recorded_native_entry_replay_preserves_context_and_adjacent_words(tmp_path):
     """Actual GNU ABI/Rust ptrace replay; malformed source context fails closed."""
+    site_support.tools_or_skip("make", "gfortran", "rustc", what="compiling this native-oracle observer")
     import shutil
     import struct
     shutil.copy2(ORACLE/'replay/native_entry_watch.rs',tmp_path/'observer.rs')
@@ -817,6 +819,7 @@ fixture: fixture.F90
 
 def test_external_source_abi_observes_complete_native_types_aliases_and_locals(tmp_path):
     """Native calls remain untouched; Rust packets match all explicit ABI shapes."""
+    site_support.tools_or_skip("make", "gfortran", "rustc", what="compiling this native-oracle observer")
     import shutil
     from generate import inventory
     from external_abi import emit
@@ -964,6 +967,7 @@ def test_external_abi_rejects_unknown_descriptors_and_nonscalar_bounds(tmp_path)
 
 def test_external_gnu_descriptor_matches_native_strided_assumed_shape_arrays(tmp_path):
     """Actual GNU ABI, reversed/strided ranks, dummy bounds and optional absence."""
+    site_support.tools_or_skip("make", "gfortran", "rustc", what="compiling this native-oracle observer")
     import shutil
     from generate import inventory
     from external_abi import emit
@@ -1085,6 +1089,7 @@ def test_nested_standalone_authority_refuses_mutation_and_forecast_claims(tmp_pa
 
 def test_private_native_module_replay_preserves_partial_out_entry(tmp_path):
     """A real compiler interface exports the whole copied module for replay only."""
+    site_support.tools_or_skip("make", "gfortran", "rustc", what="compiling this native-oracle observer")
     import shutil
     from generate import inventory
     from external_abi import emit,prepare_native_replay

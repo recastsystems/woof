@@ -1,4 +1,4 @@
-"""MPAS-A v8.4.2 WSM6, effective radii and radar, isolated from WOOF.
+"""MPAS-A v8.4.2 WSM6, effective radii and radar, isolated from WOOF-ArWen.
 
 Authority: pinned physics_mmm/mp_wsm6.F90, mp_wsm6_effectRad.F90,
 mp_radar.F90, and physics_wrf/module_mp_wsm6.F (WRF_CHEM=0).
@@ -3483,7 +3483,7 @@ CORRECT_MODE_SOURCE = {
 }
 
 
-#: Fast numerics (the default; owner ruling 2026-10-16 "strict is opt-in"). THE BREAKAGE THIS
+#: Fast numerics (the default; strict is opt-in). THE BREAKAGE THIS
 #: PREVENTS: mesoscale_reference at 0.210 s/step against 0.0638 for convection_permitting on the
 #: same RTX PRO 6000 (x1.2562 24 h fast, fix/hex-wsm6-speed 0336dbf8), 3.3x against the 1.2x bar,
 #: because fast WSM6 still ran the strict operator wrappers (a NaN payload test on both operands

@@ -353,6 +353,10 @@ class ResidentPhysicsGlue:
                  and (row['pool_name'].endswith('ten')
                       or row['pool_name'] in ('rthratenlw', 'rthratensw'))}
         rates.update(self.local_rates)   # a rank's local-extent momentum rates, as resident_v842.get_tend
+        from ...ad import external_tendency
+        rates = external_tendency.rates_for(self, rates, cp=self.cp, cache=self.cache, mass=mass, provider=p,
+                                            qv_index=list(self.names).index('qv'), dt=getattr(call, 'dt', None),
+                                            time_seconds=getattr(call, 'time_seconds', None))
         # 44c0849 time_integration.F:2150-2165: perturb process tendencies
         # before conversion, then accumulated prognostic tendencies afterwards.
         # The optional implementation is supplied by the selected route owner.

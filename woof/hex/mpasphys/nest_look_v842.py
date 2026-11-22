@@ -4,7 +4,7 @@ The look itself (where, when, what fires) is :mod:`woof.hex.nest_triggers`, arme
 by :func:`woof.hex.nest_triggers.arm_loop` exactly as on the ArWen-physics route.
 What this module adds is the route's half: the reflectivity a look reads, plus
 the dycore sources every route forms (``w``, ``cape``, ``updraft_helicity_max``:
-:mod:`woof.hex.nest_look_dycore`, shared with the WOOF route).
+:mod:`woof.hex.nest_look_dycore`, shared with the WOOF-ArWen route).
 
 On a look step the Thompson slot (``thompson_v842``, and ``thompson_aero_v842``
 through it) forms the 10 cm reflectivity from its post-microphysics columns, the
@@ -17,7 +17,7 @@ pool's own ``refl10cm`` the diagnostics just formed.
 
 THE BREAKAGE THIS PREVENTS (parity run group 3, capability 11, 2026-10-24): a
 ``--nest-triggers`` run on this route finished rc 0 with no look, no firing and
-nothing refused, because only the WOOF driver read the table.
+nothing refused, because only the WOOF-ArWen driver read the table.
 """
 
 from __future__ import annotations

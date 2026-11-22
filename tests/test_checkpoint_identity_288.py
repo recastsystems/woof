@@ -112,7 +112,10 @@ _DRIVERLESS = {
     ("PBL_ALGORITHM_IDENTITIES", 1): dict(moist=True, bl_pbl_physics=1,
                                           ysu_version="wrf_461"),
     ("PBL_ALGORITHM_IDENTITIES", 5): dict(moist=True, bl_pbl_physics=5),
-    ("PBL_ALGORITHM_IDENTITIES", 11): dict(moist=True, bl_pbl_physics=11),
+    # Likewise Shin-Hong: the bumped identity is the wrf_461 arm; WRF 4.8.0's
+    # rewrite (shinhong_version = "wrf_480", the default) is a separate one.
+    ("PBL_ALGORITHM_IDENTITIES", 11): dict(moist=True, bl_pbl_physics=11,
+                                           shinhong_version="wrf_461"),
 }
 
 

@@ -1,0 +1,963 @@
+{
+ "schema": "gpuwm.wrf-namelist-registry.v1",
+ "wrf": {
+  "tag": "v4.8.0",
+  "commit": "06d4240ae989cc3e50af412bb472df3d9048783c",
+  "url": "https://github.com/wrf-model/WRF",
+  "license": "public domain"
+ },
+ "read_from": [
+  {
+   "file": "Registry/Registry.EM_CHEM",
+   "sha256": "d377fdaeb72052ddc045ec5cbb3996e344f2313ef80b9d57def5aa8572f8dcbb"
+  },
+  {
+   "file": "Registry/registry.dimspec",
+   "sha256": "06d3b91baf7cdfdad23cd7ef368fffac07dbd76daf294db058ac2b4262292973"
+  },
+  {
+   "file": "Registry/registry.chem",
+   "sha256": "6f614cccae4c0a151e707120d45d47f168f2427c6cae1853383470ee9216f312"
+  },
+  {
+   "file": "Registry/registry.new3d_gca",
+   "sha256": "06a720c4304711f3a3b3b13b29e2838ff55f3613b67ac9d796b9b9a6348e04e0"
+  },
+  {
+   "file": "Registry/registry.em_shared_collection",
+   "sha256": "cf036edf05c3b1a442a621ffb7191d94d343ebebba0b16134a8812854516027f"
+  },
+  {
+   "file": "Registry/Registry.EM_COMMON",
+   "sha256": "78aa665d0488da08b7441b8a7802c5c774cb21b24f64e99b8ef6cf805c84b0eb"
+  },
+  {
+   "file": "Registry/registry.io_boilerplate",
+   "sha256": "2b0a6877b10c6ebdd4d502d098ce3f5dabfcf792db3ecb2cb69bab7903922270"
+  },
+  {
+   "file": "Registry/registry.fire",
+   "sha256": "ac84a1bce8ff1ee114f137635ebb1633d431de027167b4b34d5866ecd36b39f5"
+  },
+  {
+   "file": "Registry/registry.avgflx",
+   "sha256": "8027ca9397c84952d9104593bb4502872c99aa203043ad508c59f34b34137c44"
+  },
+  {
+   "file": "Registry/registry.stoch",
+   "sha256": "7c781030e0dd2f6e623d0efa81acd86aaeb952d0371beaeee92989e700b48f19"
+  },
+  {
+   "file": "Registry/registry.les",
+   "sha256": "d36ff30559f7f2d509db9304b444d9eece338743ac36e1da6cdc0e1f5534f56e"
+  },
+  {
+   "file": "Registry/registry.cam",
+   "sha256": "19c143d4aed9e52f003fbeda865b5bd2a40172085d897c45213c7318793725da"
+  },
+  {
+   "file": "Registry/registry.clm",
+   "sha256": "3ace44d2ef294578c0dc3ea210b84af603959b38cec08fc9d07645e50f2f597f"
+  },
+  {
+   "file": "Registry/registry.lake",
+   "sha256": "f4897ffa57d2eae17552df220e984c5a76c93b95327fac1172b84d2ce969fe31"
+  },
+  {
+   "file": "Registry/registry.ssib",
+   "sha256": "7fa144a8741211edf39adf8363db4f8f9022861a4c758644f53867d100ca02f6"
+  },
+  {
+   "file": "Registry/registry.noahmp",
+   "sha256": "979fbf7c6816ebf5716f4c64c36973aa0e73f5a487433444066cb3d1b44324af"
+  },
+  {
+   "file": "Registry/registry.sbm",
+   "sha256": "9882f8612c30111c5cee9ae50a7d379fd5154c6c939e6c37bde040137fbcf288"
+  },
+  {
+   "file": "Registry/registry.polrad",
+   "sha256": "77671d204e7cef7e9d8fbaf9141a0c962bac42826fb16bb53b7700f2fe3d2fce"
+  },
+  {
+   "file": "Registry/registry.afwa",
+   "sha256": "ea7861b2ebe0001144ae5a6f5542e5b8e8d7b4f028a2564cc9986187a994d372"
+  },
+  {
+   "file": "Registry/registry.rasm_diag",
+   "sha256": "3be086896cd8f6703bcca889917e0c653847fae2ebf252e2033434149e9e3a0f"
+  },
+  {
+   "file": "Registry/registry.elec",
+   "sha256": "481afe9524b471f0684c3a7b278d76569aaa828ae0e1a1daaa16983526faf290"
+  },
+  {
+   "file": "Registry/registry.bdy_perturb",
+   "sha256": "c6a5b889bc839a1631dba474b41792ad898af091bdbbb5cb4b222d4cbbf39265"
+  },
+  {
+   "file": "Registry/registry.hyb_coord",
+   "sha256": "1f008d5f5a3bf0e7097665b310122a3079528963bc755e8df474ae8d97274c14"
+  },
+  {
+   "file": "Registry/registry.new3d_wif",
+   "sha256": "a3cdbadd8c0426e5bae56b6d1bafce4204174e59bf521a226fbd64e0e1ceb4e9"
+  },
+  {
+   "file": "Registry/registry.trad_fields",
+   "sha256": "f90ccd0c06bfbf00b1f117e65c9517b4da9cedd37f3834b9d9ce68030367dfd1"
+  },
+  {
+   "file": "Registry/registry.solar_fields",
+   "sha256": "40254d5deeb59d247b977de121d092ff7a8f4e180255f82251fb1320967d78f5"
+  },
+  {
+   "file": "Registry/registry.diags",
+   "sha256": "fa0b1c46bf0e6c8b7d0ffaae032d38bfb6f20ca7d9a9736017d61b5d95309cc3"
+  },
+  {
+   "file": "Registry/registry.iau",
+   "sha256": "9141be91350388aab294aa7c972334aafafefaa33bf938e178ac28aaea8ee8cd"
+  },
+  {
+   "file": "Registry/registry.dyn_light",
+   "sha256": "adcce4ed5889af1f2282e9bc4fac576de9c030cf61eb601358ff855e2b86ed10"
+  },
+  {
+   "file": "Registry/registry.CMAQ",
+   "sha256": "b35561203e1ee08398215802d2bf370709a924cb020da7c9d7ff9ef578e8a905"
+  },
+  {
+   "file": "Registry/registry.cordex",
+   "sha256": "f03bcf64138393c8d7e333928c314bfb83bbccab0c7d6ea547eacdfee98e9c35"
+  }
+ ],
+ "keys": [
+  {
+   "section": "chem",
+   "key": "aer_aerodynres_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "aer_bc_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "aer_drydep_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "aer_ic_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "aer_op_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "aer_ra_feedback",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "aerchem_onoff",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "aero_cw_diag_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "aero_diag_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "aero_srf_area_diag",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "af_lambda_end",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "340."
+  },
+  {
+   "section": "chem",
+   "key": "af_lambda_start",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "200."
+  },
+  {
+   "section": "chem",
+   "key": "aircraft_emiss_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "bio_emiss_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "bioemdt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "biomass_burn_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "biomass_emiss_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "cam_mam_mode",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "chem",
+   "key": "cam_mam_nspec",
+   "type": "integer",
+   "nentries": "1",
+   "default": "85"
+  },
+  {
+   "section": "chem",
+   "key": "cam_mp_mam_cpled",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "chem",
+   "key": "chem_conv_tr",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "chem_in_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "chem_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "chemdiag",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "chemdt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "cld_od_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "cldchem_onoff",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "conv_tr_aqchem",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "conv_tr_wetscav",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "depo_fact",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.25"
+  },
+  {
+   "section": "chem",
+   "key": "diagnostic_chem",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "diagnostic_dep",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "dmsemis_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "do_isorropia",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "do_n2o5het",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "do_pvozone",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "du_at_grnd",
+   "type": "real",
+   "nentries": "1",
+   "default": "300."
+  },
+  {
+   "section": "chem",
+   "key": "dust_alpha",
+   "type": "real",
+   "nentries": "1",
+   "default": "1."
+  },
+  {
+   "section": "chem",
+   "key": "dust_dsr",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "dust_gamma",
+   "type": "real",
+   "nentries": "1",
+   "default": "1."
+  },
+  {
+   "section": "chem",
+   "key": "dust_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "dust_schme",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "chem",
+   "key": "dust_smois",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "dust_smtune",
+   "type": "real",
+   "nentries": "1",
+   "default": "1."
+  },
+  {
+   "section": "chem",
+   "key": "dust_soils",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "dust_ustune",
+   "type": "real",
+   "nentries": "1",
+   "default": "1."
+  },
+  {
+   "section": "chem",
+   "key": "dust_veg",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "dustwd_onoff",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "emi_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfchemi_d<domain>_<date>\""
+  },
+  {
+   "section": "chem",
+   "key": "emi_outname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfchemi_d<domain>_<date>\""
+  },
+  {
+   "section": "chem",
+   "key": "emiss_ash_hgt",
+   "type": "real",
+   "nentries": "1",
+   "default": "0."
+  },
+  {
+   "section": "chem",
+   "key": "emiss_inpt_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "emiss_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "emiss_opt_vol",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "exo_coldens_inname",
+   "type": "character",
+   "nentries": "max_domains",
+   "default": "\"exo_coldens_<domain>\""
+  },
+  {
+   "section": "chem",
+   "key": "fireemi_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrffirechemi_d<domain>_<date>\""
+  },
+  {
+   "section": "chem",
+   "key": "fireemi_outname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrffirechemi_out_d<domain>_<date>\""
+  },
+  {
+   "section": "chem",
+   "key": "fixed_ubc_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\""
+  },
+  {
+   "section": "chem",
+   "key": "fixed_ubc_press",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "50."
+  },
+  {
+   "section": "chem",
+   "key": "gas_bc_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "gas_drydep_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "gas_ic_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "gaschem_onoff",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "gsfcgce_gocart_coupling",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "chem",
+   "key": "gsfcrad_gocart_coupling",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "chem",
+   "key": "has_o3_exo_coldens",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "have_bcs_chem",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "have_bcs_tracer",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "have_bcs_upper",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "input_chem_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrf_chem_input_d<domain>_<date>\""
+  },
+  {
+   "section": "chem",
+   "key": "input_chem_outname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrf_chem_input_d<domain>_<date>\""
+  },
+  {
+   "section": "chem",
+   "key": "io_style_emissions",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "irr_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "is_full_tuv",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "chem",
+   "key": "kdepvel",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "kdvel",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "kemit",
+   "type": "integer",
+   "nentries": "1",
+   "default": "9"
+  },
+  {
+   "section": "chem",
+   "key": "kemit_aircraft",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "kfcup_diag",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "kfire",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "kfuture",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "lambda_cutoff",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "250."
+  },
+  {
+   "section": "chem",
+   "key": "lnox_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "lnox_passive",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "mosaic_aerchem_optaa",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "mozart_ph_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "mynn_chem_vertmx",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "n2o5_hetchem",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "n_cg",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "500."
+  },
+  {
+   "section": "chem",
+   "key": "n_ic",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "500."
+  },
+  {
+   "section": "chem",
+   "key": "ndepvel",
+   "type": "integer",
+   "nentries": "1",
+   "default": "140"
+  },
+  {
+   "section": "chem",
+   "key": "ne_area",
+   "type": "integer",
+   "nentries": "1",
+   "default": "41"
+  },
+  {
+   "section": "chem",
+   "key": "nh3emis_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "nmegan",
+   "type": "integer",
+   "nentries": "1",
+   "default": "138"
+  },
+  {
+   "section": "chem",
+   "key": "opt_pars_out",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "phot_blcld",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "phot_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "photdt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "pht_cldfrc_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "plumerisefire_frq",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "180"
+  },
+  {
+   "section": "chem",
+   "key": "scale_fire_emiss",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "scale_o3_to_du_at_grnd",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "scale_o3_to_gfs_tot",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "scale_o3_to_grnd_exo_coldens",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "chem",
+   "key": "seas_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "term_opt",
+   "type": "character",
+   "nentries": "max_domains",
+   "default": "\"CH4_termite_NW\""
+  },
+  {
+   "section": "chem",
+   "key": "track_chem_name",
+   "type": "character",
+   "nentries": "max_trackchem",
+   "default": "\"\""
+  },
+  {
+   "section": "chem",
+   "key": "track_chem_num",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "track_rad_num",
+   "type": "integer",
+   "nentries": "1",
+   "default": "17"
+  },
+  {
+   "section": "chem",
+   "key": "track_tuv_lev",
+   "type": "integer",
+   "nentries": "1",
+   "default": "51"
+  },
+  {
+   "section": "chem",
+   "key": "track_tuv_num",
+   "type": "integer",
+   "nentries": "1",
+   "default": "58"
+  },
+  {
+   "section": "chem",
+   "key": "trop_lev_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"clim_p_trop.nc\""
+  },
+  {
+   "section": "chem",
+   "key": "vertmix_onoff",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "chem",
+   "key": "vprm_opt",
+   "type": "character",
+   "nentries": "max_domains",
+   "default": "\"VPRM_param_US\""
+  },
+  {
+   "section": "chem",
+   "key": "wes_seasonal_inname",
+   "type": "character",
+   "nentries": "max_domains",
+   "default": "\"wrf_season_wes_usgs_<domain>.nc\""
+  },
+  {
+   "section": "chem",
+   "key": "wetscav_onoff",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "chem",
+   "key": "wflood",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.19"
+  },
+  {
+   "section": "chem",
+   "key": "wpeat",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.05"
+  }
+ ]
+}

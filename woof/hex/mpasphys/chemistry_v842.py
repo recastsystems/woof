@@ -1,7 +1,7 @@
-"""Aerosol mass transport on the MPAS-A v8.4.2 suite route: the WOOF route's chemistry, same operator.
+"""Aerosol mass transport on the MPAS-A v8.4.2 suite route: the WOOF-ArWen route's chemistry, same operator.
 
 ``forecast --chemistry-config FILE`` appends one dry-air mass mixing ratio per configured species to the
-atmosphere.  On the WOOF route (``woof.hex.chem_transport``) those rows ride the dycore's monotonic scalar
+atmosphere.  On the WOOF-ArWen route (``woof.hex.chem_transport``) those rows ride the dycore's monotonic scalar
 transport and, after each step, the conservative implicit column operator (PBL mixing with the active
 scheme's diffusivity, downward settling, dry deposition at the ground, surface emissions).  This module
 gives the suite route the same thing with the same code:
@@ -102,7 +102,7 @@ class SuiteChemistry:
         self.transport.driver.atmosphere = self.dycore.atmosphere
 
     def _attach_inputs(self):
-        """The WOOF route's attach (chem_transport.attach), on this route's grid authority."""
+        """The WOOF-ArWen route's attach (chem_transport.attach), on this route's grid authority."""
         from .. import chem_emissions
         from datetime import datetime, timezone
         runtime = self.transport

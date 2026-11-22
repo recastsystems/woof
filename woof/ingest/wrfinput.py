@@ -723,6 +723,13 @@ SUPPORTED_MICROPHYSICS: Mapping[int, str] = MappingProxyType({
     52: "P3 two-category",
     53: "P3 one-category, three-moment ice",
     55: "ISHMAEL adaptive-habit ice",
+    # woof's TEMPO id (WOOF id 900, not a WRF selector; WRF v4.7+ numbers
+    # TEMPO 88).  Its inventory is its capability row in
+    # woof.microphysics_schemes (active_moisture_inventory).  Named
+    # breakage: without the row an HRRR analysis carrying number fields
+    # (QNCLOUD/QNRAIN/QNICE/QNWFA/QNIFA) was refused at the start state
+    # under mp_physics = "tempo", so TEMPO could not start from HRRR/RAP.
+    900: "TEMPO (woof id; aerosol- and hail-aware)",
 })
 
 #: ``mp_physics`` values that are real WRF v4.6.1 packages this port does
@@ -816,7 +823,7 @@ def unsupported_microphysics_refusal(mp_physics: int) -> str:
         head = (
             f"{_named_microphysics(mp_physics)} is a WRF package this port "
             "does not carry, so its wrfinput hydrometeor inventory has no "
-            "WOOF state to be restored into")
+            "WOOF-ArWen state to be restored into")
     else:
         head = (
             f"mp_physics={mp_physics} is not a WRF microphysics package "
@@ -840,7 +847,7 @@ def unsupported_land_surface_refusal(sf_surface_physics: int) -> str:
         head = (f"sf_surface_physics={sf_surface_physics} ({entry[0]}) is a "
                 "WRF land-surface scheme this port does not carry")
         soil = (f" Its wrfinput carries {entry[1]} soil layers and the soil "
-                "state that scheme writes, which is not the state WOOF's "
+                "state that scheme writes, which is not the state WOOF-ArWen's "
                 "land-surface drivers read.")
     return (
         f"{head}.{soil} {supported_land_surface_sentence()}. "
@@ -1127,6 +1134,20 @@ def active_moisture_inventory(cfg) -> tuple[frozenset[str], frozenset[str]]:
         # disabled. Cloud and precipitation species remain inactive.
         vapor = frozenset(("QVAPOR",))
         return vapor, vapor
+    from woof.microphysics_schemes import NAMED_MP_IDS, scheme as _named_scheme
+    named = _named_scheme(mp_physics) if mp_physics >= min(NAMED_MP_IDS) else None
+    if named is not None and mp_physics >= 900:
+        # A WOOF-side named scheme (TEMPO): its capability row is the
+        # inventory -- the three base masses, its ice masses, and every
+        # number moment and aerosol tracer that has a WRF input name.  Its
+        # graupel volume (``volg``) has none: WRF writes no such field for
+        # this scheme and the adapter seeds it from graupel mass.
+        by_state = {state: wrf for wrf, state in MOISTURE_MAP.items()}
+        species = (named.ice_mass_species + named.moment_species
+                   + named.aerosol_species)
+        required = frozenset(BASE_MOISTURE_WRFINPUT + tuple(
+            by_state[name] for name in species if name in by_state))
+        return required, required
     from woof.physics_registry import consumer_row_for_selector
     column = consumer_row_for_selector("microphysics", "column_kernel", mp_physics)
     if column is not None:
@@ -1441,7 +1462,8 @@ def read_wrfinput(path: str | Path, *, require_complete: bool = True,
 
         if int(getattr(cfg,"sf_surface_physics",0))==4 and getattr(cfg,"opt_crop",0):
             soil_inputs=(*soil_inputs,"CROPTYPE","PLANTING","HARVEST","SEASON_GDD")
-        if int(getattr(cfg,"sf_surface_physics",0))==4 and getattr(cfg,"opt_run",3)==5:
+        from woof.core.noahmp_runoff_split import carrier_of as _runoff_carrier_of
+        if int(getattr(cfg,"sf_surface_physics",0))==4 and _runoff_carrier_of(cfg)==5:
             soil_inputs=(*soil_inputs,"FDEPTH","EQZWT","RIVERBED","RECHCLIM")
         missing_soil=set(soil_inputs)-dataset.variables.keys()
         if missing_soil:
@@ -2075,8 +2097,8 @@ def restore_domain_state(restored: RestoredDomain, cfg, *, scratch_arena=None,
 
 def wrfinput_terrain_drag_inputs(restored, cfg):
     """Use the native file's active orography, without rebuilding its values."""
-    names = required_static_fields(getattr(cfg, "topo_wind", 0),
-                                   getattr(cfg, "gwd_opt", 0))
+    from woof.static.orographic import required_static_fields_for
+    names = required_static_fields_for(cfg)
     if not names:
         return {}
     missing = sorted(set((*names, "HGT")) - restored.raw.keys())
@@ -2140,7 +2162,12 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
             np.asarray(raw["TSK"])[water], tslb[:, water].shape)
     raw = {**raw, "TSLB": tslb}  # alias loop below re-reads raw (immutable)
     from woof.ingest.wrfinput_sfire import fire_static_fields
-    driver = initialize_physics(
+    # The file's own LAKEMASK is restored over the driver's by the alias
+    # pass below; the lake bind runs inside this build, before it, and is
+    # told how many lake cells the file holds so its line can say why it
+    # binds none of them when the land use names none.
+    from woof.ingest.lake_state import knowing_input_lake_cells
+    driver = knowing_input_lake_cells(raw.get("LAKEMASK"), initialize_physics)(
         state, cfg, landmask=raw["LANDMASK"], tsk=raw["TSK"],
         irrigation=raw.get("IRRIGATION"), irr_ph_field=raw.get("IRR_PH_FIELD"),
         seaice_inputs={name.lower(): raw[name] for name in ("ALBSI", "ICEDEPTH", "SNOWSI") if name in raw},
@@ -2187,7 +2214,7 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
            if int(cfg.sf_surface_physics)==4 and cfg.opt_crop else {}),
         **({"noahmp_groundwater_inputs":{**{name:raw[name] for name in ("FDEPTH","EQZWT","RIVERBED","RECHCLIM","HGT")},
             "MAPFAC_MX":raw.get("MAPFAC_MX",raw["MAPFAC_M"]),"MAPFAC_MY":raw.get("MAPFAC_MY",raw["MAPFAC_M"])}}
-           if int(cfg.sf_surface_physics)==4 and cfg.opt_run==5 else {}))
+           if int(cfg.sf_surface_physics)==4 and __import__("woof.core.noahmp_runoff_split",fromlist=["carrier_of"]).carrier_of(cfg)==5 else {}))
     if (int(getattr(cfg, "sf_urban_physics", 0)) > 0
             and "utype_urb2d" in driver.fields):
         from woof.ingest.wrfinput_surface_statics import (
@@ -2222,7 +2249,8 @@ def initialize_wrfinput_physics(state, restored, cfg, *, radiation=None,
         if (int(cfg.sf_surface_physics) == 4
                 and field in NOAHMP_INITIALIZED_SURFACE_FIELDS):
             continue
-        if int(cfg.sf_surface_physics)==4 and cfg.opt_run==5:
+        from woof.core.noahmp_runoff_split import carrier_of as _runoff_carrier_of
+        if int(cfg.sf_surface_physics)==4 and _runoff_carrier_of(cfg)==5:
             from woof.core.noahmp_groundwater_slab import CARRIERS
             if field in (*CARRIERS,"smoiseq"):continue
         if field == "glw" and constant_glw_wm2 is not None:
@@ -2587,7 +2615,7 @@ def _check_initial_boundary_pair(restored, tables, width, *, layouts=None):
     """Compare the first boundary values with the file that initializes them.
 
     Reconstruct WRF's own FP32 couple operation, before normalization into
-    WOOF's coupling order. Never replace MU and then use the replacement as
+    WOOF-ArWen's coupling order. Never replace MU and then use the replacement as
     proof that an unrelated boundary file belongs to this initial condition.
     The breakage this prevents: a wrfbdy from another real.exe run (another
     start, analysis or namelist) silently forcing this initial state, its
@@ -3176,7 +3204,7 @@ def check_grid_agreement(metadata: WrfinputMetadata, cfg, *,
                          source: str) -> None:
     """Refuse a wrfinput/namelist pair that disagrees about the grid.
 
-    ``real.exe`` and WOOF are being handed the SAME ``namelist.input``,
+    ``real.exe`` and WOOF-ArWen are being handed the SAME ``namelist.input``,
     so nx/ny/nz and the soil geometry must match.  When they do not, one
     of the two files is from a different experiment, and every field that
     follows would either raise deep inside a shape check or -- worse, for

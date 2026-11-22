@@ -139,6 +139,62 @@ fn stamp(t: i64) -> String {
 fn utc(t: i64) -> String {
     DateTime::<Utc>::from_timestamp(t, 0).unwrap().to_rfc3339()
 }
+/// The receipt's `header`: the hub maps draw the catalog's two header rows
+/// ([`hub_rows`]). A caller that wrote those rows onto the pictures itself
+/// (the WOOF worker's caption step) reads it and leaves the pictures alone.
+pub const HUB_HEADER: &str = "catalog-rows-v1";
+/// "11/15 00Z", or "11/13 21:30Z" off the hour: the catalog's own clock.
+fn clock(t: i64) -> String {
+    let d = DateTime::<Utc>::from_timestamp(t, 0).unwrap();
+    d.format(if t % 3600 == 0 { "%m/%d %HZ" } else { "%m/%d %H:%MZ" })
+        .to_string()
+}
+/// "F024", or "+003:30" when the lead is not whole hours.
+fn lead_label(init: i64, valid: i64) -> String {
+    let s = (valid - init).max(0);
+    if s % 3600 == 0 {
+        format!("F{:03}", s / 3600)
+    } else {
+        format!("+{:03}:{:02}", s / 3600, s % 3600 / 60)
+    }
+}
+/// The hub maps' two header rows, as the catalog writes them. Title: the
+/// product, its height above ground, and "Valid <time> | <lead>". Second
+/// row: "Init <start> | <lead> | <model>" and the picture's own words in
+/// plain words. WHAT BREAKAGE THIS PREVENTS: every hub map (19 an hour, every
+/// WOOF engine) named no valid time, start, forecast hour or model -- its
+/// valid time sat in the right-hand slot a run's theme fills with its source
+/// label -- and showed the turbine row's id as "iec_class_2 | ideal 2.000 MW
+/// | AGL" (WOOF-NAM run_4168035244154ae9, 2026-11-14).
+fn hub_rows(
+    title: &str,
+    suffix: &str,
+    init: Option<i64>,
+    valid: i64,
+    model: &str,
+    detail: &str,
+) -> (String, String) {
+    let height = format!("{} above ground", suffix.replace('p', ".").replace('m', " m"));
+    let lead = init.map(|i| lead_label(i, valid));
+    let top = match &lead {
+        Some(lead) => format!("{title} | {height} | Valid {} | {lead}", clock(valid)),
+        None => format!("{title} | {height} | Valid {}", clock(valid)),
+    };
+    let mut second = match (init, &lead) {
+        (Some(i), Some(lead)) => format!("Init {} | {lead} | {model}", clock(i)),
+        _ => model.to_owned(),
+    };
+    if !detail.is_empty() {
+        second.push_str(" \u{b7} ");
+        second.push_str(detail);
+    }
+    (top, second)
+}
+/// The turbine of the power maps in plain words: "IEC class 2 turbine, 2 MW,
+/// ideal power curve".
+fn turbine_words(curve: &Turbine, rated_mw: f64) -> String {
+    format!("IEC class {} turbine, {} MW, ideal power curve", curve.iec_class, rated_mw)
+}
 fn masked_read(
     file: &WrfFile,
     metadata: &netcrust::File,
@@ -569,6 +625,7 @@ fn draw(
     values: Vec<f32>,
     suffix: &str,
     time: i64,
+    init: Option<i64>,
     upper: f64,
     detail: &str,
 ) -> Result<(PathBuf, Option<String>), String> {
@@ -591,6 +648,8 @@ fn draw(
         Some("NO VALID DATA at this AGL height and time".to_owned())
     };
     let detail = blank.clone().unwrap_or_else(|| detail.to_owned());
+    let model = rustwx_render::active_theme().model_name("WRF");
+    let (title, detail) = hub_rows(&p.title, suffix, init, time, &model, &detail);
     let path = render_panel(PanelRequest {
         lat_deg: &g.lat,
         lon_deg: &g.lon,
@@ -599,7 +658,7 @@ fn draw(
         nx: g.nx,
         values,
         product_slug: slug,
-        title: format!("{} | {}", p.title, suffix.replace('p', ".")),
+        title,
         display_units: p.units.clone(),
         scale: scale(p, upper),
         cbar_tick_step: None,
@@ -607,6 +666,7 @@ fn draw(
         render_density: RenderDensity::default(),
         subtitle_left: detail.into(),
         subtitle_center: None,
+        // (a run's theme draws its source label, and a licence's credit, in this slot)
         subtitle_right: utc(time),
         width: r.width,
         height: r.height,
@@ -880,7 +940,7 @@ fn run(r: Request) -> Result<(), String> {
         let axis = wrf_source_times(&f, path)?;
         inputs.push(json!({"path":path,"bytes":std::fs::metadata(path).map_err(err)?.len(),"records":axis.records.len(),"grid":[f.ny,f.nx,f.nz],"reference_unix":axis.reference_unix}));
         for t in axis.records {
-            records.push((t.valid_unix, path.clone(), t.time_index));
+            records.push((t.valid_unix, path.clone(), t.time_index, axis.reference_unix));
         }
     }
     records.sort_by_key(|r| r.0);
@@ -908,7 +968,7 @@ fn run(r: Request) -> Result<(), String> {
     let mut tke_sources = vec![];
     let mut fields = vec![];
     let mut field_output_seconds = 0.;
-    for (time, path, t) in &records {
+    for (time, path, t, origin) in &records {
         let stage = Instant::now();
         let file = WrfFile::open(path).map_err(err)?;
         let (lat, lon) = rayon::join(|| file.xlat(*t), || file.xlong(*t));
@@ -937,7 +997,7 @@ fn run(r: Request) -> Result<(), String> {
         tke_sources.push(json!({"valid":utc(*time),"source":&tke,"compute":compute}));
         read_seconds += stage.elapsed().as_secs_f64();
         let g = grid.as_ref().unwrap();
-        let detail = format!("{} | ideal {:.3} MW | AGL", curve.id, r.options.rated_mw);
+        let turbine = turbine_words(curve, r.options.rated_mw);
         let field_stage = Instant::now();
         let stamp = stamp(*time);
         let field_path = r
@@ -979,9 +1039,11 @@ fn run(r: Request) -> Result<(), String> {
                         p.upper
                     };
                     let text = if p.name == "hub_ti" && tke.starts_with("diagnosed") {
-                        format!("{detail} | TI diagnosed: surface-layer similarity, no PBL TKE")
+                        "TI from surface-layer similarity (no PBL TKE)".to_owned()
+                    } else if p.name == "hub_power" {
+                        turbine.clone()
                     } else {
-                        detail.clone()
+                        String::new()
                     };
                     jobs.push((p, values, suffix.clone(), upper, text));
                 }
@@ -1006,7 +1068,7 @@ fn run(r: Request) -> Result<(), String> {
             let drawn = jobs
                 .into_par_iter()
                 .map(|(p, values, suffix, upper, text)| {
-                    draw(&r, g, p, values, &suffix, *time, upper, &text)
+                    draw(&r, g, p, values, &suffix, *time, *origin, upper, &text)
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             for one in drawn {
@@ -1090,6 +1152,7 @@ fn run(r: Request) -> Result<(), String> {
                 stat_values(s, &p.name),
                 &height_token(r.options.heights_m[h]),
                 frames.last().unwrap().time,
+                records.first().and_then(|r| r.3),
                 upper,
                 &format!(
                     "{} to {} | {} s ramp | {} m/s threshold",
@@ -1108,7 +1171,7 @@ fn run(r: Request) -> Result<(), String> {
     let stage = Instant::now();
     let verification = verify(&r, g, &frames)?;
     let verification_seconds = stage.elapsed().as_secs_f64();
-    let receipt = json!({"schema":"gpuwm.hubwind.v1","status":"complete","grid":[g.ny,g.nx],"cells":g.ny*g.nx,"frames":frames.len(),"valid_times":frames.iter().map(|f|utc(f.time)).collect::<Vec<_>>(),"inputs":inputs,"options":r.options,"turbine":curve,
+    let receipt = json!({"schema":"gpuwm.hubwind.v1","status":"complete","header":HUB_HEADER,"grid":[g.ny,g.nx],"cells":g.ny*g.nx,"frames":frames.len(),"valid_times":frames.iter().map(|f|utc(f.time)).collect::<Vec<_>>(),"inputs":inputs,"options":r.options,"turbine":curve,
  "semantics":{"interpolation":"linear earth vector versus geometric AGL; surface 10 m anchor when available; no upper extrapolation","shear":"adjacent requested heights sorted by AGL","ti":"sqrt(2*TKE/3)/speed; isotropic unresolved PBL estimate, not measured IEC turbulence; negative/absent/calm missing; where the PBL scheme carries no TKE, TKE is the surface-layer similarity form named in tke_sources","power":"ideal table at reference air density; nameplate scaling; no density correction, wakes or availability losses; normalized industry composite, not certified manufacturer curve","regime_hours":"below cut in; cut in <= speed < rated; rated <= speed < cut out; speed >= cut out; linear speed crossing durations","time_integration":"piecewise linear speed; exact piecewise table energy integral; gaps beyond max_gap excluded","ramps":"signed trailing window speed/power changes evaluated at output timestamps; contiguous threshold exceedances count once; temporal sampling can miss shorter ramps"},
  "tke_sources":tke_sources,"spatial_statistics":summaries,"verification":verification,
  "stages":{"inventory_seconds":inventory_seconds,"read_and_interpolate_seconds":read_seconds,"statistics_and_netcdf_seconds":statistics_seconds,"render_seconds":render_seconds,"field_output_seconds":field_output_seconds,"verification_seconds":verification_seconds,"total_seconds":whole.elapsed().as_secs_f64()},
@@ -1414,6 +1477,23 @@ mod tests {
             "2015-11-01T13:05:00+00:00"
         );
         assert_eq!(csv("\"2015-11-01 01:02:00\",1,2")[0], "2015-11-01 01:02:00");
+    }
+
+    #[test]
+    fn hub_maps_name_their_valid_time_start_lead_and_model_in_plain_words() {
+        // 2026-11-14 00Z start, valid 2026-11-15 00Z
+        let (init, valid) = (1_763_078_400, 1_763_164_800);
+        let (top, second) = hub_rows("Hub wind speed", "100m", Some(init), valid, "WOOF-NAM", "");
+        assert_eq!(top, "Hub wind speed | 100 m above ground | Valid 11/15 00Z | F024");
+        assert_eq!(second, "Init 11/14 00Z | F024 | WOOF-NAM");
+        let curve: Vec<Turbine> = serde_json::from_str(CURVES).unwrap();
+        let words = turbine_words(curve.iter().find(|c| c.id == "iec_class_2").unwrap(), 2.0);
+        assert_eq!(words, "IEC class 2 turbine, 2 MW, ideal power curve");
+        let (_, second) = hub_rows("Ideal single turbine power", "100m", Some(init + 1800), valid + 1800, "WOOF-NAM", &words);
+        assert_eq!(second, "Init 11/14 00:30Z | F024 | WOOF-NAM \u{b7} IEC class 2 turbine, 2 MW, ideal power curve");
+        assert!(!second.contains("iec_class") && !second.contains("AGL"));
+        let (top, _) = hub_rows("Hub wind speed", "80m", Some(init), init + 3 * 3600 + 1800, "WRF", "");
+        assert!(top.ends_with("Valid 11/14 03:30Z | +003:30"), "{top}");
     }
 }
 

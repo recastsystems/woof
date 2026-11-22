@@ -35,12 +35,12 @@ EXTERNALS = [('physics_mmm', 'a4baf7f3243d1db0dbc5f63473f895bdbdc05c30', 'mmm-ph
              ('physics_noaa/RUCLSM', '8c9f1a8bb2cfb5fb8d115440fced566361fe0f20', 'ruclsm'),
              ('physics_noaa/GFL', 'bf6a4b0d58f112322fbf9b11d43ed2027aeb56fa', 'gfl'),
              ('physics_noaa/SMOKE', '9652bbf152f8b946bf04f72a2b48ff67e15d7973', 'smoke')]
-# THE BREAKAGE THIS PREVENTS (owner ruling 2026-10-14: no default routes into code that cannot be sold): the
+# THE BREAKAGE THIS PREVENTS (no default routes into code that cannot be sold): the
 # fork's own MPAS sources USE Noah-MP v5.0 (UCAR terms: no sale of the Software or of any work that contains
 # it), so a library compiled from the full fork tree contains it even when no run selects it.  --licence-stub
 # noahmp compiles the Apache-2.0 interface stub beside this file (../make_licence_stubs.py --compiled-only
 # rrfs) in place of physics_noahmp; any stub routine that is called stops the run naming the opt-in.  The
-# NOAA GSL physics (UGWP, MYNN, RUC, GFL, smoke) are compiled as always (owner ruling 2026-10-14: US
+# NOAA GSL physics (UGWP, MYNN, RUC, GFL, smoke) are compiled as always (US
 # Government code, not held).
 LICENCE_STUBS = {
     'noahmp': {'file': 'licence_stub_noahmp.F90', 'terms': 'ucar-noahmp',

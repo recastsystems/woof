@@ -1455,6 +1455,7 @@ def test_a_nested_run_field_absent_from_the_header_but_IN_USE_still_refuses():
     ("snicar_dust_ppm", 0.0, 1.0),
     ("snicar_ice_density", 900.0, 910.0),
     ("snicar_bubble_radius_um", 1000.0, 900.0),
+    ("snicar_fresh_grain_opt", 1, 2),
 ])
 @pytest.mark.parametrize("at_default", [True, False])
 def test_pre_diagnostic_header_accepts_only_the_inactive_default(

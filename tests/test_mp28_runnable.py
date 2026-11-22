@@ -26,7 +26,7 @@ The mp=28 numerics.  ``tests/test_thompson_aerosol_adapter.py`` owns the G3
 oracle gate against all 19 WRF column fixtures and publishes its residuals;
 duplicating a weaker version of that here would only create a second, laxer
 authority.  What this module tests is that the scheme is REACHABLE, that it
-is reachable only in configurations WOOF can actually honour, and that the
+is reachable only in configurations WOOF-ArWen can actually honour, and that the
 one thing it must never do -- change a field mp=28 does not own -- it does
 not do.
 """
@@ -168,7 +168,7 @@ def test_a_half_climatology_selection_is_refused_as_mixed(overrides):
     """One half of real.exe's climatology pair is not a request, it is a typo.
 
     real.exe derives both together from ``use_aero_icbc = .true.``; there is
-    no WRF state in which one is set and the other is not.  WOOF refuses
+    no WRF state in which one is set and the other is not.  WOOF-ArWen refuses
     rather than completing it, because completing it would mean choosing
     which half the user meant.
     """
@@ -209,10 +209,10 @@ def test_the_deliberate_deviation_is_published_and_cites_the_wrf_refusal():
     """The one thing a user must not learn from a code comment.
 
     WRF's real.exe FATALs ``mp_physics=28`` with ``wif_input_opt=0``
-    (dyn_em/module_initialize_real.F:2735-2736).  WOOF runs that exact
+    (dyn_em/module_initialize_real.F:2735-2736).  WOOF-ArWen runs that exact
     configuration, on thompson_init's synthetic profile.  The physics is
     WRF's; the INITIALIZATION is one WRF's initializer refuses to produce,
-    which means a WOOF mp=28 run and a WIF-initialized WRF mp=28 run are
+    which means a WOOF-ArWen mp=28 run and a WIF-initialized WRF mp=28 run are
     not directly comparable.  A reader who does not know that can draw a
     false conclusion from a true comparison, so the statement is carried in
     a published constant and reaches the namelist importer's printed
@@ -607,7 +607,7 @@ def test_mp28_reflectivity_requires_the_same_graupel_shadow_as_mp8():
 
 @requires_gpu
 def test_refl_10cm_is_bit_identical_under_two_very_different_nc_fields():
-    """WRF's ``calc_refl10cm`` reads no droplet number.  Prove WOOF's does
+    """WRF's ``calc_refl10cm`` reads no droplet number.  Prove WOOF-ArWen's does
     not either.
 
     ``calc_refl10cm`` (module_mp_thompson.F:5710-6028) is ONE routine shared
@@ -681,7 +681,7 @@ def test_refl_10cm_is_bit_identical_under_two_very_different_nc_fields():
 
 @requires_gpu
 def test_mp28_echo_is_its_own_transcription_and_mp8s_stays_frozen():
-    """One WRF routine, two WOOF kernels, on purpose.
+    """One WRF routine, two WOOF-ArWen kernels, on purpose.
 
     In WRF both selectors call the same ``calc_refl10cm``.  mp=8's kernel
     (refl.cu, refl10cm_thompson_column) is byte-frozen and its arithmetic is
@@ -974,7 +974,7 @@ def test_every_wrf_mp28_aerosol_namelist_key_is_answered():
 
 
 def test_the_refusal_reasons_cite_wrfs_silent_overwrites():
-    """WOOF refuses where WRF silently reconfigures.
+    """WOOF-ArWen refuses where WRF silently reconfigures.
 
     ``share/module_check_a_mundo.F`` forces ``grav_settling`` to 0
     (:2459-2474) and ``scalar_pblmix`` to 1 (:2477-2495) under mp=28
@@ -1202,7 +1202,7 @@ def test_microphysics_apply_runs_mp28_end_to_end_on_a_real_domainstate():
 
 @requires_gpu
 def test_mp28_specified_zone_ring_is_bit_restored_including_the_aerosols():
-    """WRF's clipped tiles never dispatch the ring, so WOOF's must not
+    """WRF's clipped tiles never dispatch the ring, so WOOF-ArWen's must not
     either -- for every field, aerosols included.
 
     Pre-WP-11a there was no mp=28 arm anywhere in the ring guard, so this
@@ -1525,7 +1525,7 @@ def test_each_mp28_aerosol_key_is_refused_by_name(tmp_path, section, key,
 
     Pre-WP-11a every one of these produced the importer's generic
     ``unmapped key(s)`` message from ``_Section.finish()``, which names the
-    key and nothing else -- no WRF citation, no statement of what WOOF is
+    key and nothing else -- no WRF citation, no statement of what WOOF-ArWen is
     missing.  A user could not tell an unported knob from a typo.
     """
     from woof.namelist_import import import_namelists
@@ -1804,7 +1804,7 @@ def test_the_wif_key_triple_imports_instead_of_dead_ending(tmp_path,
     The triple is &physics ``use_aero_icbc = .true.`` with &domains
     ``wif_input_opt = 1`` and ``num_wif_levels = 30``.  Before the ingest
     had a front door every one of those keys was a hard refusal, so the
-    one namelist a WIF user actually writes was the one WOOF could not
+    one namelist a WIF user actually writes was the one WOOF-ArWen could not
     read.  This pins the whole round trip: the keys are consumed, the
     emitted config carries aer_init_opt=1 / wif_input_opt=1, and the
     never-silent line says which dataset the run will read.
@@ -1814,7 +1814,7 @@ def test_the_wif_key_triple_imports_instead_of_dead_ending(tmp_path,
     climatology, so the receipt this asserts -- "WIF monthly climatology"
     rather than the fallback -- is the receipt of a machine that has the
     file.  The IMPORT itself does not depend on it: the namelist spelling
-    of the request takes exactly the run-door battery the WOOF spelling
+    of the request takes exactly the run-door battery the WOOF-ArWen spelling
     takes, and neither is asked at this door.
     """
     from woof.ingest import wif_climatology

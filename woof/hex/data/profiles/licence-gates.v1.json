@@ -1,6 +1,6 @@
 {
   "schema": "gpuwm-hex.licence-gates/v1",
-  "about": "MPAS suite selections that run upstream code under terms that do not permit an Apache-2.0 distribution that may be sold. gpuwm-hex is Apache-2.0 and its public distribution carries only permissive third-party code (BSD, MIT, Apache-2.0, public domain) and US Government code. A selection listed here runs code under restricted terms (UCAR's Noah-MP terms forbid sale). No default route selects one (owner ruling 2026-10-14: the package stays Apache-2.0 and no default routes into code that cannot be sold or is limited). The forecast door refuses a run that selects one unless the run opts in by naming the terms: --licence-opt-in ID or GPUWM_HEX_LICENCE_OPT_IN=ID. With the opt-in the run prints a LICENCE line per selection and records licence_opt_in in its physics receipt. Read by hexcore.licence_gate; the hex ports of these components are withheld from the public export by tools/licence_holds.json. not_gated records upstreams a ruling took out of the gate, and retired_terms the opt-in names that no longer gate anything: a run that still names one is told so on stderr and runs as it would without it.",
+  "about": "MPAS suite selections that run upstream code under terms that do not permit an Apache-2.0 distribution that may be sold. gpuwm-hex is Apache-2.0 and its public distribution carries only permissive third-party code (BSD, MIT, Apache-2.0, public domain) and US Government code. A selection listed here runs code under restricted terms (UCAR's Noah-MP terms forbid sale). No default route selects one (the package stays Apache-2.0 and no default routes into code that cannot be sold or is limited). The forecast door refuses a run that selects one unless the run opts in by naming the terms: --licence-opt-in ID or GPUWM_HEX_LICENCE_OPT_IN=ID. With the opt-in the run prints a LICENCE line per selection and records licence_opt_in in its physics receipt. Read by hexcore.licence_gate; the hex ports of these components are withheld from the public export by tools/licence_holds.json. not_gated records upstreams taken out of the gate, and retired_terms the opt-in names that no longer gate anything: a run that still names one is told so on stderr and runs as it would without it.",
   "terms": {
     "ucar-noahmp": {
       "name": "UCAR Noah-MP terms",
@@ -13,12 +13,12 @@
   "retired_terms": {
     "noaa-gsl-unlicensed": {
       "retired": "2026-10-14",
-      "why": "owner ruling 2026-10-14: the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in",
+      "why": "the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in",
       "covered": "UGWP (bl_ugwp_gwdo, config_ngw_scheme) and the RRFSx fork physics_noaa MYNN-EDMF, MYNN-SFC, RUC LSM, GFL and smoke"
     },
     "ugwp-held": {
       "retired": "2026-10-28",
-      "why": "owner ruling 2026-10-14: the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in; the UGWP hold this opt-in named is released and the UGWP CUDA ports ship in the distribution",
+      "why": "the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in; the UGWP hold this opt-in named is released and the UGWP CUDA ports ship in the distribution",
       "covered": "UGWP (bl_ugwp_gwdo, config_ngw_scheme) on mpasphys_v842 and mpasphys_rrfs"
     }
   },
@@ -53,13 +53,13 @@
       "selections": "config_gwdo_scheme='bl_ugwp_gwdo' and config_ngw_scheme on mpasphys_v842 and mpasphys_rrfs",
       "notice": "NOTICE section 8",
       "terms": "Apache-2.0",
-      "why": "NOAA GSL added an Apache-2.0 LICENSE to github.com/NOAA-GSL/UGWP on 2026-11-04 (commit 4108d491470c2576a7c1e97cc6a38bf454590193, https://github.com/NOAA-GSL/UGWP/blob/main/LICENSE); the pinned c1c893e is its ancestor. Permissive: the ports ship and run with no opt-in. Before that date the owner ruling of 2026-10-14 treated UGWP as US Government code."
+      "why": "NOAA GSL added an Apache-2.0 LICENSE to github.com/NOAA-GSL/UGWP on 2026-11-04 (commit 4108d491470c2576a7c1e97cc6a38bf454590193, https://github.com/NOAA-GSL/UGWP/blob/main/LICENSE); the pinned c1c893e is its ancestor. Permissive: the ports ship and run with no opt-in. Before that date UGWP was treated as US Government code (from 2026-10-14)."
     },
     "noaa-gsl-rrfs-physics": {
       "upstream": "RRFSx/MPAS-Model 1d6e370e physics_noaa: NCAR/MYNN-EDMF c942418, NCAR/MYNN-SFC b66187f, NOAA-GSL/RUCLSM 8c9f1a8, NOAA-GSL/GFL bf6a4b0, NOAA-GSL/SMOKE 9652bbf",
       "selections": "bl_mynnedmf, sf_mynnsfclay, sf_ruc, cu_grell_freitas_li and the smoke scheme on mpasphys_rrfs",
       "notice": "NOTICE section 9",
-      "why": "owner ruling 2026-10-14: the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in"
+      "why": "the RRFS fork's NOAA GSL physics and UGWP are treated as US Government code and ship; the fork-exact RRFS stage (hrrrv5) runs by default with no opt-in"
     }
   },
   "selections": [

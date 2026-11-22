@@ -8,9 +8,9 @@ the WRF-faithful k22 flag set, since the reference being graded against is
 WRF.
 
 fzu IS PINNED HERE, and that changed at 2.7.0.  Through 2.6.5 gfk_tgamma was
-WOOF's earlier gamma, which returned glibc's tgammaf words, and this gate
+WOOF-ArWen's earlier gamma, which returned glibc's tgammaf words, and this gate
 could compute fzu on the device.  That gamma is replaced;
-WOOF's gamma is CORRECTLY ROUNDED and glibc's is not (39.44 per
+WOOF-ArWen's gamma is CORRECTLY ROUNDED and glibc's is not (39.44 per
 cent of [0.25, 36], worst 6 ULP), so the two no longer agree and neither
 does fzu.  ``docs/gf_gamma_known_delta.md`` is the record.  This suite now
 does exactly what tests/test_gf_driver_parity.py has always done: it feeds

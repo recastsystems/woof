@@ -426,7 +426,7 @@ def _inputs(source, *, preserve_bound=False, extra_wps=None):
     payload = _read(source)
     original = tomllib.loads(payload.decode("utf-8"))
     if "experiment" not in original or not isinstance(original.get("domain"), list):
-        raise ValueError("remote start requires a WOOF experiment TOML with [[domain]] tables")
+        raise ValueError("remote start requires a WOOF-ArWen experiment TOML with [[domain]] tables")
     from woof.experiment import build_experiment_from_config_tables
     build_experiment_from_config_tables(original, source=str(source), base_dir=source.parent)
     raw = copy.deepcopy(original)

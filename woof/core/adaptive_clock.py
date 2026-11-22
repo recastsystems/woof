@@ -256,7 +256,7 @@ def nest_ticks_from_parent(parent_ticks: int, own_ticks: int, *,
 
     WRF takes ``num_small_steps = CEILING(parent%dt / dt)`` and then
     ``parent_dt / num_small_steps`` as an exact ESMF rational
-    (adapt_timestep_em.F:232-238).  Fine there; not here.  WOOF's clock
+    (adapt_timestep_em.F:232-238).  Fine there; not here.  WOOF-ArWen's clock
     is an integer tick lattice, so the quotient has to land on it.
 
     ``n`` is therefore the smallest DIVISOR of ``parent_ticks`` that is at

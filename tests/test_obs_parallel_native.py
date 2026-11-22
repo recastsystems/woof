@@ -63,30 +63,6 @@ def test_concurrent_native_fields_and_radar_files_are_identical(tmp_path, monkey
     target.write_text(json.dumps(receipt, indent=2) + '\n')
 
 
-def test_real_failed_truth_decode_is_terminal_and_does_not_raise_at_launch(tmp_path, monkeypatch):
-    from tools import da_recent_observations as obs
-    from woof.obs.frontdoor import MRMS
-    if MRMS.find() is None:
-        pytest.skip('native rw_mrms must be staged')
-    raw = tmp_path / 'MRMS_PrecipRate_00.00_20261007-120000.grib2'
-    raw.write_bytes(b'not a GRIB message')
-    row = {'bucket': 'noaa-mrms-pds', 'key': 'CONUS/PrecipRate_00.00/' + raw.name,
-        'bytes': raw.stat().st_size, 'etag': 'test', 'last_modified': '2026-10-07T12:00:00Z'}
-    inv = {'scope': 'full-case', 'objects': [row], 'case': {'bbox': [-1, -1, 1, 1],
-        'truth_bbox': [-2, -2, 2, 2], 'truth_padding_m': 75000,
-        'analysis_times_utc': ['2026-10-07T12:00:00Z']}}
-    fetched = {'schema': 'da-rerun.recent-fetch.v1', 'status': 'complete',
-        'inventory_sha256': obs.document_sha(inv), 'objects': [{**row, 'path': str(raw), 'sha256': obs.sha(raw)}]}
-    out = tmp_path / 'truth'
-    job = obs.start_truth(inv, fetched, out, 0, 0)
-    assert job['out'] == str(out.resolve())
-    with pytest.raises(RuntimeError, match='native command failed'):
-        obs.join_truth(out, timeout_seconds=30)
-    status = json.loads((out / 'truth-job-status.json').read_text())
-    assert status['status'] == 'FAILED'
-    assert not (out / 'truth.json').exists()
-
-
 def test_replay_target_preserves_columns_and_keeps_production_georef_refusal(tmp_path):
     from woof.io.classic_product import ClassicProduct
     from woof.obs.target_grid import TargetGrid, GridMismatchError

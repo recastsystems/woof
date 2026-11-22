@@ -101,7 +101,7 @@ class PreparedPET:
             "algorithm": "noaa-owp-pet-cuda-v2", "source_pin": PET_PIN,
             "wind_norm": "Borges-2019-4.2-balanced-unfused-separated-fused-v1",
             "method": method_identity, "arithmetic": "float64", "numerics": numerics.mode(),
-            "libm": "WOOF MIT Arm glibc-word adaptation" if numerics.is_strict() else "MIT Arm exp; CUDA libdevice log/pow",
+            "libm": "WOOF-ArWen MIT Arm glibc-word adaptation" if numerics.is_strict() else "MIT Arm exp; CUDA libdevice log/pow",
             "forcing_dtype": str(dtype), "identity": identity,
         }
         # Python ints are explicitly sized for the CUDA ABI without NumPy.

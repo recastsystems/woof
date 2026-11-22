@@ -84,7 +84,7 @@ def port_identity() -> dict[str, str]:
 
     ``model_name`` names THIS program.  Writing ``mpas`` here would be the
     identity the producer's refusal exists to prevent: these files carry
-    WOOF's physics and this port's numerics, and a stream stamped ``mpas``
+    WOOF-ArWen's physics and this port's numerics, and a stream stamped ``mpas``
     would claim a provenance no file in the chain has.
     """
 

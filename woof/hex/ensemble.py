@@ -16,6 +16,7 @@ import json
 import math
 import multiprocessing
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import shutil
 import subprocess
@@ -35,11 +36,11 @@ ALIASES = {"u": "normal_u", "uReconstructZonal": "u_zonal",
 def history_name(dataset, target):
     """The history variable holding ``target`` on either physics route.
 
-    The WOOF route's history names the winds ``normal_u``/``u_zonal``/``v_meridional`` (``ALIASES``); the MPAS
+    The WOOF-ArWen route's history names the winds ``normal_u``/``u_zonal``/``v_meridional`` (``ALIASES``); the MPAS
     suite route writes MPAS's own stream, which uses the Registry names themselves (``u``,
     ``uReconstructZonal``, ``uReconstructMeridional``).  THE BREAKAGE THIS PREVENTS: an MPAS-route ensemble's
     export refused with "forecast history lacks u_zonal".  An
-    WOOF history carries the alias, so it reads exactly as before.
+    WOOF-ArWen history carries the alias, so it reads exactly as before.
     """
     alias = ALIASES.get(target, target)
     return alias if alias in dataset.variables or target not in dataset.variables else target
@@ -851,7 +852,7 @@ def run_ensemble(args):
     else:
         dimensions = validate_inputs(data, state_hashes=state_hashes, reference_path=reference_path)
     visible = [s.strip() for s in os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",") if s.strip()]
-    if not visible or not os.environ.get("GPU_MUTEX_CARDS"):
+    if not visible or not card_queue.get(card_queue.CARDS):
         raise EnsembleRefusal("no card grant; run the ensemble through the host card queue with --cards N --min-cards 1")
     import cupy as cp
     from .device_admission import card_profile_from_attributes, model_for_card
@@ -1014,8 +1015,8 @@ def run_ensemble(args):
             residents = slots.count(card) if slots else 1
             env = dict(os.environ, CUDA_VISIBLE_DEVICES=visible[card],
                        WOOF_HEX_MEMBER_MEMORY="shared-card" if residents > 1 else "single",
-                       GPU_MUTEX_CARDS=os.environ["GPU_MUTEX_CARDS"].replace(",", " ").split()[card],
                        WOOF_HEX_MESH_ROWS=assets["mesh_rows"])
+            card_queue.put(env, card_queue.CARDS, card_queue.granted()[card])
             # Respect a caller's warm caches; a fresh root would recompile and
             # re-prepare the 30 km host state once per member.
             env.setdefault("WOOF_HEX_PREP_CACHE", str(output.parent / "hostprep-cache"))

@@ -328,7 +328,8 @@ def pack_thermoprop_slab(fields, n: int):
     return x, ix
 
 
-def evaluate_thermoprop_slab(fields, n: int, *, log10_profile="glibc_2_39") -> dict:
+def evaluate_thermoprop_slab(fields, n: int, *, log10_profile="glibc_2_39",
+                             opt_tksno=1) -> dict:
     """One launch of THERMOPROP over ``n`` columns; WRF's six arrays as slabs.
 
     Keys are ``df``, ``hcpct``, ``snicev``, ``snliqv``, ``epore`` and
@@ -336,15 +337,28 @@ def evaluate_thermoprop_slab(fields, n: int, *, log10_profile="glibc_2_39") -> d
     with the layer axis last.
     """
     import cupy as cp
+    from woof.core.noahmp_tksno import validate as tksno_validate
 
+    tksno_validate(opt_tksno)
+    if opt_tksno != 1 and log10_profile != "glibc_2_39":
+        # The selected unit re-forms soil layer 1's TDFCND with the default
+        # LOG10; under another profile its interface DF would not be the
+        # leaf's soil value blended with the new snow value.
+        raise ValueError("opt_tksno 2-5 run with the default glibc_2_39 LOG10 profile only")
     x, ix = pack_thermoprop_slab(fields, n)
     y = cp.zeros((n, THERMOPROP_N_OUT), dtype=cp.float32)
     if n:
         assert y.flags.c_contiguous
+        x = cp.ascontiguousarray(x)
+        ix = cp.ascontiguousarray(ix)
         _thermoprop_kernel(log10_profile)(
             (_blocks(n, THERMAL_THREADS),), (THERMAL_THREADS,),
-            (cp.ascontiguousarray(x), cp.ascontiguousarray(ix), y,
-             np.int32(n)))
+            (x, ix, y, np.int32(n)))
+        if opt_tksno != 1:
+            from woof.core.noahmp_kernel_sources import selected_kernel
+            selected_kernel("noahmp_thermal", "noahmp_thermoprop_tksno")(
+                (_blocks(n, THERMAL_THREADS),), (THERMAL_THREADS,),
+                (x, ix, y, np.int32(n), np.int32(opt_tksno)))
     return _split(y, THERMOPROP_OUT, cp)
 
 
@@ -483,10 +497,18 @@ def evaluate_radiation_slab(fields, n: int, *, noahmp_snow_age="wrf_470",
         args = (cp.ascontiguousarray(inputs), cp.ascontiguousarray(ist))
         if opt_alb == 3:
             from woof.core.snow_papers import evaluate
-            snow, carried, absorption = evaluate(inputs, ist, carbon=fields.get("snicar_carbon"),
-                layers=fields.get("snicar_layers"), state=fields.get("snicar_state"),
-                options=fields.get("snicar_options"),
-                air_temperature=fields.get("snicar_air_temperature"), return_fluxes=True)
+            lap_new = None
+            if fields.get("snicar_lap") is not None:
+                snow, carried, absorption, lap_new = evaluate(inputs, ist, carbon=fields.get("snicar_carbon"),
+                    layers=fields.get("snicar_layers"), state=fields.get("snicar_state"),
+                    options=fields.get("snicar_options"),
+                    air_temperature=fields.get("snicar_air_temperature"), return_fluxes=True,
+                    lap=fields["snicar_lap"], deposition=fields["snicar_lapdep"])
+            else:
+                snow, carried, absorption = evaluate(inputs, ist, carbon=fields.get("snicar_carbon"),
+                    layers=fields.get("snicar_layers"), state=fields.get("snicar_state"),
+                    options=fields.get("snicar_options"),
+                    air_temperature=fields.get("snicar_air_temperature"), return_fluxes=True)
             heating = cp.zeros((n,7),dtype=cp.float32)
             crown = None
             if opt_rad == 1:
@@ -525,6 +547,8 @@ def evaluate_radiation_slab(fields, n: int, *, noahmp_snow_age="wrf_470",
     if n and opt_alb == 3:
         result["snicar_state"] = carried
         result["snicar_heating"] = heating
+        if lap_new is not None:
+            result["snicar_lap"] = lap_new
     return result
 
 

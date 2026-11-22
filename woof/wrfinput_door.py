@@ -57,6 +57,9 @@ class WrfinputRun:
     restart_paths: Mapping[int, Path] | None = None
     restart_clock: object | None = None
     restart_notes: tuple[str, ...] = ()
+    #: What ``--lake-state`` chose, as one sentence for plan review; None
+    #: when the flag was not given (the run keeps lake_state_source=auto).
+    lake_state_note: str | None = None
 
     @property
     def grid_ids(self) -> tuple[int, ...]:
@@ -88,7 +91,7 @@ def discover_run_directory(directory: str | Path, *, restart: bool = False
     absent = []
     if not namelist.is_file():
         absent.append(
-            "namelist.input (the run settings and the physics; WOOF reads "
+            "namelist.input (the run settings and the physics; WOOF-ArWen reads "
             "the same file wrf.exe would)")
     if not inputs and not restart:
         absent.append(
@@ -267,8 +270,10 @@ def synthesize_wps_namelist(metadata: Mapping[int, WrfinputMetadata], *,
     def parent_id_column():
         """WPS spells the root's parent as ITSELF; WRF spells it 0.
 
-        ``&geogrid parent_id`` is 1 for domain 1 (WPS's own convention,
-        which woof's WPS reader enforces), while ``real.exe`` stamps
+        ``&geogrid parent_id`` is 1 for domain 1 (WPS's own convention;
+        woof's WPS reader also takes 0 and books it as normalized, so
+        writing 1 here keeps the synthesized file free of that advisory),
+        while ``real.exe`` stamps
         ``PARENT_ID = 0`` into the root wrfinput.  Same fact, two
         spellings; this is the one place they meet.  Children carry their
         real parent id through unchanged.
@@ -319,7 +324,7 @@ def check_projection_agreement(experiment, metadata: Mapping[
     The layout above is reconstituted from ``CEN_LAT``/``CEN_LON``, which
     is WPS's ``ref_lat``/``ref_lon`` only when the reference point sat at
     the domain centre -- the default, but not a law.  Rather than trust
-    it, this evaluates WOOF's projection on every mass point and
+    it, this evaluates WOOF-ArWen's projection on every mass point and
     compares it against the ``XLAT``/``XLONG`` arrays ``real.exe`` wrote
     into the same file.  An absent check here would be scored as
     agreement; this is the measurement.
@@ -352,7 +357,7 @@ def check_projection_agreement(experiment, metadata: Mapping[
         lon = np.asarray(lon, dtype=np.float64)
         if lat.shape != xlat.shape:
             problems.append(
-                f"  d{domain.grid_id:02d}: WOOF's grid is {lat.shape}, "
+                f"  d{domain.grid_id:02d}: WOOF-ArWen's grid is {lat.shape}, "
                 f"{item.path.name} XLAT is {xlat.shape}")
             continue
         dlat = float(np.abs(lat - xlat).max())
@@ -481,14 +486,43 @@ def require_preserved_wrf_selectors(report):
                 "Select a supported physics package explicitly in the producing namelist")
 
 
+#: The scheme generation selectors ``--scheme KEY=VALUE`` may name on the
+#: WRF-file door: each picks which pinned source generation of one scheme
+#: runs (WRF-480 port).  Named breakage the list prevents: the door's TOML
+#: is validated by the importer, and an arbitrary key written after that
+#: would bypass every import check; a selector only chooses among kernels
+#: the config validator already knows.  ``ruc_soilprop`` picks the RUC
+#: SOILPROP lineage: the engine default is the operational form, stock WRF
+#: 4.6.1-4.8.0 runs ``wrf_461`` (woof.wrf_reference.REFERENCE_STOCK_SELECTORS),
+#: so a bitwise proof of a RUC recipe against stock WRF has to name it.
+SCHEME_SELECTORS = frozenset({
+    "solar_generation", "ysu_version", "shinhong_version", "cu_gf_version",
+    "bl_mynn_version", "mynn_sfclay_variant", "gwdo_version",
+    "windfarm_fitch_version", "ntu_version", "udm_version",
+    "urban_water_balance", "noahmp_snow_age", "ruc_soilprop"})
+
+
+def check_scheme_selectors(selectors) -> None:
+    """Refuse a ``--scheme`` key that is not a generation selector."""
+    unknown = sorted(set(selectors or {}) - SCHEME_SELECTORS)
+    if unknown:
+        raise ConfigurationRefused(
+            f"--scheme {', '.join(unknown)}: not a scheme generation selector; "
+            f"the door accepts {sorted(SCHEME_SELECTORS)}")
+
+
 def resolve_wrfinput_run(directory: str | Path, *, name: str | None = None,
                          acknowledgements: Sequence[str] = (),
                          rrtmg_variant: str | None = None,
                          thompson_version: str | None = None,
+                         cu_gf_version: str | None = None,
+                         scheme_selectors=None,
                          urban_ucm_generation: str | None = None,
                          urban_controls: dict | None = None,
                          check_projection: bool = True,
-                         restart_from: str | Path | None = None) -> WrfinputRun:
+                         restart_from: str | Path | None = None,
+                         lake_state: str | None = None,
+                         lake_state_path: str | Path | None = None) -> WrfinputRun:
     """Read, translate and CHECK one real.exe handoff.  No field is decoded.
 
     Every refusal this door owns fires here, on CPU, before any state
@@ -612,6 +646,25 @@ def resolve_wrfinput_run(directory: str | Path, *, name: str | None = None,
                         if generation == "wrf_44" else ""))
         toml_text = toml_text.replace("[shared]\n", "[shared]\n" + selection, 1)
         toml_text = "# Thompson generation: " + json.dumps(generation_receipt) + "\n" + toml_text
+    if cu_gf_version is not None:
+        import json
+        import re
+        # cu_physics=3's generation. The flag wins over the release the files'
+        # TITLE names (WRF_RELEASE_GENERATIONS), so an existing key is replaced.
+        line = f"cu_gf_version = {json.dumps(cu_gf_version)}"
+        toml_text, count = re.subn(r"(?m)^cu_gf_version\s*=.*$", line, toml_text)
+        if not count:
+            toml_text = toml_text.replace("[shared]\n", "[shared]\n" + line + "\n", 1)
+    if scheme_selectors:
+        # --scheme KEY=VALUE: like --cu-gf-version, each wins over the
+        # release the files' TITLE names, so an existing key is replaced.
+        check_scheme_selectors(scheme_selectors)
+        from woof.verify_exact.replay import set_toml_key
+        for key, value in scheme_selectors.items():
+            toml_text = set_toml_key(toml_text, key, value)
+    # --lake-state, through the one function the met_em door calls too.
+    from woof.ingest.lake_state import select_lake_state
+    toml_text, lake_state_note = select_lake_state(toml_text, lake_state, lake_state_path)
     experiment = build_experiment(
         tomllib.loads(toml_text), source=f"{directory}:wrfinput")
     kind = "wrfrst" if warm else "wrfinput"
@@ -659,7 +712,8 @@ def resolve_wrfinput_run(directory: str | Path, *, name: str | None = None,
         substitution_report=report, wps_namelist_text=wps_text,
         restart_paths=(None if restart_paths is None
                        else MappingProxyType(dict(sorted(restart_paths.items())))),
-        restart_clock=restart_clock, restart_notes=restart_notes)
+        restart_clock=restart_clock, restart_notes=restart_notes,
+        lake_state_note=lake_state_note)
 
 
 #: WRF's &dynamics base-state constants and their Registry defaults

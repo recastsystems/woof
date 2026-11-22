@@ -2,7 +2,7 @@
 
 **Registered 2026-08-05, BEFORE the run. Case updated 2026-08-06, still
 before the run.** Config `configs/les_tornado_100m_mayfield_20211210.toml`.
-Rulings `docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`
+Rulings `docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`
 (sessions 2 and 3).
 
 ## The case, and what kind of box this is
@@ -264,7 +264,7 @@ this document is written under".
 
 - **No obs-skill screen.** See the discipline note above.
 - **No P5 reference-family comparison.** P5 has not run; there is no own-WRF
-  reference for this case. Every comparison here is WOOF against WOOF.
+  reference for this case. Every comparison here is WOOF-ArWen against WOOF-ArWen.
 - **No km_opt=2 arm.** The plan makes it contingent on the km3 pair succeeding
   first. It is not part of attempt #1.
 - **No Shin-Hong parent comparison.** G3 ruled the YSU fallback; nothing here

@@ -1,4 +1,4 @@
-"""EXPERIMENTAL (WOOF v1.2): radar observation operators H(x).
+"""EXPERIMENTAL (WOOF-ArWen v1.2): radar observation operators H(x).
 
 Two gridded operators, both pure functions of the model state, both
 CuPy-first with a NumPy fallback, neither wired into any default route:
@@ -15,7 +15,7 @@ element-wise with no interpolation of its own.
 Reflectivity: NO SECOND Z FORMULA
 =================================
 
-WOOF already computes reflectivity on the product side, and this module
+WOOF-ArWen already computes reflectivity on the product side, and this module
 does not reimplement it.  ``simulated_reflectivity`` is a thin,
 shape-checking adapter over the existing authority:
 

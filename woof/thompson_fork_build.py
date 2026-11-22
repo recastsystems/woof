@@ -27,7 +27,10 @@ PUBLIC_SOURCES = (
 )
 LIBC_ASSET = TableAsset("libc6_2.43-2ubuntu2.4_amd64.deb", 2104056,
     "a613b457f3ff9c84ebd28af8a05afdec22605ad9aed87c71e3a6ae5170aeb9ca")
-LIBC_URL = "https://archive.ubuntu.com/ubuntu/pool/main/g/glibc/" + LIBC_ASSET.filename
+# The Launchpad librarian object, which keeps every published Ubuntu binary;
+# the archive pool drops a version once it is superseded (see
+# thompson_density_tables.REFERENCE_RUNTIME_ASSETS).
+LIBC_URL = "https://launchpadlibrarian.net/875753646/" + LIBC_ASSET.filename
 HARNESS_PINS = {
     "stub_wrf.F90": "e377d142027d294cb5d259f02c2c04ef68d698ff98816ba04de263af003396ba",
     "generate_tables.F90": "65a0925b31003ae24135e1a0c69c48ccc08e03b0195c6a3c3282c3a5d0c03f77",

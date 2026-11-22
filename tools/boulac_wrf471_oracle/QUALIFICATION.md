@@ -80,7 +80,7 @@ recorded below.
 
 Native WRF completed 720 steps through 2026-10-16_12:00:00, with SUCCESS COMPLETE WRF. Its executable hash matches the real-input replay build.
 
-Rust maps were inspected beside native WRF and station markers at 10, 11 and 12 UTC. Broad temperature and PBL-depth patterns match, with no visible seams or isolated spikes. No PBLH observations were used. The following pre-speed-correction table gives station RMSE for WOOF / native, 30 paired stations per time.
+Rust maps were inspected beside native WRF and station markers at 10, 11 and 12 UTC. Broad temperature and PBL-depth patterns match, with no visible seams or isolated spikes. No PBLH observations were used. The following pre-speed-correction table gives station RMSE for WOOF-ArWen / native, 30 paired stations per time.
 
 
 | UTC | T2 K | 10 m wind m/s |
@@ -103,7 +103,7 @@ the four sampled CFL values are below 0.824, and 52 field audits cover
 forecast-closure.json, collection.json and history.json retain the audit.
 
 All six corrected T2/PBLH Rust maps at 10, 11 and 12 UTC were inspected at
-original resolution beside retained native and previous WOOF maps. The cool
+original resolution beside retained native and previous WOOF-ArWen maps. The cool
 northern/western land, warm southeastern band and evolving PBL texture remain
 aligned. No visible new seams or isolated spikes were found. Station markers
 support the broad T2 pattern; there are no PBLH observations. Joined images,
@@ -114,7 +114,7 @@ stations. These receipts are unpaired because native raw outputs were already
 cleaned; the native scores in the earlier table remain the native reference.
 Corrected T2 RMSE is 1.507472, 1.230773 and 1.188020 K at 10, 11 and 12 UTC;
 wind RMSE is 2.142500, 1.919463 and 1.585715 m/s. The largest absolute RMSE
-change from the previous WOOF run is 0.001272 K and 0.005508 m/s, respectively.
+change from the previous WOOF-ArWen run is 0.001272 K and 0.005508 m/s, respectively.
 No skill advantage is inferred. Requests, logs, station-provenance.json and
 forecast-closure.json retain the numbers and common-observation checks.
 

@@ -3,6 +3,8 @@ import ast
 from pathlib import Path
 import numpy as np
 import pytest
+
+import site_support
 from woof.hex import acoustic, acoustic_v841, diagnostics, driver, engines, terrain, transport
 from woof.hex import moving_jolt_check as check
 
@@ -35,6 +37,8 @@ def test_all_profiled_operators_on_actual_moving_step(tmp_path, monkeypatch):
     for spec in (engines.MESH, engines.GEOMETRY):
         if engines.locate(spec)[0] is None:
             pytest.skip(f'{spec.name} needed for actual moving fixture')
+    site_support.current_bridge_or_skip(engines.GEOMETRY, b"rw_mpas_geometry --protocol hex-vertical-v1",
+                                        "hex-vertical-v1", "generating the moving-check fixture")
     family = check.build_family(tmp_path)
     mesh, cfg, coeff, winds = check.setup(family['meshes'][0])
     state, saved, prep = check.fixture(mesh, check.terrain_for(mesh), amp=1e-5)

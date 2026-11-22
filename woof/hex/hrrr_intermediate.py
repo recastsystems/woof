@@ -49,7 +49,9 @@ case 9 read (``mpas_init_atm_cases.F:4995-5080`` at 1d6e370e):
 * the soil as HRRR has it: for a producer whose land surface is RUC
   (``--physics-suite hrrrv5`` and the other RRFS suites) the nine RUC nodes
   themselves (``SOILT000 .. SOILT300``), which the fork copies straight onto
-  its nine levels; otherwise the four Noah layers interpolated from them.
+  its nine levels; otherwise four Noah layers plus preserved native point
+  records. The RUC init door selects those preserved points automatically,
+  even when a legacy caller requests four first-guess soil levels.
 
 The MPAS-A init (``rw_mpas_init``) reads the 2 m humidity, and the
 hydrometeor and number records too under the init door's
@@ -523,6 +525,42 @@ def _native_positions(grid: Any, lat: np.ndarray, lon: np.ndarray) -> tuple[np.n
     delta = np.where(delta > 180.0, delta - 360.0, np.where(delta < -180.0, delta + 360.0, delta))
     angle = cone * delta * radians
     return hemi * (polei + hemi * radius * np.sin(angle)) - 1.0, hemi * (polej - radius * np.cos(angle)) - 1.0
+
+
+def cap_coverage_refusal(row: SourceRow, centre: tuple[float, float], reach_km: float) -> str | None:
+    """Why a region reaching ``reach_km`` from ``centre`` cannot start from ``row``, read before anything is fetched;
+    None when every point of that circle, with the intermediate's interpolation stencil, has a donor cell on the
+    source's native grid (the rule :func:`clip_to_source` applies to the box after the download).
+
+    THE BREAKAGE THIS PREVENTS (0.6.2, 20 Nov 2026): the HRRR row declares no coverage window, so the
+    regional door's check before the mesh read nothing for it, and a region whose rings left the HRRR grid was
+    found only after the mesh and the download (a 28-minute HRRR intermediate in the case that showed it).
+    """
+
+    grid, x0, x1, y0, y1 = _source_window_limits(row)
+    stencil_km = STENCIL_POINTS * DEFAULT_SPACING_DEG * KM_PER_DEG
+    angle = (float(reach_km) + stencil_km) / (KM_PER_DEG * 180.0 / math.pi)
+    bearing = np.linspace(0.0, 2.0 * math.pi, 1441)
+    lat0, lon0 = math.radians(float(centre[0])), math.radians(float(centre[1]))
+    lat = np.arcsin(np.clip(math.sin(lat0) * math.cos(angle)
+                            + math.cos(lat0) * math.sin(angle) * np.cos(bearing), -1.0, 1.0))
+    lon = lon0 + np.arctan2(np.sin(bearing) * math.sin(angle) * math.cos(lat0),
+                            math.cos(angle) - math.sin(lat0) * np.sin(lat))
+    lat, lon = np.degrees(lat), (np.degrees(lon) + 540.0) % 360.0 - 180.0
+    x, y = _native_positions(grid, lat, lon)
+    over = {"west": x0 - x, "east": x - x1, "south": y0 - y, "north": y - y1}
+    outside = np.zeros(lat.shape, dtype=bool)
+    for value in over.values():
+        outside |= value > 0.0
+    if not outside.any():
+        return None
+    side = max(over, key=lambda name: float(over[name].max()))
+    cells = float(over[side].max())
+    return (f"the region reaches {float(reach_km):.0f} km from {float(centre[0]):g},{float(centre[1]):g} (its cut "
+            f"and boundary rings) and leaves {row.description or row.name}'s grid on its {side} side, by "
+            f"{cells:.0f} grid cells ({int(outside.sum())} of 1441 points on that circle are outside); "
+            f"nothing was built or downloaded. Move the point inward, make --radius-km smaller, or start from a "
+            f"source that covers the region")
 
 
 def clip_to_source(target: LatLonTarget, row: SourceRow,
@@ -1634,6 +1672,22 @@ def request_from_arguments(arguments: argparse.Namespace) -> IntermediateRequest
     )
 
 
+def _plan_cull_grid(plan_path: Path) -> Path | None:
+    """The cull grid a generated point plan names (``cull.grid``), when that file exists; else None."""
+
+    try:
+        document = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    grid = (document.get("cull") or {}).get("grid") if isinstance(document, dict) else None
+    if not grid:
+        return None
+    path = Path(str(grid)).expanduser()
+    if not path.is_absolute():
+        path = Path(plan_path).expanduser().absolute().parent / path
+    return path if path.is_file() else None
+
+
 def _target_from_arguments(arguments: argparse.Namespace,
                            row: SourceRow | None = None) -> tuple[LatLonTarget, dict[str, Any]]:
     """The box both roads write, from a mesh's cells, a plan's cull region or a point and reach.  A projected
@@ -1645,6 +1699,14 @@ def _target_from_arguments(arguments: argparse.Namespace,
     if getattr(arguments, "grid", None) is not None:
         target, basis = target_from_mesh(Path(arguments.grid).expanduser(), row, margin_km=arguments.margin_km,
                                          spacing_deg=arguments.spacing_deg)
+    elif arguments.from_plan is not None and _plan_cull_grid(arguments.from_plan) is not None:
+        # A generated plan names its cull grid: the box is drawn over that grid's cells, as --grid draws it, so no
+        # prediction of the rings' reach is needed once the mesh exists (0.6.2: a geometry-2 800 km region's
+        # rings outran the predicted window by 0.0006 degrees and the init refused after the download).
+        grid = _plan_cull_grid(arguments.from_plan)
+        target, basis = target_from_mesh(grid, row, margin_km=arguments.margin_km, spacing_deg=arguments.spacing_deg)
+        basis["from_plan"] = str(arguments.from_plan)
+        basis["cull_grid"] = str(grid)
     elif arguments.from_plan is not None:
         target, basis = target_from_plan(
             arguments.from_plan, margin_km=arguments.margin_km, spacing_deg=arguments.spacing_deg,

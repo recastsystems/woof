@@ -1,5 +1,132 @@
 # Changelog
 
+## 1.1.7 (2026-11-17)
+
+WOOF 1.1.7 takes gpuwm 3.0.4 and gpuwm-hex 0.6.2. Forecasts change.
+
+The two models have product names. `woof` runs WOOF-ArWen, the WRF engine,
+and `woof hex` runs WOOF-HEX-A (hexagonal mesh; A for Atmosphere, as in
+MPAS-A), the MPAS engine. Packages, commands, imports and saved
+configurations do not change. `FAMILY.md` says which is which.
+
+New:
+
+- WOOF-ArWen takes WRF 4.8.0 as its reference: in strict numerics a build of
+  gpuwm 3.0.3 matched stock WRF 4.8.0 in every stored value on two one-hour,
+  3 km cases, on one card and one process. WRF 4.7.1 stays selectable.
+- WRF 4.8.0 physics: Grell-Freitas-Li cumulus (now the `cu_physics = 3`
+  default), YSU, the Shin-Hong rewrite, revised KIM gravity-wave drag,
+  MYNN-EDMF and MYNN-SFC 4.8.0 (opt-in), Fitch wind farms with the induction
+  correction and dynamic lightning.
+- TEMPO microphysics follows its newest upstream release by default.
+- Over the contiguous US the starting snowpack comes from NOHRSC's SNODAS
+  analysis by default, and Noah-MP snow layers start on a conduction profile.
+- New opt-in Noah-MP options, written from the published papers: snow
+  compaction, scale-aware snow cover, separate runoff, snow conductivity, a
+  wetland store and SNICAR snow albedo choices.
+- Opt-in ocean waves also run on large lakes.
+- `woof check --met-em DIR` prices card memory from a WPS metgrid directory
+  alone; `--lake-state` chooses where lake state comes from.
+- A domain at 600 m or finer takes 100 m land cover and SoilGrids soil by
+  default.
+- Maps of the u and v wind components at 10 m, 850, 700 and 500 hPa.
+- A nest under a WOOF-HEX-A parent can run at the parent's 15-minute frame
+  spacing.
+- WOOF-HEX-A: a plain `--physics-suite hrrrv5` forecast runs NOAA's hrrrv5
+  deck (RRFS v2). With `--physics-mode exact --numerics strict`, gpuwm-hex
+  0.6.0's one-hour forecasts on a 12 km and a 3 km limited-area mesh match
+  the patched native RRFS-MPAS 44c0849 in every stored value, on one card and
+  one process.
+- WOOF-HEX-A: the derivative commands `woof hex tangent`, `adjoint-test`,
+  `sensitivity` and `param-grad`, the tangent-linear and adjoint of the
+  exact-mode hrrrv5 forecast, on NVIDIA cards of compute capability 12.0.
+  They need `recast-woof[ad]` in a Python 3.14 environment of its own.
+- WOOF-HEX-A: New Tiedtke convection on the RRFS route, and the newest
+  upstream physics as defaults (MYNN v6.1 and TEMPO v3.2.5 on the RRFS
+  route), with every pinned version still selectable by name.
+- WOOF-HEX-A: correct mode, the default, fixes seven defects inherited from
+  RRFS; exact mode keeps them.
+- WOOF-HEX-A: regional views draw the severe-weather set (CAPE, CIN,
+  helicity, shear, STP, EHI) and the 2-5 km updraft-helicity tracks.
+- WOOF-HEX-A: hail size (HAILCAST, HRRR's hail fields) wherever the mesh is
+  finer than 4 km, with its maps; `WOOF_HEX_HAILCAST=0` turns it off.
+- WOOF-HEX-A: ranks on several hosts (`woof hex forecast ... --hosts`), with
+  checkpoints sealed and resumed across hosts. Every host needs NCCL
+  (`pip install nvidia-nccl-cu12`).
+- WOOF-HEX-A: three surface and boundary-layer options on the hrrrv5 suite
+  (a surface-flux network, a neural boundary layer and an 8-parameter
+  closure), each off unless named, one at a time, and each acts only on
+  land columns, never over water or sea ice; the two networks need
+  `recast-woof[torch]`. No skill is claimed for them.
+- WOOF-HEX-A: a learned column correction from your own checkpoint
+  (`WOOF_HEX_LEARNED_CORRECTION`), off by default; no weights ship.
+- WOOF-HEX-A: a start row `ifs-gfs-top` (ECMWF IFS open data with GFS above
+  50 hPa), selected by name.
+- WOOF-HEX-A: hrrrv5 with Grell-Freitas convection
+  (`--physics config_convection_scheme=cu_grell_freitas`) runs on the GPU.
+
+Changed:
+
+- MYNN runs the upstream v6.1 fixes by default, so it no longer deletes dew
+  and frost, and the BouLac downward mixing length takes the corrected sign;
+  `physics.mode = "exact"` keeps WRF's lines.
+- Runs of 48 h or longer no longer switch on the 3-D ocean mixed layer by
+  themselves.
+- Grid and spectral nudging refuse a strength that cannot be stable.
+- `woof go` and `woof fetch` refuse a cycle more than 24 h ahead unless
+  `--wait-for-cycle` is given.
+- Rain maps draw one colour per band.
+- WOOF-HEX-A: a 60 km MPAS-physics globe starts on a 16 GB card, and the
+  memory check for hrrrv5 runs uses measured runs.
+- The README's install puts `woof fetch-geog --datasets mesh` before
+  `woof hex doctor`.
+- WOOF-HEX-A: the meshes `woof hex` generates use the new generator's
+  geometry 2 by default: every spacing as asked, one growth rate per cell and
+  no obtuse triangle. `--geometry 1` builds 0.6.1's meshes byte for byte. The
+  generator runs on at most 32 threads unless `RAYON_NUM_THREADS` or
+  `RW_MPAS_MESH_MAX_THREADS` is set; its mesh is the same on any thread count.
+- WOOF-HEX-A: seven transport and restart settings for runs on several
+  ranks are on by default; each `=0` turns one off, and none changes a stored
+  value.
+- WOOF-HEX-A: updraft helicity on several ranks is the same, value for
+  value, as on one card.
+- WOOF-HEX-A: `woof hex regional` refuses a region whose cut and boundary
+  rings leave the HRRR grid, and `woof hex regional` and `woof hex global`
+  refuse a convection choice that has no GPU route beside the run's other
+  schemes, naming the choices that do; each refusal comes before anything is
+  built or downloaded.
+
+Removed:
+
+- The experimental `woof local-da` command and its pages. `woof local-da`
+  now exits 2 with a one-line notice.
+
+Fixed:
+
+- A nest under a 59-level WOOF-HEX-A parent on the hrrrv5 suite prepares and
+  runs.
+- Land use and soil beside 180 degrees are repaired as the tiles are read.
+- The stability check no longer stops a forecast over steep ground while its
+  flow is healthy.
+- Runs on the adaptive time step reset their hourly maxima at every history
+  write, as WRF does.
+- Regional runs from a mapped source accept up to 21 domains.
+- WOOF-HEX-A: starts from ICON on the RUC-soil suites have soil, IFS reads
+  every archived cycle from 2024-03-18 12Z, and ERA5 regions take their
+  boundaries from ERA5's own analyses.
+- WOOF-HEX-A: `woof hex doctor` reports two CuPy packages in one environment
+  as a gap, and prints the command that leaves one.
+- WOOF-HEX-A: surface-station (ASOS) scoring of a global run measures, and
+  `woof hex global` and `woof hex country` end by saying whether scoring is
+  still running.
+- WOOF-HEX-A: `woof hex regional --point` runs on generated meshes; a
+  `--local-timestep` run no longer stops at its first step; `woof hex ...
+  --help` works on Windows, also into a pipe or a file.
+- WOOF-HEX-A takes thirteen fixes from the public fork
+  github.com/jacobbieker/woof (Apache-2.0), by its author Jacob Prince-Bieker:
+  pull requests 137, 216, 224, 239, 302, 379, 433, 447, 473, 488, 495, 497 and
+  509. NOTICE section 19 names the files each one changed.
+
 ## 1.1.6 (2026-11-05)
 
 WOOF 1.1.6 takes engine 2.9.12 and the hex model 0.4.12. Forecast answers change.
@@ -874,7 +1001,7 @@ Fixed:
   top-of-hour wind a maximum.
 - `simulated_ir_satellite` drawn from a wrfout shows the model's cloud tops.
   Its cloud optical depths were a thousand times too small, so most cloud
-  drew the ground's temperature; it now matches WRF-Python's cloud-top
+  showed the ground's temperature; it now matches WRF-Python's cloud-top
   temperature to 2e-5 K in every column.
 - A domain tree whose configuration carries a `[perturbation]` block now
   prepares from native HRRR, HRRR pressure levels, the other mapped sources

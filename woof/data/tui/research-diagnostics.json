@@ -1,11 +1,11 @@
 {
   "schema": "arwen.research.diagnostics.v1",
-  "scope": "A reviewed subset of products supported by the WOOF WRF-history import path. Product membership is source-capability metadata, not forecast-skill or GPU qualification. The renderer still checks actual saved fields and complete time windows.",
+  "scope": "A reviewed subset of products supported by the WOOF-ArWen WRF-history import path. Product membership is source-capability metadata, not forecast-skill or GPU qualification. The renderer still checks actual saved fields and complete time windows.",
   "authority": {
-    "tools/rustwx/crates/rw-wrfbatch/src/wrf_process.rs": "152290651ac149d638317da12afc2aa8c80e76361ed0257f6d55df89180cf3df",
+    "tools/rustwx/crates/rw-wrfbatch/src/wrf_process.rs": "a31d2c2bf095ea6c2df46ceadaa15eefabe062858370ceb4549decb39d7eea13",
     "tools/rustwx/crates/rw-wrfbatch/src/local_import.rs": "24e606256fc3d88f40635f87abd587369319de467f1e56601e8c94619a8fd0e5",
-    "tools/rustwx/crates/rustwx-products/src/windowed.rs": "4bfdf1538ace6dbc0cbaf8a58ff07834147c55eedbc2b636c54762003af76887",
-    "tools/rustwx/crates/rw-wrfbatch/src/derived_diagnostics.rs": "2a8876c116bbb4593cb0b0ba8ccf083b0b434bc1221854526f59c4871c200e28",
+    "tools/rustwx/crates/rustwx-products/src/windowed.rs": "62a77d6c5fcba63cf777ae484c3188e6259140db322f6c572926837aa4e62853",
+    "tools/rustwx/crates/rw-wrfbatch/src/derived_diagnostics.rs": "3822fc30685fca57b4ff59421170547702aaca7332a78271d6ebcbc6b265887a",
     "tools/rustwx/crates/rustwx-calc/src/derived.rs": "d1fa81ea69b88fbd4a5e708fe6d0090034b6159b663e66bf603a5c4245e411c6"
   },
   "products": {
@@ -357,17 +357,17 @@
   },
   "unavailable": {
     "10m_wind_gusts": "The wind maximum uses stored 10 m wind snapshots. It is not a gust diagnostic; gust magnitude or a gust swath requires separate analysis or observations.",
-    "categorical_freezing_rain": "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
-    "categorical_ice_pellets": "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
-    "categorical_snow": "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+    "categorical_freezing_rain": "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+    "categorical_ice_pellets": "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+    "categorical_snow": "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
     "cloud_cover": "The requested cloud panel shows low, middle and high layer cloud cover. It does not calculate total cloud fraction.",
-    "dcape": "The current WOOF history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
+    "dcape": "The current WOOF-ArWen history renderer does not produce DCAPE. Moisture and temperature context cannot establish downdraft energy; that parcel calculation requires separate analysis.",
     "dewpoint_depression_2m": "Air temperature and dewpoint are shown separately. Dewpoint depression is not calculated by this history-rendering path and requires separate analysis.",
     "lapse_rate_0_3km": "The stored 0-3 km lapse-rate plot uses plain temperature. It is not the virtual-temperature lapse rate; the virtual-temperature quantity requires separate analysis.",
     "lapse_rate_700_500": "The stored 700-500 hPa lapse-rate plot uses plain temperature. It is not the virtual-temperature lapse rate; the virtual-temperature quantity requires separate analysis.",
-    "precipitation_type": "Precipitation-type categories are not supplied by the current WOOF history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
+    "precipitation_type": "Precipitation-type categories are not supplied by the current WOOF-ArWen history renderer. Temperature and moisture plots provide environmental context; rain/snow/freezing-rain/ice-pellet classification requires separate analysis or observations.",
     "simulated_ir_satellite": "Simulated infrared brightness temperature needs a forward radiative-transfer operator, and no such operator exists on the history-import lane; this product is served only from a fetched GRIB store. The nearest stored quantity on this lane is top-of-atmosphere outgoing longwave radiation, drawn with --products var:wrf_olr, which is a flux in W m-2 and NOT a brightness temperature: the two are different quantities and one must not be read as the other.",
-    "theta_e_2m_10m_winds": "The plots show temperature, dewpoint and winds separately. The current WOOF history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis.",
+    "theta_e_2m_10m_winds": "The plots show temperature, dewpoint and winds separately. The current WOOF-ArWen history renderer does not calculate 2 m equivalent potential temperature; that quantity requires separate analysis.",
     "visibility": "Low cloud cover and near-surface humidity describe the fog environment, not visibility distance. Visibility and verified fog boundaries require separate analysis or observations.",
     "wind_chill_2m": "Air temperature and 10 m wind are shown separately. Wind chill is not calculated by this history-rendering path and requires separate analysis."
   },

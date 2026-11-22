@@ -40,6 +40,7 @@ mod compose_source;
 mod storm_diagnostics;
 mod composition_stack;
 mod aeronet_aod;
+mod snow_lap_deposition;
 mod stored_words;
 
 /// The contract marker. Printed by `--abi`, and -- because it is a
@@ -84,6 +85,7 @@ usage: rw_netcdf inventory FILE
        rw_netcdf storm-diagnostics OUTPUT_DIR HEIGHTS_CSV GRAVITY JOBS FILE...
        rw_netcdf aeronet-aod MANIFEST OUTPUT_DIR JOBS
        rw_netcdf composition-stack MANIFEST OUTPUT_DIR JOBS
+       rw_netcdf snow-lap-deposition MANIFEST OUTPUT_DIR JOBS
        rw_netcdf compose-source MANIFEST OUTPUT_DIR JOBS
        rw_netcdf --abi | --help
 
@@ -531,6 +533,11 @@ fn main() {
             if args.len()!=4 { fail("aeronet-aod takes MANIFEST OUTPUT_DIR JOBS"); }
             let jobs=args[3].parse().unwrap_or_else(|_|fail("invalid jobs"));
             if let Err(error)=aeronet_aod::run(Path::new(&args[1]),Path::new(&args[2]),jobs){fail(&error);}
+        }
+        "snow-lap-deposition" => {
+            if args.len()!=4 { fail("snow-lap-deposition takes MANIFEST OUTPUT_DIR JOBS (0 = all cores)"); }
+            let jobs=args[3].parse().unwrap_or_else(|_|fail("invalid jobs"));
+            if let Err(error)=snow_lap_deposition::run(Path::new(&args[1]),Path::new(&args[2]),jobs){fail(&error);}
         }
         "composition-stack" => {
             if args.len()!=4 { fail("composition-stack takes MANIFEST OUTPUT_DIR JOBS"); }

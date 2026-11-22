@@ -215,7 +215,7 @@ def test_hrrr_generation_is_reproducible_and_selected_by_version():
 @requires_gpu
 @pytest.mark.parametrize("version", ["wrf_461", "wrf_39_noaa"])
 def test_both_generations_match_their_fortran_on_real_storm_columns(version):
-    """fix/hailcast: 94 real updraft columns from WOOF HRRR-configuration
+    """fix/hailcast: 94 real updraft columns from WOOF-ArWen HRRR-configuration
     hail days (2023-03-31, 2023-06-11, 2025-03-14) through each forecast
     kernel, against that generation's own gfortran build
     (tools/hail_wrf461/oracle.py --form, -O0, no contraction). The two

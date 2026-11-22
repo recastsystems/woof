@@ -58,6 +58,14 @@ fn python_list(names: &[&str]) -> String {
     out
 }
 
+/// A field's shape as Python prints the numpy array's `shape` tuple.
+fn python_shape(field: &Field) -> String {
+    match field {
+        Field::Plane(grid) => format!("({}, {})", grid.ny, grid.nx),
+        Field::Stack(stack) => format!("({}, {}, {})", stack.planes, stack.ny, stack.nx),
+    }
+}
+
 /// Python `format(x, '.6g')` for the deep-soil gate message.
 pub(crate) fn format_g6(x: f64) -> String {
     if x.is_nan() {
@@ -776,6 +784,10 @@ pub struct MergeAudit {
     pub unchanged_land_water_cells: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deep_soil_water_masked_cells: Option<u64>,
+    /// New land the overlay found on a grid whose baseline has no land
+    /// cell to donate climatology: kept as the baseline's water.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub newly_land_without_donor_kept_water_cells: Option<u64>,
 }
 
 /// Terrain-only merge (`merge_terrain_override`): swap HGT_M, recompute
@@ -858,6 +870,7 @@ pub fn merge_terrain_override(
             newly_water_masked_cells: 0,
             unchanged_land_water_cells: None,
             deep_soil_water_masked_cells: None,
+            newly_land_without_donor_kept_water_cells: None,
         },
     ))
 }
@@ -1026,7 +1039,57 @@ pub fn merge_highres_overrides(
         )));
     }
     let old_land: Vec<bool> = old_landmask.data.iter().map(|value| *value > 0.5).collect();
-    let new_land: Vec<bool> = new_landmask.data.iter().map(|value| *value > 0.5).collect();
+    let mut new_land: Vec<bool> = new_landmask.data.iter().map(|value| *value > 0.5).collect();
+    // A baseline with no land cell has no cell to donate climatology to
+    // the overlay's new land (see the Python `_water_where_nothing_donates`):
+    // those cells keep the baseline's water in every overlay field but
+    // the terrain.
+    let mut kept_water = 0u64;
+    if !old_land.iter().any(|land| *land) && new_land.iter().any(|land| *land) {
+        for (name, field) in overrides.fields.iter() {
+            if name == "HGT_M" {
+                continue;
+            }
+            let Some(water) = baseline.fields.get(name) else {
+                continue;
+            };
+            let (planes, fny, fnx) = field.dims();
+            let same_rank = matches!(
+                (field, water),
+                (Field::Plane(_), Field::Plane(_)) | (Field::Stack(_), Field::Stack(_))
+            );
+            if !same_rank || water.dims() != (planes, fny, fnx) || (fny, fnx) != (ny, nx) {
+                return Err(invalid(format!(
+                    "high-resolution {name} is {} and the baseline's is {}; \
+                     the cells no land can donate to cannot keep the \
+                     baseline's water",
+                    python_shape(field),
+                    python_shape(water)
+                )));
+            }
+            let mut data = field.data().to_vec();
+            for cell in 0..ny * nx {
+                if new_land[cell] {
+                    for plane_index in 0..planes {
+                        data[plane_index * ny * nx + cell] =
+                            water.data()[plane_index * ny * nx + cell];
+                    }
+                }
+            }
+            let kept = match field {
+                Field::Plane(_) => Field::Plane(Grid2 { ny, nx, data }),
+                Field::Stack(_) => Field::Stack(Stack3 {
+                    planes,
+                    ny,
+                    nx,
+                    data,
+                }),
+            };
+            out.fields.insert(name.clone(), kept);
+        }
+        kept_water = new_land.iter().filter(|land| **land).count() as u64;
+        new_land = vec![false; ny * nx];
+    }
     let newly_land: Vec<bool> = old_land
         .iter()
         .zip(&new_land)
@@ -1037,7 +1100,12 @@ pub fn merge_highres_overrides(
         .zip(&new_land)
         .filter(|(old, new)| !**new && **old)
         .count() as u64;
-    let (donor_y, donor_x) = nearest_donors(&old_land, ny, nx)?;
+    // Donors are looked for only when a cell needs one.
+    let (donor_y, donor_x) = if newly_land.iter().any(|land| *land) {
+        nearest_donors(&old_land, ny, nx)?
+    } else {
+        (Vec::new(), Vec::new())
+    };
 
     let fills: [(&str, f64); 5] = [
         ("GREENFRAC", 0.0),
@@ -1140,6 +1208,7 @@ pub fn merge_highres_overrides(
             newly_water_masked_cells: newly_water_count,
             unchanged_land_water_cells: Some(unchanged),
             deep_soil_water_masked_cells: Some(water_masked),
+            newly_land_without_donor_kept_water_cells: Some(kept_water),
         },
     ))
 }

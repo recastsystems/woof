@@ -7,7 +7,7 @@ sell ... the Software, or any work that in any manner contains the Software") fr
 compiled from the full tree contains it, even for a run that never selects it: the default ``woof hex
 physics-resources build`` put code that cannot be sold into every install.  build.py --licence-stub noahmp
 compiles this stub instead, unless the user opts in by name (``--licence-opt-in ucar-noahmp``).  UGWP and the
-other NOAA-GSL physics are compiled as always (owner ruling 2026-10-14: US Government code, not held); a
+other NOAA-GSL physics are compiled as always (US Government code, not held); a
 component under another restricted licence would be one more COMPONENTS row.
 
 What is written.  Only interface facts that MPAS's own sources need to compile: the module names they USE, the

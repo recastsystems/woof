@@ -1216,6 +1216,11 @@ fn manifest_row(
     stats: Stats,
     filename: &str,
 ) -> String {
+    // Every decoded record passes here once, on its way into the manifest,
+    // so this is where a record set to 1 says so on the decode log.
+    if let Some(line) = overshoot_line(role, variable, level_value, &stats) {
+        eprintln!("{line}");
+    }
     format!(
         "{role}\t{index}\t{variable}\t{level_value}\t{level_type}\t{drt}\t{bitmap}\t{}\t{}\t{}\t{}\t{}\t{filename}\t{}\t{}\t{}\t{}\t{}",
         stats.count,
@@ -1238,8 +1243,33 @@ struct Stats {
     /// Cells clamped back onto a physical bound they overshot by no more
     /// than this record's own packing step.
     clamped: ClampTally,
+    /// The subset of `clamped` that sat above a unit-fraction ceiling by
+    /// more than the packing step but no more than [`SATURATION_OVERSHOOT`]:
+    /// the analysis's own value, set to 1 and reported in one line.
+    overshoot: ClampTally,
     fill: gpuwm_preprocess_cpu::missing_value_chain::Counts,
 }
+
+/// How far above 1 a unit fraction (soil moisture, land or ice fraction)
+/// may sit in the analysis itself and still be read as "saturated".
+///
+/// HRRR's land-ice cells (MODIS class 15) run the RUC land model's ice
+/// column, whose soil moisture is 1 by definition; while it rains, the
+/// analysis writes 1.01 to 1.02 in the top four soil levels of a few such
+/// cells.  On 2022-03-05 22Z and 23Z: three land-ice cells in eastern
+/// Kansas, SOILW 1.02 at 0 m and 1.01 at 0.01, 0.04 and 0.1 m, packed at
+/// 0.01, so two steps past the bound.  The land model reads such a value
+/// as min(max(0, smois - qmin), dqm) with dqm = 1 on ice, i.e. as 1, so
+/// clamping here hands the model what it would use anyway.  A unit error
+/// (percent: 100), a missing-value flag read as data (9.999e20) or a wrong
+/// record (a temperature: 250+) is far past this and still refuses.
+const SATURATION_OVERSHOOT: f64 = 0.05;
+
+/// A record with more than this share of its present cells above 1 is a
+/// field read at the wrong scale, not saturation: every saturated cell of
+/// it (HRRR writes SOILW = 1 on its ~675,000 water cells) would sit above
+/// the bound.  Refused, whatever the size of the excursion.
+const SATURATION_OVERSHOOT_MAX_SHARE: f64 = 0.01;
 
 impl Stats {
     fn source_has_positive(&self) -> bool { self.any_positive_in_source }
@@ -1340,6 +1370,8 @@ fn decode_crop_into(
     // integer-lattice missing-value donors need no additional halo.
     let mut scale = 0.0f64;
     let mut any_positive_in_source = false;
+    let mut present = 0usize;
+    let mut above_one = 0usize;
     for (cell, value) in values.iter().copied().enumerate() {
         if !value.is_finite() {
             if message.bitmap.as_ref().map(|mask| !mask[cell]).unwrap_or(false) {
@@ -1349,6 +1381,8 @@ fn decode_crop_into(
         }
         scale = scale.max(value.abs());
         any_positive_in_source |= value > 0.0;
+        present += 1;
+        above_one += usize::from(value > 1.0);
     }
     let bounds = value_bounds(nonnegative, unit_fraction, scale);
     let quantum = decode_quantum(
@@ -1356,9 +1390,13 @@ fn decode_crop_into(
         message.data_rep.binary_scale,
         message.data_rep.decimal_scale,
     );
+    // Field-wide, so the verdict does not depend on how small the crop is.
+    let overshoot_allowed = unit_fraction
+        && above_one as f64 <= SATURATION_OVERSHOOT_MAX_SHARE * present as f64;
     let mut minimum = f64::INFINITY;
     let mut maximum = f64::NEG_INFINITY;
     let mut clamped = ClampTally::default();
+    let mut overshoot = ClampTally::default();
     for row in values.chunks_exact_mut(nx).skip(window.j_start).take(window.ny()) {
       for value in &mut row[window.i_start..=window.i_end] {
         if !value.is_finite() { continue; }
@@ -1371,14 +1409,39 @@ fn decode_crop_into(
                 *value = bound;
                 clamped.record(excursion);
             }
+            BoundVerdict::Refuse { excursion, .. }
+                if overshoot_allowed
+                    && *value > bounds.maximum
+                    && excursion <= SATURATION_OVERSHOOT + 4.0 * f64::EPSILON =>
+            {
+                *value = bounds.maximum;
+                clamped.record(excursion);
+                overshoot.record(excursion);
+            }
             BoundVerdict::Refuse {
                 excursion,
                 tolerance,
             } => {
+                let why = if unit_fraction && *value > bounds.maximum
+                    && excursion <= SATURATION_OVERSHOOT + 4.0 * f64::EPSILON
+                {
+                    format!(
+                        "{above_one} of the record's {present} cells are above {} (more \
+                         than {}%: a field at the wrong scale, not saturation)",
+                        bounds.maximum, SATURATION_OVERSHOOT_MAX_SHARE * 100.0
+                    )
+                } else if unit_fraction && *value > bounds.maximum {
+                    format!(
+                        "up to {} above {} is read as saturation and set to {}; this is \
+                         farther (a unit, a missing-value flag or a wrong record)",
+                        SATURATION_OVERSHOOT, bounds.maximum, bounds.maximum
+                    )
+                } else {
+                    "a bound-kissing value is clamped, this one is not".to_string()
+                };
                 return Err(format!(
                     "{variable} value {value} outside [{},{}] by {excursion} \
-                     (quantization tolerance {tolerance}); a bound-kissing value \
-                     is clamped, this one is not",
+                     (quantization tolerance {tolerance}); {why}; {context}",
                     bounds.minimum, bounds.maximum
                 )
                 .into());
@@ -1422,7 +1485,22 @@ fn decode_crop_into(
         any_positive_in_source,
         count: window.nx() * window.ny(),
         clamped,
+        overshoot,
         fill,
+    })
+}
+
+/// The one line a record whose analysis sat above a unit-fraction ceiling
+/// gets: how many cells were set to 1, and the largest value read.
+fn overshoot_line(role: &str, variable: &str, level_value: f64, stats: &Stats) -> Option<String> {
+    (stats.overshoot.clamps > 0).then(|| {
+        format!(
+            "{role} {variable} level {level_value}: {} cell(s) above 1 in the analysis set to 1 \
+             (largest {}); up to {} above 1 is read as saturation",
+            stats.overshoot.clamps,
+            1.0 + stats.overshoot.max_excursion,
+            SATURATION_OVERSHOOT
+        )
     })
 }
 
@@ -2668,7 +2746,9 @@ mod tests {
     fn crop_bounds_excludes_unread_cells_and_keeps_included_refusal() {
         let mut record = bitmap_record(None);
         record.data_rep.decimal_scale = 2;
-        record.raw_data[0] = 101; // 1.01, outside physical unit-fraction bounds.
+        // 1.01 in one of nine cells: more than 1% of the record above 1 is
+        // a field at the wrong scale, so the cell refuses wherever it is read.
+        record.raw_data[0] = 101;
         let window = Window { i_start: 1, i_end: 2, j_start: 0, j_end: 2 };
         let (bytes, stats) = decode_crop(&record, 0, window, "SOILW", true, true).unwrap();
         let expected: Vec<u8> = [0.02f32, 0.03, 0.05, 0.06, 0.08, 0.09]
@@ -2718,11 +2798,137 @@ mod tests {
         assert_eq!(bytes.len(), 479 * 479 * 4);
         assert_eq!(stats.count, 479 * 479);
         assert!(stats.minimum >= 0.0 && stats.maximum <= 1.0);
+        // The one cell at 1.01 is ten packing steps past 1, inside the
+        // saturation allowance: it is read as saturated and set to 1.
         let reservoir = Window { i_start: 557, i_end: 559, j_start: 920, j_end: 922 };
-        let error = decode_crop(message, 0, reservoir, "SOILW", true, true).unwrap_err();
-        assert!(error.contains("SOILW value 1.01 outside [0,1]"), "{error}");
-        println!("Northeast {} cells PASS [{},{}]; included source cell REFUSED: {}",
-            stats.count, stats.minimum, stats.maximum, error);
+        let (bytes, inside) = decode_crop(message, 0, reservoir, "SOILW", true, true).unwrap();
+        assert_eq!(inside.overshoot.clamps, 1);
+        assert_eq!(f32::from_le_bytes(bytes[16..20].try_into().unwrap()), 1.0);
+        println!("Northeast {} cells PASS [{},{}]; included source cell set to 1: {:?}",
+            stats.count, stats.minimum, stats.maximum,
+            overshoot_line("soil", "SOILW", message.product.level_value, &inside));
+    }
+
+    /// The record that stopped every start from HRRR 2022-03-05 22Z: SOILW
+    /// at 0 m, cut whole from the public hrrr.t22z.wrfprsf00.grib2 (message
+    /// 561, bytes 251060606-251771813 of the object on noaa-hrrr-bdp-pds).
+    /// Run with HRRR_SOIL_OVERSHOOT_MESSAGE=/path/to/message.grib2 cargo
+    /// test ... --ignored.
+    #[test]
+    #[ignore = "requires the retained public archive message"]
+    fn archived_land_ice_soil_overshoot_is_set_to_one() {
+        let path = env::var("HRRR_SOIL_OVERSHOOT_MESSAGE").expect("HRRR_SOIL_OVERSHOOT_MESSAGE");
+        let file = Grib2File::open(&path).unwrap();
+        assert_eq!(file.messages.len(), 1);
+        let message = &file.messages[0];
+        let nx = message.grid.nx as usize;
+        let values = unpack_message(message).unwrap();
+        // Three land-ice cells in eastern Kansas, 38.9-39.2N 95.4W.
+        for (j, i) in [(545usize, 961usize), (553, 958), (554, 958)] {
+            assert_eq!(values[j * nx + i], 1.02, "j={j} i={i}");
+        }
+        assert_eq!(values.iter().filter(|v| **v > 1.0).count(), 3);
+        let whole = Window { i_start: 0, i_end: nx - 1, j_start: 0, j_end: message.grid.ny as usize - 1 };
+        let (bytes, stats) = decode_crop(message, 0, whole, "SOILW", true, true).unwrap();
+        assert_eq!(stats.clamped.clamps, 3);
+        assert!((stats.clamped.max_excursion - 0.02).abs() < 1.0e-9);
+        assert_eq!(stats.maximum, 1.0);
+        let at = |j: usize, i: usize| {
+            let k = (j * nx + i) * 4;
+            f32::from_le_bytes(bytes[k..k + 4].try_into().unwrap())
+        };
+        assert_eq!(at(545, 961), 1.0);
+        println!("{}", overshoot_line("soil", "SOILW", 0.0, &stats).unwrap());
+    }
+
+    /// A 20 x 20 SOILW record packed as HRRR packs its top soil levels (one
+    /// step 0.01): dry soil 0.09-0.25, open water at exactly 1, and the
+    /// 2022-03-05 22Z land-ice value 1.02 in `wet` cells.
+    fn soil_record(wet: &[usize], extra: Option<(usize, u8)>) -> Grib2Message {
+        let mut record = bitmap_record(None);
+        record.grid.nx = 20;
+        record.grid.ny = 20;
+        record.data_rep.decimal_scale = 2;
+        record.data_rep.section5_num_data_points = 400;
+        record.raw_data = (0..400usize)
+            .map(|cell| if cell >= 380 { 100 } else { 9 + (cell % 17) as u8 })
+            .collect();
+        for cell in wet {
+            record.raw_data[*cell] = 102;
+        }
+        if let Some((cell, raw)) = extra {
+            record.raw_data[cell] = raw;
+        }
+        record
+    }
+
+    #[test]
+    fn a_land_ice_cell_two_steps_above_one_is_set_to_one() {
+        let record = soil_record(&[45, 213, 233], None);
+        let whole = Window { i_start: 0, i_end: 19, j_start: 0, j_end: 19 };
+        let (bytes, stats) = decode_crop(&record, 0, whole, "SOILW", true, true).unwrap();
+        assert_eq!(stats.clamped.clamps, 3);
+        assert!((stats.clamped.max_excursion - 0.02).abs() < 1.0e-9);
+        assert_eq!(stats.maximum, 1.0);
+        for cell in [45usize, 213, 233] {
+            assert_eq!(f32::from_le_bytes(bytes[cell * 4..cell * 4 + 4].try_into().unwrap()), 1.0);
+        }
+        // Water stays exactly 1 and dry soil is untouched.
+        assert_eq!(f32::from_le_bytes(bytes[390 * 4..390 * 4 + 4].try_into().unwrap()), 1.0);
+        assert_eq!(f32::from_le_bytes(bytes[0..4].try_into().unwrap()), 0.09);
+        // The same record is read the same way through any crop.
+        let corner = Window { i_start: 3, i_end: 7, j_start: 1, j_end: 3 };
+        let (_, inside) = decode_crop(&record, 0, corner, "SOILW", true, true).unwrap();
+        assert_eq!(inside.clamped.clamps, 1);
+    }
+
+    #[test]
+    fn the_decode_log_names_the_cells_set_to_one_and_the_largest_value() {
+        let record = soil_record(&[45, 213, 233], None);
+        let whole = Window { i_start: 0, i_end: 19, j_start: 0, j_end: 19 };
+        let (_, stats) = decode_crop(&record, 0, whole, "SOILW", true, true).unwrap();
+        assert_eq!(stats.overshoot.clamps, 3);
+        let line = overshoot_line("soil", "SOILW", 0.0, &stats).unwrap();
+        assert!(line.starts_with("soil SOILW level 0: 3 cell(s) above 1"), "{line}");
+        assert!(line.contains("(largest 1.02)"), "{line}");
+        // A record only a packing step past 1 gets no line: that is rounding.
+        let mut quiet = stats;
+        quiet.overshoot = ClampTally::default();
+        assert!(overshoot_line("soil", "SOILW", 0.0, &quiet).is_none());
+    }
+
+    #[test]
+    fn far_above_one_or_too_many_cells_above_one_still_refuses() {
+        let whole = Window { i_start: 0, i_end: 19, j_start: 0, j_end: 19 };
+        // 1.06: past the 0.05 read as saturation.
+        let error = decode_crop(&soil_record(&[45], Some((46, 106))), 0, whole, "SOILW", true, true)
+            .unwrap_err();
+        assert!(error.contains("SOILW value 1.06"), "{error}");
+        assert!(error.contains("a unit, a missing-value flag or a wrong record"), "{error}");
+        assert!(error.contains("SOILW level"), "{error}");
+        // Percent where a fraction belongs.
+        let mut percent = soil_record(&[], None);
+        percent.data_rep.decimal_scale = 0;
+        let error = decode_crop(&percent, 0, whole, "SOILW", true, true).unwrap_err();
+        assert!(error.contains("SOILW value 9 outside [0,1]"), "{error}");
+        assert!(error.contains("a unit, a missing-value flag or a wrong record"), "{error}");
+        // Five of 400 cells (1.25 %) above 1: a field at the wrong scale.
+        let error = decode_crop(&soil_record(&[1, 2, 3, 4, 5], None), 0, whole, "SOILW", true, true)
+            .unwrap_err();
+        assert!(error.contains("5 of the record's 400 cells are above 1"), "{error}");
+        // Four of 400 (1 %) is still saturation.
+        assert!(decode_crop(&soil_record(&[1, 2, 3, 4], None), 0, whole, "SOILW", true, true).is_ok());
+        // The floor is unchanged: below 0 by more than a packing step refuses.
+        let mut negative = soil_record(&[], None);
+        negative.data_rep.reference_value = -2.0;
+        negative.raw_data[7] = 0;
+        let error = decode_crop(&negative, 0, whole, "SOILW", true, true).unwrap_err();
+        assert!(error.contains("SOILW value -0.02"), "{error}");
+        assert!(error.contains("a bound-kissing value is clamped, this one is not"), "{error}");
+        // A field with no unit ceiling is not touched by the allowance.
+        let (_, stats) = decode_crop(&soil_record(&[45], None), 0, whole, "SOILT", true, false).unwrap();
+        assert_eq!(stats.clamped.clamps, 0);
+        assert_eq!(stats.maximum, 1.02);
     }
 
     #[test]
@@ -2762,7 +2968,12 @@ mod tests {
 
     fn bitmap_crop(record: &Grib2Message, variable: &str, window: Window)
         -> Result<(Vec<u8>, Stats), String> {
-        let path = std::env::temp_dir().join(format!("bitmap-check-{}-{}.f32le",
+        // The clock alone is not a unique name: the bitmap tests run on parallel threads of one
+        // process, and on Windows two calls can read the same tick, so one test removed the file
+        // the other was about to read (3.0.0 pass 7, R8: NotFound here). A counter makes it unique.
+        static NEXT_BITMAP_SCRATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let serial = NEXT_BITMAP_SCRATCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("bitmap-check-{}-{}-{serial}.f32le",
             std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
         let mut writer = BufWriter::new(File::create(&path).unwrap());
         let result = decode_crop_write(record, 17, &mut writer, window, variable, true, false);
@@ -3391,6 +3602,7 @@ mod tests {
                     clamps: 2,
                     max_excursion: 1.9073486328125e-9,
                 },
+                overshoot: ClampTally::default(),
                 fill: Default::default(),
             },
             "SOILW.f32le",

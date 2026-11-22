@@ -1,0 +1,949 @@
+{
+ "schema": "gpuwm-wrf-physics-options-v1",
+ "wrf": {
+  "tag": "v4.8.0",
+  "commit": "06d4240ae989cc3e50af412bb472df3d9048783c",
+  "url": "https://github.com/wrf-model/WRF"
+ },
+ "read_from": [
+  {
+   "file": "run/README.namelist",
+   "sha256": "83ba363bc151274603fc356995dd7454eb1766bfc0e456881dc78d71bed18174"
+  },
+  {
+   "file": "Registry/Registry.CONVERT",
+   "sha256": "01909e87a6b811ecab376628e61d21ff4a9676077542286e103b3e8aa9a184a0"
+  },
+  {
+   "file": "Registry/Registry.EM",
+   "sha256": "2bcaf5871914ad7f4683f2bc0a5f8ada5b1199915f3263d1e4c5b1d3986bdff8"
+  },
+  {
+   "file": "Registry/Registry.EM_CHEM",
+   "sha256": "d377fdaeb72052ddc045ec5cbb3996e344f2313ef80b9d57def5aa8572f8dcbb"
+  },
+  {
+   "file": "Registry/Registry.EM_COMMON",
+   "sha256": "78aa665d0488da08b7441b8a7802c5c774cb21b24f64e99b8ef6cf805c84b0eb"
+  },
+  {
+   "file": "Registry/Registry.EM_COMMON.var",
+   "sha256": "dbb45f89302334797baece22c6f7f61fd8ba6f506f3742943f5415f48310993e"
+  },
+  {
+   "file": "Registry/Registry.tladj",
+   "sha256": "dcd552c11f90364c2604443d0d454b5b478cac49abeee3575465ca2f8a89fab1"
+  },
+  {
+   "file": "Registry/Registry.wrfchemvar",
+   "sha256": "aae20f1e33a84ef8e53702b67799e46b65e04705ae9e755c2c8796aa534e1b89"
+  },
+  {
+   "file": "Registry/Registry.wrfvar",
+   "sha256": "e7d8d0f0db571fa16536018c15d50c9cef109c54cb73445f88a2399eed301e28"
+  },
+  {
+   "file": "Registry/registry.CMAQ",
+   "sha256": "b35561203e1ee08398215802d2bf370709a924cb020da7c9d7ff9ef578e8a905"
+  },
+  {
+   "file": "Registry/registry.afwa",
+   "sha256": "ea7861b2ebe0001144ae5a6f5542e5b8e8d7b4f028a2564cc9986187a994d372"
+  },
+  {
+   "file": "Registry/registry.avgflx",
+   "sha256": "8027ca9397c84952d9104593bb4502872c99aa203043ad508c59f34b34137c44"
+  },
+  {
+   "file": "Registry/registry.bdy_perturb",
+   "sha256": "c6a5b889bc839a1631dba474b41792ad898af091bdbbb5cb4b222d4cbbf39265"
+  },
+  {
+   "file": "Registry/registry.cam",
+   "sha256": "19c143d4aed9e52f003fbeda865b5bd2a40172085d897c45213c7318793725da"
+  },
+  {
+   "file": "Registry/registry.chem",
+   "sha256": "6f614cccae4c0a151e707120d45d47f168f2427c6cae1853383470ee9216f312"
+  },
+  {
+   "file": "Registry/registry.clm",
+   "sha256": "3ace44d2ef294578c0dc3ea210b84af603959b38cec08fc9d07645e50f2f597f"
+  },
+  {
+   "file": "Registry/registry.cordex",
+   "sha256": "f03bcf64138393c8d7e333928c314bfb83bbccab0c7d6ea547eacdfee98e9c35"
+  },
+  {
+   "file": "Registry/registry.diags",
+   "sha256": "fa0b1c46bf0e6c8b7d0ffaae032d38bfb6f20ca7d9a9736017d61b5d95309cc3"
+  },
+  {
+   "file": "Registry/registry.dimspec",
+   "sha256": "06d3b91baf7cdfdad23cd7ef368fffac07dbd76daf294db058ac2b4262292973"
+  },
+  {
+   "file": "Registry/registry.dyn_light",
+   "sha256": "adcce4ed5889af1f2282e9bc4fac576de9c030cf61eb601358ff855e2b86ed10"
+  },
+  {
+   "file": "Registry/registry.elec",
+   "sha256": "481afe9524b471f0684c3a7b278d76569aaa828ae0e1a1daaa16983526faf290"
+  },
+  {
+   "file": "Registry/registry.em_shared_collection",
+   "sha256": "cf036edf05c3b1a442a621ffb7191d94d343ebebba0b16134a8812854516027f"
+  },
+  {
+   "file": "Registry/registry.fire",
+   "sha256": "ac84a1bce8ff1ee114f137635ebb1633d431de027167b4b34d5866ecd36b39f5"
+  },
+  {
+   "file": "Registry/registry.hyb_coord",
+   "sha256": "1f008d5f5a3bf0e7097665b310122a3079528963bc755e8df474ae8d97274c14"
+  },
+  {
+   "file": "Registry/registry.iau",
+   "sha256": "9141be91350388aab294aa7c972334aafafefaa33bf938e178ac28aaea8ee8cd"
+  },
+  {
+   "file": "Registry/registry.io_boilerplate",
+   "sha256": "2b0a6877b10c6ebdd4d502d098ce3f5dabfcf792db3ecb2cb69bab7903922270"
+  },
+  {
+   "file": "Registry/registry.lake",
+   "sha256": "f4897ffa57d2eae17552df220e984c5a76c93b95327fac1172b84d2ce969fe31"
+  },
+  {
+   "file": "Registry/registry.les",
+   "sha256": "d36ff30559f7f2d509db9304b444d9eece338743ac36e1da6cdc0e1f5534f56e"
+  },
+  {
+   "file": "Registry/registry.new3d_gca",
+   "sha256": "06a720c4304711f3a3b3b13b29e2838ff55f3613b67ac9d796b9b9a6348e04e0"
+  },
+  {
+   "file": "Registry/registry.new3d_wif",
+   "sha256": "a3cdbadd8c0426e5bae56b6d1bafce4204174e59bf521a226fbd64e0e1ceb4e9"
+  },
+  {
+   "file": "Registry/registry.noahmp",
+   "sha256": "979fbf7c6816ebf5716f4c64c36973aa0e73f5a487433444066cb3d1b44324af"
+  },
+  {
+   "file": "Registry/registry.polrad",
+   "sha256": "77671d204e7cef7e9d8fbaf9141a0c962bac42826fb16bb53b7700f2fe3d2fce"
+  },
+  {
+   "file": "Registry/registry.rasm_diag",
+   "sha256": "3be086896cd8f6703bcca889917e0c653847fae2ebf252e2033434149e9e3a0f"
+  },
+  {
+   "file": "Registry/registry.sbm",
+   "sha256": "9882f8612c30111c5cee9ae50a7d379fd5154c6c939e6c37bde040137fbcf288"
+  },
+  {
+   "file": "Registry/registry.solar_fields",
+   "sha256": "40254d5deeb59d247b977de121d092ff7a8f4e180255f82251fb1320967d78f5"
+  },
+  {
+   "file": "Registry/registry.ssib",
+   "sha256": "7fa144a8741211edf39adf8363db4f8f9022861a4c758644f53867d100ca02f6"
+  },
+  {
+   "file": "Registry/registry.stoch",
+   "sha256": "7c781030e0dd2f6e623d0efa81acd86aaeb952d0371beaeee92989e700b48f19"
+  },
+  {
+   "file": "Registry/registry.tornado",
+   "sha256": "905ec558883862ac7fe2c18b282fdd548625f37c2151dce3b6b570bf951f2632"
+  },
+  {
+   "file": "Registry/registry.tracker",
+   "sha256": "a01a5c35267d9bef2bb4f5bcbb63196ee210633e7f7f67ab527f6cc19977d210"
+  },
+  {
+   "file": "Registry/registry.trad_fields",
+   "sha256": "f90ccd0c06bfbf00b1f117e65c9517b4da9cedd37f3834b9d9ce68030367dfd1"
+  },
+  {
+   "file": "Registry/registry.var",
+   "sha256": "77d16129d11abbbd50918b52f405c9b0caffdc57a4c34710a034a41ec7a8cd13"
+  },
+  {
+   "file": "Registry/registry.var_chem",
+   "sha256": "8aefccc8130f7789ea160720fb184c1f1b09371310487e91ab5bc65dce5ea0ab"
+  },
+  {
+   "file": "Registry/registry.wrfplus",
+   "sha256": "9f4afb2aa1424122e02b468df38ec6b631e8a6e2f819621ee9370b688399e29b"
+  }
+ ],
+ "selectors": {
+  "mp_physics": [
+   {
+    "value": 0,
+    "package": "passiveqv",
+    "label": "no microphysics"
+   },
+   {
+    "value": 1,
+    "package": "kesslerscheme",
+    "label": "Kessler scheme"
+   },
+   {
+    "value": 2,
+    "package": "linscheme",
+    "label": "Lin et al. scheme"
+   },
+   {
+    "value": 3,
+    "package": "wsm3scheme",
+    "label": "WSM 3-class simple ice scheme"
+   },
+   {
+    "value": 4,
+    "package": "wsm5scheme",
+    "label": "WSM 5-class scheme"
+   },
+   {
+    "value": 5,
+    "package": "etampnew",
+    "label": "Ferrier (new Eta) microphysics, operational High-Resolution Window version"
+   },
+   {
+    "value": 6,
+    "package": "wsm6scheme",
+    "label": "WSM 6-class graupel scheme"
+   },
+   {
+    "value": 7,
+    "package": "nuwrf4icescheme",
+    "label": "Goddard 4-ice scheme"
+   },
+   {
+    "value": 8,
+    "package": "thompson",
+    "label": "Thompson scheme"
+   },
+   {
+    "value": 9,
+    "package": "milbrandt2mom",
+    "label": "Milbrandt-Yau 2-moment scheme"
+   },
+   {
+    "value": 10,
+    "package": "morr_two_moment",
+    "label": "Morrison (2 moments)"
+   },
+   {
+    "value": 11,
+    "package": "cammgmpscheme",
+    "label": "CAM 5.1 microphysics"
+   },
+   {
+    "value": 13,
+    "package": "sbu_ylinscheme",
+    "label": "SBU_YLIN scheme"
+   },
+   {
+    "value": 14,
+    "package": "wdm5scheme",
+    "label": "WDM 5-class scheme"
+   },
+   {
+    "value": 15,
+    "package": "fer_mp_hires_advect",
+    "label": "fer_mp_hires_advect"
+   },
+   {
+    "value": 16,
+    "package": "wdm6scheme",
+    "label": "WDM 6-class scheme"
+   },
+   {
+    "value": 17,
+    "package": null,
+    "label": "Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18"
+   },
+   {
+    "value": 18,
+    "package": "nssl_2mom",
+    "label": "NSSL 2-moment 4-ice scheme with predicted (unactivated) CCN (or activated CCN)"
+   },
+   {
+    "value": 19,
+    "package": null,
+    "label": "Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18"
+   },
+   {
+    "value": 21,
+    "package": null,
+    "label": "Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18"
+   },
+   {
+    "value": 22,
+    "package": null,
+    "label": "Legacy NSSL-MP options: see README.NSSLmp for equivalent settings with 18"
+   },
+   {
+    "value": 24,
+    "package": "wsm7scheme",
+    "label": "WSM 7-class scheme (separate hail and graupel categories)"
+   },
+   {
+    "value": 26,
+    "package": "wdm7scheme",
+    "label": "WDM 7-class scheme (separate hail and graupel categories)"
+   },
+   {
+    "value": 27,
+    "package": "udmscheme",
+    "label": "UDM 7-class scheme, double moments in qnc and qnr plus qnn"
+   },
+   {
+    "value": 28,
+    "package": "thompsonaero",
+    "label": "aerosol-aware Thompson scheme with water- and ice-friendly aerosol climatology"
+   },
+   {
+    "value": 29,
+    "package": "rcon_mp_scheme",
+    "label": "rcon_mp_scheme"
+   },
+   {
+    "value": 30,
+    "package": "fast_khain_lynn_shpund",
+    "label": "fast_khain_lynn_shpund"
+   },
+   {
+    "value": 32,
+    "package": "full_khain_lynn",
+    "label": "full_khain_lynn"
+   },
+   {
+    "value": 38,
+    "package": "thompsongh",
+    "label": "thompsongh"
+   },
+   {
+    "value": 40,
+    "package": "morr_tm_aero",
+    "label": "morr_tm_aero"
+   },
+   {
+    "value": 50,
+    "package": "p3_1category",
+    "label": "p3_1category"
+   },
+   {
+    "value": 51,
+    "package": "p3_1category_nc",
+    "label": "p3_1category_nc"
+   },
+   {
+    "value": 52,
+    "package": "p3_2category",
+    "label": "p3_2category"
+   },
+   {
+    "value": 53,
+    "package": "p3_1cat_3mom",
+    "label": "p3_1cat_3mom"
+   },
+   {
+    "value": 55,
+    "package": "jensen_ishmael",
+    "label": "jensen_ishmael"
+   },
+   {
+    "value": 56,
+    "package": "ntu",
+    "label": "ntu"
+   },
+   {
+    "value": 88,
+    "package": "tempo",
+    "label": "tempo"
+   },
+   {
+    "value": 95,
+    "package": "etampnew",
+    "label": "etampnew"
+   },
+   {
+    "value": 96,
+    "package": "madwrf_mp",
+    "label": "madwrf_mp"
+   },
+   {
+    "value": 97,
+    "package": "gsfcgcescheme",
+    "label": "gsfcgcescheme"
+   },
+   {
+    "value": 98,
+    "package": "lscondscheme",
+    "label": "lscondscheme"
+   },
+   {
+    "value": 99,
+    "package": "mkesslerscheme",
+    "label": "mkesslerscheme"
+   },
+   {
+    "value": 106,
+    "package": "wsm6rscheme",
+    "label": "wsm6rscheme"
+   }
+  ],
+  "cu_physics": [
+   {
+    "value": 0,
+    "package": "nocuscheme",
+    "label": "no cumulus"
+   },
+   {
+    "value": 1,
+    "package": "kfetascheme",
+    "label": "Kain-Fritsch (new Eta) scheme"
+   },
+   {
+    "value": 2,
+    "package": "bmjscheme",
+    "label": "Betts-Miller-Janjic scheme"
+   },
+   {
+    "value": 3,
+    "package": "gdscheme",
+    "label": "Grell-Freitas-Li scheme"
+   },
+   {
+    "value": 4,
+    "package": "sasscheme",
+    "label": "Scale-aware GFS Simplified Arakawa-Schubert (SAS) scheme"
+   },
+   {
+    "value": 5,
+    "package": "g3scheme",
+    "label": "Grell 3D ensemble scheme"
+   },
+   {
+    "value": 6,
+    "package": "tiedtkescheme",
+    "label": "Modifed Tiedtke scheme"
+   },
+   {
+    "value": 7,
+    "package": "camzmscheme",
+    "label": "Zhang-McFarlane scheme from CAM5 (CESM 1_0_1)"
+   },
+   {
+    "value": 10,
+    "package": "kfcupscheme",
+    "label": "Modified Kain-Fritsch scheme with trigger function based on PDFs"
+   },
+   {
+    "value": 11,
+    "package": "mskfscheme",
+    "label": "Multi-scale Kain-Fritsch scheme"
+   },
+   {
+    "value": 14,
+    "package": "ksasscheme",
+    "label": "KIM Simplified Arakawa-Schubert scheme (KSAS) across gray-zone resolutions"
+   },
+   {
+    "value": 16,
+    "package": "ntiedtkescheme",
+    "label": "A newer Tiedtke scheme"
+   },
+   {
+    "value": 93,
+    "package": "gdscheme",
+    "label": "Grell-Devenyi ensemble scheme"
+   },
+   {
+    "value": 94,
+    "package": "sasscheme",
+    "label": "2015 GFS Simplified Arakawa-Schubert scheme (from HWRF, use with caution)"
+   },
+   {
+    "value": 95,
+    "package": "osasscheme",
+    "label": "Previous GFS Simplified Arakawa-Schubert scheme (from HWRF, use with caution)"
+   },
+   {
+    "value": 96,
+    "package": "nsasscheme",
+    "label": "Previous NEW GFS simplified Arakawa-Schubert scheme from YSU"
+   },
+   {
+    "value": 98,
+    "package": "ducuscheme",
+    "label": "ducuscheme"
+   },
+   {
+    "value": 99,
+    "package": "kfscheme",
+    "label": "previous Kain-Fritsch scheme"
+   }
+  ],
+  "shcu_physics": [
+   {
+    "value": 0,
+    "package": "noshcuscheme",
+    "label": "no independent shallow cumulus"
+   },
+   {
+    "value": 1,
+    "package": "g3shcuscheme",
+    "label": "Grell 3D ensemble scheme (use with cu_physics=93 or 5) (PLACEHOLDER: SWITCH NOT YET IMPLEMENTED--use ishallow)"
+   },
+   {
+    "value": 2,
+    "package": "camuwshcuscheme",
+    "label": "Park and Bretherton shallow cumulus from CAM5 (CESM 1_0_1)"
+   },
+   {
+    "value": 3,
+    "package": "grimsshcuscheme",
+    "label": "GRIMS shallow cumulus from YSU group"
+   },
+   {
+    "value": 4,
+    "package": "nscvshcuscheme",
+    "label": "NSAS shallow cululus scheme. Must be used with KIAPS SAS cumulus scheme (cu_physics = 14)"
+   },
+   {
+    "value": 5,
+    "package": "dengshcuscheme",
+    "label": "Deng cumulus scheme (including both shallow and deep convections) from PSU and WRF-Solar."
+   }
+  ],
+  "bl_pbl_physics": [
+   {
+    "value": 0,
+    "package": "lesscheme",
+    "label": "no boundary-layer"
+   },
+   {
+    "value": 1,
+    "package": "ysuscheme",
+    "label": "YSU scheme"
+   },
+   {
+    "value": 2,
+    "package": "myjpblscheme",
+    "label": "Mellor-Yamada-Janjic TKE scheme"
+   },
+   {
+    "value": 3,
+    "package": "gfsscheme",
+    "label": "Hybrid EDMF GFS scheme"
+   },
+   {
+    "value": 4,
+    "package": "qnsepblscheme",
+    "label": "Eddy-diffusivity Mass Flux, Quasi-Normal Scale Elimination PBL"
+   },
+   {
+    "value": 5,
+    "package": "mynnpblscheme",
+    "label": "MYNN TKE scheme, works with sf_sfclay_physics=1 or 2 as well as 5"
+   },
+   {
+    "value": 7,
+    "package": "acmpblscheme",
+    "label": "ACM2 (Pleim) PBL"
+   },
+   {
+    "value": 8,
+    "package": "boulacscheme",
+    "label": "Bougeault and Lacarrere (BouLac) PBL"
+   },
+   {
+    "value": 9,
+    "package": "camuwpblscheme",
+    "label": "UW boundary layer scheme from CAM5 (CESM 1_0_1)"
+   },
+   {
+    "value": 10,
+    "package": "temfpblscheme",
+    "label": "TEMF (Total Energy Mass Flux) scheme"
+   },
+   {
+    "value": 11,
+    "package": "shinhongscheme",
+    "label": "Shin-Hong 'scale-aware' PBL scheme"
+   },
+   {
+    "value": 12,
+    "package": "gbmpblscheme",
+    "label": "Grenier-Bretherton-McCaa scheme"
+   },
+   {
+    "value": 16,
+    "package": "eepsscheme",
+    "label": "TKE+TKE dissipation rate (epsilon) scheme"
+   },
+   {
+    "value": 17,
+    "package": "kepsscheme",
+    "label": "TKE+TKE dissipation rate+TPE (temparature variance) scheme"
+   },
+   {
+    "value": 98,
+    "package": "surfdragscheme",
+    "label": "surfdragscheme"
+   },
+   {
+    "value": 99,
+    "package": "mrfscheme",
+    "label": "MRF scheme"
+   }
+  ],
+  "sf_sfclay_physics": [
+   {
+    "value": 0,
+    "package": "nosfcscheme",
+    "label": "no surface-layer"
+   },
+   {
+    "value": 1,
+    "package": "sfclayrevscheme",
+    "label": "Revised MM5 Monin-Obukhov scheme (Jimenez, renamed in v3.6)"
+   },
+   {
+    "value": 2,
+    "package": "myjsfcscheme",
+    "label": "Monin-Obukhov (Janjic) scheme"
+   },
+   {
+    "value": 3,
+    "package": "gfssfcscheme",
+    "label": "NCEP Global Forecast System scheme"
+   },
+   {
+    "value": 4,
+    "package": "qnsesfcscheme",
+    "label": "QNSE surface layer"
+   },
+   {
+    "value": 5,
+    "package": "mynnsfcscheme",
+    "label": "MYNN surface layer"
+   },
+   {
+    "value": 7,
+    "package": "pxsfcscheme",
+    "label": "Pleim-Xiu surface layer"
+   },
+   {
+    "value": 10,
+    "package": "temfsfcscheme",
+    "label": "TEMF surface layer"
+   },
+   {
+    "value": 89,
+    "package": "idealscmsfcscheme",
+    "label": "idealscmsfcscheme"
+   },
+   {
+    "value": 91,
+    "package": "sfclayscheme",
+    "label": "Old MM5 scheme (previously option 1)"
+   }
+  ],
+  "sf_surface_physics": [
+   {
+    "value": 0,
+    "package": "nolsmscheme",
+    "label": "no surface temp prediction"
+   },
+   {
+    "value": 1,
+    "package": "slabscheme",
+    "label": "thermal diffusion scheme"
+   },
+   {
+    "value": 2,
+    "package": "lsmscheme",
+    "label": "Unified Noah land-surface model"
+   },
+   {
+    "value": 3,
+    "package": "ruclsmscheme",
+    "label": "RUC land-surface model"
+   },
+   {
+    "value": 4,
+    "package": "noahmpscheme",
+    "label": "Noah-MP land-surface model (see additional &noah_mp namelist)"
+   },
+   {
+    "value": 5,
+    "package": "clmscheme",
+    "label": "Community Land Model version 4 (CLM4), adapted from CAM"
+   },
+   {
+    "value": 6,
+    "package": "ctsmscheme",
+    "label": "Community Terrestrial Systems Model (CTSM). See doc/README.CTSM for info on running this option."
+   },
+   {
+    "value": 7,
+    "package": "pxlsmscheme",
+    "label": "Pleim-Xiu LSM"
+   },
+   {
+    "value": 8,
+    "package": "ssibscheme",
+    "label": "Simplified Simple Biosphere Model (SSiB)"
+   }
+  ],
+  "sf_urban_physics": [
+   {
+    "value": 0,
+    "package": null,
+    "label": "no urban canopy model"
+   },
+   {
+    "value": 1,
+    "package": "noahucmscheme",
+    "label": "Single-layer, UCM"
+   },
+   {
+    "value": 2,
+    "package": "bepscheme",
+    "label": "Multi-layer, Building Environment Parameterization (BEP) scheme"
+   },
+   {
+    "value": 3,
+    "package": "bep_bemscheme",
+    "label": "Multi-layer, Building Environment Model (BEM) scheme"
+   }
+  ],
+  "sf_ocean_physics": [
+   {
+    "value": 0,
+    "package": null,
+    "label": "no ocean model"
+   },
+   {
+    "value": 1,
+    "package": "omlscheme",
+    "label": "1-D ocean mixed layer"
+   },
+   {
+    "value": 2,
+    "package": "pwp3dscheme",
+    "label": "3-D Price-Weller-Pinkel ocean"
+   }
+  ],
+  "ra_lw_physics": [
+   {
+    "value": 0,
+    "package": null,
+    "label": "no longwave radiation"
+   },
+   {
+    "value": 1,
+    "package": "rrtmscheme",
+    "label": "rrtm scheme"
+   },
+   {
+    "value": 3,
+    "package": "camlwscheme",
+    "label": "cam scheme"
+   },
+   {
+    "value": 4,
+    "package": "rrtmg_lwscheme",
+    "label": "rrtmg scheme"
+   },
+   {
+    "value": 5,
+    "package": "goddardlwscheme",
+    "label": "Goddard longwave scheme"
+   },
+   {
+    "value": 7,
+    "package": "flglwscheme",
+    "label": "FLG (UCLA) scheme"
+   },
+   {
+    "value": 14,
+    "package": "rrtmk_lwscheme",
+    "label": "rrtmg-k scheme from KIAPS"
+   },
+   {
+    "value": 24,
+    "package": "rrtmg_lwscheme_fast",
+    "label": "fast rrtmg scheme for GPU and MIC (since 3.7)"
+   },
+   {
+    "value": 31,
+    "package": "heldsuarez",
+    "label": "Earth Held-Suarez forcing"
+   },
+   {
+    "value": 99,
+    "package": "gfdllwscheme",
+    "label": "GFDL (Eta) longwave (semi-supported)"
+   }
+  ],
+  "ra_sw_physics": [
+   {
+    "value": 0,
+    "package": null,
+    "label": "no shortwave radiation"
+   },
+   {
+    "value": 1,
+    "package": "swradscheme",
+    "label": "Dudhia scheme"
+   },
+   {
+    "value": 2,
+    "package": "gsfcswscheme",
+    "label": "Goddard short wave"
+   },
+   {
+    "value": 3,
+    "package": "camswscheme",
+    "label": "cam scheme"
+   },
+   {
+    "value": 4,
+    "package": "rrtmg_swscheme",
+    "label": "rrtmg scheme"
+   },
+   {
+    "value": 5,
+    "package": "goddardswscheme",
+    "label": "Goddard shortwave scheme"
+   },
+   {
+    "value": 7,
+    "package": "flgswscheme",
+    "label": "FLG (UCLA) scheme"
+   },
+   {
+    "value": 14,
+    "package": "rrtmk_swscheme",
+    "label": "rrtmg-k scheme from KIAPS"
+   },
+   {
+    "value": 24,
+    "package": "rrtmg_swscheme_fast",
+    "label": "fast rrtmg scheme for GPU and MIC (since 3.7)"
+   },
+   {
+    "value": 99,
+    "package": "gfdlswscheme",
+    "label": "GFDL (Eta) longwave (semi-supported)"
+   }
+  ]
+ },
+ "switches": {
+  "sst_update": [
+   {
+    "value": 1,
+    "label": "time-varying sea-surface temperature, sea ice, albedo and vegetation from wrflowinp"
+   }
+  ],
+  "sst_skin": [
+   {
+    "value": 1,
+    "label": "skin sea-surface temperature (diurnal warm layer and cool skin)"
+   }
+  ],
+  "tmn_update": [
+   {
+    "value": 1,
+    "label": "deep-soil temperature updated from the skin temperature (lagday)"
+   }
+  ],
+  "sf_lake_physics": [
+   {
+    "value": 1,
+    "label": "CLM lake model"
+   }
+  ],
+  "windfarm_opt": [
+   {
+    "value": 1,
+    "label": "Fitch wind farm"
+   },
+   {
+    "value": 2,
+    "label": "Ma et al. (2022) wind farm with subgrid wakes"
+   }
+  ],
+  "cu_rad_feedback": [
+   {
+    "value": true,
+    "label": "cumulus sub-grid cloud fed to radiation"
+   }
+  ],
+  "icloud": [
+   {
+    "value": 0,
+    "label": "no cloud optical effect"
+   },
+   {
+    "value": 1,
+    "label": "Xu-Randall cloud fraction"
+   },
+   {
+    "value": 2,
+    "label": "threshold cloud fraction"
+   },
+   {
+    "value": 3,
+    "label": "Sundqvist cloud fraction (cal_cldfra3)"
+   }
+  ],
+  "aer_opt": [
+   {
+    "value": 0,
+    "label": "no aerosol optical effect"
+   },
+   {
+    "value": 1,
+    "label": "Tegen six-type aerosol climatology"
+   },
+   {
+    "value": 2,
+    "label": "user aerosol optical properties"
+   },
+   {
+    "value": 3,
+    "label": "Thompson water/ice friendly aerosol"
+   }
+  ],
+  "lightning_option": [
+   {
+    "value": 0,
+    "label": "off"
+   },
+   {
+    "value": 1,
+    "label": "PR92 maximum vertical velocity"
+   },
+   {
+    "value": 2,
+    "label": "PR92 20 dBZ echo top"
+   },
+   {
+    "value": 3,
+    "label": "lightning potential index"
+   },
+   {
+    "value": 11,
+    "label": "PR92 convective equilibrium level"
+   }
+  ]
+ }
+}

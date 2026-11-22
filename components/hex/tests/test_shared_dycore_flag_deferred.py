@@ -4,7 +4,7 @@ Breakage it prevents (rrfs review 2026-10-29, conus3km 8 cards): the shared Cuda
 RRFS 44c0849 row and MPAS-A v8.4.2, read the step's validation flag with a blocking copy every step, so every
 rank's host waited for its card to drain the step before queuing the next one. Inside an MPAS-physics forecast
 loop (a deferred_checks_v842 collector is active) the word now goes through defer(); outside one (replays,
-referee helpers, the WOOF route) it is still read at once.
+referee helpers, the WOOF-ArWen route) it is still read at once.
 """
 
 from woof.hex.cuda_driver import _forecast_checks_active

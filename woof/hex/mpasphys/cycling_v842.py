@@ -1,7 +1,7 @@
 """MPAS-native pools at the background cycling boundary.
 
 The existing JEDI contract owns CDF-5 I/O and coupled-state initialization.
-No WOOF physics state or soil interpolation is used on this route.
+No ArWen physics state or soil interpolation is used on this route.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from .. import jedi_contract as contract
+from ..cycle.land_state import LAND_FIELDS, RUC_SOIL_LEVELS, RUC_WARM_MEMORY
 
 
 def background_fields(session, layout, names):
@@ -22,9 +23,22 @@ def background_fields(session, layout, names):
         rows[row['name']] = row
     fields, provenance = {}, {}
     required = tuple(name for name in contract.BACKGROUND_FIELDS if name != 'scalars')
-    for name in (*required, 'scalars'):
+    native_required = {f.name for f in LAND_FIELDS if f.required}
+    if layout.dimensions['nSoilLevels'] == RUC_SOIL_LEVELS:
+        native_required.update(RUC_WARM_MEMORY)
+    missing = sorted(native_required - rows.keys())
+    if missing:
+        raise ValueError(f'native background lacks active native land fields {missing}')
+    # Same live land census as the ArWen publisher and warm-start reader.
+    # Inactive optional fields are absent, never copied from cold input.
+    land = tuple(f.name for f in LAND_FIELDS if f.name in rows and f.name not in required)
+    from ..producer_cloud import MYNN_CLOUD_FIELDS
+    cloud = tuple(public for public, _, _ in MYNN_CLOUD_FIELDS if public in rows)
+    if cloud and len(cloud) != len(MYNN_CLOUD_FIELDS):
+        raise ValueError('native background has an incomplete MYNN SGS cloud pool')
+    for name in (*required, *land, *cloud, 'scalars'):
         if name not in rows:
-            raise ValueError(f'native JEDI background requires active Registry field {name}')
+            raise ValueError(f'native background requires active Registry field {name}')
         row = rows[name]
         value = np.asarray(session.native.get_field(row['pool'], row['pool_name']))
         # Remove native garbage storage, along the Registry entity axis.
@@ -32,10 +46,10 @@ def background_fields(session, layout, names):
             if dim in ('nCells', 'nEdges', 'nVertices'):
                 value = np.take(value, np.arange(layout.dimensions[dim]), axis=axis)
         if value.dtype != np.float32 or not np.all(np.isfinite(value)):
-            raise ValueError(f'native JEDI background {name} has invalid RKIND or non-finite words')
+            raise ValueError(f'native background {name} has invalid RKIND or non-finite words')
         if name == 'scalars':
             if tuple(row['components']) != tuple(names):
-                raise ValueError('native JEDI scalar component order differs')
+                raise ValueError('native scalar component order differs')
             for index, species in enumerate(names):
                 fields[species] = np.ascontiguousarray(value[index])
                 provenance[species] = f"native MPAS pool {row['pool']}.{row['pool_name']}[{species}]"
@@ -46,6 +60,25 @@ def background_fields(session, layout, names):
     label = contract.NATIVE_SOIL_LABEL.format(levels=soil)
     for name in ('smois', 'tslb'):
         provenance[name] += '; ' + label
+    # Native Registry calls the selected scheme's committed PBL height HPBL;
+    # the state geometry contract calls the same field PBLH. Publish its actual
+    # words, including at an initialized cold boundary, without a fallback.
+    if 'hpbl' in rows:
+        row = rows['hpbl']
+        value = np.asarray(session.native.get_field(row['pool'], row['pool_name']))
+        value = value[:layout.dimensions['nCells']]
+        if value.dtype != np.float32 or not np.isfinite(value).all():
+            raise ValueError('native state boundary has invalid RKIND or non-finite scheme-owned HPBL')
+        if value.any():
+            if np.any(value <= 0):
+                raise ValueError('native state boundary lacks positive scheme-owned HPBL; initialize its cold PBL first')
+            fields['pblh'] = np.ascontiguousarray(value)
+            provenance['pblh'] = f"native MPAS pool {row['pool']}.{row['pool_name']}; selected scheme HPBL"
+        # else: the selected PBL scheme has not run at this boundary (the first frame of a cold start) and HPBL is
+        # still its allocation default.  The field is left out, as every inactive field is; write_background names
+        # it in the file, and a reader that needs PBLH refuses the file by the missing name.  THE BREAKAGE THIS
+        # PREVENTS (hex 0.5.0 both-routes matrix, 2026-11-09): --jedi-background on a cold start stopped at its
+        # first frame on every MPAS suite ("lacks positive scheme-owned HPBL").
     return fields, provenance
 
 
@@ -70,7 +103,10 @@ def write_background(arguments, session, layout, names, *, step, dt, out):
         scalar_names=names, n_vertices=layout.dimensions['nVertices'],
         identity_path=Path(arguments.init),
         global_attributes={'hex_physics_route': 'MPAS native physics',
-                           'source': 'woof hex: MPAS CUDA dynamics and MPAS native physics'})
+                           'source': 'woof hex: MPAS CUDA dynamics and MPAS native physics',
+                           **({} if 'pblh' in fields or not any(row['name'] == 'hpbl' for row in layout.fields) else
+                              {'hex_pblh': 'absent at this boundary: the selected PBL scheme has not run yet '
+                                           '(cold start); written from the first physics step on'})})
 
 
 def _changed_elements(analysis, background, names, mesh, n_cells, n_edges):

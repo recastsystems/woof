@@ -67,10 +67,6 @@ def test_allocator_override_is_executed_and_recorded(monkeypatch, platform, requ
 @pytest.mark.parametrize("relative", [
     "woof/runtime.py", "woof/prepared_domain_tree_forecast.py",
     "woof/prepared_single_domain_forecast.py",
-    # The DA legs integrate in tools/da_member_leg.py since 082b4d1b2 moved
-    # them out of tools/da_cycle_prepared.py, and the VTSM continuation
-    # (4dcca7d16) is a forecast route of its own.
-    "tools/da_member_leg.py", "woof/da/spread_vts.py",
     "tools/hrrr_single_domain_benchmark.py", "tools/hrrr_two_domain_forecast.py",
 ])
 def test_forecast_routes_use_platform_default(relative):

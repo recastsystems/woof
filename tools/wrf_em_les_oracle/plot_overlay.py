@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Overlay WOOF and WRF em_les profiles, both reduced by the same routine.
+"""Overlay WOOF-ArWen and WRF em_les profiles, both reduced by the same routine.
 
 Usage: plot_overlay.py <same_instrument_LABEL_profiles.npz> <label> <outdir>
 """
@@ -29,17 +29,17 @@ def main():
     # 1: total, resolved, SGS heat flux normalised by Qs, vs z/zi
     a = ax[0]
     a.plot(d["atotal"] / QS, d["az"] / azi, color=A_COL, lw=2.2,
-           label="WOOF total")
+           label="WOOF-ArWen total")
     a.plot(d["wtotal"] / QS, d["wz"] / wzi, color=W_COL, lw=2.2, ls="--",
            label="WRF total")
     a.plot(d["ares"] / QS, d["az"] / azi, color=A_COL, lw=1.2, alpha=0.65,
-           label="WOOF resolved")
+           label="WOOF-ArWen resolved")
     a.plot(d["wres"] / QS, d["wz"] / wzi, color=W_COL, lw=1.2, ls="--",
            alpha=0.65, label="WRF resolved")
     asg = 0.5 * (d["asgs"][:-1] + d["asgs"][1:])
     wsg = 0.5 * (d["wsgs"][:-1] + d["wsgs"][1:])
     a.plot(asg / QS, d["az"] / azi, color=A_COL, lw=1.0, ls=":",
-           label="WOOF SGS")
+           label="WOOF-ArWen SGS")
     a.plot(wsg / QS, d["wz"] / wzi, color=W_COL, lw=1.0, ls="-.",
            label="WRF SGS")
     a.axvline(0, color="0.6", lw=0.7)
@@ -52,7 +52,7 @@ def main():
 
     # 2: theta
     a = ax[1]
-    a.plot(d["atheta"], d["az"], color=A_COL, lw=2.2, label="WOOF")
+    a.plot(d["atheta"], d["az"], color=A_COL, lw=2.2, label="WOOF-ArWen")
     a.plot(d["wtheta"], d["wz"], color=W_COL, lw=2.2, ls="--", label="WRF")
     a.axhline(azi, color=A_COL, lw=0.8, ls=":")
     a.axhline(wzi, color=W_COL, lw=0.8, ls=":")
@@ -64,7 +64,7 @@ def main():
 
     # 3: resolved TKE
     a = ax[2]
-    a.plot(d["atke"], d["az"] / azi, color=A_COL, lw=2.2, label="WOOF")
+    a.plot(d["atke"], d["az"] / azi, color=A_COL, lw=2.2, label="WOOF-ArWen")
     a.plot(d["wtke"], d["wz"] / wzi, color=W_COL, lw=2.2, ls="--", label="WRF")
     a.set_xlabel(r"resolved TKE  (m$^2$ s$^{-2}$)")
     a.set_ylabel(r"$z/z_i$")
@@ -79,7 +79,7 @@ def main():
     wi = np.interp(zc, d["wz"] / wzi, d["wtotal"] / QS)
     a.plot(wi - ai, zc, color="#444444", lw=2.0)
     a.axvline(0, color="0.6", lw=0.7)
-    a.set_xlabel(r"(WRF $-$ WOOF) total flux / $Q_s$")
+    a.set_xlabel(r"(WRF $-$ WOOF-ArWen) total flux / $Q_s$")
     a.set_ylabel(r"$z/z_i$")
     a.set_title("Difference")
     a.set_ylim(0, 1.35)
@@ -90,7 +90,7 @@ def main():
 
     for a in ax:
         a.grid(alpha=0.25, lw=0.6)
-    fig.suptitle("WOOF CBL vs WRF v4.6.1 em_les  --  %s  --  "
+    fig.suptitle("WOOF-ArWen CBL vs WRF v4.6.1 em_les  --  %s  --  "
                  "both reduced by the same routine, final 30 min" % label,
                  fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.95))

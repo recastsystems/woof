@@ -12,7 +12,7 @@ A domain's cost on the GPU is roughly a fixed 2.0–3.2 GiB per process plus
 541–612 bytes per cell at full physics (measured; see
 `tilestream/autoplan.py`).  A 32 GB card therefore holds about 924² × 49 of
 `full+MYNN+Noah-MP` resident, and a 12 GB card about 483².  Beyond that,
-WOOF used to have nothing to say.
+WOOF-ArWen used to have nothing to say.
 
 `[tiles]` turns on the out-of-core mode: **the whole domain lives in
 pinned host RAM and one tile of it at a time is cycled through the GPU**.

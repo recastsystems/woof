@@ -191,7 +191,7 @@ def test_restart_with_iau_admits_the_bundle_increment_on_the_native_route(tmp_pa
 
 
 def test_iau_runs_on_the_fixed_step_executor_now(tmp_path):
-    # Retired refusal (lane W1): IAU needed --fullstep-lts-mode active; the fixed-step executor
+    # Retired refusal: IAU needed --fullstep-lts-mode active; the fixed-step executor
     # carries the same held-tendency hook now.
     from test_forecast_door import _namespace
 

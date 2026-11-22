@@ -269,7 +269,7 @@ MESH_BINDINGS: Mapping[str, MeshBinding] = MappingProxyType(
                 "3,459 pentagons and the near-cocircular dislocation quads collapse "
                 "dvEdge to 6.514 m at edge 19786 (dcEdge 38,657 m, ratio 1.685e-04, "
                 "TRiSK tangential amplification 5,935x). Measured consequence "
-                "(the proving node, RTX 5070 Ti): every runaway magnitude in the first outer "
+                "(an RTX 5070 Ti): every runaway magnitude in the first outer "
                 "step sits on that edge and the run dies at composite step 0. It has "
                 "never completed a forecast and no timestep makes it able to."
             ),
@@ -353,12 +353,12 @@ MESH_BINDINGS: Mapping[str, MeshBinding] = MappingProxyType(
                 "this row's cell count ON THE CARD THE DOOR IS LOOKING AT -- "
                 "quoted as a fixed GiB figure here until 2026-08-27, which is "
                 "how a 32 GiB card's number ends up refusing a 10 GiB card -- "
-                "and the RTX 5090 holds it: measured ADMITTED on the proving RTX 5090, "
+                "and the RTX 5090 holds it: measured ADMITTED on an RTX 5090, "
                 "2026-08-26, "
                 "evidence/device-floor-rederive-20260826/. The refusal this "
                 "row carried until then belonged to the retired linear proxy, "
                 "which demanded more than the card's total. TIMESTEP, "
-                "corrected the same day: 75 s earned an anchor on the proving RTX 5070 Ti "
+                "corrected the same day: 75 s earned an anchor on an RTX 5070 Ti "
                 "(dt_admission, evidence/dt-anchors-20260826/, the dt 75 s anchor), "
                 "so the row's declared timestep is admitted too. Both of this "
                 "row's recorded refusals are retired and NEITHER was ever a "
@@ -422,7 +422,7 @@ MESH_BINDINGS: Mapping[str, MeshBinding] = MappingProxyType(
                 "retiring the second refusal this row carried -- the frozen "
                 "lane is no longer pinned to 120 s. THE BLOW-UP IS EXPLAINED, "
                 "AND THIS ROW NOW REFUSES AT BIND FOR IT "
-                "(evidence/graded-blowup-20260826/, the proving RTX 5090, "
+                "(evidence/graded-blowup-20260826/, an RTX 5090, "
                 "2026-08-26). On 2026-08-26 the row bound at 100 s, "
                 "integrated 22 steps and died at step 23 of 36. The cause is "
                 "THIS MESH'S SINGLE 4-COORDINATED CELL, 195615 at 33.74N "
@@ -467,7 +467,7 @@ MESH_BINDINGS: Mapping[str, MeshBinding] = MappingProxyType(
                 "CANONICAL (v15.60.224210, registered above): on 2026-08-26 "
                 "the answer was memory, and it no longer is -- the floor "
                 "re-derivation puts that mesh at 26.39 GiB required against "
-                "a 32 GiB card that holds it, measured admitted on the proving RTX 5090 "
+                "a 32 GiB card that holds it, measured admitted on an RTX 5090 "
                 "the same day (evidence/device-floor-rederive-20260826/). "
                 "What separated the two rows after that was the timestep, and "
                 "that separation is gone too: 100 s and 75 s BOTH earned "
@@ -1120,7 +1120,7 @@ MESH_BINDINGS: Mapping[str, MeshBinding] = MappingProxyType(
                 "static rebuilt from the same spec through the PUBLISHED "
                 "2.6.1 artifacts (rw_mpas_mesh/rw_mpas_static from the "
                 "v2.6.1 bridge bundle, geography from woof fetch-geog). "
-                "Both digests moved off the 2026-08-29 lane build's "
+                "Both digests moved off the 2026-08-29 build's "
                 "(grid 40e9e9f7... -> 39f0c8ae..., static 6e941739... -> "
                 "ff495ce8...), and the movement is MEASURED rather than "
                 "assumed. Determinism: two builds from the same spec and "
@@ -1171,7 +1171,7 @@ MESH_BINDINGS: Mapping[str, MeshBinding] = MappingProxyType(
                 "HEX-SPEED 2026-09-02: generated uniform 60 km mesh, the 60 km rung of the "
                 "global speed ladder (the published x1.163842 is 163,842 cells; this is the "
                 "generator's own 60 km sizing, rw_mpas_mesh --background-km 60 from the v2.6.3 "
-                "bridge bundle, 26.6 s on the proving node's CPU). 163,632 cells, 490,890 edges, "
+                "bridge bundle, 26.6 s on one machine's CPU). 163,632 cells, 490,890 edges, "
                 "dcEdge min 41,666.3 m, median 60,721.9 m, max 65,332.8 m; the static from "
                 "rw_mpas_static against that grid through the default geography ladder. Declared "
                 "dt 120 s against the door's Courant limit of 300.0 s (2.50x); the 120 s "
@@ -1234,7 +1234,7 @@ MESH_BINDINGS: Mapping[str, MeshBinding] = MappingProxyType(
             ),
             lbc_source="gfs-2026-08-28-18z-wps-intermediate/lbc-hourly",
             notes=(
-                "HEX-SPEED 2026-09-02: a 125 km cap at 35.0 N 97.0 W culled from an 800 m parent generated for this measurement: the registered 937.5 m ladder with every spacing, transition and the 102.4 km background scaled by 0.8/0.9375 and the cap radii kept (155,138 cells, 147 s on the proving node's CPU) "
+                "HEX-SPEED 2026-09-02: a 125 km cap at 35.0 N 97.0 W culled from an 800 m parent generated for this measurement: the registered 937.5 m ladder with every spacing, transition and the 102.4 km background scaled by 0.8/0.9375 and the cap radii kept (155,138 cells, 147 s on one machine's CPU) "
                 "with woof hex cull (rw_mpas_mesh --cull-parent from the v2.6.3 bridge bundle), "
                 "so the child's terrain, vertical grid and initial state ARE the parent's cell "
                 "for cell. 56,619 cells: the whole 800 m core plus the first 25 km of the 1.6 km ramp, where the seven boundary rings sit. THE FINEST REGISTERED ROW: min dcEdge 710.869 m. "
@@ -2089,7 +2089,7 @@ def bind_mesh(
     except CellCoordinationAdmissionError as error:
         raise MeshBindingMismatch(str(error)) from error
     observed["cell_coordination_admission"] = coordination.as_dict()
-    # RETIRED 2026-10-10 (owner ruling):
+    # RETIRED 2026-10-10:
     # the refusal of every timestep the earned-anchor registry did not hold
     # ("this row is STABLE and merely unrunnable HERE").  Stability is the
     # physical check above; the cadences are checked below against the run's

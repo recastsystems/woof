@@ -989,8 +989,9 @@ def fetch_tables_main(args) -> int:
 def stage_ocean_climatology(source_dir=None, root=None) -> int:
     """Stage all 12 NOAA WOA18 monthly mixed-layer-depth files.
 
-    The mixed-layer ocean is on by default for forecasts of 48 h and
-    more, and its initial mixed-layer depth is this climatology.  Each
+    A forecast that sets sf_ocean_physics = 1 or 2 takes its initial
+    mixed-layer depth from this climatology (through 3.0.1 option 2 was
+    also the default at 48 h and more).  Each
     month is SHA-256 verified against
     :data:`woof.ocean.mixed_layer.climatology.MONTH_PINS` before the
     atomic install, into the very cache the forecast reads
@@ -1145,7 +1146,8 @@ def register_cli(subparsers) -> None:
     parser.add_argument(
         "--ocean", action="store_true",
         help="also stage the 12 NOAA WOA18 monthly mixed-layer-depth files "
-             "(about 85 MB) the default mixed-layer ocean initializes from, "
+             "(about 85 MB) the mixed-layer ocean (sf_ocean_physics = 1 or "
+             "2) initializes from, "
              "SHA-256 verified, into the cache forecasts read "
              "(WOOF_OCEAN_CACHE, else <case data root>/ocean), so no "
              "forecast fetches them from NCEI at start")

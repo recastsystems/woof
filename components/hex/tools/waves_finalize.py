@@ -31,7 +31,7 @@ def main():
         execution = atmosphere["forecast"]
         if (atmosphere.get("status") != "passed" or execution.get("refusal") or
                 execution["steps_executed"] != execution["steps_requested"]):
-            raise ValueError("WOOF atmosphere did not complete every requested step")
+            raise ValueError("WOOF-ArWen atmosphere did not complete every requested step")
         atmosphere_steps = execution["steps_executed"]
         route = "arwen"
     if atmosphere_steps <= 0:

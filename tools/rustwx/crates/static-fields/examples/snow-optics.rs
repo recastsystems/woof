@@ -1,7 +1,12 @@
 //! Optical tables generated from equations and published refractive indices.
 //! No SNICAR program, aging lookup, or upstream optical table is an input.
-use static_fields::{snow_optics::*,snow_shapes::*,snow_aging::*};
-use std::{io::Write,path::PathBuf};
+//!
+//! snow-optics ICE.yml DUST.dat SOLAR.csv OUT.bin      one table (unchanged)
+//! snow-optics --variants DATA_DIR OUT_DIR             the three ice-set
+//!     tables (Warren 1984, Warren & Brandt 2008, Picard 2016 merge) and
+//!     the four dust-set rows; see static_fields::snow_optics_sets.
+use static_fields::{snow_optics::*,snow_shapes::*,snow_aging::*,snow_optics_sets::*};
+use std::{io::Write,path::{Path,PathBuf}};
 fn psd(re:f64,w:f64,m:Complex,rho:f64,host:f64)->[f64;3] {
     let mut s=[0.;4];let l=1.5_f64.ln();
     for j in 0..24 {let z=-4.+(j as f64+0.5)/3.;let r=re*(-2.5*l*l+z*l).exp();
@@ -32,7 +37,7 @@ fn fresnel(mu:f64,n:Complex)->f64 {
 // Bin-integrated ASTM G173 incident spectra. A direct normal spectrum and
 // diffuse irradiance on its 37-degree plane are independent weights. The
 // reference incidence is 11.19 degrees (NLR reference geometry).
-fn solar_bins(path:&std::path::Path)->Vec<[f64;2]> {
+fn solar_bins(path:&Path)->Vec<[f64;2]> {
     let text=std::fs::read_to_string(path).unwrap();let points:Vec<[f64;3]>=text.lines().skip(2).map(|l| {
         let v:Vec<f64>=l.split(',').map(|v|v.parse().unwrap()).collect();
         [v[0]*0.001,v[3],(v[2]-v[3]*(11.19_f64.to_radians().cos())).max(0.)]
@@ -43,22 +48,23 @@ fn solar_bins(path:&std::path::Path)->Vec<[f64;2]> {
         }sum
     }).collect()
 }
-fn dust_index(path:&std::path::Path)->Vec<[f64;3]> {
+fn dust_index(path:&Path)->Vec<[f64;3]> {
     std::fs::read_to_string(path).unwrap().lines().map(|l| {let v:Vec<f64>=l.split(',').take(3).map(|v|v.parse().unwrap()).collect();[v[0],v[1],v[2]]}).collect()
 }
-fn main() {
-    let a:Vec<_>=std::env::args_os().collect();assert_eq!(a.len(),5,"snow-optics ICE.yml DUST.dat SOLAR.csv OUT.bin");
-    let ice=read_index(&PathBuf::from(&a[1])).unwrap();
-    let dust=dust_index(&PathBuf::from(&a[2]));let solar=solar_bins(&PathBuf::from(&a[3]));
+fn workers()->usize {std::thread::available_parallelism().map(|n|n.get()).unwrap_or(8).clamp(1,32)}
+/// One complete table for one ice index set. The default dust row (Zhang
+/// 2024 coarse mode) is always the in-table dust row; other dust sets are
+/// separate rows (dust_rows) substituted at device upload.
+fn build(ice:&[[f64;3]],dust:&[[f64;3]],solar:&[[f64;2]],quad:&[(f64,f64)])->Vec<f32> {
     let radii:Vec<_>=(0..NR).map(|i|30.*50_f64.powf(i as f64/(NR-1) as f64)).collect();
     let bubbles:Vec<_>=(0..NR).map(|i|30.*(20000_f64/30.).powf(i as f64/(NR-1) as f64)).collect();
-    let quad=quadrature(10000);eprintln!("quadrature ready");
+    let nworkers=workers();
     let rows=std::thread::scope(|s| {
-        let jobs:Vec<_>=(0..8).map(|worker| {let ice=&ice;let radii=&radii;let bubbles=&bubbles;let quad=&quad;let dust=&dust;let solar=&solar;
+        let jobs:Vec<_>=(0..nworkers).map(|worker| {let radii=&radii;let bubbles=&bubbles;
             s.spawn(move || {
                 let center:Vec<[f64;6]>=radii.iter().map(|r|std::array::from_fn(|i|{let v=psd(*r,CENTERS[i],index_at(ice,CENTERS[i]),917.,1.);1.-v[1]/v[0]})).collect();
                 let mut rows=Vec::new();
-                for iw in (worker..NW).step_by(8) {let w=0.205+iw as f64*0.01;let m=index_at(ice,w);
+                for iw in (worker..NW).step_by(nworkers) {let w=0.205+iw as f64*0.01;let m=index_at(ice,w);
                     let solar=solar[iw];
                     let base:Vec<_>=radii.iter().map(|r|psd(*r,w,m,917.,1.)).collect();let mut p=base.clone();
                     for shape in 1..=3 {for ir in 0..NR {let mut v=base[ir];v[2]=shape_g(shape,radii[ir],&center[ir],w);p.push(v);}}
@@ -80,7 +86,7 @@ fn main() {
                         2.*mu*q*(1.-critical)*fresnel(mu,Complex::new(1./m.re,0.))}).sum::<f64>();
                     let mix:Vec<_>=(0..32).map(|i| {let f=i as f64/31.;[bc_enhancement(0.01*1e6_f64.powf(f),w),dust_enhancement(0.01*1e5_f64.powf(f),w,false),dust_enhancement(0.01*1e5_f64.powf(f),w,true)]}).collect();
                     rows.push((iw,solar,p,[m.re,m.im,down,up],mix));
-                    if iw%80<8 {eprintln!("optical wavelength {iw}/480");}
+                    if iw%80<nworkers {eprintln!("optical wavelength {iw}/480");}
                 } rows
             })}).collect();jobs.into_iter().flat_map(|j|j.join().unwrap()).collect::<Vec<_>>()
     });
@@ -92,13 +98,57 @@ fn main() {
         for k in 0..4 {words[FRESNEL_START+iw*4+k]=fr[k] as f32;}
         for (i,v) in mix.iter().enumerate() {for k in 0..3 {words[MIX_START+(i*NW+iw)*3+k]=v[k] as f32;}}
     }
-    let aging=std::thread::scope(|s| {let jobs:Vec<_>=(0..8).map(|worker|s.spawn(move || {
-        let mut values=Vec::new();for i in (worker..8*7*8).step_by(8) {let t=TEMPERATURES[i/(7*8)];let g=GRADIENTS[(i/8)%7];let d=DENSITIES[i%8];
+    let aging=std::thread::scope(|s| {let jobs:Vec<_>=(0..nworkers).map(|worker|s.spawn(move || {
+        let mut values=Vec::new();for i in (worker..8*7*8).step_by(nworkers) {let t=TEMPERATURES[i/(7*8)];let g=GRADIENTS[(i/8)%7];let d=DENSITIES[i%8];
             let v=trajectory(t,g,d,200,40);let f=fit(&v);values.push((i,f));
-            if i%56<8 {eprintln!("aging {i}/448 T={t} G={g} rho={d} tau={} k={}",f[0],f[1]);}
+            if i%56<nworkers {eprintln!("aging {i}/448 T={t} G={g} rho={d} tau={} k={}",f[0],f[1]);}
         }values})).collect();jobs.into_iter().flat_map(|j|j.join().unwrap()).collect::<Vec<_>>()});
     let mut off=AGE_START;for axis in [&TEMPERATURES[..],&GRADIENTS[..],&DENSITIES[..]] {for v in axis {words[off]=*v as f32;off+=1;}}
     for (i,v) in aging {words[off+2*i]=v[0] as f32;words[off+2*i+1]=v[1] as f32;}
-    let mut f=std::fs::File::create(&a[4]).unwrap();f.write_all(MAGIC).unwrap();for v in &words {f.write_all(&v.to_le_bytes()).unwrap();}drop(f);
-    read_table(&PathBuf::from(&a[4])).unwrap();println!("generated {} words: four habits, bubbles, BC, dust, Fresnel, internal mixing, microphysical aging; eight workers",TABLE_WORDS);
+    words
+}
+fn write_table(path:&Path,words:&[f32]) {
+    let mut f=std::fs::File::create(path).unwrap();f.write_all(MAGIC).unwrap();for v in words {f.write_all(&v.to_le_bytes()).unwrap();}drop(f);
+    read_table(path).unwrap();
+}
+/// Four dust rows, same wavelengths, size distribution and Mie as the
+/// in-table row; only the refractive index and particle density differ.
+fn dust_rows(dir:&Path)->Vec<f32> {
+    let zhang=dust_index(&dir.join("dust-ri.dat"));
+    let minerals:Vec<_>=MINERALS.iter().map(|m|read_csv_nk(&dir.join(format!("mineral-{m}.csv"))).unwrap()).collect();
+    let skiles=read_csv_nk(&dir.join("dust-skiles2017.csv")).unwrap();
+    let mut words=vec![0_f32;DUST_WORDS];
+    for set in 0..DUST_SETS {for iw in 0..NW {let w=0.205+iw as f64*0.01;
+        let m=match set {0=>index_at(&zhang,w),1=>mixed_index(&minerals,&SAHARAN_VOLUME,w),
+            2=>linear_nk(&skiles,w),_=>mixed_index(&minerals,&GREENLAND_VOLUME,w)};
+        let v=psd(1.,w,m,DUST_DENSITY[set],1.);
+        for k in 0..3 {words[(set*NW+iw)*3+k]=v[k] as f32;}
+        if iw==35||iw==135 {eprintln!("dust set {set} w={w:.3} m={:.4}+{:.3e}i mac={:.4} m2/g",m.re,m.im,v[1]*1e-3);}
+    }}
+    words
+}
+fn main() {
+    let a:Vec<_>=std::env::args_os().collect();
+    let quad=quadrature(10000);eprintln!("quadrature ready");
+    if a.len()==4 && a[1]=="--variants" {
+        let dir=PathBuf::from(&a[2]);let out=PathBuf::from(&a[3]);std::fs::create_dir_all(&out).unwrap();
+        let solar=solar_bins(&dir.join("solar.csv"));let zhang=dust_index(&dir.join("dust-ri.dat"));
+        let wb=read_index(&dir.join("ice.yml")).unwrap();
+        let w84=read_index(&dir.join("ice-warren1984.yml")).unwrap();
+        let picard=picard_merge(&wb,&read_picard(&dir.join("ice-picard2016-alpha.csv")).unwrap());
+        for (name,ice) in [("optics.bin",&wb),("optics-ice-warren1984.bin",&w84),("optics-ice-picard2016.bin",&picard)] {
+            let words=build(ice,&zhang,&solar,&quad);write_table(&out.join(name),&words);println!("generated {name}: {} words",words.len());
+        }
+        let rows=dust_rows(&dir);
+        let mut f=std::fs::File::create(out.join("dust-rows.bin")).unwrap();f.write_all(DUST_MAGIC).unwrap();
+        for v in &rows {f.write_all(&v.to_le_bytes()).unwrap();}drop(f);
+        decode_dust(&std::fs::read(out.join("dust-rows.bin")).unwrap()).unwrap();
+        println!("generated dust-rows.bin: {} words, four dust sets",rows.len());
+        return;
+    }
+    assert_eq!(a.len(),5,"snow-optics ICE.yml DUST.dat SOLAR.csv OUT.bin | --variants DATA_DIR OUT_DIR");
+    let ice=read_index(&PathBuf::from(&a[1])).unwrap();
+    let dust=dust_index(&PathBuf::from(&a[2]));let solar=solar_bins(&PathBuf::from(&a[3]));
+    let words=build(&ice,&dust,&solar,&quad);write_table(&PathBuf::from(&a[4]),&words);
+    println!("generated {} words: four habits, bubbles, BC, dust, Fresnel, internal mixing, microphysical aging; {} workers",TABLE_WORDS,workers());
 }

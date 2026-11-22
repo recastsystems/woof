@@ -3,7 +3,7 @@
 WRF input soil moisture uses volume fractions. Some upstream WPS workflows
 send layer water amounts to `real.exe` before converting them. The resulting
 `SMOIS` may still be labelled as volume fraction even though its values are
-wrong. WOOF recovers this cold-initialization case from the original source
+wrong. WOOF-ArWen recovers this cold-initialization case from the original source
 layers, converts their amounts using their own thicknesses, and then repeats
 the vertical interpolation. Dividing the final four WRF layers by their
 thicknesses would give a different, incorrect answer.

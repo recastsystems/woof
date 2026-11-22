@@ -108,7 +108,7 @@
   "numerics": "identical data for fast/strict, MPAS-A and RRFS",
   "platform": "portable-data",
   "release_assets": {
-    "repository": "FahrenheitResearch/gpuwm-hex",
+    "repository": "recastsystems/gpuwm-hex",
     "tag": "physics-resources-v0.4.1"
   },
   "resources": {

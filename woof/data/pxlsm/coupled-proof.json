@@ -181,7 +181,7 @@
       "namelist_input": "8ee68b8fdcf1795d5d9d690ebcbfbcc09852a358222a6f7e9413c0e83352e735",
       "nest_initial_code": "f2b878a7033aac37ead1dedcee6e96838734faf7c71c1134222388e725ab730e",
       "preparation_receipt": "ca4f1b079e36501dbc2a8716a3d25e698d445b4cd97769ca46612b67482159a7",
-      "soil_recovery_code": "b2e2f4bf367fb097a7314664324a32ddf117eba5975b34f3cdd71206596d2007",
+      "soil_recovery_code": "f8dcffafd57e31b153eeb326c89e14a76603259f4347ac8e12fe7159dbf43dcc",
       "state_adapter_code": "96ddfc1c581c729964e5798f4095dfb3499e418e835027e0e2cab99131243834",
       "surface_adapter_code": "d6636cbf416e808823eff6882fb09e8fb333d3bad558d71d6368402d28e4ed11",
       "wrfbdy": "46dac57816a68b0507226d3997462848d29db80426064b5bf83c16b248e17877",
@@ -227,7 +227,7 @@
             {
               "bias": -0.363330725108857,
               "count": 383,
-              "label": "WOOF PX",
+              "label": "WOOF-ArWen PX",
               "rmse": 1.716123560340984
             }
           ],
@@ -247,7 +247,7 @@
             {
               "bias": -0.03986948669912482,
               "count": 378,
-              "label": "WOOF PX",
+              "label": "WOOF-ArWen PX",
               "rmse": 1.8909414960897444
             }
           ],
@@ -267,7 +267,7 @@
             {
               "bias": 0.4514143600919724,
               "count": 382,
-              "label": "WOOF PX",
+              "label": "WOOF-ArWen PX",
               "rmse": 1.7316252679028727
             }
           ],

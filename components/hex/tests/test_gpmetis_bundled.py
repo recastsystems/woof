@@ -74,7 +74,7 @@ def test_vendored_metis_builds_and_partitions_with_the_door_options(tmp_path):
 def test_the_vendored_metis_tree_carries_no_copyleft_code():
     """The bundled METIS ships in a public Apache-2.0 package.
 
-    THE BREAKAGE THIS PREVENTS (licence law, 2026-10-14; coordinator ruling
+    THE BREAKAGE THIS PREVENTS (licence law, 2026-10-14;
     2026-10-16): METIS 5.1.0's GKlib/gk_mksort.h was LGPL-2.1+ code from glibc
     and went into the first bundled build. A file under GPL or LGPL text in
     third_party/metis-5.1.0 would put copyleft code in the public wheel.

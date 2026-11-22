@@ -1,0 +1,269 @@
+def cuda_source():
+    """The kernel source: the engine's float32 maths, the support header, the transcription, the entry.
+
+    expf/logf/powf/sinf are the engine's glibc transcriptions (the same words as
+    the referee's glibc 2.39). gamma() is the engine's correctly rounded
+    gfk_tgamma (docs/gf_gamma_known_delta.md), except in a strict proof run
+    against a glibc 2.39 referee, where it is that glibc's tgammaf words
+    (gf_wrf_tgamma). atanf and log10f are reached only by
+    calc_cldfraction_monan / calc_cu_reflectivity, which WRF v4.8.0's driver
+    never calls.
+    """
+    from woof.core import kernels
+    from woof import wrf_exact
+    here = Path(kernels.__file__).parent
+    header = (here / 'glibc_flt32.cuh').read_text() + '\n' + (here / 'gf_wrf_normalization.cuh').read_text()
+    if wrf_exact.referee_correctly_rounded_trig():
+        header = '#define GFL_REFEREE_CR_GAMMA 1\n' + header
+    trig = (here / 'glibc_trig_flt32.cuh').read_text()
+    double = (here / 'glibc_flt64.cuh').read_text()
+    extra = (here / 'thompson_aerosol_libm.cuh').read_text()
+    urban = (here / 'urban_bem.cuh').read_text()
+    log10 = urban[urban.index('// log10f: CORE-MATH'):urban.index('\n' + '__device__ ' + 'void bem_bem(')]
+    # The pinned transcription runs lane-interleaved (woof/core/gfl_lanes.py): placement
+    # only, the same operations in the same order.
+    from woof.core import gfl_lanes
+    return (header + '\n' + double + '\n' + extra + '\n' + trig + '\n' + log10 + '\n'
+            + gfl_lanes.lower(_SUPPORT, _SCHEME_SOURCE, _ENTRY))
+
+
+@lru_cache(maxsize=None)
+def _module(device):
+    """The transcription through the engine's cached no-FTZ loader (disk cache, kernel packs, manifest).
+
+    Every operation is spelled with an _rn intrinsic (GFReal), so fast and strict
+    numerics compile the same arithmetic for this unit.
+    """
+    import cupy as cp
+    from woof.core.kernels import compile_no_ftz
+    with cp.cuda.Device(device):
+        _spill_heap()
+        return compile_no_ftz(cuda_source(), module_key=MODULE_KEY, filename='gfl_873b414_lanes.cu', device=device)
+
+
+MODULE_KEY = 'woof.core.gfl_873b414.lanes'
+
+
+def _spill_heap():
+    """The device heap a deep column spills to (GFWorkspace.allocate), set before the first launch."""
+    import cupy as cp
+    import sys
+    limit = cp.cuda.runtime.cudaLimitMallocHeapSize
+    if cp.cuda.runtime.deviceGetLimit(limit) >= SPILL_HEAP_BYTES:
+        return
+    try:
+        cp.cuda.runtime.deviceSetLimit(limit, SPILL_HEAP_BYTES)
+    except cp.cuda.runtime.CUDARuntimeError as error:
+        print(f'woof: GFL spill heap stays at {cp.cuda.runtime.deviceGetLimit(limit):,} bytes ({error}); a '
+              'column deeper than its scratch share uses it', file=sys.stderr)
+
+
+@lru_cache(maxsize=None)
+def _saved_fct_error(device):
+    """fct1d3's SAVE error flag (module_cu_gfl_deep.F90:2641-2705), one per card for the run."""
+    import cupy as cp
+    with cp.cuda.Device(device):
+        return cp.zeros(1, dtype=cp.uint32)
+
+
+def launch_columns(fields, *, ncol, nz, saved_fct_error=None, vertical=None):
+    """Run WRF v4.8.0's cu_grell_freitas_li once per column, one column per thread.
+
+    Arrays are column-major batches: surface [ncol], level [ncol, nz+1] (WRF's
+    kms:kme allocation; the top word is held), scalars one-word arrays. dxcell may
+    be one word (WRF's single dx) or one word per column. Every inout field
+    belongs to the caller. The WRF bounds are kms=1, kme=nz+1, kds=1, kde=nz+1,
+    kts=1, kte=nz (first_rk_step_part1 passes KTE=min(k_end,kde-1)).
+
+    The level fields move into the kernel's lane placement ([slab][level][lane],
+    one fused copy) and every level word moves back after the call (one fused
+    copy), so callers holding [ncol, levels] arrays see the routine's words
+    unchanged. The forecast adapter (woof/core/gfl.py) packs straight into the
+    lane placement and calls :func:`launch_lane_columns`.
+    """
+    import cupy as cp
+    vertical = (1, nz + 1, 1, nz + 1, 1, nz) if vertical is None else tuple(int(v) for v in vertical)
+    levels = vertical[1] - vertical[0] + 1
+    names = [n for n in FIELDS if fields.get(n) is not None and _is_level(n)]
+    for name in names:
+        array = fields[name]
+        if (not isinstance(array, cp.ndarray) or array.dtype != cp.float32 or not array.flags.c_contiguous
+                or array.size != ncol * levels):
+            raise ValueError(f'GFL level {name} must be contiguous CUDA float32 [{ncol}, {levels}]')
+    device = cp.cuda.runtime.getDevice()
+    store = cp.empty((len(names),) + lane_shape(ncol, levels), dtype=cp.float32)
+    lane_fields = dict(fields)
+    for index, name in enumerate(names):
+        lane_fields[name] = store[index]
+    table = cp.asarray([fields[name].data.ptr for name in names], dtype=cp.uint64)
+    if names and ncol:
+        _relayout(device, table, store, ncol, levels, to_lanes=True)
+    out = launch_lane_columns(lane_fields, ncol=ncol, nz=nz, saved_fct_error=saved_fct_error, vertical=vertical)
+    if names and ncol:
+        _relayout(device, table, store, ncol, levels, to_lanes=False)
+    return out
+
+
+def _is_level(name):
+    return name not in SCALAR_FIELDS and name not in SURFACE_FIELDS
+
+
+def lane_shape(ncol, levels):
+    """The lane placement of one level field: [slab][level][lane], slab = column // LANES."""
+    return (-(-max(ncol, 1) // LANES), levels, LANES)
+
+
+def launch_lane_columns(fields, *, ncol, nz, saved_fct_error=None, vertical=None):
+    """:func:`launch_columns` on level fields already in the lane placement (:func:`lane_shape`).
+
+    Surface fields are [ncol] words and scalars one word, as for launch_columns.
+    One persistent launch: each 128-thread block is one slab of the column
+    scratch, and each warp takes the next 32 columns from a counter until none
+    are left (columns are independent; each runs the complete source order from
+    a fresh workspace), so there is no tile loop, no idle tail and no host sync.
+    """
+    import cupy as cp
+    import numpy as np
+    vertical = (1, nz + 1, 1, nz + 1, 1, nz) if vertical is None else tuple(int(v) for v in vertical)
+    levels = vertical[1] - vertical[0] + 1
+    device = cp.cuda.runtime.getDevice()
+    if saved_fct_error is None:
+        saved_fct_error = _saved_fct_error(device)
+    shape = lane_shape(ncol, levels)
+    pointers, strides = [], []
+    for name in FIELDS:
+        array = fields.get(name)
+        if array is None and name in ('gdc', 'gdc2', 'rthften', 'rqvften'):
+            pointers.append(0); strides.append(0); continue
+        dtype = cp.int32 if name in INTEGER_FIELDS else cp.float32
+        if not isinstance(array, cp.ndarray) or array.dtype != dtype:
+            raise ValueError(f'GFL {name} must be CUDA {dtype}')
+        if name in SCALAR_FIELDS or (name == 'dxcell' and array.size == 1):
+            if array.size != 1:
+                raise ValueError(f'GFL scalar {name} must contain one word')
+            stride = 0
+        elif name in SURFACE_FIELDS:
+            if not array.flags.c_contiguous or array.size != ncol:
+                raise ValueError(f'GFL surface {name} must contain one contiguous word per column')
+            stride = LANES * array.itemsize
+        else:
+            if tuple(array.shape) != shape or not array.flags.c_contiguous:
+                raise ValueError(f'GFL level {name} must be contiguous lane placement {shape}')
+            stride = levels * LANES * array.itemsize
+        pointers.append(array.data.ptr); strides.append(stride)
+    diagnostics = cp.zeros(ncol, dtype=cp.uint32)
+    highwater = cp.zeros(ncol, dtype=cp.uint64)
+    if ncol == 0:
+        return {'diagnostics': diagnostics, 'scratch_highwater': highwater, 'saved_fct_error': saved_fct_error}
+    capacity = _share_bytes(levels, vertical[5] - vertical[4] + 1)
+    kernel = _module(device).get_function('gfl_lane_columns')
+    blocks, scratch = _column_scratch(device, kernel, -(-ncol // LANES), capacity)
+    table = cp.asarray(np.asarray(pointers + strides, dtype=np.uint64))
+    kernel((blocks,), (LANES,), (np.int64(ncol), table[:len(FIELDS)], table[len(FIELDS):], scratch,
+           np.uint64(capacity), np.uint64(SPILL_SHARES * capacity), diagnostics, highwater,
+           _vertical_words(device, vertical), saved_fct_error, _next_column(device)))
+    return {'diagnostics': diagnostics, 'scratch_highwater': highwater, 'saved_fct_error': saved_fct_error,
+            'tables': table, 'blocks': blocks, 'share_bytes': capacity}
+
+
+def _next_column(device):
+    """The launch's column counter (each warp takes the next 32 columns), zeroed on the stream before the launch."""
+    import cupy as cp
+    held = _NEXT.get(device)
+    if held is None:
+        with cp.cuda.Device(device):
+            held = _NEXT[device] = cp.zeros(1, dtype=cp.uint64)
+    held.fill(0)
+    return held
+
+
+_NEXT = {}
+
+
+@lru_cache(maxsize=None)
+def _vertical_words(device, vertical):
+    import cupy as cp
+    with cp.cuda.Device(device):
+        return cp.asarray(vertical, dtype=cp.int32)
+
+
+#: Columns per slab (one 128-thread block); gfl_lanes.LANES.
+LANES = 128
+#: Contiguous character bytes per lane (ierrc, ierrcm, ierrcs); gfl_lanes.CHARACTER_BYTES.
+CHARACTER_BYTES = 256
+#: Scratch sizing: one formula with the admission (gfl_lanes.scratch_bytes,
+#: priced by woof.core.preflight.gf_column_workspace_bytes). A column that needs
+#: more than its share continues in its slab's spill block of SPILL_SHARES shares
+#: per lane, so it stays exact and running.
+from woof.core.gfl_lanes import (SCRATCH_CAP_BYTES, SHARE_BYTES_PER_LEVEL, SHARE_BYTES_FIXED,  # noqa: E402,F401
+                                  scratch_blocks as _scratch_blocks, share_bytes as _lane_share_bytes)
+SPILL_SHARES = 2
+#: The device heap the spill blocks come from.
+SPILL_HEAP_BYTES = 256 << 20
+_SCRATCH = {}
+
+
+def _share_bytes(storage_levels, compute_levels):
+    return _lane_share_bytes(storage_levels, compute_levels)
+
+
+def _column_scratch(device, kernel, slabs, capacity):
+    """Blocks of the persistent launch and their scratch, kept for the run.
+
+    As many 128-column slabs as the domain has, but no more than the card keeps
+    resident at once (the compiled kernel's occupancy x SMs), within
+    SCRATCH_CAP_BYTES and a quarter of the free memory (gfl_lanes.scratch_blocks).
+    Before 2026-11-09 it always took the card's whole resident count, so a 150 x 150
+    domain held 494 slabs (4 GiB on a 96 GB card) to launch 176. A larger domain
+    later in the run grows it once. The block count changes no output word:
+    columns are independent and each starts from a fresh workspace.
+    """
+    import cupy as cp
+    per_slab = (capacity + CHARACTER_BYTES) * LANES
+    slabs = max(int(slabs), 1)
+    held = _SCRATCH.get(device)
+    if held is None or held[1] != capacity or (not held[3] and held[0] < slabs):
+        resident = cp.cuda.driver.occupancyMaxActiveBlocksPerMultiprocessor(kernel.ptr, LANES, 0)
+        sms = cp.cuda.runtime.getDeviceProperties(device)['multiProcessorCount']
+        free, _ = cp.cuda.runtime.memGetInfo()
+        if held is not None:
+            free += held[2].nbytes  # the held block is given back before the new one is taken
+        _SCRATCH.pop(device, None)
+        held = None
+        blocks = _scratch_blocks(slabs, per_slab, resident_per_sm=resident, sms=sms, free=free)
+        # full: the card's cap, not the domain, set the count, so a larger domain cannot grow it.
+        held = _SCRATCH[device] = (blocks, capacity, cp.empty(blocks * per_slab, dtype=cp.uint8),
+                                   blocks < slabs)
+    return min(held[0], slabs), held[2]
+
+
+_RELAYOUT = r"""
+extern "C" __global__ void gfl_relayout(const unsigned long long* sources, float* store, long long ncol,
+                                        int levels, int to_lanes, long long total){
+  // store is [field][slab][level][lane]; sources[field] is [column][level]. Exact word copies.
+  const long long slabs=(ncol+127)/128;
+  for(long long i=(long long)blockIdx.x*blockDim.x+threadIdx.x;i<total;i+=(long long)gridDim.x*blockDim.x){
+    const long long lane=i%128, k=(i/128)%levels, slab=i/(128LL*levels);
+    const long long f=slab/slabs, col=(slab%slabs)*128+lane;
+    float* source=(float*)sources[f];
+    if(to_lanes) store[i]=col<ncol?source[col*levels+k]:0.0f;
+    else if(col<ncol) source[col*levels+k]=store[i];
+  }
+}
+"""
+
+
+@lru_cache(maxsize=None)
+def _relayout_kernel(device):
+    import cupy as cp
+    with cp.cuda.Device(device):
+        return cp.RawKernel(_RELAYOUT, 'gfl_relayout')
+
+
+def _relayout(device, sources, store, ncol, levels, *, to_lanes):
+    """[ncol, levels] <-> lane placement for every level field in one launch."""
+    import numpy as np
+    total = store.size
+    _relayout_kernel(device)((min(65535, -(-total // 256)),), (256,),
+                             (sources, store, np.int64(ncol), np.int32(levels), np.int32(1 if to_lanes else 0),
+                              np.int64(total)))

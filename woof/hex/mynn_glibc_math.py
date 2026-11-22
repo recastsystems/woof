@@ -1,6 +1,6 @@
 """Assemble shared glibc device arithmetic for RKIND MYNN callers.
 
-Existing WOOF headers are read from the pinned engine, without modifying them.
+Existing WOOF-ArWen headers are read from the pinned engine, without modifying them.
 New CORE-MATH erff/log10f text is shared here. No CUDA libm fallback is used.
 """
 from importlib.resources import files

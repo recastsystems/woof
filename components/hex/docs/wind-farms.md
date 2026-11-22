@@ -28,7 +28,7 @@ Rows without usable capacity are excluded and counted; generic class geometry
 fills missing hub/rotor dimensions and is marked as imputed in the table.
 
 The MPAS physics route requires `bl_mynn`, with its default every-step PBL
-cadence. The WOOF route uses the same forcing with `bl_pbl_physics=5` and
+cadence. The WOOF-ArWen route uses the same forcing with `bl_pbl_physics=5` and
 `bldt=0`. Other PBL schemes have no coupled turbine TKE carrier and are
 refused. A held PBL tendency would repeat momentum drag without matching
 TKE and is also refused. The initial implementation uses resident,

@@ -44,6 +44,32 @@ def test_every_nest_field_kind_has_a_scratch_lifetime_row():
                     scratch_slot_uses_arena(f"nest_{kind}_{prefix}{side}")
 
 
+def test_every_microphysics_selector_has_its_nest_kinds_audited():
+    # 3.0.0 candidate: `woof domain --ladder 12-3` with microphysics tempo died with
+    # KeyError: scratch slot 'nest_volg_bxs' has no lifetime audit row.  The three
+    # selectors above did not include a named scheme; this walks every selector the
+    # configuration accepts, so a scheme that gains a transported species and no
+    # audit row fails here and not at a user's front door.
+    from woof.core.nest_fields import nest_field_kinds
+    from woof.core.preflight import scratch_slot_lifetime
+    from woof.microphysics_schemes import NAMED_MP_IDS
+    missing = {}
+    walked = 0
+    for mp_physics in sorted(set(range(130)) | {int(i) for i in NAMED_MP_IDS}):
+        try:
+            kinds = nest_field_kinds(replace(config(), mp_physics=mp_physics))
+        except Exception:  # a selector this configuration does not accept
+            continue
+        walked += 1
+        bad = [kind for kind in kinds
+               if scratch_slot_lifetime(f"nest_{kind}_bxs") is None]
+        if bad:
+            missing[mp_physics] = bad
+    assert walked > 30
+    assert 900 in NAMED_MP_IDS and "volg" in nest_field_kinds(replace(config(), mp_physics=900))
+    assert missing == {}
+
+
 def test_dry_scalar_prices_the_existing_pd_and_mass_flux_slots():
     from woof.core.preflight import scratch_slot_registry, scratch_slot_lifetime
     cfg = replace(config(), moist=False, mp_physics=0)

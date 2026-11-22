@@ -1,0 +1,9 @@
+{
+  "_doc": "Fixed colour ladders the renderer fits to the field they colour, one row per filled field. Read by rustwx-products/src/plot_design.rs (fitted_scale_row, fit_scale_to_field) for the WeatherTemperature fills. A row with min_bands 0 moves the fixed ladder onto a field that lies outside it and leaves a field inside it byte for byte (the isobaric rule). A row with min_bands N also fits a field that lies inside the ladder but spans (2nd to 98th percentile) fewer than N of its bands: the ladder is re-cut on a 1-2-5 step, no finer than min_step, so the field itself spans at least N bands, with a 1.6x margin, and the same palette is resampled over it, cold to warm. Without that a small grid's field is one flat colour. A field wide enough keeps the fixed ladder byte for byte, so ordinary maps and their comparability are untouched; a fitted map's legend states its own range.",
+  "rows": [
+    { "field": "temperature", "vertical": "isobaric", "min_bands": 0,
+      "why": "A tropical 300 hPa field lies above the fixed -70..-29 C ladder: Milton's d02 drew one saturated colour (2.9.4 rolling pass)." },
+    { "field": "temperature", "vertical": "height_agl", "height_m": 2, "min_bands": 6, "min_step": 0.1,
+      "why": "A fine nest-down grid spans 1-2 F of the fixed -60..120 F ladder and drew one flat colour (WOOF run_fb311a6e58ed14bd and run_5a3000b4e85579c1, 1 km / 333 m / 111 m, 2026-11-10)." }
+  ]
+}

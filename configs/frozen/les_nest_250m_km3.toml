@@ -16,7 +16,7 @@
 #
 # READ docs/public/LES.md BEFORE TRUSTING OUTPUT FROM THIS FILE.  In
 # particular:
-#   * the vertical grid is shared by every domain -- WOOF rejects
+#   * the vertical grid is shared by every domain -- WOOF-ArWen rejects
 #     per-domain vertical keys by construction -- so the 250 m child runs
 #     its 3 km grandparent's 49 levels, about 17 m at the first level and
 #     ~250 m at 3 km.  Vertical resolution, not dx, is what makes this a
@@ -28,7 +28,7 @@
 #
 # The `[fetch]` block at the end names the HRRR cycle this tree was built
 # and measured against.  Point it at another cycle and the geometry still
-# holds; the receipts in docs/superpowers/receipts/les/ do not.
+# holds; the receipts in docs/internal/receipts/les/ do not.
 [experiment]
 name = "les_nest_250m_km3"
 start_time = 2026-08-01T16:00:00

@@ -11451,7 +11451,7 @@ class MynnEdmfCuda:
     """
 
     def __init__(self, shared_math_source: str | None = None, *, batch_columns: int | None = None,
-                 compiled_image: bytes | None = None):
+                 compiled_image: bytes | None = None, corrections=()):
         """Wrapper binding; MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:17-653.
 
         ``batch_columns`` None sizes each launch from the device memory the per-column automatic-storage arena
@@ -11470,14 +11470,26 @@ class MynnEdmfCuda:
         self._module = self._kernel = None
         self._kernels = {}
         self._lane_widths = {}
-        self.compiled_image = compiled_image
+        # Correct mode (fork_corrections): a corrected source cannot use the exact precompiled image.
+        self.corrections = tuple(sorted(set(corrections or ()) & set(CORRECTIONS)))
+        self.compiled_image = None if self.corrections else compiled_image
 
     def _compile(self):
         """Compile wrapper; MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:17-653."""
         import cupy as cp
         from cupy_backends.cuda.libs import nvrtc
         from woof.hex.cuda_fp32 import CUDA_FTZ_HELPERS
-        source = CUDA_FTZ_HELPERS + self.shared_math_source + ARRAY_SUPPORT + MODULE_CUDA
+        source = CUDA_FTZ_HELPERS + self.shared_math_source + ARRAY_SUPPORT + module_cuda(self.corrections)
+        from woof.hex.mynn_glibc_math import mynn_glibc_source
+        if self.corrections and self.compiled_image is None and self.shared_math_source == mynn_glibc_source():
+            # Correct mode: the corrected image, compiled once per source, options and device into the
+            # physics-resources cache (resources_build.build_mynnedmf_image), as the exact image is.  THE COST
+            # THIS REMOVES: an NVRTC build of the whole module (minutes) at the first PBL call of every run.
+            from pathlib import Path
+            from woof.hex.mpasphys.resources_build import build_mynnedmf_image, default_cache
+            built = build_mynnedmf_image(default_cache(), module=__name__.split('woof.hex.mpasphys.', 1)[1],
+                                         corrections=self.corrections)
+            self.compiled_image = Path(built['image']).read_bytes()
         if self.compiled_image is not None:
             self._module = cp.cuda.function.Module()
             self._module.load(self.compiled_image)
@@ -11723,7 +11735,7 @@ def run_pbl(backend: MynnEdmfCuda, common_arguments: Mapping, fields: Mapping,
 
 def register_backend(registry, callback) -> None:
     """Register fork branch; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_pbl.F:1535-1663."""
-    registry.register('pbl', 'bl_mynnedmf', 'hex-cuda', callback)
+    registry.register('pbl', 'bl_mynnedmf', 'hex-cuda', callback, corrections=CORRECTIONS)
 
 
 # RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_pbl.F:1593-1663
@@ -11860,9 +11872,10 @@ def bind_native_pools(provider, call):
                     for name in sorted(fields)} for pool, fields in names.items()}
     if not hasattr(provider, '_rrfs_mynnedmf_backend'):
         image = getattr(provider, '_rrfs_mynnedmf_image', None)
-        if image is None:
+        corrections = tuple(set(getattr(call, 'corrections', ())) & set(CORRECTIONS))
+        if image is None and not corrections:
             raise RuntimeError('MYNN native callback requires its strict precompiled CUDA resource')
-        provider._rrfs_mynnedmf_backend = MynnEdmfCuda(compiled_image=image)
+        provider._rrfs_mynnedmf_backend = MynnEdmfCuda(compiled_image=image, corrections=corrections)
         provider._rrfs_mynnedmf_common_kernels = driver.StrictPhysicsKernelCache()
     return {'mynnedmf_native': {'native': native, 'prepared': prepared,
             'lower': lower, 'pools': pools, 'metadata': metadata,
@@ -11901,3 +11914,60 @@ def run_slot(call):
             native.put_field(pool, name, value, level=1,
                              nlevels=native._fields[pool, name][2])
     return result
+
+
+# ---------------------------------------------------------------------------------------------------
+# Correct mode: the fork corrections this scheme carries (woof.hex.mpasphys.rrfs.fork_corrections).
+# Exact mode never calls module_cuda with an id: its source is MODULE_CUDA byte for byte.
+# ---------------------------------------------------------------------------------------------------
+#: The fork correction ids this implementation applies (declared in the suite table's cuda_entries row).
+CORRECTIONS = ("MY1", "MY2", "MY3", "MY4", "MY5")
+#: MY1 (MYNN-EDMF f3c9d9e): the surface vapour-flux limiter, upstream's
+#: max(qvflux, min(1e-8 - p9*sqv(kts), 0)/(dtz(kts)*rhosfc*rhoinv(kts))), in its Fortran evaluation order.
+_MY1 = ('qvflux = mynn_max((float)(qvflux), (float)(r6_div(mynn_min((float)(r6_sub(r6_mul(0.9f, sqv(kts)), 1e-8f)), (float)(zero)), dtz(kts))));',
+        'qvflux = mynn_max((float)(qvflux), (float)(r6_div(mynn_min((float)(r6_sub(1e-8f, r6_mul(0.9f, sqv(kts)))), (float)(zero)), r6_mul(r6_mul(dtz(kts), rhosfc), rhoinv(kts)))));')
+
+
+#: MY2 (MYNN-EDMF eb5029c): rhosfc = psfc/(R_d*tk(kts)*(one+p608*qv(kts))), in its Fortran evaluation order.
+_MY2 = ('rhosfc = r6_div(psfc, r6_mul(r_d, r6_add(tk(kts), r6_mul(p608, qv(kts)))));',
+        'rhosfc = r6_div(psfc, r6_mul(r6_mul(r_d, tk(kts)), r6_add(one, r6_mul(p608, qv(kts)))));')
+
+
+#: MY3 (MYNN-EDMF e447691, in v6.1.0): the ice branch's theta tendency takes the mixed cloud water and ice (sqc2,
+#: sqi2), as the liquid-only branch and dqc / dqi already do. The pinned text used the values from before mixing.
+_MY3 = ('dth(k) = r6_div(r6_sub(r6_add(r6_add(thl(k), r6_mul(r6_div(xlvcp, exner(k)), sqc(k))), r6_mul(r6_div(xlscp, exner(k)), sqi(k))), th(k)), delt);',
+        'dth(k) = r6_div(r6_sub(r6_add(r6_add(thl(k), r6_mul(r6_div(xlvcp, exner(k)), sqc2(k))), r6_mul(r6_div(xlscp, exner(k)), sqi2(k))), th(k)), delt);')
+
+
+#: MY4 (MYNN-EDMF 87af8c6, the unified driver): the driver turns the mixed specific contents of cloud water, ice and
+#: snow back into mixing ratios with 1/(1 - sqv), the inverse of its own sq = q/(1 + qv); the pinned driver used
+#: (1 + sqv). One pair per species, each once in the text.
+_MY4 = tuple((f'rq = r6_mul({s}(k), r6_add(1.f, sqv(k)));', f'rq = r6_div({s}(k), r6_sub(1.f, sqv(k)));')
+             for s in ('sqc', 'sqi', 'sqs'))
+
+
+#: MY5 (MYNN-EDMF 27da0f0, in v6.1.0), two parts: the surface potential temperature is ts over the surface
+#: Exner function (exnerg), not over the lowest level's; and the second PBL-height search starts at the level
+#: above the minimum virtual temperature (kthv + 1), not at kts + 1 (the pinned text set k = kthv + 1 and then
+#: overwrote it in the loop head).
+_MY5 = (('th_sfc = r6_div(ts, ex1(kts));', 'th_sfc = r6_div(ts, exnerg);'),
+        ('k = ((kthv) + (1));\n// MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6328\nfor (k=((kts) + (1)); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {',
+         '// MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/module_bl_mynnedmf.F90:6328\nfor (k=mynn_max((int)(((kthv) + (1))), (int)(((kts) + (1)))); (1) > 0 ? k <= (((kte) - (1))) : k >= (((kte) - (1))); k += (1)) {'))
+
+
+def module_cuda(corrections=()) -> str:
+    """MODULE_CUDA with the MYNN corrections in ``corrections`` applied (MODULE_CUDA itself when none)."""
+    source = MODULE_CUDA
+    wanted = set(corrections or ())
+    for finding, pairs in (("MY1", (_MY1,)), ("MY2", (_MY2,)), ("MY3", (_MY3,)), ("MY4", _MY4), ("MY5", _MY5)):
+        if finding in wanted:
+            for pair in pairs:
+                if source.count(pair[0]) != 1:
+                    raise ValueError(f"MYNN correct mode: {finding} anchor found {source.count(pair[0])} times")
+                source = source.replace(*pair)
+    return source
+
+
+# WOOF_HEX_AD_PARAMS (default unset: nothing changes) runs the forward at chosen values of the carried constants.
+from .. import ad_params_override as _ad_params_override
+_ad_params_override.patch_module(globals(), "mynnedmf")

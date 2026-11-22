@@ -139,7 +139,7 @@ def _saturation_cap(read, staged, checked):
     with ``Pi = (p/P0)**(Rd/cp)``, and the resulting temperature is
     ``(theta + dthp) * Pi`` at the background's pressure (the write
     precedes the refresh that moves ``p``).  Saturation is over liquid
-    water (:func:`woof.da.hotstart.saturation_mixing_ratio`, Bolton), the
+    water (:func:`liquid_saturation_mixing_ratio`, Bolton), the
     bound a scheme's own condensation acts on; supersaturation over ice is
     left to the scheme.  The limit at a cell is that saturation times the
     background's own supersaturation ratio where it held one, and the cap
@@ -160,7 +160,7 @@ def _saturation_cap(read, staged, checked):
                         "thp or qv the increment moved; the excess is "
                         "removed"),
                "reference": ("liquid water, Bolton "
-                             "(woof.da.hotstart.saturation_mixing_ratio)"),
+                             "(woof.ensemble.increments.liquid_saturation_mixing_ratio)"),
                "temperature": ("equation of state of the background, "
                                "T = p*alt/(Rd*(1+(Rv/Rd)*qv)), plus the "
                                "increment's thp times the Exner function "
@@ -179,6 +179,23 @@ def _saturation_cap(read, staged, checked):
         return _saturation_cap_blocks(xp, arrays, staged, checked, receipt)
 
 
+def liquid_saturation_mixing_ratio(temperature, pressure):
+    """Saturation mixing ratio over liquid water (kg/kg), Bolton/Tetens.
+
+    ``es = 1000*SVP1*exp(SVP2*(T-SVPT0)/(T-SVP3))`` and ``qs = EP2*es/(p - es)``,
+    with the denominator held at 1 Pa or more so a cell whose saturation
+    vapour pressure exceeds its pressure never gives a negative ratio.  The
+    same arithmetic as the liquid phase of the reflectivity nudging module
+    that 3.0.3 removed with the local data assimilation.
+    """
+    from woof.core import constants as c
+
+    xp = _array_module(temperature)
+    es = (1000.0 * c.SVP1
+          * xp.exp(c.SVP2 * (temperature - c.SVPT0) / (temperature - c.SVP3)))
+    return c.EP2 * es / xp.maximum(pressure - es, 1.0)
+
+
 def saturation_limit(xp, pressure, inverse_density, vapour, theta_increment,
                      *, with_ratio=False):
     """The most vapour a cell may hold after an increment, float64 in ``xp``.
@@ -195,7 +212,6 @@ def saturation_limit(xp, pressure, inverse_density, vapour, theta_increment,
     the cap finds at its limit.
     """
     from woof.core import constants as c
-    from woof.da.hotstart import saturation_mixing_ratio
 
     p = pressure.astype(xp.float64)
     q0 = vapour.astype(xp.float64)
@@ -207,10 +223,8 @@ def saturation_limit(xp, pressure, inverse_density, vapour, theta_increment,
                              + theta_increment.astype(xp.float64)
                              * (p / c.P0) ** c.RCP)
     ratio = xp.maximum(
-        q0 / saturation_mixing_ratio(temperature_before, p,
-                                     phase="liquid"), 1.0)
-    limit = saturation_mixing_ratio(temperature_after, p,
-                                    phase="liquid") * ratio
+        q0 / liquid_saturation_mixing_ratio(temperature_before, p), 1.0)
+    limit = liquid_saturation_mixing_ratio(temperature_after, p) * ratio
     return (limit, ratio) if with_ratio else limit
 
 

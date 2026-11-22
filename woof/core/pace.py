@@ -119,7 +119,7 @@ UNPRICED = _Unpriced()
 
 #: Every rate below is quoted per column at this level count, and scales
 #: LINEARLY in ``nz``.  That is measured, not assumed: the P2 LES sweep
-#: (``docs/superpowers/receipts/les/p2-nz-tier-2026-08-04``) ran nz =
+#: (``docs/internal/receipts/les/p2-nz-tier-2026-08-04``) ran nz =
 #: 64/96/128/160/192 on one card and ``steps/s x nz`` came out 8,743 /
 #: 9,146 / 9,102 / 9,042 / 8,915 -- 4.5% peak to peak across a 3x range.
 #: "Throughput scales as the level count and no faster", in the
@@ -976,7 +976,7 @@ def estimate_pace(exp, *, streamed=UNPRICED, machine=None,
     parts.append(
         f"rates are per column at nz={REFERENCE_NZ} and scale linearly in "
         "nz (MEASURED: steps/s x nz is constant to 4.5% over nz 64-192, "
-        "docs/superpowers/receipts/les/p2-nz-tier-2026-08-04).  One box "
+        "docs/internal/receipts/les/p2-nz-tier-2026-08-04).  One box "
         "varies up to 30% between sessions, so this is a BRACKET and never "
         "an exact figure")
     return PaceEstimate(

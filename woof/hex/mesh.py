@@ -108,7 +108,7 @@ def _regional_boundary_zone_present(arrays: Mapping[str, Any]) -> bool:
     """True when the complete mask triple carries at least one ring element.
 
     THE BREAKAGE THIS PREVENTS (measured 2026-08-26, ``v20.80.151649`` on
-    the proving RTX 5090): an all-zero triple is MPAS's global convention and the
+    an RTX 5090): an all-zero triple is MPAS's global convention and the
     unified ``rw_mpas_static`` writes it on every generated static, so
     classifying on PRESENCE refused every generated global mesh at load --
     "not a bounded disk: nCells-nEdges+nVertices = 2, not 1" and "rings
@@ -617,7 +617,7 @@ def regional_ring_shell_errors(
     the boundary blend has a hole nothing announces.
 
     THIS REPLACES A TEST THAT DID NOT IMPLY ITS OWN CLAIM, and the counter-
-    example is measured (2026-08-27, the proving RTX 5090, evidence/nest-ratio-20260827/).
+    example is measured (2026-08-27, an RTX 5090, evidence/nest-ratio-20260827/).
     The check here used to be that ring POPULATIONS grow outward, on the
     stated reasoning that "each ring wraps the previous in a growing shell".
     Populations are a proxy for wrapping on a UNIFORM mesh only, and the only
@@ -1287,6 +1287,30 @@ def normalize_longitudes(source: Any) -> NDArray[np.float64]:
     return normalized
 
 
+def _descends_through_static(grid_id: str, parents: list[str], static_path: str | Path | None) -> bool:
+    """True when the overlay descends from the grid through the run's own static file.
+
+    woof's ``rw_mpas_init`` (the 3.0 line) writes an init's ``parent_id`` as the one file it was built
+    from (the static, or the vertical capsule that carries the static's id), not the newline chain that
+    MPAS-Model-rrfs appends. So an init made by ``woof hex init`` or ``init-source`` names the static,
+    and the static names the grid. THE BREAKAGE THIS PREVENTS (rehearsal HX7, 2026-11-16, sealed 0.6.0
+    with PyPI gpuwm 3.0.2): the manual's quickstart forecast (the published x1.40962 grid as --grid, its
+    static as --static, an init built on that pair) was refused before its first step, "static parent_id
+    does not match grid file_id", although grid, static and init are one lineage. The static must still
+    name the grid in its own chain, and the overlay must name the static, so a foreign init still refuses.
+    """
+
+    if static_path is None:
+        return False
+    try:
+        with Dataset(Path(static_path).expanduser()) as static:
+            static_id = str(getattr(static, "file_id", "")).strip()
+            static_parents = str(getattr(static, "parent_id", "")).splitlines()
+    except (OSError, RuntimeError):
+        return False
+    return bool(static_id) and static_id in parents and grid_id in [p.strip() for p in static_parents]
+
+
 class Mesh:
     """In-memory MPAS mesh with canonical Python connectivity.
 
@@ -1380,6 +1404,7 @@ class Mesh:
         native_parent_chain: bool = False,
         exclude_variables: frozenset[str] = frozenset(),
         _grid_reader: Callable[[Path], _NetCDFData] | None = None,
+        lineage_static: str | Path | None = None,
     ) -> "Mesh":
         """Load an official MPAS grid and optionally overlay a static file.
 
@@ -1446,7 +1471,8 @@ class Mesh:
             # at 1d6e370e appends inherited IDs with NEW_LINE('A').
             # Only the explicitly selected fork accepts this native lineage.
             parents = parent_id.splitlines() if native_parent_chain else [parent_id]
-            if grid_id and parent_id and grid_id not in parents:
+            if (grid_id and parent_id and grid_id not in parents
+                    and not _descends_through_static(grid_id, parents, lineage_static)):
                 raise MeshValidationError(
                     "static parent_id does not match grid file_id: "
                     f"{parent_id!r} != {grid_id!r}"
@@ -1604,7 +1630,7 @@ class Mesh:
         triple_complete = len(bdy_present) == len(REGIONAL_BOUNDARY_MASK_NAMES)
         # THE BREAKAGE THIS PREVENTS, MEASURED (2026-08-26, all three fleet
         # cards on the published x1.40962 at the anchored 120 s timestep, and
-        # v20.80.151649 on the proving RTX 5090): carrying the triple is NECESSARY
+        # v20.80.151649 on an RTX 5090): carrying the triple is NECESSARY
         # for a mesh to be regional and it is not SUFFICIENT.  Native MPAS-A
         # writes bdyMaskCell/Edge/Vertex into the static file of a GLOBAL mesh
         # too, all zero -- the published x1.40962 static (NCAR,

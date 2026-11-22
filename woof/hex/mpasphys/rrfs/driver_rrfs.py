@@ -15,6 +15,8 @@ from typing import Any, Iterable, Mapping
 from ...config import parse_fortran_namelist
 from ...physics_suites import load_table
 from .. import driver_v842 as shared
+from .fork_corrections import (FORK_CORRECTIONS, OWNER as _FORK_OWNER, TEMPO_MODULES as _TEMPO_MODULES,
+                               active as _fork_active, carried as _fork_carried)
 from ...cuda_backend.runtime import KernelCache
 from ...native_powf import CUDA_NATIVE_POWF
 from ..math_v842 import bind_common_carrier_math
@@ -307,9 +309,29 @@ class DriverConfig(shared.DriverConfig):
             return None
         lines = [f"CORRECT MODE: named gaps ({len(self.gaps)}): selected fork behavior retained"]
         for gap in self.gaps:
-            lines.append(f"CORRECT MODE:   {gap.finding} on {gap.slot}: {gap.reason}; "
-                         f"owner {gap.owner}. {gap.breakage}")
+            # The gap and its reason only; the run record's gap rows also say which part of hex closes it.
+            lines.append(f"CORRECT MODE:   {gap.finding} on {gap.slot}: {gap.reason}. {gap.breakage}")
+        lines.append("CORRECT MODE:   applied fork corrections: "
+                     + (", ".join(sorted(self.corrections)) or "none"))
+        held = self.fork_carried()
+        if held:
+            lines.append("CORRECT MODE:   already in the running scheme versions: "
+                         + ", ".join(f"{finding} ({module})" for finding, module in held))
         return "\n".join(lines)
+
+    def fork_carried(self) -> tuple[tuple[str, str], ...]:
+        """(finding, module) for each fork correction the running scheme version carries in its own text."""
+        if self.mode == "exact":
+            return ()
+        spec = specification(self)
+        live = {s: b for s, b in self.backends.items() if self.active(s)}
+        return _fork_carried(self.selectors, live, Backend.HEX_CUDA, Backend.OFF,
+                             _running_modules(spec, self.selectors, self.backends, self.options,
+                                              getattr(self, "mynn_version", "pinned")))
+
+    def mynn_version_line(self) -> str | None:
+        """The start-up line naming the MYNN suite version this run executes (``MYNN SUITE VERSION:``)."""
+        return _mynn_version_line(self)
 
     def receipt(self) -> dict[str, Any]:
         """Resolved fork identity; MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_control.F:133-183."""
@@ -325,10 +347,60 @@ class DriverConfig(shared.DriverConfig):
                 "backends": {s: str(b) for s, b in self.backends.items()}}
         if self.cpu_slots:
             result["cpu_slots"] = [item.as_dict() for item in self.cpu_slots]
+        if self.mynn_version != "pinned":
+            version = spec["mynn_versions"]["versions"][self.mynn_version]
+            result["mynn_version"] = self.mynn_version
+            result["submodule_pins"].update(version.get("submodule_pins", {}))
+            result["mynn_version_modules"] = {f"{slot}/{scheme}": entry["module"]
+                for slot, entries in version.get("cuda_entries", {}).items() for scheme, entry in entries.items()}
+        if getattr(self, "closure", None):
+            # The surface or boundary-layer closure (rrfs/closures), only when one is on.
+            result["closure"] = dict(self.closure)
         if self.mode != "exact":
             result.update(physics_mode=self.mode, corrections=sorted(self.corrections),
                           correct_skip=sorted(self.correct_skip), correct_mode=self.correct_mode_record())
+            # The fork corrections the running scheme versions already carry (fork_corrections carried_by).
+            result["correct_mode"]["in_scheme_versions"] = {f: m for f, m in self.fork_carried()}
         return result
+
+
+def _running_modules(spec, selectors, backends, options, mynn_version) -> dict[str, str]:
+    """slot -> the version module a hex-cuda slot runs in place of its pinned scheme (fork_corrections carried_by).
+
+    The MYNN slots take the modules of the run's MYNN version row; TEMPO takes the module of its
+    ``config_tempo_version``.  A slot on its pinned scheme, or off hex-cuda, is absent."""
+    running = {}
+    versions = spec.get("mynn_versions")
+    if versions and mynn_version != "pinned":
+        for slot, entries in versions["versions"][mynn_version].get("cuda_entries", {}).items():
+            entry = entries.get(selectors.get(slot))
+            if entry and backends.get(slot) == Backend.HEX_CUDA:
+                running[slot] = entry["module"]
+    tempo = _TEMPO_MODULES.get(str(options.get("config_tempo_version", "")).strip())
+    if tempo and tempo != "rrfs.tempo_v303" and selectors.get("microphysics") == "mp_tempo" \
+            and backends.get("microphysics") == Backend.HEX_CUDA:
+        running["microphysics"] = tempo
+    return running
+
+
+def _fork_physics_mode(groups, physics_mode, correct_skip):
+    """shared._physics_mode with the fork correction ids (fork_corrections) accepted in the skip list.
+
+    THE BREAKAGE THIS PREVENTS: the v8.4.2 parser refuses an id it does not know, so a correct-mode run could not
+    skip one fork correction (the A/B arm of a fix) without leaving correct mode."""
+    fork = set(FORK_CORRECTIONS)
+    nhyd = dict(groups.get("nhyd_model", {}))
+    key = next((k for k in nhyd if k.casefold() == "config_physics_correct_skip"), None)
+    names = ({s.strip() for s in str(nhyd[key]).split(",") if s.strip()} if key and nhyd[key] else set())
+    names |= {s.strip() for s in (correct_skip or ())}
+    fork_skip = frozenset(names & fork)
+    if key:
+        nhyd[key] = ",".join(sorted(n for n in names - fork if n in str(nhyd[key])))
+    shrunk = {**groups, "nhyd_model": nhyd}
+    mode, skip = shared._physics_mode(shrunk, physics_mode, [s for s in (correct_skip or ()) if s not in fork])
+    if fork_skip and mode != "correct":
+        raise ValueError("config_physics_correct_skip applies only with config_physics_mode='correct'")
+    return mode, frozenset(skip) | fork_skip
 
 
 def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
@@ -345,14 +417,16 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
     spec = specification(table_key=table_key)
     options = {k: r["value"] for k, r in spec["registry_defaults"].items()}
     groups = {group: dict(values) for group, values in parse_fortran_namelist(text).items()}
-    mode, skip = shared._physics_mode(groups, physics_mode, correct_skip)
+    mode, skip = _fork_physics_mode(groups, physics_mode, correct_skip)
     # Hex mode controls are orchestration, absent from the pristine fork Registry.
     for key in ("config_physics_mode", "config_physics_correct_skip"):
         groups.get("nhyd_model", {}).pop(key, None)
+    named = set()
     for group, keys in spec["registry_groups"].items():
         for key, value in groups.get(group, {}).items():
             if key not in keys:
                 raise ValueError(f"fork Registry has no {group} option {key!r}")
+            named.add(key)
             kind = spec["registry_defaults"][key]["type"]
             valid = ((kind == "character" and isinstance(value, str))
                      or (kind == "logical" and type(value) is bool)
@@ -361,11 +435,23 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
             if not valid:
                 raise ValueError(f"{key} requires fork Registry type {kind}")
             options[key] = value.rstrip() if kind == "character" else value
+    if mode == "exact":
+        # Exact mode reproduces this route's pinned native fork bit for bit, so an option whose latest-upstream
+        # default differs from what the pin runs takes the pin's value unless the run names it
+        # (exact_mode_defaults: config_tempo_version v3.0.3, the TEMPO 9adf9ef both RRFS pins carry).
+        # THE BREAKAGE THIS PREVENTS: the RRFS landing gate and every bitwise rerun hand hex the native deck's own
+        # namelist, which has no config_tempo_version, so they ran the v3.2.5 default against native's v3.0.3.
+        for key, value in spec.get("exact_mode_defaults", {}).items():
+            if key not in named:
+                options[key] = value
     suite = options["config_physics_suite"].rstrip()
     native_suite = spec["suite_routes"].get(suite, suite)
     if native_suite not in spec["suites"]:
         raise ValueError(f"{suite!r} has no fork driver suite row")
     options["config_physics_suite"] = native_suite
+    # config_radt_mcica_seed: a misspelled rule refuses here, by name, before any card (mcica_seed_rule.mode).
+    from ..mcica_seed_rule import mode as _mcica_seed_mode
+    _mcica_seed_mode(options)
     selectors = {}
     for slot, row in spec["slots"].items():
         value = selectors[row["derived_from"]] if row["selector"] is None else options[row["selector"]]
@@ -408,6 +494,14 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
     explicit = set()
     backend_names = {r["backend_selector"]: s for s, r in spec["slots"].items()}
     supplied = groups.get(spec["backend_namelist_group"], {})
+    versions = spec.get("mynn_versions")
+    mynn_version = "pinned"
+    named_version = bool(versions and versions["selector"] in supplied)
+    if named_version:
+        mynn_version = str(supplied.pop(versions["selector"])).strip()
+        if mynn_version not in versions["versions"]:
+            raise ValueError(f"unknown {versions['selector']} {mynn_version!r}; this pin set offers "
+                             + ", ".join(sorted(versions["versions"])))
     # Driver-boundary services (the fork surface update), as the v8.4.2 row: a GPU route that updates
     # SST from a surface series takes the service on the GPU; module replays (library) keep native-cpu.
     services = spec.get("services", {})
@@ -441,16 +535,99 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
             raise ValueError(f"conflicting fork backend selections for {slot}")
         chosen[slot] = Backend(backend)
         explicit.add(slot)
+    if versions and not named_version:
+        mynn_version = _default_mynn_version(versions, selectors, chosen, library, mode)
+    if mynn_version != "pinned":
+        row = versions["versions"][mynn_version]
+        overlays = {(slot, scheme) for slot, entries in row.get("cuda_entries", {}).items() for scheme in entries}
+        for slot, scheme in [*map(tuple, row.get("requires", ())), *overlays]:
+            if selectors.get(slot) != scheme or chosen[slot] == Backend.OFF:
+                continue
+            if (slot, scheme) not in overlays:
+                # THE BREAKAGE THIS PREVENTS: a run named for this version would run the pinned port of a
+                # selected slot the version has no module for, mixing MYNN versions under the version's name.
+                raise ValueError(f"{versions['selector']}={mynn_version!r} has no ported {slot}/{scheme} yet; "
+                                 f"select one of: " + ", ".join(sorted(versions["versions"])))
+            if chosen[slot] != Backend.HEX_CUDA:
+                # THE BREAKAGE THIS PREVENTS: the native library is the 44c0849 pin, so a native-cpu slot would
+                # run the pinned scheme while the run's receipt names the version.
+                raise ValueError(f"{versions['selector']}={mynn_version!r} runs {slot}/{scheme} on hex-cuda only; "
+                                 f"this run puts it on {chosen[slot]}")
     # v8.4.2 findings must not silently change v8.3.1/GSL science. Until the
     # fork owners qualify its inventory, correct mode reports that named gap.
     gaps = () if mode == "exact" else (CorrectionInventoryGap(
         **spec["correct_mode_inventory"]),)
+    # Fork scheme defects (fork_corrections): correct mode applies each on a hex-cuda slot that runs its scheme;
+    # on the native-cpu fork library it is a named gap (the pinned Fortran carries no correction).
+    corrections = frozenset()
+    if mode != "exact":
+        live = {s: b for s, b in chosen.items()
+                if selectors.get(s, "off") != "off" and (spec["slots"][s].get("derived_from") is None
+                                                        or selectors.get(spec["slots"][s]["derived_from"]) != "off")}
+        corrections, fork_gaps = _fork_active(selectors, live, Backend.HEX_CUDA, Backend.OFF, skip,
+                                              _running_modules(spec, selectors, chosen, options, mynn_version))
+        gaps += tuple(CorrectionInventoryGap(
+            finding=f, slot=s, scheme=sc, backend=str(b),
+            reason=f"{s} runs the pinned fork Fortran ({b}), which carries no correction", owner=_FORK_OWNER,
+            breakage=FORK_CORRECTIONS[f]["breakage"]) for f, s, sc, b in fork_gaps)
     config = DriverConfig(suite, MappingProxyType(selectors), MappingProxyType(options),
-                          MappingProxyType(chosen), mode=mode, correct_skip=skip, gaps=gaps,
-                          service_backends=MappingProxyType(chosen_services), _table_key=table_key)
+                          MappingProxyType(chosen), mode=mode, corrections=corrections, correct_skip=skip,
+                          gaps=gaps, service_backends=MappingProxyType(chosen_services),
+                          mynn_version=mynn_version, _table_key=table_key)
     if library:
         return config
     return _replace(config, cpu_slots=shared.cpu_slot_record(config, table_key, cpu_reasons, explicit))
+
+
+def _default_mynn_version(versions, selectors, chosen, library, mode="correct") -> str:
+    """The MYNN suite version a run that names none takes: the row's ``default`` (the latest upstream releases,
+    Defaults are the latest upstream scheme versions, pins are for bitwise proof).
+
+    "pinned" (the 44c0849 MYNN, bitwise to native, selectable by name) is taken instead when
+    - the resolution is a module replay (``library``): the native library it replays is the 44c0849 pin;
+    - the run is in exact mode, which reproduces this route's pinned native fork bit for bit, as TEMPO's
+      exact_mode_defaults row does.  THE BREAKAGE THIS PREVENTS: an exact-mode run handed the native deck's own
+      namelist (no config_mynn_version) ran MYNN v6.1 against native's 44c0849 MYNN;
+    - no slot the version overlays is selected and active: nothing would change, so the receipt names no version;
+    - a selected slot the version needs runs off hex-cuda (a run naming the native referee for a MYNN slot): the
+      native library runs the 44c0849 pin there, so the run is that pin and its receipt and start-up line say so.
+      A run that names the version itself on such a slot is still refused (``resolve_namelist``)."""
+    default = versions.get("default", "pinned")
+    if library or default == "pinned" or mode == "exact":
+        return "pinned"
+    row = versions["versions"][default]
+    overlays = {(slot, scheme) for slot, entries in row.get("cuda_entries", {}).items() for scheme in entries}
+    needed = {(slot, scheme) for slot, scheme in [*map(tuple, row.get("requires", ())), *overlays]
+              if selectors.get(slot) == scheme and chosen[slot] != Backend.OFF}
+    if (not needed & overlays or not needed <= overlays
+            or any(chosen[slot] != Backend.HEX_CUDA for slot, _ in needed)):
+        return "pinned"
+    return default
+
+
+#: The MYNN slots a suite version can overlay, and the submodule each one ports.
+MYNN_SLOTS = (("pbl", "bl_mynnedmf", "MYNN-EDMF"), ("surface_layer", "sf_mynnsfclay", "MYNN-SFC"))
+
+
+def _mynn_version_line(config) -> str | None:
+    """The start-up line naming the MYNN this run executes (it begins ``MYNN SUITE VERSION:``), or None for a
+    row with no ``mynn_versions`` or a run with no MYNN slot active."""
+    spec = specification(config)
+    versions = spec.get("mynn_versions")
+    active = [(slot, module) for slot, scheme, module in MYNN_SLOTS
+              if config.selectors.get(slot) == scheme and config.backends.get(slot) != Backend.OFF]
+    if not versions or not active:
+        return None
+    version = getattr(config, "mynn_version", "pinned")
+    pins = dict(spec["submodule_pins"])
+    pins.update(versions["versions"][version].get("submodule_pins", {}))
+    ran = ", ".join(f"{module} {pins[module][:8]} on {config.backends[slot]}" for slot, module in active)
+    if version == "pinned":
+        tail = (f"the RRFS 44c0849 pin, bitwise to native; the default is {versions['default']!r} "
+                f"(the latest upstream MYNN) wherever both MYNN slots run on hex-cuda")
+    else:
+        tail = f"{versions['versions'][version]['about']} {versions['selector']}='pinned' selects the 44c0849 referee"
+    return f"MYNN SUITE VERSION: {version} ({ran}); {tail}"
 
 
 def route_namelist(text: str, *, physics_mode: str | None = None,
@@ -535,9 +712,11 @@ class SlotRegistry(shared.SlotRegistry):
         if key in self._callbacks:
             raise ValueError(f"physics slot already registered: {key}")
         declared = frozenset(corrections)
-        if declared:
-            raise ValueError("RRFS correction declarations require fork source and replay qualification; "
-                             "the v8.4.2 inventory cannot certify a fork callback")
+        # Only fork corrections (fork_corrections) are declarable here: a v8.4.2 finding has no fork qualification.
+        unknown = sorted(declared - set(FORK_CORRECTIONS))
+        if unknown:
+            raise ValueError(f"fork slot {key} declares {unknown}, which are not fork corrections "
+                             f"(known: {sorted(FORK_CORRECTIONS)}); a v8.4.2 finding requires fork source and replay qualification")
         self._callbacks[key] = callback
         self._corrections[key] = declared
 
@@ -552,6 +731,15 @@ class SlotRegistry(shared.SlotRegistry):
                    and (s, config.selectors[s], config.backends[s]) not in self._callbacks]
         if missing:
             raise RuntimeError(f"fork physics slots not registered: {missing}")
+        # THE BREAKAGE THIS PREVENTS: a receipt naming a fork correction applied while the registered
+        # implementation does not carry it (pristine physics under a correct label).
+        contradicted = [(f, FORK_CORRECTIONS[f]["slot"]) for f in sorted(config.corrections)
+                        if f in FORK_CORRECTIONS and f not in self._corrections.get(
+                            (FORK_CORRECTIONS[f]["slot"], config.selectors[FORK_CORRECTIONS[f]["slot"]],
+                             config.backends[FORK_CORRECTIONS[f]["slot"]]), frozenset())]
+        if contradicted:
+            raise RuntimeError(f"correct mode names fork corrections {contradicted} applied, but the registered "
+                               "slot implementations do not declare them")
 
 
 class NativePoolArguments(shared.NativePoolArguments):
@@ -768,7 +956,7 @@ class PhysicsDriver(shared.PhysicsDriver):
                         "driver" if slot is None else c.selectors[slot],
                         glue_backend if slot is None else c.backends[slot],
                         step, time, float(self.manager.scheme_dt.get(slot, self.manager.dt)),
-                        flags, pools, MappingProxyType(options))
+                        flags, pools, MappingProxyType(options), c.corrections, mmm=getattr(c, "mmm", None))
         self.calls.append({"operation": operation, "slot": call.slot,
                            "backend": str(call.backend), "itimestep": step, "time_seconds": time})
         return self.hooks.invoke(operation, call) if slot is None else self.registry.run(call)
@@ -2650,6 +2838,27 @@ class ResidentDriverTendencies:
             raise ValueError(f'MPAS coupling missing tendencies {sorted(missing)}')
         zero = cp.zeros_like(mass)
         table_arrays = [rates[name] if name in required else zero for name in rate_names]
+        # The external-tendency slot (woof.hex.ad.external_tendency): None unless a caller gives one, and then
+        # nothing below changes. Given, the four boundary-layer rates are copied into scratch (one more copy plan),
+        # the caller's tendency is added there each step, and the coupling reads the scratch.
+        from ...ad import external_tendency
+        self.external = external_tendency.slot_for(cp=cp, cache=glue.cache, shape=tuple(mass.shape), provider=p,
+                                                   qv_index=names.index('qv'))
+        self.external_targets = {}
+        self.external_plan = None
+        if self.external is not None:
+            if not pbl:
+                raise ValueError('the external tendency slot joins the boundary-layer rates (rthblten, rqvblten, '
+                                 'rublten, rvblten), and this run has config_pbl_scheme off')
+            self.external_plan = CopyPlan('rrfs.external_tendency')
+            for field, rate_name in external_tendency.RATE_OF.items():
+                scratch = cp.empty_like(rates[rate_name])
+                self.external_plan.copy(scratch, rates[rate_name])
+                self.external_targets[field] = scratch
+            by_rate = {rate_name: self.external_targets[field]
+                       for field, rate_name in external_tendency.RATE_OF.items()}
+            table_arrays = [by_rate.get(name, array) for name, array in zip(rate_names, table_arrays)]
+            self.external_plan.build()
         from ...cuda_backend.containers import require_resident_array
         for name, array in zip(rate_names, table_arrays):
             require_resident_array(name, array, dtype=np.float32, shape=mass.shape)
@@ -2671,6 +2880,8 @@ class ResidentDriverTendencies:
                 continue
             self.groups.append(group)
             inputs = [rates[zonal], rates[meridional]]
+            if self.external is not None and group == 'physics:blten':
+                inputs = [self.external_targets['u'], self.external_targets['v']]
             if a.regional_garbage:
                 padded = []
                 for value in inputs:
@@ -2707,6 +2918,10 @@ class ResidentDriverTendencies:
         g = self.glue
         for group in self.groups:
             g.assembler.exchange_halo_group(group)
+        if self.external is not None:
+            self.external_plan()
+            self.external.add(self.external_targets, dt=getattr(call, 'dt', None),
+                              time_seconds=getattr(call, 'time_seconds', None))
         self.plan()
         for args in self.projections:
             _launch(g.cache, 'project_edges_v841_f32', g.assembler.geometry.n_edges, args)

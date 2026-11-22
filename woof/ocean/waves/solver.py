@@ -78,8 +78,7 @@ class CoupledWaveSolver:
                 m.moments,m.i(m.nc),m.i(m.nf),m.i(m.nd),m.f(h),m.budgets),blocks=True)
             m._moments(u,v,u,v,0)
             m.rate.fill(0)
-            m._launch('dia',m.nc*m.ns,(m.spectrum,m.rate,m.frequency,m.df,m.depth,m.moments,
-                m.i(m.nc),m.i(m.nf),m.i(m.nd),m.f(math.log(m.spectral.ratio)),m.f(h)))
+            m.dia.launch(m.spectrum,m.rate,None,m.frequency,m.df,m.depth,m.moments,m.nc,dt=h,limited=True)
             m._launch('dia_apply',m.nc,(m.spectrum,m.rate,m.limiter,m.i(m.nc),m.i(m.nf),m.i(m.nd),m.f(h)),blocks=True)
         m._moments(u,v,u,v,0)
         m._launch('diagnose',m.nc,(m.spectrum,m.df,m.frequency,m.moments,m.depth,

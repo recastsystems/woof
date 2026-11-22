@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import subprocess
 import time
@@ -37,7 +38,7 @@ def main():
         raise ValueError('cannot show a forecast without complete forecast and sanity evidence')
     histories = selected_histories(run, proof, args.endpoints_only)
     env = dict(os.environ, CUDA_VISIBLE_DEVICES='')
-    env.pop('GPU_MUTEX_CARDS', None)
+    card_queue.drop(env, card_queue.CARDS)
     command = render_command(case, run, histories)
     started = time.monotonic()
     with (run / 'render.log').open('x') as log:

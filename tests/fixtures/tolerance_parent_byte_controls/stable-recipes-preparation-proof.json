@@ -140,7 +140,7 @@
       "bytes": 50093,
       "git_blob": "3c376e32f4f3f0fe0f89b7b42edcc8d6b421fddf",
       "path": "gpuwm/core/pace.py",
-      "sha256": "3e025fc8d635ed41ef5376373a9b1953429a52debbda84417b462f53fe0bd4c2"
+      "sha256": "e6be43a96b0c4bf819d71fb912574bbf49d8e5ec9c4fdfc4f3e40b2cad919eec"
     },
     "gpuwm.core.preflight": {
       "bytes": 648587,
@@ -206,7 +206,7 @@
       "bytes": 16758,
       "git_blob": "11b2afb67918fdf37e78881d298af0c8582d604a",
       "path": "gpuwm/explain.py",
-      "sha256": "e138c9c50c90a576dbb311a8f934375d6ac5afcdd62fe407b2a2c5ef5eca2e91"
+      "sha256": "8771f60f95e5605aa52bca8af5226ab9cb5dd172be52dc9aa023fa0bef4920f2"
     },
     "gpuwm.fetch": {
       "bytes": 404999,
@@ -326,7 +326,7 @@
       "bytes": 16988,
       "git_blob": "42283d8fc65c373c20161bfc5bc1e4d8b313aa62",
       "path": "gpuwm/physics_mode.py",
-      "sha256": "c5a106d546f4223e06d0711d82ced23794febaf3c361c060a39d103594d27734"
+      "sha256": "61218cb3e8a8aac5c92a30ef994823662dda082755621def086559e7df41755c"
     },
     "gpuwm.physics_registry": {
       "bytes": 191480,
@@ -392,7 +392,7 @@
       "bytes": 19303,
       "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
       "path": "gpuwm/source_cycles.py",
-      "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
+      "sha256": "48c91805679278085d4ce9d87acbea6aa4accc82fccaf68f456093af56dc5629"
     },
     "gpuwm.static": {
       "bytes": 139,
@@ -542,10 +542,10 @@
     "gpuwm/source_cycles.py": {
       "bytes": 19303,
       "git_blob": "32c8bffce33b8333459a47490c0924007231f4a5",
-      "sha256": "0ceef48c4792cfaf54986de7106ef0728014e75ad256e80c45ba80a671aff260"
+      "sha256": "48c91805679278085d4ce9d87acbea6aa4accc82fccaf68f456093af56dc5629"
     }
   },
-  "original_pins_sha256": "e2213db473bc9c7a18fd10cd1415712cf55432c7b016ec1a25a34ac2632f4959",
+  "original_pins_sha256": "01894b7bcb261459b7d8e23e8dde9f481cd4068d4a231a056b166674f3ad2c62",
   "python": "3.14.4",
   "schema": "handover-tolerance-stable-recipe-comparison-v1",
   "source_manifest_sha256": "5280301bf74669ccdddebbb385f18a316449735829ad7e0c7091b86c81ae0683",

@@ -1,6 +1,6 @@
 # Hardware and VRAM sizing
 
-WOOF runs on one NVIDIA GPU with CUDA 12.x or 13.x, field-verified
+WOOF-ArWen runs on one NVIDIA GPU with CUDA 12.x or 13.x, field-verified
 through 13.2 driver stacks on sm_89 by two independent nodes. This
 page explains how
 the sizing model works, where its safety factor comes from, and what

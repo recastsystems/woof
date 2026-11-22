@@ -35,7 +35,7 @@ from collections.abc import Mapping
 import cupy as cp
 import numpy as np
 
-from woof.core.kernels import get_kernel
+from woof.core.kernels import get_kernel, get_kernel_int_defines
 from woof.core.state import DTYPE
 from woof.physics_vertical_contract import (
     BOULAC_VERTICAL_LEVEL_BOUNDS, outside_vertical_bounds,
@@ -65,11 +65,22 @@ BOULAC_SURFACE_INPUTS = ("hfx", "qfx", "ust")
 BOULAC_TKE_COLD_START = 1.0e-4
 
 
+#: The define that compiles correct-mode ML1's BouLac downward length sign
+#: (RunConfig.pbl_boulac_down_sign) into ``boulac_column`` and the k-epsilon
+#: ``keps_columns``, which carries the same length routine.  Without it each
+#: kernel is WRF's build, defect included.
+BOULAC_DOWN_SIGN_DEFINE = (("BOULAC_DOWN_SIGN", 1),)
+
+
 def launch_boulac(columns: Mapping, surface: Mapping, tke, *, dt: float,
                   cp_air: float, g: float, outputs: Mapping | None = None,
                   bep: Mapping | None = None, frc_urb2d=None,
-                  idiff: int = 0) -> dict:
+                  idiff: int = 0, down_sign: bool = False) -> dict:
     """Run one BouLac step and return its outputs (allocated if not given).
+
+    ``down_sign`` is correct-mode ML1 (RunConfig.pbl_boulac_down_sign): the
+    downward length's constant-theta branch with the sign of its bbb -> 0
+    limit.  Off (the launcher default) is WRF v4.6.1's arithmetic.
 
     ``tke`` is the carried TKE_PBL column, rewritten in place.  ``bep`` is
     the urban PBL handoff (:data:`BOULAC_BEP_INPUTS`, ``sf_bep`` with nz+1
@@ -144,7 +155,8 @@ def launch_boulac(columns: Mapping, surface: Mapping, tke, *, dt: float,
     if n == 0:
         return _aliased(out)
     blocks = (n + _TPB - 1) // _TPB
-    kernel = get_kernel("boulac", "boulac_column")
+    kernel = (get_kernel_int_defines("boulac", "boulac_column", BOULAC_DOWN_SIGN_DEFINE)
+              if down_sign else get_kernel("boulac", "boulac_column"))
     kernel((blocks,), (_TPB,),
            tuple(column_arrays) + (tke,) + tuple(surface_arrays)
            + (frc, out["pblh"])

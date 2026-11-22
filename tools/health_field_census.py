@@ -693,8 +693,15 @@ def selection_from_key(key: str) -> "Selection":
 
 #: Exception types the production configuration/driver validators use to say
 #: "no user can run this".  Anything else escaping a measurement is a failure
-#: of the census and must not be filed as a refusal.
-_REFUSAL_TYPES = (ValueError, NotImplementedError, KeyError, TypeError)
+#: of the census and must not be filed as a refusal.  ``MissingTableAssets``
+#: is the run's own refusal of a scheme whose pinned tables this install does
+#: not hold (RCON's initialized table stream is not shipped since 3.0.2 made
+#: it a selectable option); the run stops on it before any step, so it is a
+#: refusal here too, not a census failure.
+from woof.table_assets import MissingTableAssets  # noqa: E402
+
+_REFUSAL_TYPES = (ValueError, NotImplementedError, KeyError, TypeError,
+                  MissingTableAssets)
 
 
 def _is_ceiling_breach(exc: BaseException) -> bool:

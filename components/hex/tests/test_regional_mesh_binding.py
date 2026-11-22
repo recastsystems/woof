@@ -413,7 +413,7 @@ _GF_CLAIM = (
 
 
 def test_claim_names_new_tiedtke_when_the_decision_selects_it(binding_module: object) -> None:
-    # Breakage: the rrfs-h-h2-score conus12km New Tiedtke run's receipt claimed GF.
+    # Breakage: a conus12km New Tiedtke run's receipt claimed GF.
     claim = binding_module.claim_for_convection(_GF_CLAIM, "cu_ntiedtke")
     assert "WSM6 + New Tiedtke + YSU" in claim
     assert "GF" not in claim

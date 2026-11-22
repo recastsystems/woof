@@ -1932,6 +1932,14 @@ KERNEL_LOCAL_FRAME_RECORDINGS: tuple[KernelFrameRecording, ...] = (
 #: cross-platform drift check (``preflight.under_priced_kernel_frames``,
 #: driven from the ``.cu`` enumeration) is structurally unable to see it.
 CHAINED_UNITS_WITHOUT_A_PER_PLATFORM_ROW = MappingProxyType({
+    "terrain_drag_gwdo480_composed":
+        "woof/core/terrain_drag.py _gwdo480_module compiles terrain_drag.cu "
+        "followed by terrain_drag_gwdo480.cu (WRF v4.8.0 gwd_opt = 1) with "
+        "-fmad=false --ftz=false; the follower fails standalone.  Read on an "
+        "RTX 4090, sm_89 / NVRTC 13.4, 2026-11-09: gwdo480_column 640 B "
+        "(88 registers), the frozen unit's kernels unchanged beside it "
+        "(gwdo_column 640 B, gwdo_gsl_column 1,184 B), so the unit is priced "
+        "at 1,184 B like terrain_drag_composed.",
     "kf_trigger2":
         "woof/core/kf.py _kf_module(device, 2) compiles kf.cu with "
         "KF_TRIGGER 2 prepended, so no *.cu enumeration reaches that image. "
@@ -2946,6 +2954,24 @@ KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
     frames=MappingProxyType({"ssib_records": 0}),
 ),)
 
+# The WRF 4.8.0 Shin-Hong unit (shinhong_version = "wrf_480"), read through
+# the production loader (get_kernel) on test host A, fast and strict options:
+# shinhong480_column, shinhong480_column_topo and
+# shinhong480_validate_outputs all 0 local bytes (180-182 registers).
+# Partial: no other module was re-read (the Shin-Hong port).
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host A", device="NVIDIA GeForce RTX 4090",
+    compute_capability="89", nvrtc_build="13.4.59", platform_family="linux",
+    measured="2026-11-09", complete=False,
+    frames=MappingProxyType({"shinhong_480": 0}),
+    strict_recording=KernelFrameRecording(
+        box="test host A", device="NVIDIA GeForce RTX 4090",
+        compute_capability="89", nvrtc_build="13.4.59",
+        platform_family="linux", measured="2026-11-09", complete=False,
+        frames=MappingProxyType({"shinhong_480": 0}),
+    ),
+),)
+
 
 def frame_ceiling() -> dict[str, int]:
     """The element-wise maximum over every recording.
@@ -3811,3 +3837,104 @@ KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
         measured="2026-11-03", complete=False,
         frames=MappingProxyType(_SEAL4_FRAMES)),
 ),)
+
+
+# WRF v4.8.0 kim_tofd unit (port/wrf-480 L07): sfclay_column in sfclay_tofd,
+# kernel_local_size_bytes 0 in fast and strict numerics; test host B RTX 5090,
+# NVRTC 13.3.33, 2026-11-09 (the sfclayrev port's
+# measure-fast.json / measure-strict.json).
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.3.33", platform_family="linux",
+    measured="2026-11-09", complete=False,
+    frames=MappingProxyType({"sfclay_tofd": 0}),
+    strict_recording=KernelFrameRecording(
+        box="test host B", device="NVIDIA GeForce RTX 5090",
+        compute_capability="120", nvrtc_build="13.3.33", platform_family="linux",
+        measured="2026-11-09", complete=False,
+        frames=MappingProxyType({"sfclay_tofd": 0})),
+),)
+
+
+# 3.0.0 fold: the WRF v4.8.0 units with no row yet and the SNICAR LAP unit,
+# each read through its production loader (kernels.load_module for
+# dyn_lightning and wind_fitch_480, mynnsfc_b66187f.module(), and
+# snow_papers._lap_module, which appends snow_lap.cu to snow_papers.cu), widest
+# kernel per unit; test host B RTX 5090, NVRTC 13.4.92, 2026-11-09.
+# dyn_lightning: search/rank/columns 0 B; wind_fitch_480: fitch_induction_480
+# 32 B fast, 0 B strict; mynnsfc_b66187f: mynnsfc_wrf_columns 184 B;
+# snow_lap: snow_lap_albedo 1,360 B.  The last two compile only composed, so
+# they are declared in preflight.UNMEASURED_KERNEL_MODULES with these reads.
+KERNEL_LOCAL_FRAME_RECORDINGS += (KernelFrameRecording(
+    box="test host B", device="NVIDIA GeForce RTX 5090",
+    compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+    measured="2026-11-09", complete=False,
+    frames=MappingProxyType({"dyn_lightning": 0, "wind_fitch_480": 32}),
+    strict_recording=KernelFrameRecording(
+        box="test host B", device="NVIDIA GeForce RTX 5090",
+        compute_capability="120", nvrtc_build="13.4.92", platform_family="linux",
+        measured="2026-11-09", complete=False,
+        frames=MappingProxyType({"dyn_lightning": 0, "wind_fitch_480": 0})),
+),)
+# 2026-11-09, test host B (RTX 5090, sm_120, NVRTC 12.9.86), read with
+# `tools/measure_noahmp_frames.py measure` (fresh process, no launch).  The
+# Noah-MP snowmelt-reset correction (correct-mode SN1,
+# GPUWM_NOAHMP_MELT_RESET_ESAT) moved the noahmp_bareflux and
+# noahmp_vegeflux_runtime identities; every frame read the same as the
+# 2026-11-01 row, which is kept as history.
+HISTORICAL_NOAHMP_COMPOSED_FRAME_RECORDINGS += NOAHMP_COMPOSED_FRAME_RECORDINGS
+NOAHMP_COMPOSED_FRAME_RECORDINGS = (
+    replace(NOAHMP_COMPOSED_FRAME_RECORDINGS[0], measured='2026-11-09',
+            frames=MappingProxyType({
+        'noahmp_bareflux': 0,
+        'noahmp_driver_composed': 288,
+        'noahmp_energy_composed': 272,
+        'noahmp_fluxprep': 0,
+        'noahmp_glacier_composed': 456,
+        'noahmp_leaves': 272,
+        'noahmp_libm_slab_composed': 272,
+        'noahmp_output': 0,
+        'noahmp_radiation': 0,
+        'noahmp_sflx': 0,
+        'noahmp_snow': 200,
+        'noahmp_soilwater': 0,
+        'noahmp_thermal_composed': 368,
+        'noahmp_vegeflux_runtime': 0,
+        'noahmp_vegprecip': 0,
+        'noahmp_water': 224,
+            }),
+            unit_identity=MappingProxyType({
+        'noahmp_bareflux':
+            'c3b025bacc4c69a40aa61490134b569a5323c01303479c9862b473e697e654f3',
+        'noahmp_driver_composed':
+            'dbfa9c8b4ec51833c24ac9c9105f6638f76851aa12185531456685d1b947a673',
+        'noahmp_energy_composed':
+            '56229ed3168b83845f6d9820d2585d4485ee7cf7f479217d9838573c3654b55f',
+        'noahmp_fluxprep':
+            'c1f15fefd60c05cb774135b7ad976a584432a0c5d19ef545720eb66d0c1a0f7a',
+        'noahmp_glacier_composed':
+            '0bcf3db1d33e20ce46234bbfcdce083f0652952bbe886bee63d61c67c61077a4',
+        'noahmp_leaves':
+            '98d7020604c6fbd067d5b22b92c5c910b1119f84b9dc1b11ab51b3ab484c7e97',
+        'noahmp_libm_slab_composed':
+            '5240c4820d045777237e86a1cae372e79a65aad0ca415a955774b7a6f7c5ec81',
+        'noahmp_output':
+            '9becce8c9d883118d760b0e6cea2ae624d886458ff9f1b3f8d5624646b625626',
+        'noahmp_radiation':
+            'fd3a2198282ef306f58aa256471287c7cacbd25cd0a7daa6ccf7fdb320b6ef46',
+        'noahmp_sflx':
+            'a40b1871465f6d795438483f8ade620a34dffdfe0f333833107404053cf072e4',
+        'noahmp_snow':
+            '8fbb7ebd7e02544af651d2809e60e3a4acd2012ac20649ffb46e3209a7c1eeb0',
+        'noahmp_soilwater':
+            '761c107eb267b1dded45f5a353040b629870444b49c1000f8a2fd8e551abad01',
+        'noahmp_thermal_composed':
+            '90edf4cb7b87d54a0062c8373decab6b510f77388beaaa5ac3c35b71a91a6342',
+        'noahmp_vegeflux_runtime':
+            'b2e02ddae2416232cddc43b89a8596ce2626796a9c55a7e8b4fa040c18100d94',
+        'noahmp_vegprecip':
+            '754bbe9b73b37bd9db74b40f5dc12bb58c27a66329a125b342b8d3c067d7dd7f',
+        'noahmp_water':
+            '89573c1b1303f56980dc184704e260e06153ad71076aaf3177ccdd80321988b3',
+            })),
+)

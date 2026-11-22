@@ -165,10 +165,15 @@ def test_frames_are_drawn_side_by_side_up_to_the_slots_and_finish_draws_the_rest
         assert _wait(lambda: len(draws.argvs) == 4)                          # a slot frees: the next frame starts
         finisher = threading.Thread(target=lambda: look.finish(timeout=10))
         finisher.start()
-        while _wait(lambda: draws.running(), 0.2) and finisher.is_alive():
+        # A scheduling gap between batches does not mean finish() is done.
+        # Keep releasing simulated children until the finisher exits; otherwise
+        # a loaded host can leave the final batch held forever by this test.
+        deadline = time.monotonic() + 10
+        while finisher.is_alive() and time.monotonic() < deadline:
             for index in draws.running():
                 draws.end(index)
-        finisher.join(10)
+            finisher.join(0.01)
+        assert not finisher.is_alive(), "finish did not drain all simulated draws"
     drawn = [_histories(argv) for argv in draws.argvs]
     assert sorted(sum(drawn, [])) == sorted(str(f) for f in frames)      # every frame, each once
     assert look.live["slots"] == 3 and len(look.live["drawn"]) == len(frames)

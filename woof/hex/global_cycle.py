@@ -28,7 +28,7 @@ THE PIECES, each one data or an existing door:
             global door's own layout: init, forecast, export, receipts) with a
             ``cycle.json`` manifest listing its history frames by valid time.
             ``STORE/<row>/latest`` (a symlink) and ``latest.json`` name the
-            newest finished cycle; consumers (WOOF domains taking a hex
+            newest finished cycle; consumers (WOOF-ArWen domains taking a hex
             parent, the export door) read those and never a half-written run.
   retention ``--keep N`` finished cycles stay; older cycle folders the driver
             made (they carry its ``cycle.json``) are deleted after each

@@ -40,6 +40,30 @@ from typing import Any, Mapping, Sequence
 from .errors import MpasPortError
 
 
+def _finite(value: Any) -> Any:
+    """The value with every non-finite float (inf, -inf, nan) as None, so the receipt is standard JSON."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _finite(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite(v) for v in value]
+    return value
+
+
+def receipt_json(receipt: Mapping[str, Any], **kwargs: Any) -> str:
+    """A door receipt as standard JSON: a number with no finite value is written null.
+
+    THE BREAKAGE THIS PREVENTS: a uniform global spec (no regions) has a steepest gradient of 0 %/cell, so its
+    transition band is ln 2 / ln 1 = inf cells, and json.dumps wrote the bare token ``Infinity`` into
+    global-vr-receipt.json. That is not JSON: strict readers (JavaScript's JSON.parse, jq, the WOOF site's customer copy
+    of a run's receipt) refused the whole file, so every uniform-global run's receipt was withheld from its customer
+    (run_c20529382a29ebc8, uniform 15 km, hex 0.4.14, 2026-11-07). The in-memory receipt keeps the float; only the
+    written text changes, and only where a value was non-finite.
+    """
+    return json.dumps(_finite(receipt), allow_nan=False, **kwargs)
+
+
 def _load(path: Path) -> Mapping[str, Any]:
     try:
         text = path.read_text(encoding="utf-8")
@@ -94,6 +118,20 @@ def _report(spec: Mapping[str, Any], receipt: Mapping[str, Any]) -> list[str]:
     band = gates.get("transition_band") or {}
     edge = gates.get("short_dual_edge_floor") or {}
     name = spec.get("name") or "(unnamed spec)"
+    if receipt.get("geometry") == 2:
+        ramp = receipt.get("ramp") or {}
+        lines = [
+            f"mesh-plan: {name}",
+            f"  cells            {receipt.get('predicted_cells', float('nan')):,.0f} "
+            "(the generator's own count under geometry 2, the ramp it will build)",
+            f"  generator        geometry 2: {ramp.get('regions_asked', 0)} region(s) asked, "
+            f"{ramp.get('ladder_rings_replaced', 0)} of them halving rings replaced by the ramp; no mesh is "
+            f"written with an obtuse triangle",
+        ]
+        if receipt.get("card"):
+            lines.append(f"  footprint        {receipt.get('footprint_mib'):,.1f} MiB on {receipt['card']}"
+                         if receipt.get("footprint_mib") is not None else f"  card             {receipt['card']}")
+        return lines
     lines = [
         f"mesh-plan: {name}",
         f"  cells            {receipt.get('predicted_cells', float('nan')):,.0f} "
@@ -138,19 +176,31 @@ def _report(spec: Mapping[str, Any], receipt: Mapping[str, Any]) -> list[str]:
 def run_mesh_plan(arguments: argparse.Namespace) -> int:
     from .swath.sizing import dry_run
 
-    if getattr(arguments, "global_mesh", False):
+    if getattr(arguments, "global_mesh", False) and not getattr(arguments, "plan_only", False):
         return run_global_mesh(arguments)
-    if getattr(arguments, "run", False):
-        raise MpasPortError("--run requires --global-mesh --generate")
-
     drawn = (getattr(arguments, "shape", None) is not None
              or getattr(arguments, "ellipse", None) is not None)
     if (getattr(arguments, "point", None) is not None or drawn) and arguments.spec is not None:
         raise MpasPortError(
             "--spec and --point (or --shape/--ellipse) were both given; a plan prices one "
-            "request. --spec hands the generator an authored spec unchanged, --point "
-            "and a drawn core write the ladder spec for you"
+            "request. --spec hands the generator an authored spec (or a mesh row) unchanged, "
+            "--point and a drawn core write the ladder spec for you"
         )
+    row = spec_row(arguments)
+    if getattr(arguments, "plan_only", False):
+        return run_plan_only(arguments, row)
+    if getattr(arguments, "run", False):
+        raise MpasPortError("--run requires --global-mesh --generate")
+    if row is not None:
+        # A mesh row: a region goes down the limited-area road the point door builds (the pair, the
+        # geography on a halo, the cut, the runtime rows); a globe is the zoom-globe door's.
+        if (row.get("domain") or {}).get("kind", "globe") != "region":
+            raise MpasPortError(
+                "this mesh row is a whole globe: pass --global-mesh to build and run it, or --plan-only to price "
+                "it.  For a limited-area mesh give the row a domain {\"kind\": \"region\", \"rim_km\": ...}")
+        from .mesh_point import run_point
+
+        return run_point(arguments)
     if getattr(arguments, "point", None) is not None or drawn:
         from .mesh_point import run_point
 
@@ -163,23 +213,89 @@ def run_mesh_plan(arguments: argparse.Namespace) -> int:
             "fine core at a point"
         )
     spec = _load(arguments.spec)
+    words = door_generator_words(arguments)
     receipt = dry_run(
         spec,
         engine=arguments.mesh_exe,
         card=arguments.card,
         vram_gib=arguments.vram_gib,
+        **({"generator_words": words} if words else {}),
     )
     if arguments.json:
-        print(json.dumps(receipt, indent=2, sort_keys=True))
+        print(receipt_json(receipt, indent=2, sort_keys=True))
     else:
         print("\n".join(_report(spec, receipt)))
     if arguments.out is not None:
         arguments.out.parent.mkdir(parents=True, exist_ok=True)
         arguments.out.write_text(
-            json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+            receipt_json(receipt, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
             newline="\n",
         )
+    return 0
+
+
+def door_generator_words(arguments: argparse.Namespace) -> list[str]:
+    """The generator's words for ``--geometry`` and ``--ramp-onset`` on a spec the door did not write as a row
+    (the generator's own resolution spec, or the registered ladder): nothing for geometry 1."""
+
+    from . import mesh_ask
+
+    try:
+        return list(mesh_ask.door_generator(arguments)["words"])
+    except mesh_ask.MeshAskRefusal as error:
+        raise MpasPortError(str(error)) from error
+
+
+def spec_row(arguments: argparse.Namespace) -> dict[str, Any] | None:
+    """The mesh row ``--spec`` names (:mod:`woof.hex.mesh_ask`), or None for the generator's own spec."""
+
+    path = getattr(arguments, "spec", None)
+    if path is None:
+        return None
+    from . import mesh_ask
+
+    document = _load(path)
+    return dict(document) if mesh_ask.is_row(document) else None
+
+
+def run_plan_only(arguments: argparse.Namespace, row: Mapping[str, Any] | None) -> int:
+    """``--plan-only``: the price of a mesh, printed before anything is generated.
+
+    Columns in all and in each zone, the spacing percentiles, the admitted time step and the card
+    memory by the engine's own estimate (:mod:`woof.hex.card_fit`) for 1, 2, 4 and 8 cards.  Takes a
+    mesh row, or the --point ladder's own arguments (which it reads as the row they are).
+    """
+
+    from . import mesh_ask
+
+    if getattr(arguments, "generate", False) or getattr(arguments, "run", False):
+        raise MpasPortError("--plan-only generates and runs nothing; drop --generate and --run, or drop --plan-only")
+    if row is None:
+        if getattr(arguments, "spec", None) is not None:
+            raise MpasPortError(
+                "--plan-only prices a mesh row (zones, not regions); this --spec is the generator's own resolution "
+                "spec, which plain mesh-plan --spec prices")
+        if not any(getattr(arguments, word, None) is not None for word in ("point", "shape", "ellipse")):
+            raise MpasPortError("--plan-only needs --spec ROW.json, or --point (or a drawn core) with --fine-dx-m")
+        from . import mesh_point
+
+        row = mesh_point.arguments_row(arguments)
+    cards = [arguments.card] if getattr(arguments, "card", None) else None
+    try:
+        planned = mesh_ask.plan(row, engine=arguments.mesh_exe, cards=cards,
+                                geometry=getattr(arguments, "geometry", None),
+                                ramp_onset=getattr(arguments, "ramp_onset", None))
+    except mesh_ask.MeshAskRefusal as error:
+        raise MpasPortError(str(error)) from error
+    if arguments.json:
+        print(receipt_json(planned, indent=2, sort_keys=True))
+    else:
+        print("\n".join(mesh_ask.report(planned)))
+    if arguments.out is not None:
+        arguments.out.parent.mkdir(parents=True, exist_ok=True)
+        arguments.out.write_text(receipt_json(planned, indent=2, sort_keys=True) + "\n", encoding="utf-8",
+                                 newline="\n")
     return 0
 
 
@@ -190,8 +306,14 @@ def add_mesh_plan_parser(commands: argparse._SubParsersAction) -> None:
     )
     parser.add_argument(
         "--spec", type=Path, default=None,
-        help="the resolution spec JSON rw_mpas_mesh would be given "
-             "(or --point, below)",
+        help="the resolution spec JSON rw_mpas_mesh would be given, or a mesh ROW "
+             "(gpuwm-hex.mesh-ask/v1: background, zones, grading, globe or region; "
+             "docs/mesh-rows.md), or --point, below",
+    )
+    parser.add_argument(
+        "--plan-only", action="store_true",
+        help="price a mesh row (or the --point ladder) and stop: columns in all and in each zone, "
+             "spacing percentiles, the admitted time step, card memory for 1, 2, 4 and 8 cards",
     )
     parser.add_argument(
         "--card", default=None,
@@ -260,9 +382,9 @@ def add_mesh_plan_parser(commands: argparse._SubParsersAction) -> None:
 __all__ = ["add_mesh_plan_parser", "run_mesh_plan"]
 
 
-#: THE BREAKAGE THIS PREVENTS (U-H6, production run_fde6921eaf18b793, 2026-10-26; owner ruling 2026-10-23: "zoom
+#: THE BREAKAGE THIS PREVENTS (U-H6, production run_fde6921eaf18b793, 2026-10-26; zoom
 #: globes use premade circular VR meshes rotated to the user's point, never fresh mesh generation on the start
-#: path"): a zoom globe (120 -> 15 km, 2,000 km core at 40N 97W) on a new box generated its mesh with rw_mpas_mesh
+#: path): a zoom globe (120 -> 15 km, 2,000 km core at 40N 97W) on a new box generated its mesh with rw_mpas_mesh
 #: (16.6 s) because the library holds exact points only. A concentric cap family is the same mesh wherever its
 #: centre is, so the door rotates the family's template (centred at the moving door's TEMPLATE_CENTER and keyed in
 #: the prep store by its spec alone, so the bake's library runs stage it) to the point, as storm-following start
@@ -431,22 +553,52 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
     from .swath.sizing import dry_run
     from .vertical_spec import VerticalSpec
 
-    if getattr(arguments, "shape", None) is not None or getattr(arguments, "ellipse", None) is not None:
-        raise MpasPortError(
-            "--global-mesh takes a drawn core as a --spec (any shape row, any number of "
-            "regions); --shape and --ellipse build the limited-area door's ladder")
-    if arguments.point is not None and arguments.spec is not None:
-        raise MpasPortError("--spec and --point are mutually exclusive")
+    # A drawn core on a globe is a mesh row (woof.hex.mesh_ask): the outline, held fine, with the
+    # rings grown around it.  RETIRED 2026-11-18: the refusal that sent a caller to author the
+    # generator's spec by hand ("--global-mesh takes a drawn core as a --spec").
+    drawn = getattr(arguments, "shape", None) is not None or getattr(arguments, "ellipse", None) is not None
+    if (arguments.point is not None or drawn) and arguments.spec is not None:
+        raise MpasPortError("--spec and --point (or --shape/--ellipse) are mutually exclusive")
+    # The generator's words for a geometry other than its default: given to every build, the rotation
+    # template's and the dry run, so the plan counts the mesh that geometry builds.
+    generator_words: list[str] = []
     if arguments.spec is not None:
         spec = dict(_load(arguments.spec))
-    elif arguments.point is not None:
-        spec = mesh_point.ladder_spec(
-            mesh_point.parse_point(arguments.point), fine_dx_m=arguments.fine_dx_m,
-            radius_km=arguments.radius_km, background_km=arguments.background_km,
-            transition_factor=arguments.transition_factor, ring_factor=arguments.ring_factor,
-            name=arguments.name)
+        from . import mesh_ask
+
+        if mesh_ask.is_row(spec):
+            # A mesh row: its zones, grading and fitted background, as the generator's spec.
+            try:
+                asked = mesh_ask.expand(spec, geometry=getattr(arguments, "geometry", None),
+                                        ramp_onset=getattr(arguments, "ramp_onset", None))
+            except mesh_ask.MeshAskRefusal as error:
+                raise MpasPortError(str(error)) from error
+            if asked["cut"] is not None:
+                raise MpasPortError(
+                    "this mesh row is a region (it has a rim and a cut); --global-mesh runs a whole globe. "
+                    "Drop --global-mesh for the limited-area road, or make the row's domain a globe")
+            for note in asked["notes"]:
+                print(f"mesh row: {note}", flush=True)
+            spec = asked["spec"]
+            generator_words = list((asked.get("generator") or {}).get("words", ()))
+        else:
+            generator_words = door_generator_words(arguments)
+    elif arguments.point is not None or drawn:
+        # Geometry 2 builds every request as a row: one region a zone, any ratio of spacings, no ladder.
+        if drawn or mesh_point.arguments_ask_more(arguments) or mesh_point.arguments_geometry(arguments) == 2:
+            asked = mesh_point.expand_arguments(arguments, globe=True)
+            for note in asked["notes"]:
+                print(f"mesh row: {note}", flush=True)
+            spec = asked["spec"]
+            generator_words = list((asked.get("generator") or {}).get("words", ()))
+        else:
+            spec = mesh_point.ladder_spec(
+                mesh_point.parse_point(arguments.point), fine_dx_m=arguments.fine_dx_m,
+                radius_km=arguments.radius_km, background_km=arguments.background_km,
+                transition_factor=arguments.transition_factor, ring_factor=arguments.ring_factor,
+                name=arguments.name)
     else:
-        raise MpasPortError("--global-mesh requires --spec or --point")
+        raise MpasPortError("--global-mesh requires --spec, --point, --shape or --ellipse")
     regions = spec.get("regions") or []
     finest = min([float(spec["background_km"])] + [float(r["spacing_km"]) for r in regions]) * 1000
     if not math.isfinite(finest) or finest <= 0:
@@ -556,8 +708,15 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
                 abs(cadence / dt - round(cadence / dt)) > 1e-8):
             raise MpasPortError("history cadence must divide the positive run length in whole timesteps")
     engine = resolve(MESH, arguments.mesh_exe)
-    sizing = dry_run(spec, engine=engine)
-    pricing = dict(card=card, levels=levels, dt_seconds=dt, hours=arguments.hours,
+    sizing = (dry_run(spec, engine=engine, generator_words=generator_words) if generator_words
+              else dry_run(spec, engine=engine))
+    # The step the named suite's forecast takes (hrrrv5: NOAA's deck step, physics_default.forecast_step), so the
+    # plan prices that step's count; `dt` stays the mesh's own step for the row and the admission.
+    from .global_door import forecast_arg_physics as _named_physics
+    from .physics_default import forecast_step as _forecast_step
+    plan_step = _forecast_step(_named_physics(plan_flags), dt, finest)
+    plan_dt = float(plan_step["dt_seconds"]) if plan_step.get("dt_seconds") else dt
+    pricing = dict(card=card, levels=levels, dt_seconds=plan_dt, hours=arguments.hours,
                    budget_mib=None if arguments.vram_gib is None else arguments.vram_gib * 1024,
                    suite=physics["suite"], route=physics["route"], profile=physics["profile"])
     fit = card_fit.predict(sizing["predicted_cells"], cards=cards, **pricing)
@@ -568,8 +727,13 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
         "sizing": sizing, "prediction_before_generation": fit,
         "vertical_spec": str(vertical), "stages": [],
     }
+    if generator_words:
+        receipt["generator_words"] = list(generator_words)
+    # The step the forecast will run, said in the plan (before generation it is checked against the limit a
+    # build of this geometry holds; the ADMIT and STEP lines after generation use the mesh's measured one).
+    receipt["planned_forecast_step"] = plan_step
     if arguments.json:
-        print(json.dumps(receipt, indent=2, sort_keys=True))
+        print(receipt_json(receipt, indent=2, sort_keys=True))
     else:
         named_profile = fit["physics"].get("profile")
         runtime_seconds = fit["runtime"]["seconds"]
@@ -582,9 +746,17 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
               + (f"forecast runtime {runtime_seconds:,.1f} s (extrapolated from a measured run of this route, card "
                  f"and card count)" if runtime_seconds is not None else
                  "forecast runtime: no measured rate for this route/card"), flush=True)
+        if generator_words:
+            print(f"  generator        {' '.join(generator_words)}: the cells above are the count this geometry "
+                  f"builds (the generator's own dry run with the word)", flush=True)
+        print(f"  step             the forecast runs {plan_dt:g} s: {plan_step.get('source')}"
+              + (f" (the mesh's own step {dt:g} s)" if plan_dt != dt else ""), flush=True)
+        print("  cards            " + ", ".join(
+            f"{row['cards']}: {row['predicted_peak_mib']:,.0f} MiB a card{'' if row['fits'] else ' (no)'}"
+            for row in fit.get("by_cards", ()) if row["cards"] in (1, 2, 4, 8)), flush=True)
     if arguments.out is not None:
         arguments.out.parent.mkdir(parents=True, exist_ok=True)
-        arguments.out.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        arguments.out.write_text(receipt_json(receipt, indent=2, sort_keys=True) + "\n")
     if not arguments.generate:
         return 0
     if not fit["fits"]:
@@ -621,7 +793,7 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
     def save() -> None:
         receipt["wall_seconds"] = round(time.monotonic() - started, 3)
         pending = receipt_path.with_suffix(".json.pending")
-        pending.write_text(json.dumps(receipt, indent=2, sort_keys=True, default=str) + "\n")
+        pending.write_text(receipt_json(receipt, indent=2, sort_keys=True, default=str) + "\n")
         pending.replace(receipt_path)
 
     def stage(name: str, argv: list[Any]) -> dict[str, Any]:
@@ -700,7 +872,7 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
             receipt.setdefault("started_stages", {})["init-source-decode"] = {
                 "argv": prefetch.argv, "started_utc": prefetch.started_utc, "beside": ["mesh", "static"]}
             save()
-        mesh_argv = [engine, "--spec", spec_path, "--out", grid, "--receipt", generator_receipt]
+        mesh_argv = [engine, "--spec", spec_path, "--out", grid, "--receipt", generator_receipt, *generator_words]
         from .moving_members import TEMPLATE_CENTER, _near_antipode
 
         centre = concentric_cap_center(spec)
@@ -728,7 +900,7 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
             template_grid = folder / "rotation-template.grid.nc"
             template_receipt = folder / "rotation-template-mesh.json"
             stored_stage("mesh-template", [engine, "--spec", template_spec, "--out", template_grid,
-                                           "--receipt", template_receipt])
+                                           "--receipt", template_receipt, *generator_words])
             template_sha = mesh_rows.sha256_file(template_grid)
             if template_only:
                 receipt["template"] = {"spec": template, "grid": str(template_grid), "sha256": template_sha}
@@ -779,15 +951,25 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
             n_levels=levels, admission=admission)
         mesh_rows.write_rows(rows_file, [row])
         receipt["mesh_row"] = row.as_dict()
-        measured_fit = card_fit.predict(row.n_cells, cards=cards, **dict(pricing, dt_seconds=dt))
+        # The step the forecast will run on THIS mesh: the suite's deck step where the mesh's measured limit admits
+        # it, else the admitted step.  Printed under ADMIT, kept in the receipt, and what the card price counts.
+        courant_limit = admission["timestep_choice"].get("courant_limit_seconds")
+        run_step = _forecast_step(_named_physics(plan_flags), dt, finest, courant_limit)
+        run_dt = float(run_step["dt_seconds"]) if run_step.get("dt_seconds") else dt
+        receipt["forecast_step"] = run_step
+        if run_dt != float(dt) or "over this mesh's limit" in str(run_step.get("source")):
+            print(f"STEP the forecast runs {run_dt:g} s: {run_step['source']}"
+                  + (f" (this mesh's limit {run_step['courant_limit_seconds']:.3f} s, {run_step['margin']:.3f}x)"
+                     if "margin" in run_step else ""), flush=True)
+        measured_fit = card_fit.predict(row.n_cells, cards=cards, **dict(pricing, dt_seconds=run_dt))
         receipt["prediction_on_generated_mesh"] = measured_fit
         save()
         if not measured_fit["fits"]:
             raise MpasPortError("the emitted global mesh exceeds its card budget; see prediction_on_generated_mesh")
         if arguments.run:
             cadence = arguments.history_every_minutes * 60
-            if abs(cadence / dt - round(cadence / dt)) > 1e-8:
-                raise MpasPortError(f"history cadence does not divide the measured mesh timestep {dt} s")
+            if abs(cadence / run_dt - round(cadence / run_dt)) > 1e-8:
+                raise MpasPortError(f"history cadence does not divide the forecast's timestep {run_dt:g} s on this mesh")
             env[mesh_rows.MESH_ROWS_ENVIRONMENT] = os.pathsep.join(
                 [str(rows_file), *[str(p) for p in mesh_rows.row_files()]])
             decoded = prefetch.finish()
@@ -854,7 +1036,7 @@ def run_global_mesh(arguments: argparse.Namespace) -> int:
             # (mpas_defaults.lts_class_clock_dt); an explicit --dt here would be refused by that clock instead.
             lts = any(str(item).split("=", 1)[0] == "--fullstep-local-timestep" for item in extra)
             # A named suite takes the forecast door's step, unless this mesh's measured admission step is shorter.
-            step = [] if lts else door_step(named, dt, finest)
+            step = [] if lts else door_step(named, dt, finest, courant_limit)
             from woof.output_formats import argument_values
             extra += argument_values(arguments)
             from .wave_options import argument_values as wave_arguments

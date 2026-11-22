@@ -67,7 +67,7 @@ def test_every_row_has_a_source_outside_an_nco_version_folder():
     assert row.url == (
         "https://www.nco.ncep.noaa.gov/pmb/codes/nwprod/hrrr.v4.1.21/fix/conus/hrrr_geo_em.d01.nc")
     assert row.mirrors == (
-        "https://github.com/FahrenheitResearch/arwen/releases/download/v2.8.7/"
+        "https://github.com/recastsystems/arwen/releases/download/v2.8.7/"
         "hrrr-conus-v4-hrrr_geo_em.d01.nc",
         "https://huggingface.co/datasets/deepguess/wps-geog-arwen/resolve/main/"
         "hrrr-conus-v4-hrrr_geo_em.d01.nc")

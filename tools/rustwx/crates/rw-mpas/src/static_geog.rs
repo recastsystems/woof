@@ -554,7 +554,357 @@ impl GeogDataset {
 
     /// Read exactly one z plane.  No decoded plane is retained by the dataset.
     /// MPAS: mpas_geotile_manager.F:505-644; read_geogrid.c:45-144.
+    ///
+    /// A land-use dataset's columns at 180 degrees come back repaired
+    /// ([`GeogDataset::seam_changes`]), and so does a soil set's void strip
+    /// beside the line ([`GeogDataset::soil_void`]); every other pixel and
+    /// dataset is read as stored.
     pub fn read_plane(&self, tile: &TileRef, z: usize) -> MpasResult<Vec<i64>> {
+        let mut plane = self.read_plane_as_stored(tile, z)?;
+        if z == 0 && self.soil_void_applies() {
+            if let Some(void) = self.soil_void()?.as_ref() {
+                void.fill(self, tile, &mut plane);
+            }
+        }
+        let on_line = self.seam_columns().is_some_and(|columns| {
+            columns[1..4].iter().any(|&c| c >= tile.xs && c <= tile.xe)
+        });
+        if z == 0 && on_line && self.seam_repair_applies() {
+            let full_nx = self.index.full_tile_nx();
+            for change in self.seam_changes()?.iter() {
+                if change.x >= tile.xs && change.x <= tile.xe
+                    && change.y >= tile.ys && change.y <= tile.ye
+                {
+                    let k = (change.y - tile.ys) as usize * full_nx + (change.x - tile.xs) as usize;
+                    if k < plane.len() {
+                        plane[k] = change.now;
+                    }
+                }
+            }
+        }
+        Ok(plane)
+    }
+
+    /// Whether [`GeogDataset::seam_changes`] applies: a land-use dataset
+    /// (categorical, naming its land-use table in `mminlu`, so never a soil
+    /// set) that wraps the globe in one plane of whole tiles with no border,
+    /// with a water, lake or ice class, and `GPUWM_GEOG_SEAM_REPAIR` not off.
+    pub fn seam_repair_applies(&self) -> bool {
+        let i = &self.index;
+        i.kind == SourceKind::Categorical
+            && !i.mminlu.trim().is_empty()
+            && i.projection == "regular_ll"
+            && self.wraps_x
+            && i.tile_bdr == 0
+            && i.tile_x >= 3
+            && i.nz() == 1
+            && self.seam_columns().is_some()
+            && !self.seam_wet_classes().is_empty()
+            && !seam_repair_switched_off()
+    }
+
+    /// Whether [`GeogDataset::soil_void`] is looked for: a category set that
+    /// is not land use (no `mminlu`: the soil texture sets), one plane of
+    /// whole tiles at least 121 columns wide with no border, wrapping the
+    /// globe with a column edge on 180 degrees, and `GPUWM_GEOG_SEAM_REPAIR`
+    /// not off.  Whether a void is there is the data's answer, not this one.
+    pub fn soil_void_applies(&self) -> bool {
+        let i = &self.index;
+        i.kind == SourceKind::Categorical
+            && i.mminlu.trim().is_empty()
+            && i.projection == "regular_ll"
+            && i.tile_bdr == 0
+            && i.tile_x > SOIL_VOID_REACH
+            && i.nz() == 1
+            && i.isoilwater.is_some_and(|w| w >= 0)
+            && self.seam_columns().is_some()
+            && !seam_repair_switched_off()
+    }
+
+    /// The void strip of a soil set beside 180 degrees, when the data has one
+    /// (see [`SoilVoid`]), worked out once per dataset folder per process.
+    pub fn soil_void(&self) -> MpasResult<std::sync::Arc<Option<SoilVoid>>> {
+        let registry = SOIL_VOID_REGISTRY.get_or_init(Default::default);
+        let mut known = registry.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(found) = known.get(&self.path) {
+            return Ok(found.clone());
+        }
+        let found = std::sync::Arc::new(self.find_soil_void()?);
+        if let Some(void) = found.as_ref() {
+            let name = self.path.file_name().map_or_else(
+                || self.path.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            eprintln!(
+                "note: geography: {name}: {} column(s) west and {} east of 180 degrees hold the water \
+                 class on {:.1}% of the rows where land lies 1 degree away (a void in the source); \
+                 their water pixels are read as the nearest soil class on the row outside the void \
+                 that is not water, within 1 degree: \
+                 {} pixel(s) ({SEAM_REPAIR_ENV}=off reads them as stored)",
+                void.west, void.east, 100.0 * void.share, void.filled
+            );
+        }
+        known.insert(self.path.clone(), found.clone());
+        Ok(found)
+    }
+
+    fn find_soil_void(&self) -> MpasResult<Option<SoilVoid>> {
+        let Some(columns) = self.seam_columns() else { return Ok(None) };
+        let (nx, ny) = (self.nx_global, self.ny_global as usize);
+        let water = self.index.isoilwater.unwrap_or(14);
+        let at = |c: i64| (c - 1).rem_euclid(nx) + 1;
+        let (west_line, east_line) = (columns[1], columns[2]);
+        let reach = SOIL_VOID_REACH;
+        // Columns west_line - reach ..= west_line, then east_line ..= east_line + reach.
+        let wanted: Vec<i64> = (0..=reach).rev().map(|k| at(west_line - k))
+            .chain((0..=reach).map(|k| at(east_line + k))).collect();
+        let values = self.columns_as_stored(&wanted)?;
+        let (west_cols, east_cols) = values.split_at(reach as usize + 1);
+        // west_cols[0] is 1 degree west (the reference), west_cols[reach] the
+        // column on the line; east_cols[0] is on the line, east_cols[reach] the
+        // reference.
+        let void_run = |reference: &[i64], toward_line: &[&[i64]]| -> (i64, f64) {
+            let rows: Vec<usize> = (0..ny).filter(|&j| reference[j] >= 0 && reference[j] != water).collect();
+            if rows.len() < SOIL_VOID_MIN_ROWS {
+                return (0, 0.0);
+            }
+            let mut run = 0;
+            let mut least = 1.0f64;
+            for column in toward_line {
+                let wet = rows.iter().filter(|&&j| column[j] == water).count();
+                let share = wet as f64 / rows.len() as f64;
+                if share < SOIL_VOID_SHARE {
+                    break;
+                }
+                run += 1;
+                least = least.min(share);
+            }
+            (run, least)
+        };
+        let west_line_first: Vec<&[i64]> = west_cols[1..].iter().rev().map(|v| v.as_slice()).collect();
+        let east_line_first: Vec<&[i64]> = east_cols[..reach as usize].iter().map(|v| v.as_slice()).collect();
+        let (west, west_share) = void_run(&west_cols[0], &west_line_first);
+        let (east, east_share) = void_run(&east_cols[reach as usize], &east_line_first);
+        if west == 0 && east == 0 {
+            return Ok(None);
+        }
+        // Per row, the nearest soil class outside the void on each side that
+        // is not water (within the reach), and how many columns beyond the
+        // void's edge it lies.  A void pixel is under land as often as not
+        // where the column just outside is sea (Vanua Levu's east end lies
+        // wholly inside it), so the edge column alone would give it water.
+        let mut west_land = vec![(-1i64, 0i64); ny];
+        let mut east_land = vec![(-1i64, 0i64); ny];
+        for j in 0..ny {
+            for extra in 0..=(reach - west) {
+                let v = west_cols[(reach - west - extra) as usize][j];
+                if v >= 0 && v != water {
+                    west_land[j] = (v, extra);
+                    break;
+                }
+            }
+            for extra in 0..=(reach - east) {
+                let v = east_cols[(east + extra) as usize][j];
+                if v >= 0 && v != water {
+                    east_land[j] = (v, extra);
+                    break;
+                }
+            }
+        }
+        let mut void = SoilVoid {
+            west,
+            east,
+            west_line,
+            east_line,
+            nx,
+            water,
+            west_land,
+            east_land,
+            share: match (west, east) {
+                (0, _) => east_share,
+                (_, 0) => west_share,
+                _ => west_share.min(east_share),
+            },
+            filled: 0,
+        };
+        let mut filled = 0usize;
+        for j in 0..ny {
+            for k in 0..west + east {
+                let (c, column) = if k < west {
+                    (at(west_line - k), &west_cols[reach as usize - k as usize])
+                } else {
+                    (at(east_line + (k - west)), &east_cols[(k - west) as usize])
+                };
+                if column[j] == water && void.fill_value(c, j).is_some_and(|v| v != water) {
+                    filled += 1;
+                }
+            }
+        }
+        void.filled = filled;
+        Ok(Some(void))
+    }
+
+    /// Every row of each named column, as stored (-1 where no tile is staged).
+    fn columns_as_stored(&self, columns: &[i64]) -> MpasResult<Vec<Vec<i64>>> {
+        let ny = self.ny_global as usize;
+        let tx = self.index.full_tile_nx();
+        let mut out = vec![vec![-1i64; ny]; columns.len()];
+        let bands: std::collections::BTreeSet<i64> = self.tiles.iter().map(|t| t.ys).collect();
+        for ys in bands {
+            let mut planes: Vec<(&TileRef, Vec<i64>)> = Vec::new();
+            for (k, &c) in columns.iter().enumerate() {
+                let Some(tile) = self.tiles.iter().find(|t| t.ys == ys && t.xs <= c && c <= t.xe) else {
+                    continue;
+                };
+                let slot = match planes.iter().position(|(t, _)| std::ptr::eq(*t, tile)) {
+                    Some(slot) => slot,
+                    None => {
+                        planes.push((tile, self.read_plane_as_stored(tile, 0)?));
+                        planes.len() - 1
+                    }
+                };
+                let rows = self.index.tile_y.min(self.ny_global - ys + 1).max(0) as usize;
+                for r in 0..rows {
+                    let j = ys as usize - 1 + r;
+                    if j >= ny {
+                        break;
+                    }
+                    if let Some(&v) = planes[slot].1.get(r * tx + (c - tile.xs) as usize) {
+                        out[k][j] = v;
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The archive columns either side of the 180-degree line, in its own
+    /// 1-based frame: `[west-1, west, east, east+1, east+2]`, where `west`'s
+    /// pixel ends at 180 degrees and `east`'s starts there.  In every WPS
+    /// land-use set that is `[nx-1, nx, 1, 2, 3]`; an archive whose column 1
+    /// sits elsewhere is repaired at the same place on the earth, so two
+    /// archives of one field give one answer.  None when the line does not
+    /// fall on a pixel edge (no column is "at" 180 degrees).
+    pub fn seam_columns(&self) -> Option<[i64; 5]> {
+        let nx = self.nx_global;
+        let dx = self.index.dx;
+        if !self.wraps_x || nx < 5 || dx <= 0.0 {
+            return None;
+        }
+        // Western edge of column 1, east of 180 W, in pixels: measured the
+        // short way round, so the binary32 rounding the geoindex is read
+        // with (dx = 0.00833333 is 1/120 less 4e-9) is not multiplied by a
+        // whole globe of pixels.
+        let edge = self.index.known_lon - (self.index.known_x - 1.0) * dx - 0.5 * dx;
+        let pixels = ((edge + 360.0).rem_euclid(360.0) - 180.0) / dx;
+        let whole = pixels.round();
+        if (pixels - whole).abs() > 1.0e-2 {
+            return None;
+        }
+        // Column 1 starts `whole` pixels east of 180 W, so the column that
+        // starts at 180 W is 1 - whole (mod nx, 1-based).
+        let east = (-(whole as i64)).rem_euclid(nx) + 1;
+        let at = |c: i64| (c - 1).rem_euclid(nx) + 1;
+        Some([at(east - 2), at(east - 1), east, at(east + 1), at(east + 2)])
+    }
+
+    fn seam_wet_classes(&self) -> Vec<i64> {
+        let mut wet: Vec<i64> = [self.index.iswater, self.index.islake, self.index.isice]
+            .into_iter()
+            .flatten()
+            .filter(|&v| v >= 0)
+            .collect();
+        wet.sort_unstable();
+        wet.dedup();
+        wet
+    }
+
+    /// The pixels of columns `nx`, 1 and 2 this dataset's land use is read
+    /// with instead of the stored ones ([`repair_seam_columns`]), worked out
+    /// once per dataset folder per process, the first time a tile on the line
+    /// is read.  The same rule and the same pixels as gpuwm's WRF static
+    /// route (`gpuwm.static.geog.repair_seam_columns`), so a hex mesh and an
+    /// ArWen domain on 180 degrees read one land use.
+    pub fn seam_changes(&self) -> MpasResult<std::sync::Arc<Vec<SeamChange>>> {
+        let registry = SEAM_REGISTRY.get_or_init(Default::default);
+        let mut known = registry.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(found) = known.get(&self.path) {
+            return Ok(found.clone());
+        }
+        let ny = self.ny_global as usize;
+        let tx = self.index.full_tile_nx();
+        let Some(columns) = self.seam_columns() else {
+            return Ok(std::sync::Arc::new(Vec::new()));
+        };
+        // values[k][j]: column columns[k] of row j + 1, -1 where no tile is
+        // staged.  A row counts only where all five columns are staged, as
+        // a band counts only with both edge tiles staged.
+        let mut values = vec![vec![-1i64; ny]; 5];
+        let bands: std::collections::BTreeSet<i64> = self.tiles.iter().map(|t| t.ys).collect();
+        for ys in bands {
+            let mut planes: Vec<(&TileRef, Vec<i64>)> = Vec::new();
+            let mut found = [None; 5];
+            for (k, &c) in columns.iter().enumerate() {
+                let Some(tile) = self.tiles.iter().find(|t| t.ys == ys && t.xs <= c && c <= t.xe) else {
+                    break;
+                };
+                let slot = match planes.iter().position(|(t, _)| std::ptr::eq(*t, tile)) {
+                    Some(slot) => slot,
+                    None => {
+                        planes.push((tile, self.read_plane_as_stored(tile, 0)?));
+                        planes.len() - 1
+                    }
+                };
+                found[k] = Some((slot, (c - tile.xs) as usize));
+            }
+            if found.iter().any(Option::is_none) {
+                continue;
+            }
+            let rows = self.index.tile_y.min(self.ny_global - ys + 1).max(0) as usize;
+            for r in 0..rows {
+                let j = ys as usize - 1 + r;
+                if j >= ny {
+                    break;
+                }
+                for (k, entry) in found.iter().enumerate() {
+                    let (slot, offset) = entry.expect("checked above");
+                    if let Some(&v) = planes[slot].1.get(r * tx + offset) {
+                        values[k][j] = v;
+                    }
+                }
+            }
+        }
+        let mut last: Vec<[i64; 2]> = (0..ny).map(|j| [values[0][j], values[1][j]]).collect();
+        let mut first: Vec<[i64; 3]> =
+            (0..ny).map(|j| [values[2][j], values[3][j], values[4][j]]).collect();
+        let water = self.index.iswater.unwrap_or(-1);
+        let changes: Vec<SeamChange> =
+            repair_seam_columns(&mut last, &mut first, &self.seam_wet_classes(), water)
+                .into_iter()
+                .map(|(j, column, was, now)| SeamChange {
+                    y: j as i64 + 1,
+                    x: match column { 0 => columns[1], 1 => columns[2], _ => columns[3] },
+                    was,
+                    now,
+                })
+                .collect();
+        if !changes.is_empty() {
+            let name = self.path.file_name().map_or_else(
+                || self.path.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            eprintln!(
+                "note: geography: {name}: {} pixel(s) of water, lake or ice on land in the \
+                 columns at 180 degrees read as land ({SEAM_REPAIR_ENV}=off reads them as stored)",
+                changes.len()
+            );
+        }
+        let changes = std::sync::Arc::new(changes);
+        known.insert(self.path.clone(), changes.clone());
+        Ok(changes)
+    }
+
+    fn read_plane_as_stored(&self, tile: &TileRef, z: usize) -> MpasResult<Vec<i64>> {
         if z >= self.index.nz() {
             return Err(MpasError::Refusal(format!(
                 "WPS_GEOG {} requested z={z}, but dataset has {} plane(s)",
@@ -709,6 +1059,234 @@ impl GeogDataset {
         }
         Ok(out)
     }
+}
+
+/// `off` (or 0, no, false) reads a land-use dataset's columns at 180 degrees
+/// as stored, the way MPAS init_atmosphere and WPS geogrid read them; for a
+/// comparison with them only.  The same switch as gpuwm's WRF static route.
+pub const SEAM_REPAIR_ENV: &str = "GPUWM_GEOG_SEAM_REPAIR";
+
+fn seam_repair_switched_off() -> bool {
+    std::env::var(SEAM_REPAIR_ENV)
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "off" | "no" | "false"))
+        .unwrap_or(false)
+}
+
+/// One pixel of a land-use dataset read other than as stored, in the
+/// dataset's own 1-based source frame (`x` is one of the three columns
+/// [`GeogDataset::seam_columns`] puts on the line: `nx_global`, 1 or 2 in
+/// every WPS land-use set).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeamChange {
+    pub y: i64,
+    pub x: i64,
+    pub was: i64,
+    pub now: i64,
+}
+
+type SeamRegistry =
+    std::sync::Mutex<std::collections::HashMap<PathBuf, std::sync::Arc<Vec<SeamChange>>>>;
+
+static SEAM_REGISTRY: std::sync::OnceLock<SeamRegistry> = std::sync::OnceLock::new();
+
+/// How far from 180 degrees a soil void is looked for, in columns (1 degree
+/// at 30 arc-seconds): the reference column is this far out.
+pub const SOIL_VOID_REACH: i64 = 120;
+/// A column is void when it holds the water class on at least this share of
+/// the rows where the reference column holds land.  Columns elsewhere hold
+/// 1-5 % (coasts); the void holds 96-100 %.
+pub const SOIL_VOID_SHARE: f64 = 0.95;
+/// Fewer land rows at the reference than this and no void is declared.
+pub const SOIL_VOID_MIN_ROWS: usize = 50;
+
+/// A strip of columns beside 180 degrees where a soil set holds the water
+/// class on land: a void in the source, not a coast.
+///
+/// THE BREAKAGE THIS REPAIRS.  WPS_GEOG's SoilGrids texture sets
+/// (`soilgrids/texture_top`, `texture_bot`, `texture_layer1..4`) hold the
+/// water class (14) on 96 % of the land pixels of the 0.5 degrees west of 180
+/// (columns 43142-43200; 1-2 % in every other half degree), from 60 S to
+/// 75 N (a development machine, 2026-11-13).  MPAS's surface rule (`reconcile_surface`)
+/// makes a cell water when its soil is water, so a hex static turned the
+/// east end of Vanua Levu, the west of Taveuni and a 20 km strip of Chukotka
+/// into ocean.
+///
+/// The water pixels of the void take the nearest soil class on the same row
+/// outside it that is not water, west of the void or east of the line (the
+/// west on a tie), within 1 degree.  That class is a guess up to a void-width
+/// away, and better than water under land.  Where the pixel is sea the land
+/// use says water, and the cell stays water: MPAS's rule and real.exe's both
+/// take the water soil wherever the land use is water.
+#[derive(Debug, Clone)]
+pub struct SoilVoid {
+    /// Void columns ending at the line (west) and starting at it (east).
+    pub west: i64,
+    pub east: i64,
+    west_line: i64,
+    east_line: i64,
+    nx: i64,
+    water: i64,
+    /// Per row (0-based): the nearest soil class outside the void on each
+    /// side that is not water, and its distance in columns beyond the void's
+    /// edge (-1 for the class when there is none within the reach).
+    west_land: Vec<(i64, i64)>,
+    east_land: Vec<(i64, i64)>,
+    /// The least water share among the void columns.
+    pub share: f64,
+    /// Water pixels the repair gives a soil class.
+    pub filled: usize,
+}
+
+impl SoilVoid {
+    /// Distance in columns from `c` back to the line's west column (0 on it),
+    /// when `c` is a west void column.
+    fn west_offset(&self, c: i64) -> Option<i64> {
+        let d = (self.west_line - c).rem_euclid(self.nx);
+        (d < self.west).then_some(d)
+    }
+
+    fn east_offset(&self, c: i64) -> Option<i64> {
+        let d = (c - self.east_line).rem_euclid(self.nx);
+        (d < self.east).then_some(d)
+    }
+
+    /// The value a water pixel of void column `c`, row `j` (0-based) is read
+    /// as: the nearer soil class outside the void that is not water.
+    fn fill_value(&self, c: i64, j: usize) -> Option<i64> {
+        // Columns from `c` to the first column outside the void, each way.
+        let (to_west, to_east) = if let Some(d) = self.west_offset(c) {
+            (self.west - d, d + 1 + self.east)
+        } else if let Some(d) = self.east_offset(c) {
+            (d + 1 + self.west, self.east - d)
+        } else {
+            return None;
+        };
+        let (wv, wx) = self.west_land[j];
+        let (ev, ex) = self.east_land[j];
+        match (wv >= 0, ev >= 0) {
+            (true, true) => Some(if to_west + wx <= to_east + ex { wv } else { ev }),
+            (true, false) => Some(wv),
+            (false, true) => Some(ev),
+            (false, false) => None,
+        }
+    }
+
+    fn fill(&self, ds: &GeogDataset, tile: &TileRef, plane: &mut [i64]) {
+        let full_nx = ds.index.full_tile_nx();
+        for c in tile.xs..=tile.xe {
+            if self.west_offset(c).is_none() && self.east_offset(c).is_none() {
+                continue;
+            }
+            let i = (c - tile.xs) as usize;
+            for r in 0..(tile.ye - tile.ys + 1) as usize {
+                let j = tile.ys as usize - 1 + r;
+                let k = r * full_nx + i;
+                if j >= self.west_land.len() || k >= plane.len() || plane[k] != self.water {
+                    continue;
+                }
+                if let Some(v) = self.fill_value(c, j) {
+                    plane[k] = v;
+                }
+            }
+        }
+    }
+}
+
+static SOIL_VOID_REGISTRY: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, std::sync::Arc<Option<SoilVoid>>>>,
+> = std::sync::OnceLock::new();
+
+/// Repair water, lake and ice written into the columns at 180 degrees.
+///
+/// THE BREAKAGE THIS REPAIRS.  WPS_GEOG's 30 arc-second MODIS land use
+/// (`modis_landuse_20class_30s` and `..._with_lakes`) carries water (17),
+/// lake (21) or ice (15) in its last column (x = 43200) and its first two
+/// (x = 1, 2) where the ground either side is land: ice on tropical Taveuni
+/// and Vanua Levu (16.1-17.0 S), and lake pixels in Chukotka and on Wrangel
+/// Island (65-71 N); 85 pixels of either dataset (a development machine, 2026-11-13).  A
+/// 1 km grid on Taveuni got a strip of water and ice down the island along
+/// 180 degrees, and land ice in the tropics.
+///
+/// The rule is gpuwm.static.geog.repair_seam_columns, word for word.
+/// `last[j]` holds columns nx-1 and nx of row j, `first[j]` columns 1, 2 and
+/// 3; -1 marks a row whose tile is not staged.  For a pixel of column nx, 1
+/// or 2 in a `wet` class, its clean neighbours are columns nx-1 and 3 in its
+/// own row and the rows above and below:
+///
+/// 1. When more than half of them are land it is read as land: the land pixel
+///    inland of it on its own side, or when that one is wet too the
+///    commonest land class among the neighbours (the lower class on a tie).
+///    A real coast along 180 keeps its water.
+/// 2. Otherwise a lake or ice pixel none of whose clean neighbours is of its
+///    class takes the pixel inland of it on its own side (ice on the shore of
+///    tropical Taveuni).  Ice beside ice (the Ross Ice Shelf) stays.
+///
+/// What it costs: the same rule on interior columns changes real lakes one or
+/// two pixels wide, so it runs at 180 only, where a one-pixel lake exactly on
+/// the line in Chukotka may be read as tundra.
+///
+/// Returns `(row, column, was, now)` per changed pixel: row 0-based, column
+/// 0 for nx, else 1 or 2.
+pub fn repair_seam_columns(
+    last: &mut [[i64; 2]],
+    first: &mut [[i64; 3]],
+    wet: &[i64],
+    water: i64,
+) -> Vec<(usize, usize, i64, i64)> {
+    let is_wet = |v: i64| wet.contains(&v);
+    let ny = last.len().min(first.len());
+    let clean: Vec<[i64; 2]> = (0..ny).map(|j| [last[j][0], first[j][2]]).collect();
+    let mut changes = Vec::new();
+    for j in 0..ny {
+        if !(is_wet(last[j][1]) || is_wet(first[j][0]) || is_wet(first[j][1])) {
+            continue;
+        }
+        let hood: Vec<i64> = clean[j.saturating_sub(1)..(j + 2).min(ny)]
+            .iter()
+            .flatten()
+            .copied()
+            .filter(|&v| v >= 0)
+            .collect();
+        let land: Vec<i64> = hood.iter().copied().filter(|&v| !is_wet(v)).collect();
+        let mostly_land = 2 * land.len() > hood.len();
+        let common = if mostly_land {
+            let mut counts = std::collections::BTreeMap::<i64, usize>::new();
+            for &v in &land {
+                *counts.entry(v).or_default() += 1;
+            }
+            let best = counts.values().copied().max().unwrap_or(0);
+            counts.into_iter().find(|&(_, c)| c == best).map_or(-1, |(v, _)| v)
+        } else {
+            -1
+        };
+        // (west or east, column, inland column, name): nx, then 1, then 2.
+        for (east, column, inland, name) in [(false, 1, 0, 0), (true, 0, 2, 1), (true, 1, 2, 2)] {
+            let (was, side) = if east {
+                (first[j][column], first[j][inland])
+            } else {
+                (last[j][column], last[j][inland])
+            };
+            if was < 0 || !is_wet(was) {
+                continue;
+            }
+            let now = if mostly_land {
+                if side >= 0 && !is_wet(side) { side } else { common }
+            } else if was != water && side >= 0 && !hood.contains(&was) {
+                side
+            } else {
+                continue;
+            };
+            if now != was {
+                if east {
+                    first[j][column] = now;
+                } else {
+                    last[j][column] = now;
+                }
+                changes.push((j, name, was, now));
+            }
+        }
+    }
+    changes
 }
 
 /// Synthetic WPS_GEOG trees for tests.
@@ -1003,6 +1581,218 @@ mod tests {
         let flipped = format!("{MINIMAL_INDEX}row_order=top_bottom\n");
         let b = open("geom-flipped", &flipped, &[(TILE_NAME, plane_1234_be())]).expect("opens");
         assert_eq!(a.geometry(), b.geometry());
+    }
+
+    const WATER: i64 = 17;
+    const LAKE: i64 = 21;
+    const ICE: i64 = 15;
+    const FOREST: i64 = 2;
+    const CROP: i64 = 12;
+    const WET: [i64; 3] = [ICE, WATER, LAKE];
+
+    fn strips(ny: usize, land: i64) -> (Vec<[i64; 2]>, Vec<[i64; 3]>) {
+        (vec![[land; 2]; ny], vec![[land; 3]; ny])
+    }
+
+    // The cases of gpuwm's tests/test_static_geog_seam.py, so the two routes
+    // keep one rule.
+    #[test]
+    fn seam_strip_of_ice_and_water_on_land_is_read_as_land() {
+        let (mut last, mut first) = strips(9, FOREST);
+        for row in &mut last[2..7] { row[1] = WATER; }
+        for row in &mut first[3..6] { row[0] = ICE; }
+        first[4][1] = LAKE;
+        let changes = repair_seam_columns(&mut last, &mut first, &WET, WATER);
+        assert!(last.iter().flatten().all(|&v| v == FOREST));
+        assert!(first.iter().flatten().all(|&v| v == FOREST));
+        assert_eq!(changes.len(), 5 + 3 + 1);
+    }
+
+    #[test]
+    fn seam_takes_the_inland_pixel_on_its_own_side() {
+        let (mut last, mut first) = strips(3, FOREST);
+        for row in &mut last { row[0] = CROP; }
+        last[1][1] = WATER;
+        first[1][0] = ICE;
+        repair_seam_columns(&mut last, &mut first, &WET, WATER);
+        assert_eq!(last[1][1], CROP);
+        assert_eq!(first[1][0], FOREST);
+    }
+
+    #[test]
+    fn seam_a_coast_along_180_keeps_its_water() {
+        let (mut last, mut first) = strips(5, FOREST);
+        for row in &mut first { *row = [WATER; 3]; }
+        for row in &mut last { row[1] = WATER; }
+        assert!(repair_seam_columns(&mut last, &mut first, &WET, WATER).is_empty());
+    }
+
+    #[test]
+    fn seam_ice_on_a_coast_takes_the_pixel_inland_of_it() {
+        let (mut last, mut first) = strips(5, FOREST);
+        for row in &mut first { *row = [WATER; 3]; }
+        first[2][0] = ICE;
+        last[2][1] = ICE;
+        let changes = repair_seam_columns(&mut last, &mut first, &WET, WATER);
+        assert_eq!((first[2][0], last[2][1], changes.len()), (WATER, FOREST, 2));
+    }
+
+    #[test]
+    fn seam_ice_beside_ice_stays() {
+        let (mut last, mut first) = strips(5, ICE);
+        for row in &mut first { row[2] = WATER; }
+        assert!(repair_seam_columns(&mut last, &mut first, &WET, WATER).is_empty());
+    }
+
+    #[test]
+    fn seam_rows_with_no_staged_tile_are_not_neighbours() {
+        let (mut last, mut first) = strips(4, FOREST);
+        for row in &mut last[2..] { *row = [-1; 2]; }
+        for row in &mut first[2..] { *row = [-1; 3]; }
+        first[1][0] = ICE;
+        let changes = repair_seam_columns(&mut last, &mut first, &WET, WATER);
+        assert_eq!((first[1][0], changes.len()), (FOREST, 1));
+        assert!(first[2..].iter().flatten().all(|&v| v == -1));
+    }
+
+    /// A 24 x 12 globe of 6 x 6 one-byte tiles, row 1 south: sea with an
+    /// island across 180 (columns 1..4 and 21..24, rows 4..9), the same as
+    /// gpuwm's test_static_geog_seam.py `_globe`.
+    fn seam_globe() -> Vec<Vec<i64>> {
+        let mut grid = vec![vec![WATER; 24]; 12];
+        for row in &mut grid[3..9] {
+            for x in (0..4).chain(20..24) { row[x] = FOREST; }
+        }
+        grid
+    }
+
+    fn seam_dataset(label: &str, grid: &[Vec<i64>], mminlu: &str) -> GeogDataset {
+        let index = format!(
+            "type=categorical\ncategory_min=1\ncategory_max=21\nprojection=regular_ll\n\
+             dx=15.0\ndy=15.0\nknown_x=1.0\nknown_y=1.0\nknown_lat=-82.5\nknown_lon=-172.5\n\
+             wordsize=1\ntile_x=6\ntile_y=6\ntile_z=1\niswater=17\nislake=21\nisice=15\n\
+             isurban=13\n{mminlu}"
+        );
+        let mut tiles = Vec::new();
+        for y0 in (0..12).step_by(6) {
+            for x0 in (0..24).step_by(6) {
+                let bytes: Vec<u8> = (y0..y0 + 6)
+                    .flat_map(|y| (x0..x0 + 6).map(move |x| (y, x)))
+                    .map(|(y, x)| grid[y][x] as u8)
+                    .collect();
+                tiles.push((format!("{:05}-{:05}.{:05}-{:05}", x0 + 1, x0 + 6, y0 + 1, y0 + 6), bytes));
+            }
+        }
+        let tiles: Vec<(&str, Vec<u8>)> = tiles.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
+        open(label, &index, &tiles).expect("globe opens")
+    }
+
+    fn seam_read_all(ds: &GeogDataset) -> Vec<Vec<i64>> {
+        let mut grid = vec![vec![-1; 24]; 12];
+        for tile in &ds.tiles {
+            let plane = ds.read_plane(tile, 0).unwrap();
+            for r in 0..6 {
+                for c in 0..6 {
+                    grid[(tile.ys - 1) as usize + r][(tile.xs - 1) as usize + c] = plane[r * 6 + c];
+                }
+            }
+        }
+        grid
+    }
+
+    #[test]
+    fn seam_land_use_on_180_is_read_repaired() {
+        // Before: rw_mpas_static read the stored lake and ice, so a hex
+        // mesh on Taveuni carried the same strip as geogrid.
+        let mut grid = seam_globe();
+        for row in &mut grid[4..8] { row[23] = LAKE; row[0] = ICE; }
+        let ds = seam_dataset("seam-defect", &grid, "mminlu=\"MODIFIED_IGBP_MODIS_NOAH\"\n");
+        assert!(ds.seam_repair_applies());
+        assert_eq!(seam_read_all(&ds), seam_globe());
+        assert_eq!(ds.seam_changes().unwrap().len(), 8);
+        // Tiles off the line are read as stored.
+        let middle = ds.tiles.iter().find(|t| t.xs == 7 && t.ys == 7).unwrap();
+        assert_eq!(ds.read_plane(middle, 0).unwrap(), ds.read_plane_as_stored(middle, 0).unwrap());
+    }
+
+    /// A 720 x 180 soil globe of 0.5 x 1 degree pixels in tiles of 240
+    /// columns: loam (6) on rows 60..120 everywhere, sea (14) elsewhere, and
+    /// `void` columns west of 180 holding 14 on every row.
+    fn soil_globe(label: &str, void: usize, mminlu: &str) -> GeogDataset {
+        let (nx, ny, tile) = (720usize, 180usize, 240usize);
+        let mut grid = vec![vec![14i64; nx]; ny];
+        for row in &mut grid[60..120] {
+            for v in row.iter_mut() { *v = 6; }
+        }
+        for row in &mut grid {
+            for v in &mut row[nx - void..] { *v = 14; }
+        }
+        let index = format!(
+            "type=categorical
+category_min=1
+category_max=16
+projection=regular_ll
+             dx=0.5
+dy=1.0
+known_x=1.0
+known_y=1.0
+known_lat=-89.5
+known_lon=-179.75
+             wordsize=1
+tile_x={tile}
+tile_y=180
+tile_z=1
+{mminlu}"
+        );
+        let mut tiles = Vec::new();
+        for x0 in (0..nx).step_by(tile) {
+            let bytes: Vec<u8> = (0..ny).flat_map(|y| (x0..x0 + tile).map(move |x| (y, x)))
+                .map(|(y, x)| grid[y][x] as u8).collect();
+            tiles.push((format!("{:05}-{:05}.00001-00180", x0 + 1, x0 + tile), bytes));
+        }
+        let tiles: Vec<(&str, Vec<u8>)> = tiles.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
+        open(label, &index, &tiles).expect("soil globe opens")
+    }
+
+    #[test]
+    fn soil_void_beside_180_is_read_as_the_soil_beside_it() {
+        // Before: the void's water soil made MPAS's surface rule turn the land
+        // under it into ocean (Vanua Levu, Taveuni, Chukotka).
+        let ds = soil_globe("soil-void", 30, "");
+        assert!(ds.soil_void_applies());
+        let void = ds.soil_void().unwrap();
+        let void = void.as_ref().as_ref().expect("void found");
+        assert_eq!((void.west, void.east), (30, 0));
+        let last = ds.tiles.iter().find(|t| t.xe == 720).unwrap();
+        let plane = ds.read_plane(last, 0).unwrap();
+        for r in 0..180usize {
+            let want = if (60..120).contains(&r) { 6 } else { 14 };
+            assert!(plane[r * 240..(r + 1) * 240].iter().all(|&v| v == want), "row {r}");
+        }
+    }
+
+    #[test]
+    fn soil_without_a_void_and_land_use_are_read_as_stored() {
+        let clean = soil_globe("soil-clean", 0, "");
+        assert!(clean.soil_void().unwrap().is_none());
+        let land_use = soil_globe("soil-landuse", 30, "mminlu=\"USGS\"\n");
+        assert!(!land_use.soil_void_applies());
+    }
+
+    #[test]
+    fn seam_columns_are_the_ones_either_side_of_180_degrees() {
+        let ds = seam_dataset("seam-columns", &seam_globe(), "mminlu=\"USGS\"\n");
+        assert_eq!(ds.seam_columns(), Some([23, 24, 1, 2, 3]));
+    }
+
+    #[test]
+    fn seam_a_category_set_that_is_not_land_use_is_read_as_stored() {
+        // Soil sets carry no mminlu; the rule is not theirs.
+        let mut grid = seam_globe();
+        for row in &mut grid[4..8] { row[0] = ICE; }
+        let ds = seam_dataset("seam-soil", &grid, "");
+        assert!(!ds.seam_repair_applies());
+        assert_eq!(seam_read_all(&ds), grid);
     }
 
     #[test]

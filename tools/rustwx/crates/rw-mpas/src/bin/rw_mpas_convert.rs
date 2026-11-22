@@ -730,12 +730,28 @@ fn run() -> Result<(), String> {
         } else {
             false
         };
-        let derive = if is_regional { Window::regional_focus } else { Window::mesh_focus };
-        let derived = derive(
-            &mesh.latitude_degrees,
-            &mesh.longitude_degrees,
-            &spacing.spacing_metres,
-        )
+        // A global mesh with no refined region (a quasi-uniform x1 globe) has
+        // no focus to derive: its own window IS the whole sphere at its own
+        // spacing, which is what `--window global-mesh` draws. `mesh` is the
+        // render door's default, so refusing here stopped every plain render
+        // of a uniform globe.
+        let uniform_globe =
+            !is_regional && Window::refined_region(&spacing.spacing_metres).is_err();
+        let derived = if uniform_globe {
+            Window::global_at_mesh_spacing(&spacing.spacing_metres)
+        } else if is_regional {
+            Window::regional_focus(
+                &mesh.latitude_degrees,
+                &mesh.longitude_degrees,
+                &spacing.spacing_metres,
+            )
+        } else {
+            Window::mesh_focus(
+                &mesh.latitude_degrees,
+                &mesh.longitude_degrees,
+                &spacing.spacing_metres,
+            )
+        }
         .map_err(|e| e.to_string())?;
         eprintln!(
             "rw_mpas_convert: advisory: --window mesh derived from {} using {}: {}",

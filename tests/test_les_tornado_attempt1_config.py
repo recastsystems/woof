@@ -1,7 +1,7 @@
 """The tornado-LES attempt #1 config must keep matching what was ruled.
 
 The ratifications are prose in
-``docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md``, the
+``docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md``, the
 geometry is numbers in the TOML, and nothing else connects them. This
 file is the connection: it runs the case module's own audit, and adds
 the mutation controls that prove the audit can fail.
@@ -47,7 +47,7 @@ def test_the_case_agrees_with_its_own_ratification(module) -> None:
     """A case may not ratify a pairing the model refuses to build.
 
     Both modules name
-    ``docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`` as
+    ``docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`` as
     their ratification, and its G4 rules ``inflow_perturbation`` ON at
     the first LES domain under a PARAMETERIZED-turbulence parent and OFF
     below it: the generator's vertical extent is the parent's diagnosed
@@ -64,7 +64,7 @@ def test_the_case_agrees_with_its_own_ratification(module) -> None:
     mayfield and left the parked twin ratifying the defect.
     """
 
-    assert module.RATIFICATION == ("docs/superpowers/specs/"
+    assert module.RATIFICATION == ("docs/internal/specs/"
                                    "P6-LES-DECISIONS-RATIFIED-2026-08-05.md")
     # The ratified chain is linear (d(n) nests in d(n-1)) and listed
     # parent-before-child, so the preceding row IS the parent.  Asserted,

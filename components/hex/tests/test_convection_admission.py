@@ -76,7 +76,7 @@ def test_the_2026_10_05_ruling_selects_new_tiedtke_at_twenty_kilometres_and_coar
     assert decision["source"] == "resolution"
     assert decision["ntiedtke_threshold_m"] == NTIEDTKE_AT_OR_ABOVE_M
     assert "2026-10-05" in decision["ntiedtke_ruling"]
-    assert "2026-10-05" in decision["note"]
+    assert "20000 m New Tiedtke threshold" in decision["note"]
     assert "RECEIPT.md" in convection_admission.NTIEDTKE_MEASUREMENT
 
 

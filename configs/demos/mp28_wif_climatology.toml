@@ -21,7 +21,7 @@
 # synthetic fill, so nothing downstream needs teaching.
 #
 # BEFORE YOU RUN IT: stage the dataset.  It is a fixed 225,443,520-byte
-# external file that never changes; WOOF does not redistribute it (over
+# external file that never changes; WOOF-ArWen does not redistribute it (over
 # PyPI's 100 MB per-file cap and GitHub's 100 MiB blob limit, the same
 # reason freezeH2O.dat is externalized).
 #

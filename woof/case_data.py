@@ -1121,20 +1121,67 @@ GFS_LAKE_SKIN_CHOICES = ("wps", "air_temperature")
 GFS_LAKE_ICE_CHOICES = ("observed", "wps")
 
 
-def gfs_preparation_policy(data):
+#: The GFS route's preparation keys and their defaults, in policy order.
+GFS_PREPARATION_DEFAULTS = (
+    ("gfs_snow_convention", "wps"),
+    ("gfs_lake_skin", GFS_LAKE_SKIN_CHOICES[0]),
+    ("gfs_lake_ice", GFS_LAKE_ICE_CHOICES[0]),
+)
+
+
+def gfs_preparation_policy(data, ingest=None, *, case_table=None,
+                           source="the experiment config"):
     """The GFS route's own preparation operands, beside the shared ones.
 
     Kept out of :func:`preparation_case_policy` on purpose: every route
     binds that dict into its source identity, so a GFS-only key there
     would move every ERA5 and HRRR preparation's identity (and miss every
     prepared cache once) for a choice those routes never make.
+
+    Each key is read from the config's ``[ingest]`` table (``ingest``, the
+    raw TOML table), which every config can carry, and still from
+    ``[case_data]`` (``data``).  A GFS config written by ``woof domain``
+    has no ``[case_data]``, and one cannot be added without the ERA5
+    route's required inputs, so before [ingest] carried them these
+    switches could not be set on the prepared GFS route at all (door item
+    7).  A key declared in both tables with two values is refused: the run
+    would follow one of them and the file would say the other.
+    ``case_table`` is the raw ``[case_data]`` table, which tells a declared
+    key from the dataclass default; without it a non-default value counts
+    as declared.
     """
-    return {
-        "gfs_snow_convention": "wps" if data is None else data.gfs_snow_convention,
-        "gfs_lake_skin": "wps" if data is None else data.gfs_lake_skin,
-        "gfs_lake_ice": (GFS_LAKE_ICE_CHOICES[0] if data is None
-                         else data.gfs_lake_ice),
-    }
+    from woof.ingest.soil_downscale import parse_ingest_table
+
+    declared = ({} if ingest is None
+                else parse_ingest_table(ingest, source=source))
+    policy = {}
+    for key, default in GFS_PREPARATION_DEFAULTS:
+        from_ingest = declared.get(key)
+        from_case = None if data is None else getattr(data, key)
+        case_declared = from_case is not None and (
+            key in case_table if case_table is not None
+            else from_case != default)
+        if (from_ingest is not None and case_declared
+                and from_case != from_ingest):
+            raise ValueError(
+                f"{source} sets {key} twice: [ingest] {key} = "
+                f"{from_ingest!r} and [case_data] {key} = {from_case!r}.  "
+                "Keep one of them ([ingest] is the one every route reads).")
+        policy[key] = (from_ingest if from_ingest is not None else
+                       from_case if from_case is not None else default)
+    return policy
+
+
+def gfs_preparation_policy_from_config(path, data, *, expected_sha256=None):
+    """:func:`gfs_preparation_policy` from the same captured authority bytes."""
+    from woof.config_authority import read_config_authority
+    authority = read_config_authority(path)
+    if expected_sha256 is not None and authority.sha256 != expected_sha256:
+        raise ValueError("GFS preparation experiment authority digest differs from its pin")
+    raw = tomllib.loads(authority.payload.decode("utf-8"))
+    return gfs_preparation_policy(
+        data, raw.get("ingest"), case_table=raw.get("case_data"),
+        source=str(authority.source))
 
 
 def trace_gas_overrides_from_tables(raw: dict, *, source: str, base_dir: Path):

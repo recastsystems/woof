@@ -18,7 +18,7 @@ def _experiment(base):
     from woof.core.streaming import StreamingOptions
     from woof.config import validate_run_config
     cfg = replace(base.root.run, dt=12., clock_dt=0., run_seconds=36.,
-        use_adaptive_time_step=False, moist=True, mp_physics=8, cu_physics=3,
+        use_adaptive_time_step=False, moist=True, mp_physics=8, cu_physics=3, cu_gf_version="wrf_461",
         bl_pbl_physics=5, sf_sfclay_physics=5, sf_surface_physics=3,
         num_soil_layers=9, cudt_minutes=0., spp_conv=0, spp_pbl=0, spp_lsm=0)
     validate_run_config(cfg)

@@ -1,6 +1,6 @@
 # Client design and integration notes
 
-These notes describe implementation constraints and evaluation criteria for applications built around WOOF 2.7. The [integration guide](integration-guide.md), installed capability catalogs, and [example client](examples/client.py) define the supported interface boundary. Application-specific design work does not introduce additional simulation APIs or imply that an unavailable engine capability exists.
+These notes describe implementation constraints and evaluation criteria for applications built around WOOF-ArWen 2.7. The [integration guide](integration-guide.md), installed capability catalogs, and [example client](examples/client.py) define the supported interface boundary. Application-specific design work does not introduce additional simulation APIs or imply that an unavailable engine capability exists.
 
 ## Application workflows
 

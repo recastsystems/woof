@@ -376,7 +376,7 @@ def test_the_frame_the_fixed_term_is_derived_from_cannot_go_stale():
 
     The whole fixed term is derived from ONE kernel frame, and that
     frame is a property of the BUILD.  The build in question is the
-    WOOF checkout the MPAS port is pinned to -- NOT the tree this test
+    WOOF-ArWen checkout the MPAS port is pinned to -- NOT the tree this test
     runs in, which has already cut that frame from 22,416 B to under the
     default stack.  So the number is right and the label is what makes
     it checkable.
@@ -421,7 +421,7 @@ def test_the_frame_the_fixed_term_is_derived_from_cannot_go_stale():
     if checkout is None:
         pytest.skip(
             "no MPAS port checkout (woof hex/tree beside an ancestor, "
-            f"or ${_PORT_CHECKOUT_ENV}), so the port's live WOOF pin "
+            f"or ${_PORT_CHECKOUT_ENV}), so the port's live WOOF-ArWen pin "
             "cannot be read; the frame-staleness condition is a property "
             "of that live pin and is UNCHECKED on this machine")
     pin = _port_live_arwen_pin(checkout)
@@ -437,7 +437,7 @@ def test_the_frame_the_fixed_term_is_derived_from_cannot_go_stale():
     # succeeds exactly when the pin is at or past the cut, which is the
     # stale case.
     assert _git("merge-base", "--is-ancestor", cut, pin).returncode != 0, (
-        f"the MPAS port's live WOOF pin {pin} is at or past {cut}, the "
+        f"the MPAS port's live WOOF-ArWen pin {pin} is at or past {cut}, the "
         "commit that cut the frame the footprint model derives its fixed "
         "term from.  Every residue in the sizing table was measured by "
         "subtracting a store computed from the PRE-cut frame, so the "

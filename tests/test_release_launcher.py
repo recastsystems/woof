@@ -41,7 +41,7 @@ PLATFORM = "windows-x86_64" if os.name == "nt" else "linux-x86_64"
 CONTROLLER = "arwen-tui.exe" if os.name == "nt" else "arwen-tui"
 COMPANION = "arwen-companion.exe" if os.name == "nt" else "arwen-companion"
 RUNTIME_PYTHON = "runtime/python.exe" if os.name == "nt" else "runtime/bin/python3"
-START_SCRIPT = "Start WOOF.cmd" if os.name == "nt" else "Start WOOF.sh"
+START_SCRIPT = "Start WOOF-ArWen.cmd" if os.name == "nt" else "Start WOOF-ArWen.sh"
 # What the two programs load once they are running, as the shipped packages record it.
 PAYLOAD = (["arwen-weather.exe", "maplibre-native-c.dll", "vcruntime140.dll"] if os.name == "nt"
            else ["arwen-weather", "libmaplibre-native-c.so"])
@@ -104,7 +104,7 @@ def _interpreter(tmp_path: Path) -> Path:
 def _parent_env() -> dict[str, str]:
     return {"PATH": "C:\\Windows\\System32", "PYTHONPATH": "C:\\elsewhere",
             "WOOF_DOCTOR_STATE": "x", "ARWEN_CACHE_DIR": "y",
-        "NO_COLOR": "1", "HOME": "C:\\WOOF\\profile"}
+        "NO_COLOR": "1", "HOME": "C:\\WOOF-ArWen\\profile"}
 
 
 def test_children_never_write_bytecode_into_the_package(launcher, tmp_path):
@@ -119,7 +119,7 @@ def test_children_never_write_bytecode_into_the_package(launcher, tmp_path):
     assert "PYTHONPATH" not in env and "WOOF_DOCTOR_STATE" not in env
     # Everything else the caller set is the caller's, the NO_COLOR instruction included.
     assert env["NO_COLOR"] == "1"
-    assert env["HOME"] == "C:\\WOOF\\profile"
+    assert env["HOME"] == "C:\\WOOF-ArWen\\profile"
     assert env["PATH"].startswith(str(tmp_path / "rt") + os.pathsep)
 
 
@@ -562,7 +562,7 @@ def test_a_package_missing_its_identity_document_and_one_not_marked_complete_eac
     with pytest.raises(ValueError) as refusal:
         launcher.launch(["--verify-launcher"])
     assert "ARWEN-DESKTOP.json" in str(refusal.value)
-    assert "Extract the complete WOOF desktop package" in str(refusal.value)
+    assert "Extract the complete WOOF-ArWen desktop package" in str(refusal.value)
     root, launcher = _package(tmp_path, "half_built", bundled=False)
     manifest = json.loads((root / "ARWEN-DESKTOP.json").read_text(encoding="utf-8"))
     manifest["status"] = "IN_PROGRESS"
@@ -603,12 +603,12 @@ def test_a_package_is_refused_on_a_computer_that_cannot_run_its_programs(tmp_pat
 def test_every_start_script_says_what_to_do_when_no_python_is_installed(tmp_path):
     """THE BREAKAGE THIS PREVENTS: a package with no runtime of its own, started on a
     computer with no Python, failed with the shell's own message about a missing
-    command and named neither WOOF nor the way out."""
+    command and named neither WOOF-ArWen nor the way out."""
 
-    for name in ("Start WOOF.cmd", "Start WOOF Terminal.cmd", "Start WOOF.sh", "Start WOOF Terminal.sh"):
+    for name in ("Start WOOF-ArWen.cmd", "Start WOOF-ArWen Terminal.cmd", "Start WOOF-ArWen.sh", "Start WOOF-ArWen Terminal.sh"):
         script = REPO_ROOT / "tools" / "release" / name
         text = script.read_text(encoding="utf-8")
-        assert "Cannot start WOOF" in text
+        assert "Cannot start WOOF-ArWen" in text
         assert "ARWEN_PYTHON" in text
         assert "Install Python 3.11 or newer" in text
 

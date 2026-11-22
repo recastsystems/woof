@@ -78,7 +78,11 @@ def test_default_source_pin_unchanged():
     # RE-PINNED for 3.0.0: 6d79b6e9c5d added MYNN_GSD41-only DMP cloud-base
     # outputs inside #if defined(MYNN_GSD41); the default arm compiles the
     # same program (test_spp_consumers records the same re-pin). Was 176d00a6.
-    assert hashlib.sha256(source.encode()).hexdigest() == "a22ef22ada5cd82facb1ef7651935ef49f4a06f820cb48d2d5fdfd9d391b61f6"
+    # RE-PINNED for 3.0.3: correct-mode ML1 added the BouLac downward-length
+    # sign inside #if defined(MYNN_BOULAC_DOWN_SIGN); the default arm compiles
+    # the same program (test_mp8_frozen and test_spp_consumers record the same
+    # re-pin, with the PTX receipt). Was a22ef22a.
+    assert hashlib.sha256(source.encode()).hexdigest() == "c30d06fb305940a7081070435271e4bf47f309cd767a4926007a5289a8561a5c"
 
 
 def test_export_arm_is_the_frozen_sibling_dmp_entry():

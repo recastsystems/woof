@@ -13,14 +13,38 @@ import tomllib
 import shutil
 
 
+def engine_link(engine: Path, out: Path) -> Path:
+    """``out/engine``, a link to the engine checkout, so the project names the engine by one relative path.
+
+    THE BREAKAGE THIS PREVENTS (hex 0.6.0, 2026-11-17): Cargo hashes a path dependency that lies outside the
+    project folder by its whole path (one inside it, by its relative path), and that hash names symbols and
+    orders code generation.  With absolute engine paths the scorer built in /github/workspace and in
+    /__w/gpuwm-hex/gpuwm-hex (GitHub's runner folder) differed in .text, so the published binary was not the
+    one built and run before the upload.  Through the link every engine crate sits inside the project at ``engine/...``
+    and the bytes do not depend on where either tree sits.  The link is lexical on purpose: nothing below may
+    ``resolve()`` it.
+    """
+    link = out / "engine"
+    target = engine.resolve()
+    if link.is_symlink() and Path(os.readlink(link)) != target:
+        link.unlink()
+    if not link.is_symlink():
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except OSError:  # a host that cannot make links builds as before, from the absolute path
+            return target
+    return link
+
+
 def write_project(engine: Path, out: Path) -> Path:
     """Write the scorer's private Cargo project under ``out`` and return its manifest.
 
     tools/helper_licences.py reads the same project, so the licence notice
     covers exactly the crates this build links.
     """
-    root = engine.resolve() / "tools/rustwx"
     out.mkdir(parents=True, exist_ok=True)
+    real_root = engine.resolve() / "tools/rustwx"
+    root = engine_link(engine, out) / "tools/rustwx"
     dependencies = {
         "netcrust": root / "vendor/netcrust",
         "grib-core": root.parent / "grib1_bridge/vendor/grib-core",
@@ -40,13 +64,13 @@ def write_project(engine: Path, out: Path) -> Path:
         if not (path / "Cargo.toml").is_file():
             raise FileNotFoundError(path / "Cargo.toml")
         manifest += name + '={path=' + json.dumps(str(path)) + '}\n'
-    workspace = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+    workspace = tomllib.loads((real_root / "Cargo.toml").read_text(encoding="utf-8"))
     for registry, rows in workspace.get("patch", {}).items():
         manifest += '\n[patch.' + json.dumps(registry) + ']\n'
         for name, row in rows.items():
             if set(row) != {"path"}:
                 raise ValueError(f"unsupported engine patch metadata for {name}")
-            manifest += name + '={path=' + json.dumps(str((root / row["path"]).resolve())) + '}\n'
+            manifest += name + '={path=' + json.dumps(os.path.normpath(root / row["path"])) + '}\n'
     target = out / "Cargo.toml"
     target.write_text(manifest, encoding="utf-8")
     lock = out / "Cargo.lock"

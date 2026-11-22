@@ -41,10 +41,13 @@ def _burn_system(seconds, name=None):
     if name is not None:
         _name_thread(name)
     # Reading /dev/zero is the kernel filling this process's buffer: its time is system time.
+    # (WOOF 1.1.7) the thread burns `seconds` of its own CPU time, not of wall time.  THE BREAKAGE: on a loaded
+    # host (the suite's 18 workers beside other jobs) a 0.6 s wall-clock burn got 0.18 s of CPU, and the test read the
+    # missing 0.02 s as lost time (three suite runs of the 1.1.7 cut; green alone).
     fd = os.open("/dev/zero", os.O_RDONLY)
     try:
-        end = time.monotonic() + seconds
-        while time.monotonic() < end:
+        end = time.thread_time() + seconds
+        while time.thread_time() < end:
             os.read(fd, 1 << 20)
     finally:
         os.close(fd)
@@ -78,9 +81,11 @@ def test_system_time_is_attributed_to_the_thread_that_spent_it():
     worker.start()
     worker.join()
     keeper = threading.Event()
-    alive = threading.Thread(target=lambda: (_burn_system(0.4, "hex-live-burner_7"), keeper.wait()))
+    burnt = threading.Event()
+    # (WOOF 1.1.7) the window is read once the live thread has burnt, not after a fixed sleep
+    alive = threading.Thread(target=lambda: (_burn_system(0.4, "hex-live-burner_7"), burnt.set(), keeper.wait()))
     alive.start()
-    time.sleep(0.6)
+    assert burnt.wait(60)
     try:
         windows = rp.cpu_windows()
     finally:

@@ -548,7 +548,7 @@ def test_mirrored_namelist_round_trips_moist_mix6_off(tmp_path):
     battery config, so the L4 candidate switch must survive the full
     circle -- config -> rendered namelist -> re-import -> same
     experiment.  An omitted emitter line here would silently hand the
-    WRF arm the Registry default while the WOOF arm read the TOML."""
+    WRF arm the Registry default while the WOOF-ArWen arm read the TOML."""
 
     from woof.experiment import load_experiment
     from woof.hrrr_route_inputs import verify_round_trip
@@ -1049,7 +1049,7 @@ def test_the_speed_anchors_cite_nothing_a_public_reader_cannot_open_unsaid():
     """A path the export drops is named as development-only where it is cited.
 
     The anchors file ships; without this, the next citation into
-    ``evidence/**`` or ``docs/superpowers/**`` reads as a receipt a public
+    ``evidence/**`` or ``docs/internal/**`` reads as a receipt a public
     reader can open, as the memory fit's did.
     """
     anchors = json.loads(SPEED_ANCHORS.read_text(encoding="utf-8"))

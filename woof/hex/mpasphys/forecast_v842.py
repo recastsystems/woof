@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from fractions import Fraction
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Mapping
 import xml.etree.ElementTree as ET
@@ -323,6 +324,70 @@ def init_pin_refusal(init: Any, route_key: str, route: Mapping[str, Any], suite:
         f'{run_pin}, or run the forecast with the --physics-pin-set of the route that made the init')
 
 
+def init_soil_refusal(init: Any, config: Any, suite: str | None) -> None:
+    """Refuse an init whose soil column is not the one the selected land surface integrates.
+
+    THE BREAKAGE THIS PREVENTS (published hex 0.5.0 and the 0.6.0 candidate, 2026-11-11, x1.40962, 2023-03-31 12Z):
+    a plain ``woof hex forecast`` (the default suite convection_permitting, Noah, four soil layers) on an hrrrv5
+    start file (RUC, nine soil levels) passed card admission and the asset fetch, then stopped in
+    framework_init_v842.physics_registry_init, which writes Noah's four layer thicknesses into the init's
+    nine-level ``dzs``: "could not broadcast input array from shape (4,1) into shape (9,40962)", rc 2, with no
+    word about soil or the remedy.  The mirror case (a four-level init under RUC) meets the same write in
+    framework_init_rrfs.physics_registry_init (read in the code, not run).
+
+    The door does not map one column onto the other: RUC's nine are values at depths from 0 to 3 m, Noah's four
+    are layers 0.1, 0.3, 0.6 and 1.0 m thick, and no route here carries a conversion between the two land
+    models' soil states that has been judged.  So the run is refused by name before any card or asset is taken,
+    with the two ways on.  The level counts are the suites table's (``options.config_lsm_scheme``).  An init
+    that cannot be read, or carries no nSoilLevels, is not judged here.
+    """
+
+    if init is None or config is None:
+        return
+    scheme = str(getattr(config, 'selectors', {}).get('land_surface', '') or '').strip()
+    table = load_table()
+    rows = table.get('options', {}).get('config_lsm_scheme', {})
+
+    def levels(name):
+        row = rows.get(name) or {}
+        return row.get('n_soil_levels', (row.get('carried') or {}).get('n_soil_levels'))
+
+    wanted = levels(scheme)
+    if wanted is None:
+        return
+    path = Path(init)
+    try:
+        from ..lbc import _open_lbc
+        found = len(_open_lbc(path).dimensions['nSoilLevels'])
+    except Exception:
+        return
+    if found == int(wanted):
+        return
+    suites = table.get('mpas_suites', {}).get('suites', {})
+    fitting = sorted(name for name, row in suites.items() if levels(row.get('config_lsm_scheme')) == found)
+    made_for = sorted(name for name in rows if levels(name) == found)
+    land = scheme[3:] if scheme.startswith('sf_') else scheme
+    ways = ([f'run it with --physics-suite {" or ".join(fitting)} (land surface '
+             f'{" or ".join(made_for)}, {found} levels)'] if fitting else [])
+    if land == 'ruc':
+        # (Recast WOOF 1.1.7) THE BREAKAGE: the remedy named `woof hex init --land-surface ruc`; that init's nine
+        # levels then stopped the hrrrv5 forecast in its registry layout (KeyError 'nscat'). The init hrrrv5 runs
+        # from is its own producer's, built with the geography its static needs, beside the static it writes.
+        ways.append('rebuild the init for this suite with woof hex init --physics-suite hrrrv5 --geog '
+                    '~/.local/share/woof/WPS_GEOG (a WPS geography root with MODIS 15 s land use, BNU soils and '
+                    'MODIS LAI: woof fetch-geog --datasets lai_modis_30s,modis_landuse_20class_15s,bnu_soiltype_top), '
+                    f'which writes {wanted} levels and its static beside the init (INIT.rrfs-static.nc), and run '
+                    'this forecast with that init and --static INIT.rrfs-static.nc')
+    else:
+        ways.append(f'rebuild the init for this suite with woof hex init --land-surface {land} ({wanted} levels)')
+    raise ValueError(
+        f'{path} carries {found} soil levels'
+        + (f' (the soil column of {" or ".join(made_for)})' if made_for else '')
+        + f', but this forecast runs suite {suite!r}, whose land surface {scheme} integrates {wanted}. '
+        "The forecast door does not map one land model's soil column onto another's, so the run would stop "
+        'at physics start or read soil at the wrong depths. ' + ways[0][:1].upper() + ', or '.join(ways)[1:])
+
+
 def native_route(arguments: Any, *, default_mode: str = 'exact'):
     """Table-selected explicit suite (_native_route), plus --ocean-mode pwp in the OML slot."""
     config, text = _native_route(arguments, default_mode=default_mode)
@@ -345,12 +410,27 @@ def native_route(arguments: Any, *, default_mode: str = 'exact'):
     return configure(config), text
 
 
+def suite_route_providers():
+    """The suites-table rows that carry MPAS suite routes, as (key, row)."""
+    return [(key,row) for key,row in load_table().items()
+            if isinstance(row,Mapping) and (row.get('backend')=='mpasphys' or row.get('backend_row')==key)
+            and 'suite_routes' in row]
+
+
+def suite_route_matches(selected, pin_set=None, providers=None):
+    """The (key, row) pairs a suite name resolves to: the row of ``pin_set`` when one is named, else the
+    suite's default row (``route_default_for``)."""
+    providers = suite_route_providers() if providers is None else providers
+    return [(key,row) for key,row in providers if selected in row['suite_routes']
+            and (row.get('pin_set') == pin_set if pin_set else route_default_for(row, selected))]
+
+
 def _native_route(arguments: Any, *, default_mode: str = 'exact'):
     """Table-selected explicit suite; mpas_atmphys_control.F:92-332.
 
     ``default_mode`` is the mode a resolved MPAS suite route takes when the run names none.  The library
     default is exact (replay and reproduction callers are unchanged); the forecast door passes correct
-    (owner ruling 2026-10-13: correct mode is the standard; coordinator 2026-10-14: the default is correct).
+    (correct mode is the standard; the default is correct).
     """
     path = getattr(arguments, 'physics_namelist', None)
     text = path.read_text() if path else ''
@@ -376,15 +456,11 @@ def _native_route(arguments: Any, *, default_mode: str = 'exact'):
         # column-provider row. Without a suite, use MPAS's Registry default
         # (bundled core_atmosphere/Registry.xml:2299). Keep an explicit suite.
         supplied = supplied or groups.get('physics', {}).get('config_physics_suite') or 'mesoscale_reference'
-    table = load_table()
-    providers = [(key,row) for key,row in table.items()
-                 if isinstance(row,Mapping) and (row.get('backend')=='mpasphys' or row.get('backend_row')==key)
-                 and 'suite_routes' in row]
+    providers = suite_route_providers()
     routes = {alias for _,row in providers for alias in row['suite_routes']}
     selected = supplied or groups.get('physics',{}).get('config_physics_suite')
     pin_set = getattr(arguments, 'physics_pin_set', None)
-    matches = [(key,row) for key,row in providers if selected in row['suite_routes']
-               and (row.get('pin_set') == pin_set if pin_set else route_default_for(row, selected))]
+    matches = suite_route_matches(selected, pin_set, providers)
     if pin_set and not matches:
         raise ValueError(f'physics pin set {pin_set!r} has no route for {selected!r}')
     if len(matches)>1:
@@ -418,13 +494,13 @@ def _native_route(arguments: Any, *, default_mode: str = 'exact'):
     mode = dict(physics_mode=physics_mode, correct_skip=correct_skip)
     config = route_namelist(text, **mode) if text.strip() else None
     # A run with no MPAS suite route goes to the ArWen door, which reads the same --physics-mode and
-    # --physics-correct-skip (woof.hex.correct_mode, lane H1): its corrections are the engine's (WB4, WB5),
+    # --physics-correct-skip (woof.hex.correct_mode): its corrections are the engine's (WB4, WB5),
     # and one the engine cannot apply is a named gap in that run's receipt, never a refusal.  Only a mode
     # written in the namelist's &nhyd_model is refused there, because the ArWen door never reads it.
     if config is None and namelist_mode not in (None, 'exact'):
         raise ValueError('config_physics_mode in the namelist applies to an explicit MPAS suite route '
                          '(--physics-suite or config_physics_suite); this run has none.  Name the mode with '
-                         '--physics-mode, which the WOOF route reads')
+                         '--physics-mode, which the WOOF-ArWen route reads')
     if config is None and namelist_skip:
         raise ValueError('config_physics_correct_skip in the namelist applies to an explicit MPAS suite '
                          'route; this run has none.  Name the skips with --physics-correct-skip')
@@ -433,6 +509,12 @@ def _native_route(arguments: Any, *, default_mode: str = 'exact'):
         # MPAS suite route would run ArWen's physics while its author believes it ran MPAS's.
         raise ValueError('--physics-default-backend applies to an explicit MPAS suite route (--physics-suite '
                          'or config_physics_suite); this run has none')
+    from . import mmm_version as _mmm
+    mmm_explicit = {}
+    from . import gwdo_version as _gwdo
+    gwdo_explicit = {}
+    from .rrfs import closures as _closures
+    closures_explicit = {}
     if config is not None and overrides:
         # Reconstruct one native physics group so parse_fortran_namelist never
         # discards a repeated group. WOOF-only selectors have no Registry row.
@@ -445,9 +527,25 @@ def _native_route(arguments: Any, *, default_mode: str = 'exact'):
             spec = matches[0][1]
             backend_options = {row['backend_selector'] for row in spec['slots'].values()}
             backend_options.update(row['backend_selector'] for row in spec.get('services', {}).values())
+            if spec.get('mynn_versions'):
+                backend_options.add(spec['mynn_versions']['selector'])
             option = key.strip().casefold()
             if option in ('tc_flux_curve', 'tc_spray'):
                 tc_surface[option] = value.strip().strip("\"'")
+                continue
+            if option in _mmm.KEYS:
+                # Engine extension (mmm_version.py): selects the MMM-physics generation, never a Registry key.
+                mmm_explicit[option] = value.strip()
+                continue
+            if option in _closures.KEYS:
+                # Engine extension (rrfs/closures): the learned and symbolic surface and boundary-layer closures,
+                # each its own key, never a Registry option.
+                closures_explicit[option] = value.strip()
+                continue
+            if option in _gwdo.KEYS:
+                # Engine extension (gwdo_version.py): the drag generation and the PR #1409 knobs, which enter the
+                # Registry only when the run selects bl_kim_gwdo (kim_gwdo_2026.prepare_registry).
+                gwdo_explicit[option] = value.strip()
                 continue
             registry_groups = spec.get('registry_groups',{})
             owners = [name for name,keys in registry_groups.items() if option in keys]
@@ -461,17 +559,28 @@ def _native_route(arguments: Any, *, default_mode: str = 'exact'):
         config = route_namelist(text, **mode)
     if config is not None and matches and path is None:
         # Only a run that brings no namelist of its own: a native namelist keeps pristine Registry defaults.
-        config, text = _workflow_namelist(config, text, matches[0][1], route_namelist, mode)
+        config, text = _workflow_namelist(config, text, matches[0][1], route_namelist, mode, arguments)
     if profile:
         config = finish_profile(profile_name, profile, config, getattr(arguments, 'init', None))
     if config is not None and overrides and tc_surface:
         from .tc_surface import configure
         config = configure(config, tc_surface)
+    if config is not None:
+        config = _mmm.configure(config, mmm_explicit)
+        config = _gwdo.configure(config, gwdo_explicit, text)
+        init_soil_refusal(getattr(arguments, 'init', None), config, selected or getattr(config, 'suite', None))
+    # The closures (off unless a --physics key or a GPUWM_HEX_* word names one; refused by name otherwise).
+    config = _closures.configure(config, closures_explicit)
     return config, text
 
 
-def _workflow_namelist(config, text, row, route_namelist, mode):
+def _workflow_namelist(config, text, row, route_namelist, mode, arguments=None):
     """The operational workflow's namelist pairings a suite row declares (``workflow_namelist``).
+
+    hrrrv5 (MODEL-AUDIT D13): a rule writes NOAA's deck (rrfs-workflow parm/hrrrv5/namelist.atmosphere: the CAM
+    filter on 8 levels, Rayleigh u damping, w damping from 16 km, mynn_ess=0, mixnumcon=0, tempo_ml_for_bl_nc,
+    gvf_update off), and ``workflow_meshdep`` the deck's per-mesh step, acoustic sub-steps and radiation interval
+    (config.meshdep), so a plain ``--physics-suite hrrrv5`` run and every recorder run NOAA's configuration.
 
     A rule sets an option the run's own namelist leaves unset when the resolved selection matches, the way the
     operational workflow writes its namelist (RRFS: rrfs-workflow 08eee4ce parm/hrrrv5/namelist.atmosphere:58-59
@@ -481,10 +590,17 @@ def _workflow_namelist(config, text, row, route_namelist, mode):
     names (``--physics KEY=VALUE``) is never changed, and a run that brings its own namelist is not touched.
     """
     rules = row.get('workflow_namelist') or ()
-    if not rules:
+    meshdep = _workflow_meshdep(config, row, arguments)
+    if not rules and not meshdep:
         return config, text
     groups = {name: dict(values) for name, values in parse_fortran_namelist(text).items()}
     changed = False
+    for group, values in meshdep.items():
+        present = {k.casefold() for k in groups.get(group, {})}
+        for key, value in values.items():
+            if key.casefold() not in present:
+                groups.setdefault(group, {})[key] = value
+                changed = True
     for rule in rules:
         if not all(str(config.options.get(key, '')).strip() == str(value)
                    for key, value in rule['when'].items()):
@@ -500,6 +616,57 @@ def _workflow_namelist(config, text, row, route_namelist, mode):
     text = '\n'.join('&'+name+'\n'+'\n'.join(f'{k}={_literal(v)}' for k,v in values.items())+'\n/'
                      for name,values in groups.items())
     return route_namelist(text, **mode), text
+
+
+def _workflow_meshdep(config, row, arguments) -> dict[str, dict[str, Any]]:
+    """The deck's per-mesh options (``workflow_meshdep``) for the run's mesh: the row nearest its nominal spacing.
+
+    Each option is left out when the run decides it itself: ``--dt`` (any value but auto) keeps config_dt,
+    ``--acoustic-substeps`` keeps config_number_of_sub_steps.  The spacing is the registered --mesh row's, else the
+    one the --init / --grid / --static file records; a run with neither takes nothing here, and neither does a mesh
+    whose spacing is not within ``within_factor`` of a row's.
+    A row's ``physics`` options (NOAA's 12 km cumulus) go into &physics the same way.
+
+    THE BREAKAGE THIS PREVENTS (fwdmatch, 15 Nov 2026): a run with no --mesh took nothing even when its init file
+    names the mesh, so ``forecast --init <12 km cut init> --physics-suite hrrrv5`` ran the door's own 72 s step, not
+    NOAA's 60 s / 2 sub-steps, and differed from native 44c0849 on NOAA's deck in 37,592,358 words over the hour.
+    """
+    spec = row.get('workflow_meshdep') if isinstance(row, Mapping) else None
+    if not spec or arguments is None:
+        return {}
+    if not all(str(config.options.get(key, '')).strip() == str(value) for key, value in spec['when'].items()):
+        return {}
+    import math
+    from ..forecast_door import mesh_nominal_dx_m
+    dx = mesh_nominal_dx_m(arguments)
+    if dx is None or not dx > 0:
+        return {}
+    pick = min(spec['meshes'], key=lambda m: abs(math.log(float(dx) / float(m['nominal_dx_m']))))
+    within = float(spec.get('within_factor', 1.2))
+    if abs(math.log(float(dx) / float(pick['nominal_dx_m']))) > math.log(within):
+        # THE BREAKAGE THIS PREVENTS: NOAA's 1.25 km step (12 s) on an 800 m mesh is three times the door's stable step,
+        # and its 12 km step (60 s) on a 120 km globe ten times too many steps. Only NOAA's own meshes take the row.
+        print(f"woof hex: NOAA hrrrv5 deck: no config.meshdep row within a factor {within:g} of this mesh's "
+              f"{dx:g} m nominal spacing (nearest {pick['mesh']}); the door's own step, sub-steps and radiation "
+              "interval stay", file=sys.stderr, flush=True)
+        return {}
+    radt = f"00:{int(pick['radt_minutes']):02d}:00"
+    out: dict[str, dict[str, Any]] = {'physics': {'config_radtlw_interval': radt, 'config_radtsw_interval': radt}}
+    # NOAA's per-mesh namelist additions (exrrfs_fcst.sh:62-67: cu_ntiedtke and config_gfl_sub3d=1 on its 12 km meshes).
+    # An option the run names is kept: the caller only fills options its namelist leaves unset.
+    out['physics'].update(dict(pick.get('physics') or {}))
+    nhyd: dict[str, Any] = {}
+    requested = getattr(arguments, 'dt', None)
+    if requested is None or str(requested).strip().lower() in ('', 'auto'):
+        nhyd['config_dt'] = float(pick['dt'])
+    if getattr(arguments, 'acoustic_substeps', None) is None:
+        nhyd['config_number_of_sub_steps'] = int(pick['substeps'])
+    if nhyd:
+        out['nhyd_model'] = nhyd
+    print(f"woof hex: NOAA hrrrv5 deck for this mesh ({dx:g} m nominal): rrfs-workflow config.meshdep "
+          f"{pick['mesh']} row " + ", ".join(f"{k}={v}" for g in out.values() for k, v in g.items()),
+          file=sys.stderr, flush=True)
+    return out
 
 
 def _registry_option_kinds() -> dict[str, str]:
@@ -524,9 +691,9 @@ _OPTION_KINDS: dict[str, str] | None = None
 
 
 def override_literal(key: str, value: str, spec: Mapping[str, Any] | None = None) -> str:
-    """One ``--physics KEY=VALUE`` value as a namelist literal, the way the WOOF route reads it.
+    """One ``--physics KEY=VALUE`` value as a namelist literal, the way the WOOF-ArWen route reads it.
 
-    The WOOF route's ``physics_suites.parse_override`` takes ``KEY=VALUE`` with the value quoted or bare
+    The WOOF-ArWen route's ``physics_suites.parse_override`` takes ``KEY=VALUE`` with the value quoted or bare
     (``config_microp_scheme=mp_thompson``); this route used to paste the bare text into a namelist record,
     where an unquoted character value is not a scalar, so every bare spelling was refused
     (HEX-PHYSICS-PARITY run group 2 #6: the packaged moving-ensemble roster, Thompson members included).
@@ -570,7 +737,7 @@ def bind_door_iau(arguments: Any, text: str) -> str:
     if getattr(arguments, 'iau_route', None) == 'hex':
         # Breakage: woof.hex.iau_forcing's coupled increment is an ArWen-route executor hook; on this route the
         # flag would be accepted and never used.
-        raise ValueError("--iau-route hex adds a coupled increment on the WOOF route's executors; the explicit "
+        raise ValueError("--iau-route hex adds a coupled increment on the WOOF-ArWen route's executors; the explicit "
                          "MPAS suite route applies MPAS's own IAU (atm_add_tend_anal_incr).  Drop --iau-route or "
                          "name native")
     groups = {name: dict(values) for name, values in parse_fortran_namelist(text).items()} if text.strip() else {}
@@ -684,7 +851,7 @@ def bind_limited_area(arguments: Any, text: str) -> str:
     forecast with ``--physics-suite convection_permitting`` reached the route's global dycore build with a culled mesh
     and stopped in its terrain coupling ("cells_on_edge contains a missing or out-of-range cell", 2026-10-24 run group
     1 #3, after 13 min of prep), so no limited-area run could take MPAS physics.  With the flag, the pools decode the
-    limited_area package and runtime_v842 opens the regional dycore (the WOOF route's boundary driver, which already
+    limited_area package and runtime_v842 opens the regional dycore (the WOOF-ArWen route's boundary driver, which already
     carries the MPAS-A v8.4.1 specified and relaxation zones) under the same physics glue.
 
     Combinations whose state the regional dycore does not carry yet are refused by name below.  A namelist that says
@@ -712,9 +879,9 @@ def bind_limited_area(arguments: Any, text: str) -> str:
     # the scalar halo round native issues before atm_bdy_adjust_scalars wraps the rank's boundary adjust
     # (samehost_v842.SameHostRankExecution.bind_dycore), as the ArWen route's regional ranks do.  IAU is admitted
     # on one card: its increment is held on the padded extent and the stage-density wrapper is carried onto the
-    # regional dycore (guide/l11-regional-iau; the RRFS fork's regional constructor takes it too, fix/hex-lam-da-v842);
+    # regional dycore (the RRFS fork's regional constructor takes it too);
     # a same-host rank's regional dycore does not take that wrapper yet.
-    # The JEDI hand-off is admitted (fix/hex-lam-da-v842): the background is the native pools on the solve cells
+    # The JEDI hand-off is admitted: the background is the native pools on the solve cells
     # (cycling_v842.background_fields strips the garbage element), the analysis is recoupled on the culled mesh
     # (allow_regional_sentinels) and the regional dycore opens on it at the analysis time, so its boundary series,
     # relaxation zone and boundary tendencies are the straight run's (state_at is a function of the clock and the
@@ -736,7 +903,7 @@ def bind_limited_area(arguments: Any, text: str) -> str:
         gaps.append('chemistry transport (its tracer rows are not driven by the lateral-boundary series)')
     if gaps:
         raise ValueError('a limited-area MPAS suite run (--lbc-dir) cannot take ' + '; '.join(gaps) +
-                         ' yet.  Drop that option, or run the region on the default WOOF physics')
+                         ' yet.  Drop that option, or run the region on the default ArWen physics')
     return set_namelist_options(text, {'limited_area': {'config_apply_lbcs': True}})
 
 
@@ -763,7 +930,8 @@ def _in_defaults(element: Any) -> int:
 
 def write_default_streams(layout: Any, path: Path, *, history_minutes: float | None = None,
                           checkpoint_hours: Any = None, surface_interval: str | None = None,
-                          omit: Mapping[str, Any] | None = None, bound_inputs=()) -> Path:
+                          omit: Mapping[str, Any] | None = None, bound_inputs=(), add_output=(),
+                          native_state_publication: bool = False) -> Path:
     """MPAS's own default streams.atmosphere and stream_list.atmosphere.* files, from the Registry this run decoded.
 
     THE BREAKAGE THIS PREVENTS: the MPAS suite route refused every run that named no streams.atmosphere
@@ -798,6 +966,14 @@ def write_default_streams(layout: Any, path: Path, *, history_minutes: float | N
     """
     root = ET.Element('streams')
     bound = set(bound_inputs)
+    # ``add_output`` (--history-field): Registry fields a run asks to have in its default output stream as well.
+    # THE BREAKAGE IT PREVENTS (hex 0.4.15 fit16-rows, verification host, 2026-11-07): MPAS-A's default output list carries
+    # no downward surface shortwave (swdnb), so a 7-day 60 km S2S run on the MPAS-physics route finished its
+    # forecast and its energy products stopped with 'missing field ["swdown", "swdnb", "SWDOWN"]'.
+    known = {f['name'] for f in layout.fields}
+    unknown = sorted(set(add_output) - known)
+    if unknown:
+        raise ValueError(f'--history-field {unknown}: not a field of the Registry this run decoded')
     dropped = {name: set((spec or {}).get('fields') or ()) for name, spec in (omit or {}).items()}
     sizes = getattr(layout, 'dimensions', None) or {}
     empty = {f['name'] for f in layout.fields if any(sizes.get(d) == 0 for d in f.get('dimensions') or ())}
@@ -855,16 +1031,17 @@ def write_default_streams(layout: Any, path: Path, *, history_minutes: float | N
                 attributes['packages'] = member.get('packages')
             ET.SubElement(element, member.tag, attributes)
         if name == 'output':
-            from woof.hex.cycle.land_state import LAND_FIELDS
+            from woof.hex.cycle.land_state import DEFAULT_HISTORY_FIELDS, LAND_FIELDS
             active = {f['name'] for f in layout.fields}
-            for field in LAND_FIELDS:
-                if field.name not in active:
+            land = tuple(f.name for f in LAND_FIELDS) if native_state_publication else DEFAULT_HISTORY_FIELDS
+            for field in [*land, *add_output]:
+                if field not in active:
                     continue
                 if separate:
-                    if field.name not in listed:
-                        listed.append(field.name)
-                elif not any(e.get('name') == field.name for e in element):
-                    ET.SubElement(element, 'var', {'name': field.name})
+                    if field not in listed:
+                        listed.append(field)
+                elif not any(e.get('name') == field for e in element):
+                    ET.SubElement(element, 'var', {'name': field})
         if separate:
             (path.parent / list_name).write_text(''.join(f'{field}\n' for field in listed))
     ET.indent(root)
@@ -992,12 +1169,88 @@ def _marked_durable(frame: Path, marker: Path) -> bool:
             and receipt.get('mtime_ns') == stat.st_mtime_ns)
 
 
+def cpu_slot_refusal(arguments: Any, config: Any) -> str | None:
+    """Refuse, before any download, a selection with a slot on the CPU and no native MPAS library to run it.
+
+    THE BREAKAGE THIS PREVENTS: ``--physics-suite hrrrv5 --physics config_convection_scheme=cu_tiedtke`` (a scheme the
+    RRFS 44c0849 row has no GPU slot for; cu_grell_freitas too, before this release) printed "PHYSICS ON CPU",
+    fetched 1 GB of RRFS tables (115 s on an RTX 4090 host, 20 Nov 2026) and stopped on "the packaged physics
+    manifest has no assets for these pin sets": no release ships a native MPAS library, and the sentence named
+    neither the cause nor a choice that runs.  A run that names a library (--native-physics-library or
+    MPAS_NATIVE_LIBRARY), or has one installed by ``woof hex physics-resources build``, goes on as before.
+    """
+    if config is None:
+        return None
+    cpu = [(slot, scheme) for slot, scheme in (getattr(config, 'selectors', None) or {}).items()
+           if config.active(slot) and str(config.backends.get(slot)) == 'native-cpu']
+    if not cpu:
+        return None
+    if getattr(arguments, 'native_physics_library', None) or os.environ.get('MPAS_NATIVE_LIBRARY'):
+        return None
+    from .resources_build import PhysicsResourceError, ROUTE_KEYS, resolve_resource
+    pin_set = getattr(config, 'pin_set', None) or 'v8.4.2'
+    try:
+        resolve_resource(ROUTE_KEYS[pin_set]['native-library'])
+        return None
+    except (PhysicsResourceError, KeyError):
+        pass
+    from .resident_v842 import gpu_choices
+    reasons = {item.slot: item.reason for item in getattr(config, 'cpu_slots', ()) or ()}
+    choices = gpu_choices(config)
+    options = getattr(config, 'options', None) or {}
+    suite = str(options.get('config_physics_suite', '') or 'this selection')
+    words = []
+    for slot, scheme in cpu:
+        line = f'{slot}={scheme} runs only on the CPU here ({reasons.get(slot, "no GPU slot")})'
+        if slot in choices:
+            selector, schemes = choices[slot]
+            line += ('; with the other choices of this run, ' + slot + ' runs on the GPU as '
+                     + ' or '.join(f'--physics {selector}={name}' for name in schemes))
+        words.append(line)
+    return (f'MPAS physics suite {suite}: ' + '. '.join(words) + '. A slot on the CPU needs a native MPAS '
+            'library, which no woof hex release ships; name a site build with --native-physics-library.')
+
+
+def forecast_args_slot_refusal(flags: Any) -> str | None:
+    """Why a run with these forecast-door flags would stop at the forecast door on a slot with no GPU route (the
+    refusals of ``forecast_door._run_forecast``: :func:`resident_v842.ported_route_refusal`, then
+    :func:`cpu_slot_refusal`), read from the flags alone; None when it would not, or when its physics cannot be read
+    from the flags (the forecast door then decides, as before).
+
+    For the doors that build a mesh and fetch a start before they reach the forecast door (``regional``, ``global``),
+    which call it with their ``--forecast-arg`` flags once the hex default physics is filled in.  THE BREAKAGE THIS
+    PREVENTS (0.6.2, 21 Nov 2026): ``woof hex regional ... --forecast-arg=--physics-suite=hrrrv5
+    --forecast-arg=--physics=config_convection_scheme=cu_tiedtke`` built the 800 km region's mesh, fetched HRRR and
+    built its start and boundaries (17 GB, 282 s on a fresh install) before the forecast door named the choice it
+    cannot run.
+    """
+    import argparse
+    import contextlib
+    import io
+    from ..forecast_door import PHYSICS_MODE_DEFAULT, add_forecast_arguments
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    add_forecast_arguments(parser)
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            arguments, _unknown = parser.parse_known_args([str(item) for item in flags or ()])
+            config, _text = native_route(arguments, default_mode=PHYSICS_MODE_DEFAULT)
+    except (ValueError, KeyError, OSError, SystemExit):
+        return None
+    if config is None:
+        return None
+    from .resident_v842 import ported_route_refusal
+    refusal = ported_route_refusal(config)
+    if refusal is not None and not named_library_route(arguments, config):
+        return refusal
+    return cpu_slot_refusal(arguments, config)
+
+
 def named_library_route(arguments: Any, config: Any) -> bool:
     """Whether a run that names a native MPAS library takes it because the ported framework cannot run the selection.
 
     THE BREAKAGE THIS PREVENTS: with every active slot on hex-cuda, ``runtime_v842.framework_only`` picks the
     ported framework, which runs only what its resident interface glue admits.  The RRFS fork's hrrrv5 put every
-    slot on the GPU once the UGWP ports shipped again (owner ruling 2026-10-14), so a run naming a site-built RRFS
+    slot on the GPU once the UGWP ports shipped again (2026-10-14), so a run naming a site-built RRFS
     library (``--native-physics-library`` or MPAS_NATIVE_LIBRARY), the documented RRFS route, was refused by name
     ("its resident interface glue is not in this distribution") instead of running on that library with the GPU
     slots, as it did while gwdo was native-cpu.  When the ported framework can run the selection it is still taken.
@@ -1032,6 +1285,11 @@ def native_table_source(config: Any, named_source: Any, source: Any, ported_fram
 
 def run_forecast(arguments: Any, config: Any, text: str) -> int:
     """Hydrate Registry pools for resident physics; core.F:589-596."""
+    # The learned correction (woof.hex.ad.learned_correction) goes on the external-tendency slot only when
+    # WOOF_HEX_LEARNED_CORRECTION names a checkpoint. Unset (the default): nothing is imported or installed.
+    if os.environ.get('WOOF_HEX_LEARNED_CORRECTION'):
+        from ..ad import learned_correction as _learned_correction
+        _learned_correction.install_from_env(getattr(arguments, 'init'), getattr(arguments, 'dt', None))
     pin_set = getattr(config, 'pin_set', None) or 'v8.4.2'
     reader = getattr(arguments, 'native_pool_reader', None) or os.environ.get('MPAS_NATIVE_POOL_READER')
     source = getattr(arguments, 'mpas_source', None) or os.environ.get('MPAS_SOURCE')
@@ -1085,6 +1343,10 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
         streams_path = namelist.with_name('streams.atmosphere')
     if streams_path is not None and not Path(streams_path).is_file():
         raise ValueError(f'MPAS native route: the named streams.atmosphere does not exist: {streams_path}')
+    if streams_path is not None and getattr(arguments, 'history_field', None):
+        # A named streams file is held to exactly what it lists, so an added field would not be written.
+        raise ValueError(f'--history-field {arguments.history_field} adds to the default output stream; this run '
+                         f'names its streams file ({streams_path}), which is held as written: list the field there')
     out = getattr(arguments,'out',None)
     if out is None:
         raise ValueError('MPAS native route requires --out for stream products and the receipt')
@@ -1152,6 +1414,18 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
     sources = list(dict.fromkeys((*sources,*table_bindings.values(),*startup_bindings)))
     if initial_stream != 'input':
         sources = [path for path in sources if path != initial_file] + [initial_file]
+    from . import gwdo_version as _gwdo
+    if _gwdo.selected(config):
+        # The KIM drag reads MPAS PR #1408's statistics (elvmax and the revised var2d/con/oa/ol), which no init
+        # carries: built once per mesh (woof.hex.kim_gwd_static) and read LAST, over the init's own statistics.
+        from ..kim_gwd_static import ensure as _kim_statistics, mesh_file_of
+        mesh_file = mesh_file_of(arguments)
+        if mesh_file is None:
+            raise ValueError("config_gwdo_scheme='bl_kim_gwdo' reads elvmax (MPAS PR #1408), built from the run's "
+                             "mesh; this run names no --grid, --static or --init file to build it from")
+        statistics = _kim_statistics(mesh_file)
+        arguments._kim_gwd_statistics = str(statistics)
+        sources = [path for path in sources if path != statistics.resolve()] + [statistics.resolve()]
     text = apply_start_time(text, getattr(arguments, 'start_time', None))
     text = bind_limited_area(arguments, text)
     from .checkpoint_v842 import resolve_route
@@ -1166,9 +1440,13 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
         # hooks); a second, fixed --lbc-dir series would drive a zone that no longer sits where the files were cut.
         # A checkpoint, restart or DA analysis on the run's own fixed mesh (--checkpoint-hours, --restart-from,
         # --da-analysis with no WOOF_HEX_MOVING_* switch) is not a move: its zone sits where the files were cut, and
-        # the regional dycore re-reads the bracketing lbc files at the resume time (fix/hex-lam-da-v842).
+        # the regional dycore re-reads the bracketing lbc files at the resume time.
         raise ValueError('a moving region on the MPAS suite route takes its boundary from the move hooks; drop --lbc-dir')
     text = bind_init_start(text, getattr(arguments, 'init', None))
+    # The run's surface or boundary-layer closure (rrfs/closures) on the RUC land and MYNN-EDMF slots, its files'
+    # sums checked here, before any step; none (the default) leaves the slots' ACTIVE at None.
+    from .rrfs import closures as _closures
+    _closures.install(config, out)
     from ..stage_timing import stage
     timings = []
     out.mkdir(parents=True, exist_ok=True)
@@ -1229,13 +1507,20 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
         streams_path = write_default_streams(layout, scratch/'streams.atmosphere',
                                              history_minutes=getattr(arguments,'history_every_minutes',None),
                                              checkpoint_hours=None, omit=row.get('default_streams_omit'),
-                                             bound_inputs=bindings, **timed)
+                                             native_state_publication=bool(getattr(arguments, 'jedi_background', False)),
+                                             bound_inputs=bindings, **timed,
+                                             **({'add_output': tuple(arguments.history_field)}
+                                                if getattr(arguments, 'history_field', None) else {}))
     parser=load_table()[getattr(config,'table_key','mpasphys_v842')].get('streams_parser')
     tree=None
     if parser is not None:
         module,callable_name=parser.split(':')
         tree=getattr(import_module(module),callable_name)(streams_path,library)
     streams=read_streams(streams_path,layout,getattr(arguments,'stream_list_directory',None),tree=tree)
+    if getattr(arguments, 'jedi_background', False):
+        from ..producer_cloud import publish_native_cloud
+        from ..native_geometry import publish_native_identity
+        streams = publish_native_identity(publish_native_cloud(streams, layout), layout)
     from ..forecast_start import radar_streams
     streams = radar_streams(streams, layout, out, Stream)
     defaults = {initial_stream: initial_file}
@@ -1256,6 +1541,10 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
         dt=Fraction(str(selected_dt))
     if dt<=0:
         raise ValueError('native physics needs a positive config_dt')
+    if os.environ.get('WOOF_HEX_LEARNED_CORRECTION'):
+        # The correction's clock is this route's step (the slot's state carries none here).
+        from ..ad import learned_correction as _learned_correction
+        _learned_correction.bind_step(dt)
     hours=getattr(arguments,'hours',None)
     duration=Fraction(str(hours))*3600 if hours is not None else interval_seconds(layout.configs['config_run_duration'])
     duration = integral_duration(duration, dt)
@@ -1278,6 +1567,15 @@ def run_forecast(arguments: Any, config: Any, text: str) -> int:
               pool_manifest=str(scratch/'native-pools/manifest.json'),identity_checked=False)
     if dynamics:
         plan['dynamics_overrides'] = dict(dynamics)
+    if getattr(arguments, 'jedi_background', False):
+        plan['native_state_publication'] = True
+        from .rrfs.cold_start_rrfs import load_producers
+        if (row.get('init_producer') or any(p['physics_table_key'] == getattr(config, 'table_key', '')
+                for p in load_producers()['producers'].values())):
+            from .state_roles import allocation_contract
+            plan['native_state_roles'] = allocation_contract(config.receipt(),
+                json.loads((scratch/'native-pools/manifest.json').read_text()),
+                native_init=plan['init'], start=start)
     (out/'native-physics-request.json').write_text(json.dumps(plan,indent=2)+'\n')
     if getattr(arguments,'preflight',False):
         print(json.dumps(dict(status='native-pool-preflight',identity_checked=False,request=plan)))

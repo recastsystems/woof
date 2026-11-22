@@ -33,7 +33,7 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from .moving_case import (
     MovingCaseError,
@@ -217,7 +217,7 @@ def stage_case(case_path: Path, casedir: Path, *, source: str | None = None, sta
     if tc_init:
         # TC-VI1 on hex (woof.hex.tc_vortex): the case's storm.tc_initialization moves and corrects the source's own
         # vortex toward the vitals (and/or merges a declared inner core) on the canonical source frame before the mesh
-        # interpolates it. Breakage it prevents (the storm box M, 2026-10-27): hex members started from their source's
+        # interpolates it. Breakage it prevents (the storm, 2026-10-27): hex members started from their source's
         # weak, broad vortex and the first analysis rejected the core observations.
         from .tc_vortex import stage_source
         log("stage: TC canonical composition with vortex initialization")
@@ -420,8 +420,31 @@ def _tool_env(threads: int | None, tile_workers: int | None) -> dict[str, str]:
     return env
 
 
-def generate_mesh(spec_path: Path, grid: Path, receipt: Path, log: Path, env: dict[str, str]) -> float:
-    return _run_logged([_tool("MESH"), "--spec", spec_path, "--out", grid, "--receipt", receipt], log, env=env)
+def mesh_words(case: dict[str, Any]) -> list[str]:
+    """The generator's words for a case's mesh block: nothing unless the block names geometry 2
+    (``moving case --geometry 2``), then the words every member and the rotation template are built with."""
+    generator = (case.get("mesh") or {}).get("generator")
+    if not generator:
+        return []
+    from . import mesh_ask
+
+    try:
+        asked = mesh_ask.generator_request({"generator": dict(generator)})
+    except mesh_ask.MeshAskRefusal as error:
+        raise MovingCaseError(str(error)) from error
+    if asked["geometry"] == 2 and (case.get("mesh") or {}).get("corridor"):
+        raise MovingCaseError(
+            "geometry 2 is not built for a corridor case: a corridor's members are stitched from cell centres "
+            "around fixed rings, and geometry 2 lays no rings.  Use geometry 1 for a corridor, or a whole-globe "
+            "moving case for geometry 2")
+    # Each region of the block is one someone asked for; none is a halving ring to replace.
+    return [*asked["words"], "--rings", "keep"] if asked["geometry"] == 2 else []
+
+
+def generate_mesh(spec_path: Path, grid: Path, receipt: Path, log: Path, env: dict[str, str],
+                  words: Sequence[str] = ()) -> float:
+    return _run_logged([_tool("MESH"), "--spec", spec_path, "--out", grid, "--receipt", receipt, *words],
+                       log, env=env)
 
 
 def prepare_member(case_path: Path, folder: Path, name: str, lat: float, lon: float, *,
@@ -493,7 +516,9 @@ def prepare_member(case_path: Path, folder: Path, name: str, lat: float, lon: fl
             build_zone_mesh(case, prev, name, lat, lon, folder)
             _stamp(folder, name, f"zone-mesh {time.time() - began:.0f}s")
         if not mesh_ready():
-            seconds = generate_mesh(spec_path, folder / f"{name}.grid.nc", mesh_receipt, logs / f"{name}-mesh.log", env)
+            words = mesh_words(case)
+            seconds = generate_mesh(spec_path, folder / f"{name}.grid.nc", mesh_receipt, logs / f"{name}-mesh.log", env,
+                                    **({"words": words} if words else {}))
             _stamp(folder, name, f"mesh {seconds:.0f}s ({_cores(env)})")
         static_receipt = folder / f"{name}-static.json"
         static_rebuilt = mesh_rebuilt or not static_receipt.is_file() or not (folder / f"{name}.static.nc").is_file()
@@ -582,8 +607,10 @@ def prepare_case(case_path: Path, casedir: Path, *, geog: Path | None = None, th
                 spec_path.write_text(json.dumps(body, indent=2) + "\n")
             if not (casedir / f"{name}-mesh.json").is_file() or not (casedir / f"{name}.grid.nc").is_file():
                 log(f"prepare: {name} mesh")
+                words = mesh_words(case)
                 seconds = generate_mesh(spec_path, casedir / f"{name}.grid.nc", casedir / f"{name}-mesh.json",
-                                        casedir / "logs" / f"{name}-mesh.log", env)
+                                        casedir / "logs" / f"{name}-mesh.log", env,
+                                        **({"words": words} if words else {}))
                 _stamp(casedir, name, f"mesh {seconds:.0f}s")
     rotate_from = None
     if not corridor and not _near_antipode((lat, lon), TEMPLATE_CENTER):
@@ -596,7 +623,7 @@ def prepare_case(case_path: Path, casedir: Path, *, geog: Path | None = None, th
 
 
 #: The premade family mesh the start member is rotated from: the case's own concentric cap family centred here.
-#: THE BREAKAGE THIS PREVENTS (owner ruling 2026-10-23: premade meshes, no lengthy mesh creation on the start path;
+#: THE BREAKAGE THIS PREVENTS (premade meshes, no lengthy mesh creation on the start path;
 #: and the moving start-member stage of 940 s on new boxes, 2026-10-25): every storm- and setup-following run
 #: generated its start mesh on the box before the first step. The template is keyed in hex's prep store by its
 #: generator spec alone (no storm, no date), so a WOOF image carries it (the bake runs `woof hex moving template`)
@@ -644,7 +671,7 @@ def rotation_template(case: dict[str, Any], folder: Path, *, env: dict[str, str]
         began = time.time()
         logs = folder / "logs"
         got = prep_store.run_or_fetch(
-            [_tool("MESH"), "--spec", spec_path, "--out", grid, "--receipt", receipt],
+            [_tool("MESH"), "--spec", spec_path, "--out", grid, "--receipt", receipt, *mesh_words(case)],
             kind="mesh", runner=lambda argv: _run_logged(argv, logs / f"{TEMPLATE_NAME}-mesh.log", env=env))
         how = ("fetched from the prep store" if got.get("source") == "store"
                else f"generated here ({_cores(env)}); no prep store carries it")
@@ -705,7 +732,7 @@ ROSTER_SCHEMA = "gpuwm-hex.moving-ensemble-roster/v1"
 
 
 def case_physics_suite(case) -> str | None:
-    """The explicit MPAS suite a moving case's ``physics_args`` select, or None for the WOOF route.
+    """The explicit MPAS suite a moving case's ``physics_args`` select, or None for the WOOF-ArWen route.
 
     Read through the forecast door's own parser and :func:`woof.hex.mpasphys.forecast_v842.native_route`,
     so a ``--physics-suite``, a ``--physics-namelist`` or ``--physics-backend mpasphys`` all count, exactly
@@ -730,11 +757,11 @@ def case_physics_suite(case) -> str | None:
 def roster_physics_rows(default, suite: str | None):
     """The packaged roster's physics rows for the route a case runs on.
 
-    The WOOF route alternates its two microphysics schemes (``physics``).  An MPAS suite route runs the
+    The WOOF-ArWen route alternates its two microphysics schemes (``physics``).  An MPAS suite route runs the
     suite's own slot schemes only (the ported glue admits convection_permitting's slots and no other), so
     its physics diversity comes from that suite's own Registry options (``mpas_suite_physics``); a suite
     with no listed rows takes its default physics, and its members differ by SPPT/SKEB and member identity.
-    THE BREAKAGE THIS PREVENTS (HEX-PHYSICS-PARITY run group 2 #6): the WOOF rows on the MPAS route
+    THE BREAKAGE THIS PREVENTS (HEX-PHYSICS-PARITY run group 2 #6): the WOOF-ArWen rows on the MPAS route
     asked for mp_wsm6, which the route refuses, so half the default ensemble could never run there.
     """
     if suite is None:

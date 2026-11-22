@@ -21,6 +21,10 @@ What runs (all Rust, all cores):
 
 The producer's numbers were proven against the fork's own strict native init_atmosphere,
 every stored value, on the module replay recorded in docs/rrfs-init.md.
+
+One weather array is touched here, before the producer runs: a first guess whose soil column
+the fork cannot read (ICON's eight TERRA levels) is moved onto Noah's four layers in a copy of
+the intermediate (``fork_soil_first_guess``); a first guess the fork reads is passed untouched.
 """
 from __future__ import annotations
 
@@ -264,18 +268,31 @@ def deep_soil_choice(row: Mapping[str, Any], choice: str | None = None) -> tuple
     return name, dict(choices[name])
 
 
+def static_geog_datasets(row: Mapping[str, Any], deep_soil: str | None = None) -> dict[str, str]:
+    """The geography datasets the fork static of a producer row reads, by role (the deep-soil temperature as chosen)."""
+    _, chosen = deep_soil_choice(row, deep_soil)
+    return dict(row["static"]["geog"], soil_temperature=chosen["dataset"])
+
+
+def refuse_missing_static_geog(row: Mapping[str, Any], geog: Path, deep_soil: str | None = None) -> None:
+    """One sentence naming the datasets the fork static reads and ``geog`` lacks. The init says it when it builds the
+    static; a door that fetches before it inits says it first (country_door.refuse_producer_geog_missing)."""
+    geog = Path(geog)
+    missing = [name for name in static_geog_datasets(row, deep_soil).values() if not (geog / name).is_dir()]
+    if missing:
+        raise RrfsInitError(
+            f"the WPS geography at {geog} lacks {', '.join(missing)}, which the fork static reads "
+            "(MODIS 15 s land use, BNU soils, MODIS LAI, the deep-soil temperature); stage them with "
+            f"woof fetch-geog --root {geog} --datasets {','.join(missing)} (soiltemp_era5_1deg comes with "
+            "fetch-geog's default set, which builds it from ERA5) or point --geog at a root that has them")
+
+
 def static_job(row: Mapping[str, Any], *, grid: Path, geog: Path, out: Path, valid_time: str,
                tile_workers: int | None = None, deep_soil: str | None = None,
                supersample_30s: int = 1) -> dict[str, Any]:
     recipe = row["static"]
-    _, chosen = deep_soil_choice(row, deep_soil)
-    datasets = dict(recipe["geog"], soil_temperature=chosen["dataset"])
-    missing = [name for name in datasets.values() if not (geog / name).is_dir()]
-    if missing:
-        raise RrfsInitError(
-            f"the WPS geography at {geog} lacks {', '.join(missing)}, which the fork static reads "
-            "(MODIS 15 s land use, BNU soils, MODIS LAI, the deep-soil temperature); stage them with woof "
-            "fetch-geog (its default set builds soiltemp_era5_1deg from ERA5) or point --geog at a root that has them")
+    datasets = static_geog_datasets(row, deep_soil)
+    refuse_missing_static_geog(row, geog, deep_soil)
     return {"stage": "static", "config": {
         "nvegopt": recipe["nvegopt"], "gwd_topo_shift": recipe["gwd_topo_shift"],
         "gwd_cell_scaling": recipe["gwd_cell_scaling"], "grid_path": str(grid), "out_path": str(out),
@@ -381,7 +398,8 @@ def case9_jobs(row: Mapping[str, Any], *, init: Path, start_time: str, intervals
 
 
 def init_on_template(*, suite: str, template: Path, met: Path, out: Path, start_time: str,
-                     nfglevels: int, nfgsoillevels: int) -> dict[str, Any]:
+                     nfglevels: int, nfgsoillevels: int,
+                     condensate_balance: bool | None = None) -> dict[str, Any]:
     """Case 7 on a cut of an existing producer init, retaining its vertical grid cell for cell.
 
     Preparing the cut again smooths its terrain with different neighbours and changes its vertical grid.
@@ -398,16 +416,65 @@ def init_on_template(*, suite: str, template: Path, met: Path, out: Path, start_
     worker = resolve_worker(row)
     aerosols = resolve_aerosol_table(None)
     out.parent.mkdir(parents=True, exist_ok=True)
-    jobs = case7_jobs(row, static=template, met=met, start_time=start_time,
-                     nfglevels=nfglevels, nfgsoillevels=nfgsoillevels, artifact=template,
+    from ...soil_handover import handover_or_fork
+    from ...init_balance import balance_choice, complete_init
+    try:
+        soil_met, soil_levels, soil_handover = handover_or_fork(
+            met, out.parent / (out.name + ".soil-normalized.met"),
+            target_depths=row["soil"].get("node_depths_m"), requested=nfgsoillevels)
+    except ValueError as error:
+        raise RrfsInitError(f"soil handover: {error}") from error
+    case7_met, soil_levels, soil_note = fork_soil_first_guess(row, Path(soil_met), int(soil_levels),
+                                                              out.parent / "template-init-soil")
+    jobs = case7_jobs(row, static=template, met=case7_met, start_time=start_time,
+                     nfglevels=nfglevels, nfgsoillevels=soil_levels, artifact=template,
                      out=out, levels_file=out.parent / "unused-levels.txt", aerosols=aerosols,
                      regional=True)[1:]
     stages = run_jobs(worker, jobs, out.parent / "template-init-logs")
-    _refuse_cold_land_soil(out, row, nfgsoillevels)
+    shutil.rmtree(out.parent / "template-init-soil", ignore_errors=True)
+    _refuse_cold_land_soil(out, row, soil_levels)
+    balance_enabled, balance_by = balance_choice(
+        None if condensate_balance is None else ("yes" if condensate_balance else "no"))
+    try:
+        balance_receipt = {**complete_init(out, enabled=balance_enabled), "chosen_by": balance_by}
+    except ValueError as error:
+        out.unlink(missing_ok=True)
+        raise RrfsInitError(f"the condensate balance refused this init and the incomplete file was removed: {error}") from error
+    if Path(soil_met) != Path(met):
+        Path(soil_met).unlink()
     result = {"producer": key, "vertical_template": str(template), "stages": stages,
-              "first_guess": {"nfglevels": nfglevels, "nfgsoillevels": nfgsoillevels}}
+              "first_guess": {"nfglevels": nfglevels, "nfgsoillevels": soil_levels},
+              "soil_handover": soil_handover, "condensate_balance": balance_receipt}
+    if soil_note:
+        result["first_guess_soil"] = soil_note
     out.with_name(out.name + ".provenance.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
+
+
+def aerosol_selection(job: Mapping[str, Any], result: Any) -> dict[str, Any] | None:
+    """Name the case-7 source actually used, including older worker receipts.
+
+    The worker's ``aerosols.source_present`` describes the GOCART file, not
+    the first guess. Its native branch emits both scalars and leaves that
+    GOCART audit empty. Do not label a missing/unknown audit as native.
+    """
+    if job.get("stage") != "case7" or not isinstance(result, dict):
+        return None
+    audit = result.get("aerosols")
+    if not isinstance(audit, dict):
+        return None
+    cfg = job["config"]
+    record = {"tempo_rap": cfg["tempo_rap"], "fields": {"nwfa": "QNWFA", "nifa": "QNIFA"}}
+    if audit.get("records_read", 0) > 0 and audit.get("source_present"):
+        return dict(record, selected="climatology", source=audit["source"],
+                    reason="native pair unavailable to worker" if cfg["tempo_rap"] else "tempo_rap disabled")
+    emitted = set(result.get("emit", {}).get("computed", []))
+    if (cfg["tempo_rap"] and {"nwfa", "nifa"} <= emitted
+            and audit.get("records_read") == 0 and audit.get("source") == ""
+            and audit.get("source_present") is False):
+        return dict(record, selected="native", source=cfg["met_path"],
+                    interpolation="scalar horizontal interpolation; nonnegative donors; linear height, constant ends")
+    return dict(record, selected="unknown", reason="worker audit does not establish the source")
 
 
 def run_jobs(worker: Path, jobs: Sequence[Mapping[str, Any]], logs: Path) -> list[dict[str, Any]]:
@@ -428,8 +495,12 @@ def run_jobs(worker: Path, jobs: Sequence[Mapping[str, Any]], logs: Path) -> lis
             result = json.loads(completed.stdout or b"null")
         except json.JSONDecodeError:
             result = {"stdout": completed.stdout.decode("utf-8", "replace")[-4000:]}
-        receipts.append({"stage": job["stage"], "seconds": round(time.monotonic() - started, 3),
-                         "log": str(log), "result": result})
+        receipt = {"stage": job["stage"], "seconds": round(time.monotonic() - started, 3),
+                   "log": str(log), "result": result}
+        selection = aerosol_selection(job, result)
+        if selection is not None:
+            receipt["aerosol_selection"] = selection
+        receipts.append(receipt)
     return receipts
 
 
@@ -539,6 +610,61 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+# The init door's numerical switches that the RRFS producer takes from its row (``case7``), never from the command
+# line: (flag, argparse attribute, case7 key, how the command-line word is read as the row's value).
+_yes = lambda word: {"yes": True, "no": False}.get(str(word), word)
+RECIPE_SWITCHES = (
+    ("--extrap-airtemp", "extrap_airtemp", "extrap_airtemp", str),
+    ("--use-spechumd", "use_spechumd", "use_spechumd", _yes),
+    ("--theta-adv-order", "theta_adv_order", "theta_adv_order", int),
+    ("--coef-3rd-order", "coef_3rd_order", "coef_3rd_order", float),
+    ("--virtual-factor", "virtual_factor", "virtual_factor", str),
+    ("--deep-soil-moisture", "deep_soil_moisture", "deep_moisture", str),
+    ("--landuse-table", "landuse_table", "landuse_table", str),
+    ("--frac-seaice", "frac_seaice", "frac_seaice", _yes),
+    ("--tsk-seaice-threshold", "tsk_seaice_threshold", "tsk_seaice_threshold", float),
+    ("--oned-underflow", "oned_underflow", "oned_underflow", str),
+)
+
+
+def recipe_switches_given(arguments: Any, row: Mapping[str, Any]) -> dict[str, Any]:
+    """Each recipe switch the caller gave, checked against the producer row. The row's value always runs; a switch
+    with another value is not used, and the init says so once (stderr) and records it in its provenance.
+
+    THE BREAKAGE IT PREVENTS (model audit D22, 15 Nov 2026): Oklahoma's 6 km start was made with
+    ``--extrap-airtemp constant --tsk-seaice-threshold 100.0 --landuse-table MODIFIED_IGBP_MODIS_NOAH`` on the
+    command line, and the producer ran lapse-rate, 271.4 and MODIFIED_IGBP_MODIS_NOAH_15s from its row with rc 0
+    and no word: the command line misstated the recipe that ran. Not a refusal: the regional, init-source and
+    moving-member doors hand the v8.4.2 run switches to every init, the RRFS suites included, and a refusal would
+    stop those routes on a switch the producer never reads.
+
+    -> {"equal": {flag: value}, "ignored": {flag: {"given": value, "recipe": row value}}}"""
+
+    case7, given, ignored = row["case7"], {}, {}
+    for flag, attribute, key, read in RECIPE_SWITCHES:
+        value = getattr(arguments, attribute, None)
+        if value is None or key not in case7:
+            continue
+        try:
+            word = read(value)
+        except (TypeError, ValueError):
+            word = value
+        same = (abs(float(word) - float(case7[key])) <= 1e-9 * max(1.0, abs(float(case7[key])))
+                if read is float else word == case7[key])
+        if same:
+            given[flag] = value
+        else:
+            ignored[flag] = {"given": value, "recipe": case7[key]}
+    if ignored:
+        import sys
+
+        print(f"init: --physics-suite {arguments.physics_suite} initializes with the RRFS producer's own recipe "
+              f"({row['source_pin'][:8]}, row case7); these switches are NOT used: "
+              + "; ".join(f"{flag} {v['given']} (the recipe runs {v['recipe']!r})" for flag, v in ignored.items())
+              + ". Drop them; the provenance records them as ignored_switches", file=sys.stderr)
+    return {"equal": given, "ignored": ignored}
+
+
 def run_rrfs_init(arguments: Any, producer: tuple[str, Mapping[str, Any]]) -> int:
     """``woof hex init --physics-suite <RRFS suite>``: the fork's case-7 init (and case-9 boundaries)."""
 
@@ -547,14 +673,14 @@ def run_rrfs_init(arguments: Any, producer: tuple[str, Mapping[str, Any]]) -> in
     key, row = producer
     started = time.monotonic()
     for flag, value in (("--met", arguments.met), ("--static", arguments.static), ("--out", arguments.out),
-                        ("--start-time", arguments.start_time), ("--nfglevels", arguments.nfglevels),
-                        ("--nfgsoillevels", arguments.nfgsoillevels)):
+                        ("--start-time", arguments.start_time), ("--nfglevels", arguments.nfglevels)):
         if value is None:
             raise RrfsInitError(f"{flag} was not given; the RRFS producer cannot infer it")
     if getattr(arguments, "land_surface", None) not in (None, row["soil"]["land_surface"]):
         raise RrfsInitError(f"--physics-suite {arguments.physics_suite} runs {row['soil']['land_surface']} "
                             f"on {row['soil']['n_soil_layers']} soil levels; drop --land-surface "
                             f"{arguments.land_surface}")
+    given_switches = recipe_switches_given(arguments, row)
     out = Path(arguments.out).expanduser().absolute()
     if not out.parent.is_dir():
         raise RrfsInitError(f"output directory {out.parent} does not exist; create it first")
@@ -607,13 +733,36 @@ def run_rrfs_init(arguments: Any, producer: tuple[str, Mapping[str, Any]]) -> in
     levels.write_text(specified_levels_text(row))
     aerosols = resolve_aerosol_table(getattr(arguments, "wif_climatology", None))
     regional = mesh_is_regional(static if not missing else (grid or static))
-    jobs += case7_jobs(row, static=static, met=met, start_time=arguments.start_time,
-                       nfglevels=arguments.nfglevels, nfgsoillevels=arguments.nfgsoillevels,
+    # Soil count is a property of the records, not of a caller's stale flag.
+    # In particular, the no-suite projected intermediate retains native RUC
+    # nodes alongside four layers. Select the nodes before the worker reads it.
+    from ...soil_handover import handover_or_fork
+    try:
+        soil_met, soil_levels, soil_handover = handover_or_fork(
+            met, work / "soil-normalized.met", target_depths=row["soil"].get("node_depths_m"),
+            requested=getattr(arguments, "nfgsoillevels", None))
+    except ValueError as error:
+        raise RrfsInitError(f"soil handover: {error}") from error
+    soil_handover["normalized_met_sha256"] = _sha256(soil_met)
+    case7_met, soil_levels, soil_note = fork_soil_first_guess(row, Path(soil_met), int(soil_levels),
+                                                              work / "first-guess-soil")
+    jobs += case7_jobs(row, static=static, met=case7_met, start_time=arguments.start_time,
+                       nfglevels=arguments.nfglevels, nfgsoillevels=soil_levels,
                        artifact=work / "artifact.nc", out=out, levels_file=levels, aerosols=aerosols,
                        regional=regional, sfc_met=getattr(arguments, "sfc_met", None),
                        seaice_met=getattr(arguments, "seaice_met", None), version=__version__)
     receipts = run_jobs(worker, jobs, work / "logs")
-    _refuse_cold_land_soil(out, row, int(arguments.nfgsoillevels))
+    # The re-layered copy is rebuilt from the source's intermediate on every run.
+    shutil.rmtree(work / "first-guess-soil", ignore_errors=True)
+    _refuse_cold_land_soil(out, row, soil_levels)
+    from ...init_balance import balance_choice, complete_init
+    balance_enabled, balance_by = balance_choice(getattr(arguments, "condensate_balance", None))
+    try:
+        balance_receipt = {**complete_init(out, enabled=balance_enabled), "chosen_by": balance_by}
+    except ValueError as error:
+        # The balance writes block by block: a refusal part way leaves a half-balanced file.
+        out.unlink(missing_ok=True)
+        raise RrfsInitError(f"the condensate balance refused this init and the incomplete file was removed: {error}") from error
     lbc_files: list[str] = []
     lbc_met = list(getattr(arguments, "lbc_met", None) or [])
     _, boundary_record = boundary_recipe(row, getattr(arguments, "boundary_recipe", None), [])
@@ -645,10 +794,15 @@ def run_rrfs_init(arguments: Any, producer: tuple[str, Mapping[str, Any]]) -> in
         "producer": {"key": key, "source_pin": row["source_pin"], "worker": str(worker),
                      "worker_sha256": _sha256(worker), "abi": row["worker"]["abi"]},
         "recipe": {name: row[name] for name in ("soil", "vertical", "case7", "aerosols", "hydrometeors", "lbc")},
+        "given_switches": given_switches["equal"],
+        "ignored_switches": given_switches["ignored"],
         "inputs": {"met": str(met), "met_sha256": _sha256(met), "static": str(static),
                    "aerosol_climatology": str(aerosols), "aerosol_climatology_sha256": _sha256(aerosols)},
         "deep_soil_temperature": deep_soil,
+        "soil_handover": soil_handover,
+        **({"first_guess_soil": soil_note} if soil_note else {}),
         "stages": receipts,
+        "condensate_balance": balance_receipt,
         "output": {"path": str(out), "bytes": out.stat().st_size, "sha256": _sha256(out)},
         "lbc": lbc_files,
         "boundary_recipe": boundary_record,
@@ -661,6 +815,8 @@ def run_rrfs_init(arguments: Any, producer: tuple[str, Mapping[str, Any]]) -> in
     # The carriers are intermediate files the producer rebuilds on every run.
     (work / "artifact.nc").unlink(missing_ok=True)
     (work / "carrier.nc").unlink(missing_ok=True)
+    if Path(soil_met) != Path(met):
+        Path(soil_met).unlink()
     return 0
 
 
@@ -692,6 +848,170 @@ def _refuse_cold_land_soil(out: Path, row: Mapping[str, Any], nfgsoillevels: int
             f"{row['soil']['land_surface']}'s column only from Noah's four layers or its own "
             f"{row['soil']['n_soil_layers']} nodes. The init was removed; give the source row those soil layers "
             "(a deep-soil donor, or its layers interpolated to Noah's four)")
+
+
+#: The first-guess soil counts the fork's init_soil_properties_ruc reads, by producer soil recipe: Noah's four layers
+#: (interpolated onto RUC's nine) or RUC's own nine nodes (copied). Any other count leaves every land column at its
+#: cold zeros with rc 0 (rw-mpas rrfs_init/soil.rs soil_chunk, the fork's initialize_real.F:384-849 at 1d6e370e).
+FORK_FIRST_GUESS_SOIL_COUNTS = {"fork-ruc9": (4, 9)}
+#: Noah's four first-guess layers (top and bottom, cm): the set GFS hands the fork, under the names its case 7 reads.
+NOAH_FIRST_GUESS_LAYERS_CM = ((0, 10), (10, 40), (40, 100), (100, 200))
+
+
+def _wps_groups(handle: Any):
+    """(field name, version, endian, raw records with their markers) for each field of a WPS intermediate."""
+
+    import struct
+
+    first = handle.read(4)
+    if len(first) != 4:
+        raise RrfsInitError(f"{handle.name} is empty or truncated; it is not a WPS intermediate")
+    endian = ">" if struct.unpack(">i", first)[0] == 4 else "<"
+    handle.seek(0)
+
+    def record() -> bytes | None:
+        head = handle.read(4)
+        if not head:
+            return None
+        length = struct.unpack(endian + "i", head)[0]
+        body = handle.read(length)
+        tail = handle.read(4)
+        if len(body) != length or tail != head:
+            raise RrfsInitError(f"{handle.name} has a truncated or mismatched record at byte {handle.tell()}")
+        return head + body + tail
+
+    while (version_record := record()) is not None:
+        version = struct.unpack(endian + "i", version_record[4:8])[0]
+        parts = [version_record] + [record() for _ in range(4 if version == 5 else 3)]
+        if any(part is None for part in parts):
+            raise RrfsInitError(f"{handle.name} ends inside a field")
+        name_at = 4 + 24 + 4 + (0 if version == 3 else 32)
+        yield parts[1][name_at:name_at + 9].decode("ascii").strip(), version, endian, parts
+
+
+def _soil_level(name: str) -> tuple[str, float] | None:
+    """("T" or "M", depth in cm) of a first-guess soil field, by the WPS naming the fork's soil_endpoint reads:
+    SOILTnnn / SOILMnnn is a node nnn cm down; STaaabbb / SMaaabbb a layer from aaa to bbb cm, at its middle."""
+
+    import re
+
+    node = re.fullmatch(r"SOIL([TM])(\d{3})", name)
+    if node:
+        return node.group(1), float(node.group(2))
+    layer = re.fullmatch(r"S([TM])(\d{3})(\d{3})", name)
+    if layer and int(layer.group(3)) > int(layer.group(2)):
+        return layer.group(1), 0.5 * (int(layer.group(2)) + int(layer.group(3)))
+    return None
+
+
+def _column_at(depths: Sequence[float], slabs: Sequence[Any], target: float, valid: Any) -> Any:
+    """The column linearly interpolated in depth to ``target`` at every point, from its valid levels only: the
+    bracketing pair where both are valid, else the nearest valid level (the shallowest or deepest beyond the ends).
+    A point with no valid level (the source's masked sea: ICON writes 0 there) keeps the nearest level's value,
+    which case 7's land-sea mask replaces as it does for every source."""
+
+    import numpy as np
+
+    out = np.full(slabs[0].shape, np.nan, dtype=np.float64)
+    above = [k for k in range(len(depths)) if depths[k] <= target]
+    below = [k for k in range(len(depths)) if depths[k] >= target]
+    if above and below:
+        a = max(above, key=lambda k: depths[k])
+        b = min(below, key=lambda k: depths[k])
+        weight = 0.0 if depths[b] == depths[a] else (target - depths[a]) / (depths[b] - depths[a])
+        both = valid(slabs[a]) & valid(slabs[b])
+        out[both] = (1.0 - weight) * slabs[a][both] + weight * slabs[b][both]
+    nearest = sorted(range(len(depths)), key=lambda k: abs(depths[k] - target))
+    for k in nearest:
+        fill = np.isnan(out) & valid(slabs[k])
+        out[fill] = slabs[k][fill]
+    hole = np.isnan(out)
+    out[hole] = slabs[nearest[0]][hole]
+    return out
+
+
+def fork_soil_first_guess(row: Mapping[str, Any], met: Path, nfgsoillevels: int,
+                          work: Path) -> tuple[Path, int, dict[str, Any] | None]:
+    """The first guess the producer's case 7 reads, its soil-level count, and what was done (None: nothing).
+
+    A first guess whose soil count the producer's recipe reads is passed untouched, byte for byte (GFS, IFS, ERA5
+    and AIFS: four layers; HRRR and RRFS: RUC's nine nodes). Any other column is moved onto Noah's four layers in
+    a copy (ST000010 .. ST100200, SM000010 .. SM100200), the set GFS hands the fork, which then builds RUC's nine
+    from it as it does for GFS: each layer takes the source column linearly interpolated to its mid-depth (5, 25,
+    70 and 150 cm), from the levels valid at that point (temperature above 0 K, moisture not negative). Every
+    other field is copied byte for byte.
+
+    THE BREAKAGE IT FIXES (hrrrv5 from ICON, 2026-10-29): ICON's eight TERRA levels (SOILT001 .. SOILT999 and
+    SOILM001 .. SOILM999, nodes 0.5 cm to 14.6 m) take neither branch of the fork's init_soil_properties_ruc, and
+    their names are not RUC's, so case 7 read no soil at all and every land cell started at 0 K through all nine
+    RUC levels with rc 0. A column that cannot be moved (no temperature or moisture levels, or none reaching
+    1 m) is refused here, before the producer runs."""
+
+    import hashlib
+
+    import numpy as np
+
+    counts = FORK_FIRST_GUESS_SOIL_COUNTS.get(str((row.get("soil") or {}).get("recipe")))
+    if counts is None or int(nfgsoillevels) in counts:
+        return met, int(nfgsoillevels), None
+    started = time.monotonic()
+    columns: dict[str, dict[float, Any]] = {"T": {}, "M": {}}
+    template = None
+    with Path(met).open("rb") as handle:
+        for name, version, endian, parts in _wps_groups(handle):
+            level = _soil_level(name)
+            if level is None:
+                continue
+            kind, depth = level
+            columns[kind][depth] = np.frombuffer(parts[-1][4:-4], dtype=np.dtype(endian + "f4")).astype(np.float64)
+            if template is None:
+                template = (version, endian, parts)
+    found = {kind: sorted(levels) for kind, levels in columns.items()}
+    if template is None or not found["T"] or not found["M"] or max(found["T"]) < 100.0 or max(found["M"]) < 100.0:
+        raise RrfsInitError(
+            f"{met.name} carries {int(nfgsoillevels)} first-guess soil levels (temperature at {found['T']} cm, "
+            f"moisture at {found['M']} cm); {row['soil']['recipe']} reads Noah's four layers or RUC's own nine "
+            "nodes, and this column cannot be moved onto Noah's four without levels reaching 1 m. Give the source "
+            "row a deep-soil donor")
+    version, endian, parts = template
+    dtype = np.dtype(endian + "f4")
+    name_at = 4 + 24 + 4 + (0 if version == 3 else 32)
+    valid = {"T": lambda v: np.isfinite(v) & (v > 0.0), "M": lambda v: np.isfinite(v) & (v >= 0.0)}
+    words = {"T": ("K", "Soil temperature, {a}-{b} cm"), "M": ("m3 m-3", "Soil moisture, {a}-{b} cm")}
+
+    def group(kind: str, top: int, bottom: int) -> bytes:
+        depths = found[kind]
+        values = _column_at(depths, [columns[kind][d] for d in depths], 0.5 * (top + bottom), valid[kind])
+        units, about = words[kind]
+        metadata = bytearray(parts[1])
+        text = f"S{kind}{top:03d}{bottom:03d}".ljust(9) + units.ljust(25) + about.format(a=top, b=bottom).ljust(46)
+        metadata[name_at:name_at + 80] = text.encode("ascii")
+        slab = parts[-1][:4] + values.astype(dtype).tobytes() + parts[-1][-4:]
+        return b"".join([parts[0], bytes(metadata), *parts[2:-1], slab])
+
+    work.mkdir(parents=True, exist_ok=True)
+    out = work / met.name
+    digest = hashlib.sha256()
+    with Path(met).open("rb") as source, out.open("wb") as sink:
+        written = False
+        for name, _, _, field in _wps_groups(source):
+            if _soil_level(name) is None:
+                blocks = field
+            elif written:
+                continue
+            else:
+                blocks = [group(kind, top, bottom) for kind in ("T", "M")
+                          for top, bottom in NOAH_FIRST_GUESS_LAYERS_CM]
+                written = True
+            for block in blocks:
+                sink.write(block)
+                digest.update(block)
+    return out, len(NOAH_FIRST_GUESS_LAYERS_CM), {
+        "moved_to": "noah-four-layers", "layers_cm": [list(pair) for pair in NOAH_FIRST_GUESS_LAYERS_CM],
+        "source_levels_cm": found, "source_nfgsoillevels": int(nfgsoillevels),
+        "why": f"{row['soil']['recipe']} reads {' or '.join(str(c) for c in counts)} first-guess soil levels",
+        "method": "linear in depth to each layer's mid-depth, valid levels only (T > 0 K, moisture >= 0)",
+        "out_sha256": digest.hexdigest(), "seconds": round(time.monotonic() - started, 3)}
 
 
 def run_rrfs_lbc(producer: tuple[str, Mapping[str, Any]], *, init: Path, intervals: Sequence[tuple[str, Path]],

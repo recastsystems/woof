@@ -121,6 +121,9 @@ hdf5-reader = "0.3"
 # addressed cache, SHA-256 receipts).  MRMS needs it; writing a second one
 # would re-earn the bugs that client's audit already fixed.
 rw-nexrad = { path = "../rw-nexrad" }
+# Retry with backoff on 429/5xx, the cross-process per-host gap and the
+# URL-keyed body cache (the 2026-11-09 rw_asos 429 defect).
+rw-http = { path = "../rw-http" }
 # The GOES open-data S3 client and the ABI NetCDF reader, for the derived
 # motion winds (`rw_amv`); the DMW decode itself lives in rw-sat's `dmw`
 # module beside the cloud products.  netcrust by path for the radio

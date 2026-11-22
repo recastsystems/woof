@@ -31,6 +31,7 @@ from functools import lru_cache
 import json
 import math
 from pathlib import Path
+import sys
 import threading
 import time
 from typing import Any, Mapping
@@ -104,6 +105,101 @@ extern "C" __global__ void tempo_refl_state(int nz, int stride, int first, int c
 }
 """
 
+#: The same tail for TEMPO v3.2.5 (tempo_v325, the default TEMPO): the state's graupel split into hail as the v3.2.5
+#: step does at its start (thermo, hail fraction, hail check, the split and the graupel recheck), then
+#: reflectivity_10cm with the hail term, the order the v3.2.5 step's end reaches reflectivity in (graupel and hail
+#: checked separately, merged back only after the diagnostics).
+REFL_SOURCE_V325 = r"""
+// TEMPO tempo_v3.2.5 c62699f: the tail of tempo_main on a given state with zero tendencies, hail split included.
+struct TempoReflWork {
+  float temp[TEMPO_NZP], pres[TEMPO_NZP], qv[TEMPO_NZP], rho[TEMPO_NZP];
+  float qc1[TEMPO_NZP], qr1[TEMPO_NZP], nr1[TEMPO_NZP], qs1[TEMPO_NZP], qg1[TEMPO_NZP], ng1[TEMPO_NZP], qb1[TEMPO_NZP];
+  float rr[TEMPO_NZP], nr[TEMPO_NZP], rs[TEMPO_NZP], rg[TEMPO_NZP], ng[TEMPO_NZP], rb[TEMPO_NZP];
+  float qrten[TEMPO_NZP], nrten[TEMPO_NZP], qsten[TEMPO_NZP], qgten[TEMPO_NZP], ngten[TEMPO_NZP], qbten[TEMPO_NZP];
+  float mvd_r[TEMPO_NZP], mvd_g[TEMPO_NZP], refl10cm[TEMPO_NZP];
+  float rhof[TEMPO_NZP], rhof2[TEMPO_NZP], qvs[TEMPO_NZP], delqvs[TEMPO_NZP], qvsi[TEMPO_NZP], satw[TEMPO_NZP];
+  float sati[TEMPO_NZP], ssatw[TEMPO_NZP], ssati[TEMPO_NZP], diffu[TEMPO_NZP], visco[TEMPO_NZP], vsc2[TEMPO_NZP];
+  float ocp[TEMPO_NZP], lvap[TEMPO_NZP], tcond[TEMPO_NZP], lvt2[TEMPO_NZP];
+  float qh1[TEMPO_NZP], hf[TEMPO_NZP], rh[TEMPO_NZP], nh[TEMPO_NZP], qhten[TEMPO_NZP];
+  double ilamr[TEMPO_NZP], ilamg[TEMPO_NZP], ilamh[TEMPO_NZP], smob[TEMPO_NZP], smoc[TEMPO_NZP], smo2[TEMPO_NZP];
+  double smoz[TEMPO_NZP];
+  bool l_qr[TEMPO_NZP], l_qs[TEMPO_NZP], l_qg[TEMPO_NZP], l_qh[TEMPO_NZP];
+  int idx_bg[TEMPO_NZP];
+};
+extern "C" __global__ void tempo_refl_sizes(unsigned long long* out) {
+  out[0] = sizeof(TempoReflWork); out[1] = sizeof(TempoBlob);
+}
+extern "C" __global__ void tempo_refl_state(int nz, int stride, int first, int count,
+    const float* t, const float* p, const float* qv, const float* qr, const float* nr, const float* qs,
+    const float* qg, const float* ng, const float* qb, const TempoBlob* blob, int hail, int melting,
+    TempoReflWork* work, float* dbz, const float* qc, int hyper) {
+  int c = blockIdx.x * blockDim.x + threadIdx.x; if (c >= count) return;
+  long long g = (long long)first + c;
+  TempoParams P = {blob};
+  TempoCtx C = {1.0f, 1.0f, 0, hail, 0, melting, 0, 1, 1, 0, 0, 0, 0, 0, 0, hyper && hail};
+  TempoReflWork& W = work[c];
+  const bool graupel_moments = ng != nullptr && qb != nullptr;
+  const float roverrv = PS(rdry) / PS(rv);
+  for (int k = 1; k <= nz; ++k) {
+    long long x = (long long)(k - 1) * stride + g;
+    W.temp[k] = t[x]; W.pres[k] = p[x];
+    W.qv[k] = tmax(PS(min_qv), qv[x]);
+    W.rho[k] = roverrv * W.pres[k] / (PS(rdry) * W.temp[k] * (W.qv[k] + roverrv));
+    W.qc1[k] = qc != nullptr ? qc[x] : 0.0f;
+    W.qr1[k] = qr[x]; W.nr1[k] = nr[x]; W.qs1[k] = qs[x]; W.qg1[k] = qg[x];
+    W.ng1[k] = graupel_moments ? ng[x] : 0.0f; W.qb1[k] = graupel_moments ? qb[x] : 0.0f;
+    W.qrten[k] = 0.0f; W.nrten[k] = 0.0f; W.qsten[k] = 0.0f; W.qgten[k] = 0.0f; W.ngten[k] = 0.0f;
+    W.qbten[k] = 0.0f; W.qhten[k] = 0.0f; W.qh1[k] = 0.0f; W.hf[k] = 0.0f; W.l_qh[k] = false;
+    W.smob[k] = 0.0; W.smoc[k] = 0.0; W.smo2[k] = 0.0; W.smoz[k] = 0.0;
+  }
+  rain_check_and_update(P, C, nz, W.rho, W.l_qr, W.qr1, W.nr1, W.rr, W.nr, W.qrten, W.nrten, W.ilamr, W.mvd_r);
+  snow_check_and_update(P, C, nz, W.rho, W.l_qs, W.qs1, W.rs, W.qsten);
+  const float t0 = PS(t0);
+  for (int k = 1; k <= nz; ++k) {
+    if (W.l_qs[k]) {
+      float tc0 = tmin(-0.1f, W.temp[k] - t0);
+      snow_moments(P, W.rs[k], tc0, &W.smob[k], &W.smoc[k], nullptr, nullptr, nullptr,
+                   &W.smo2[k], nullptr, nullptr, nullptr, &W.smoz[k]);
+    }
+  }
+  float* ng1 = graupel_moments ? W.ng1 : nullptr;
+  float* qb1 = graupel_moments ? W.qb1 : nullptr;
+  graupel_check_and_update(P, C, nz, W.rho, W.l_qg, W.qg1, ng1, qb1, W.rg, W.ng, W.rb, W.idx_bg,
+                           W.qgten, W.ngten, W.qbten, W.ilamg, W.mvd_g);
+  bool supersaturated = false;
+  thermo_vars(P, nz, W.qv, W.temp, W.pres, W.rho, W.rhof, W.rhof2, W.qvs, W.delqvs, W.qvsi, W.satw, W.sati,
+              W.ssatw, W.ssati, W.diffu, W.visco, W.vsc2, W.ocp, W.lvap, W.tcond, W.lvt2, &supersaturated);
+  if (C.hailhyperaware_flag) {
+    compute_hail_fraction(P, nz, W.l_qg, W.qg1, W.mvd_g, W.idx_bg, W.qr1, W.qc1, W.temp, W.tcond, W.diffu,
+                          W.delqvs, W.qh1, W.hf);
+  }
+  hail_check_and_update(P, C, nz, W.rho, W.l_qh, W.qh1, W.rh, W.nh, W.qhten, W.ilamh);
+  bool split = false;
+  for (int k = 1; k <= nz; ++k) {
+    if (W.l_qh[k]) {
+      split = true;
+      W.qg1[k] = W.qg1[k] - W.qh1[k];
+      if (ng1 != nullptr) ng1[k] = ng1[k] - W.nh[k] / W.rho[k];
+      if (qb1 != nullptr) qb1[k] = qb1[k] - W.qh1[k] * PS(meters3_to_liters) / PA1(rho_g, PI(nrhg));
+      W.qgten[k] = 0.0f; W.ngten[k] = 0.0f; W.qbten[k] = 0.0f;
+    }
+  }
+  if (split) {
+    graupel_check_and_update(P, C, nz, W.rho, W.l_qg, W.qg1, ng1, qb1, W.rg, W.ng, W.rb, W.idx_bg,
+                             W.qgten, W.ngten, W.qbten, W.ilamg, W.mvd_g);
+  }
+  reflectivity_10cm(P, C, nz, melting, W.temp, W.l_qr, W.rr, W.nr, W.ilamr, W.l_qs, W.rs, W.smoc,
+                    W.smob, W.smoz, W.l_qg, W.rg, W.ng, W.idx_bg, W.ilamg, W.l_qh, W.nh, W.ilamh, W.refl10cm);
+  for (int k = 1; k <= nz; ++k) dbz[(long long)(k - 1) * stride + g] = W.refl10cm[k];
+}
+"""
+
+
+def _version(version: str | None) -> str:
+    """The run's TEMPO version (tempo_v303.tempo_version; None is the slot default, v3.2.5)."""
+    from woof.hex.mpasphys.rrfs.tempo_v303 import DEFAULT_TEMPO_VERSION, tempo_version
+    return tempo_version({"config_tempo_version": version}) if version else DEFAULT_TEMPO_VERSION
+
 
 def _pin_metadata(pin_set: str) -> Path:
     """The framework metadata (TEMPO PARAMETER words) of the RRFS fork pin this suite runs."""
@@ -161,32 +257,52 @@ def parameter_blob(pin_set: str, hailaware: bool, melting: bool) -> np.ndarray:
     return blob
 
 
-_MODULES: dict[tuple[int, int], Any] = {}
+#: The fork corrections (fork_corrections) whose routine this module compiles and calls: snow_moments (TP5).
+#: The other TEMPO ids change process code the state reflectivity never runs; they are not applied here, so the
+#: module's text without TP5 is the pinned one whatever else a run applies.  THE BREAKAGE THIS PREVENTS: with
+#: TP5 in the forecast only, the f000 frame's snow reflectivity was built on the flipped moments and every later
+#: frame on the corrected ones.
+REFL_CORRECTIONS: tuple[str, ...] = ("TP5",)
+
+
+def _refl_corrections(corrections) -> tuple[str, ...]:
+    """The ids of ``corrections`` this module takes, in table order (none: the pinned text)."""
+    chosen = set(corrections or ())
+    return tuple(c for c in REFL_CORRECTIONS if c in chosen)
+
+
+_MODULES: dict[tuple, Any] = {}
 _MODULE_LOCK = threading.Lock()
 
 
-def _module(device: int, nz: int):
+def _module(device: int, nz: int, version: str | None = None, corrections=()):
     """tempo_v303's strict column source plus the state-reflectivity kernel, compiled once per card and depth.
     A second caller (the f000 thread behind the writer's early warm-up) waits for the first compile, never repeats it."""
-    key = (int(device), int(nz))
+    key = (int(device), int(nz), _version(version), _refl_corrections(corrections))
     with _MODULE_LOCK:
         if key not in _MODULES:
             _MODULES[key] = _build_module(*key)
         return _MODULES[key]
 
 
-def module_source(nz: int) -> str:
+def module_source(nz: int, version: str | None = "v3.0.3", corrections=()) -> str:
     """The module's text: tempo_v303's strict column routines (both numerics: the reflectivity reads the f64
     parameter blob) at ``nz`` levels, its MPAS slice kernels, then the state-reflectivity kernel.  Not the
     column driver (tempo_columns, the whole microphysics step): with it the module took 97.9 s of NVRTC on one
     core (an RTX 5090 host, lam7k, 2026-10-29) and step 1 waited 53 s for it.  The AOT inventory declares the same text
     (cuda_backend.aot_build.physics_inventory, family tempo_rrfs_refl; the slice kernels pair it with the
-    fast TEMPO unit)."""
+    fast TEMPO unit).  ``corrections``: the run's applied fork corrections; REFL_CORRECTIONS of them (TP5) are
+    applied to the column text, none gives the pinned text."""
     from woof.hex.mpasphys.resources_build import _vendored_maths, tempo_maths
     from woof.hex.mpasphys.rrfs import tempo_v303 as tempo
     maths = tempo_maths(_vendored_maths())
+    fixed = _refl_corrections(corrections)
+    if _version(version) == "v3.2.5":
+        from woof.hex.mpasphys.rrfs import tempo_v325
+        return (f"#define TEMPO_NZ_MAX {max(int(nz), 1)}\n" + tempo._shared_pow_define(maths) + maths
+                + tempo_v325._column_source('strict', fixed) + tempo._mpas_source('strict') + REFL_SOURCE_V325)
     return (f"#define TEMPO_NZ_MAX {max(int(nz), 1)}\n" + tempo._shared_pow_define(maths) + maths
-            + tempo._column_source('strict') + tempo._mpas_source('strict') + REFL_SOURCE)
+            + tempo._column_source('strict', fixed) + tempo._mpas_source('strict') + REFL_SOURCE)
 
 
 def module_options() -> tuple[str, ...]:
@@ -197,14 +313,14 @@ def module_options() -> tuple[str, ...]:
 
 
 #: Seconds each (card, depth) module took to compile or load from the kernel pack.
-MODULE_SECONDS: dict[tuple[int, int], float] = {}
+MODULE_SECONDS: dict[tuple, float] = {}
 
 
-def _build_module(device: int, nz: int):
+def _build_module(device: int, nz: int, version: str = "v3.0.3", corrections=()):
     import cupy as cp
     from cupy.cuda import compiler, function
     started = time.time()
-    source = module_source(nz)
+    source = module_source(nz, version, corrections)
     with cp.cuda.Device(device):
         # Through the engine's direct-NVRTC bridge: served from the AOT pack when it holds this text.
         image, _ = compiler.compile_using_nvrtc(source, options=module_options(), cache_in_memory=True)
@@ -213,17 +329,20 @@ def _build_module(device: int, nz: int):
         sizes = cp.empty(2, dtype=cp.uint64)
         module.get_function('tempo_refl_sizes')((1,), (1,), (sizes,))
         result = module, tuple(int(v) for v in sizes.get())
-    MODULE_SECONDS[(int(device), int(nz))] = round(time.time() - started, 2)
+    MODULE_SECONDS[(int(device), int(nz), version)] = round(time.time() - started, 2)
     return result
 
 
 def refl10cm(fields: Mapping[str, Any], *, pin_set: str = 'rrfs-44c0849', hailaware: bool = True,
-             melting: bool = False, cp: Any = None):
+             melting: bool = False, cp: Any = None, version: str | None = None, hailhyperaware: bool = True,
+             corrections=()):
     """TEMPO 10 cm reflectivity (dBZ, ``(nz, ncells)`` float32 on the device) of one state.
 
     ``fields`` (each ``(nz, ncells)``): ``t`` (K) and ``p`` (Pa), or ``theta`` with ``p`` (``exner`` optional:
     else (p / p0) ** (rgas / cp)); ``qv``, ``qr``, ``nr``, ``qs``, ``qg`` (kg/kg, /kg); ``ng`` and ``volg``
-    (hail-aware graupel number and volume) when the state carries them.
+    (hail-aware graupel number and volume) when the state carries them; ``qc`` (kg/kg: TEMPO v3.2.5's hail
+    fraction reads it, zero when absent).  ``version``: the run's TEMPO (None: the slot default, v3.2.5).
+    ``corrections``: the run's applied fork corrections (the module takes REFL_CORRECTIONS of them).
     """
     if cp is None:
         import cupy as cp
@@ -238,7 +357,8 @@ def refl10cm(fields: Mapping[str, Any], *, pin_set: str = 'rrfs-44c0849', hailaw
         if f[name].shape != (nz, ncells):
             raise ValueError(f'TEMPO reflectivity input {name} is {f[name].shape}, not {(nz, ncells)}')
     device = f['qv'].device.id
-    module, (work_bytes, blob_bytes) = _module(device, nz)
+    version = _version(version)
+    module, (work_bytes, blob_bytes) = _module(device, nz, version, corrections)
     blob = cp.asarray(parameter_blob(pin_set, bool(hailaware), bool(melting)))
     if blob.nbytes != blob_bytes:
         raise ValueError(f'TEMPO parameter blob is {blob.nbytes} bytes, the module reads {blob_bytes}')
@@ -248,13 +368,15 @@ def refl10cm(fields: Mapping[str, Any], *, pin_set: str = 'rrfs-44c0849', hailaw
     work = cp.empty(chunk * work_bytes, cp.uint8)
     kernel = module.get_function('tempo_refl_state')
     null = np.uint64(0)
+    # v3.2.5's kernel also reads the cloud water and the hail-hyperaware switch.
+    extra = () if version == 'v3.0.3' else (f['qc'] if 'qc' in f else null, np.int32(bool(hailhyperaware)))
     for first in range(0, ncells, chunk):
         count = min(chunk, ncells - first)
         kernel(((count + 127) // 128,), (128,), (
             np.int32(nz), np.int32(ncells), np.int32(first), np.int32(count),
             f['t'], f['p'], f['qv'], f['qr'], f['nr'], f['qs'], f['qg'],
             ng if ng is not None else null, qb if qb is not None else null,
-            blob, np.int32(bool(hailaware)), np.int32(bool(melting)), work, out))
+            blob, np.int32(bool(hailaware)), np.int32(bool(melting)), work, out) + extra)
     return out
 
 
@@ -281,7 +403,8 @@ def column_radar(refl, zgrid, *, cp: Any = None):
 
 def refl10cm_staged(state: Mapping[str, np.ndarray], zgrid: np.ndarray | None, *, pin_set: str = 'rrfs-44c0849',
                     hailaware: bool = True, melting: bool = False, cp: Any = None, stream: Any = None,
-                    columns: int = STAGE_COLUMNS) -> dict[str, np.ndarray]:
+                    columns: int = STAGE_COLUMNS, version: str | None = None,
+                    hailhyperaware: bool = True, corrections=()) -> dict[str, np.ndarray]:
     """``refl10cm`` (``(nz, ncells)``), ``refl10cm_max`` and, with ``zgrid``, ``refl10cm_1km`` of a HOST state, formed
     one slab of ``columns`` columns at a time; host float32 results, the same words as :func:`refl10cm` and
     :func:`column_radar` on the whole state (every column is formed from its own words only).
@@ -304,7 +427,8 @@ def refl10cm_staged(state: Mapping[str, np.ndarray], zgrid: np.ndarray | None, *
     for first in range(0, ncells, step):
         cols = slice(first, min(ncells, first + step))
         slab = {k: np.ascontiguousarray(v[:, cols]) for k, v in state.items() if v is not None}
-        z = refl10cm(slab, pin_set=pin_set, hailaware=hailaware, melting=melting, cp=cp)
+        z = refl10cm(slab, pin_set=pin_set, hailaware=hailaware, melting=melting, cp=cp, version=version,
+                     hailhyperaware=hailhyperaware, corrections=corrections)
         if zgrid is not None:
             peak, at_1km = column_radar(z, np.ascontiguousarray(zgrid[:, cols]), cp=cp)
             out['refl10cm_1km'][cols] = cp.asnumpy(at_1km, stream=stream)
@@ -376,20 +500,51 @@ def residue(formed, stored, floor: float = 0.0) -> dict[str, float]:
                 formed_ge_20=int((a >= 20).sum()), stored_ge_20=int((b >= 20).sum()))
 
 
-def rediagnose_file(path, *, fallback=None, pin_set='rrfs-44c0849', hailaware=True, melting=False,
-                    floor_dbz=0.0, write=True, cp=None) -> dict[str, Any]:
+def file_tempo(path) -> tuple[str, bool, str]:
+    """The TEMPO an MPAS stream file was written with: (version, hailhyperaware, where that came from).
+
+    hex writes hex_tempo_version / hex_tempo_hailhyperaware on every stream of a run whose TEMPO is not the RRFS pin
+    (tempo_v303.output_attributes); a file without them is the pin, v3.0.3 (exact-mode RRFS, hex before v3.2.5,
+    native RRFS)."""
+    from netCDF4 import Dataset
+    from woof.hex.mpasphys.rrfs.tempo_v303 import PIN_TEMPO_VERSION, tempo_version
+    with Dataset(str(path)) as d:
+        names = set(d.ncattrs())
+        if 'hex_tempo_version' in names:
+            version = tempo_version({'config_tempo_version': str(d.getncattr('hex_tempo_version'))})
+            hyper = (str(d.getncattr('hex_tempo_hailhyperaware')).strip().upper() != 'NO'
+                     if 'hex_tempo_hailhyperaware' in names else True)
+            return version, hyper, 'file attribute hex_tempo_version'
+    return PIN_TEMPO_VERSION, False, 'no hex_tempo_version attribute: the RRFS pin'
+
+
+def rediagnose_file(path, *, fallback=None, pin_set='rrfs-44c0849', hailaware=True, melting=False, version=None,
+                    hailhyperaware=True, floor_dbz=0.0, write=True, cp=None) -> dict[str, Any]:
     """Rewrite ``refl10cm`` of an MPAS state file (a DA analysis or observer copy) with TEMPO's own reflectivity
     of the state's hydrometeors, floored at ``floor_dbz`` like the JEDI copy of the background.  Returns the
-    record (the old field's change, and the operator residue when ``path`` still holds the background)."""
+    record (the old field's change, and the operator residue when ``path`` still holds the background).
+
+    ``version`` and ``hailhyperaware`` are the TEMPO the state came from (the producing run's config_tempo_version
+    and config_tempo_hailhyperaware; None: what the file records, see file_tempo).  A state from an exact-mode RRFS run (v3.0.3)
+    carries no attribute and is read as v3.0.3.  The record and the file attribute carry the version used."""
     if cp is None:
         import cupy as cp
     from netCDF4 import Dataset
     started = time.time()
     state, stored, _, borrowed = read_state(path, fallback)
-    z = cp.asnumpy(refl10cm(state, pin_set=pin_set, hailaware=hailaware, melting=melting, cp=cp))
+    if version is None:
+        # A v3.0.3 state is never rediagnosed with v3.2.5's operator unasked (nor the reverse): the file says.
+        version, hailhyperaware, version_from = file_tempo(path)
+    else:
+        version_from = 'named by the caller'
+    version = _version(version)
+    print(f'{path}: TEMPO {version} ({version_from})', file=sys.stderr, flush=True)
+    z = cp.asnumpy(refl10cm(state, pin_set=pin_set, hailaware=hailaware, melting=melting, cp=cp, version=version,
+                            hailhyperaware=hailhyperaware))
     z = np.maximum(z, np.float32(floor_dbz)).astype(np.float32)
     record = dict(file=str(path), operator='TEMPO reflectivity_10cm of the state (hexcore tempo_refl_v303)',
-                  pin_set=pin_set, hailaware=bool(hailaware), melting=bool(melting), floor_dbz=float(floor_dbz),
+                  pin_set=pin_set, tempo_version=version, tempo_version_from=version_from, hailhyperaware=bool(hailhyperaware) and version != 'v3.0.3',
+                  hailaware=bool(hailaware), melting=bool(melting), floor_dbz=float(floor_dbz),
                   from_fallback=borrowed, cells_ge_20_after=int((z >= 20).sum()))
     if stored is not None:
         record['change_from_stored'] = residue(z, stored, floor_dbz)
@@ -402,7 +557,7 @@ def rediagnose_file(path, *, fallback=None, pin_set='rrfs-44c0849', hailaware=Tr
             else:
                 v[:] = z.T
             d.setncattr('hexcore_refl10cm', 'TEMPO reflectivity_10cm of this state\'s hydrometeors '
-                        f'(hexcore tempo_refl_v303, pin {pin_set}, hail-aware {bool(hailaware)}, melting '
+                        f'(hexcore tempo_refl_v303, pin {pin_set}, TEMPO {version}, hail-aware {bool(hailaware)}, melting '
                         f'{bool(melting)}), floored at {float(floor_dbz)} dBZ')
     record['seconds'] = round(time.time() - started, 2)
     return record
@@ -467,12 +622,17 @@ class StartFrameReflectivity:
     """
 
     def __init__(self, snapshot: Mapping[str, Any], *, hailaware: bool, melting: bool, pin_set: str,
-                 device: int) -> None:
+                 device: int, version: str | None = None, hailhyperaware: bool = True,
+                 corrections=()) -> None:
         import threading
+        self.version = _version(version)
+        self.hailhyperaware = bool(hailhyperaware)
+        self.corrections = _refl_corrections(corrections)
         self.targets = [n for n in START_TARGETS if n in snapshot and _placeholder(snapshot[n])]
         self.record: dict[str, Any] = dict(operator='TEMPO reflectivity_10cm of the start state '
                                            '(hexcore tempo_refl_v303)', hailaware=bool(hailaware),
-                                           melting=bool(melting), fields={})
+                                           melting=bool(melting), tempo_version=self.version,
+                                           fork_corrections=list(self.corrections), fields={})
         self.result: dict[str, np.ndarray] | None = None
         self.error: BaseException | None = None
         self.thread = None
@@ -493,7 +653,7 @@ class StartFrameReflectivity:
             self.record['applied'] = False
             self.record['reason'] = f'the start frame carries no {missing}'
             return
-        state = {n: _logical(snapshot[n])[0] for n in need + [n for n in ('ng', 'volg') if n in snapshot]}
+        state = {n: _logical(snapshot[n])[0] for n in need + [n for n in ('ng', 'volg', 'qc') if n in snapshot]}
         if pressure is not None:
             state['p'] = _logical(snapshot['pressure'])[0]
         else:
@@ -512,7 +672,8 @@ class StartFrameReflectivity:
                 # In slabs: on a same-host multi-card run this is the global frame on rank 0's card, beside
                 # step 1 (refl10cm_staged names the breakage).
                 host = refl10cm_staged(state, zgrid, pin_set=pin_set, hailaware=hail, melting=melt, cp=cp,
-                                       stream=stream)
+                                       stream=stream, version=self.version,
+                                       hailhyperaware=self.hailhyperaware, corrections=self.corrections)
             self.result = host
             self.record['seconds'] = round(time.time() - started, 2)
             self.record['card_slab_columns'] = STAGE_COLUMNS
@@ -527,7 +688,8 @@ class StartFrameReflectivity:
         self.thread.join()
         # How long the forecast thread waited at step 1 for the side thread (0 when it was already done).
         self.record['step1_wait_seconds'] = round(time.time() - waited, 3)
-        self.record['module_seconds'] = dict((f'card {k[0]}, {k[1]} levels', v) for k, v in MODULE_SECONDS.items())
+        self.record['module_seconds'] = dict((f'card {k[0]}, {k[1]} levels, {k[2]}', v)
+                                             for k, v in MODULE_SECONDS.items())
         if self.error is not None or self.result is None:
             self.record['applied'] = False
             self.record['reason'] = f'TEMPO start reflectivity failed: {self.error!r}'
@@ -542,7 +704,8 @@ class StartFrameReflectivity:
         return self.record
 
 
-def warm_start_reflectivity(configs: Mapping[str, Any], nz: int, *, device: int) -> threading.Thread | None:
+def warm_start_reflectivity(configs: Mapping[str, Any], nz: int, *, device: int,
+                            corrections=()) -> threading.Thread | None:
     """Compile the f000 reflectivity module and build the parameter words on a side thread, from the moment the
     writer knows it will hold the start frame (None: not a TEMPO run).  Breakage it prevents: compiled at the
     f000 write instead, the strict TEMPO column source (one NVRTC call on one core, ~25 s; tempo_v303
@@ -551,12 +714,14 @@ def warm_start_reflectivity(configs: Mapping[str, Any], nz: int, *, device: int)
         return None
     hail = bool(configs.get('config_tempo_hailaware', True))
     melt = bool(configs.get('config_tempo_refl10cm_from_melting', False))
+    from woof.hex.mpasphys.rrfs.tempo_v303 import tempo_version
+    version = tempo_version(configs)
 
     def run() -> None:
         try:
             import cupy as cp
             with cp.cuda.Device(device):
-                _module(device, int(nz))
+                _module(device, int(nz), version, corrections)
             parameter_blob('rrfs-44c0849', hail, melt)
         except BaseException:   # the f000 thread repeats the work and names any failure in the receipt
             pass
@@ -567,14 +732,18 @@ def warm_start_reflectivity(configs: Mapping[str, Any], nz: int, *, device: int)
 
 
 def start_frame_reflectivity(configs: Mapping[str, Any], snapshot: Mapping[str, Any], *,
-                             device: int) -> StartFrameReflectivity | None:
+                             device: int, corrections=()) -> StartFrameReflectivity | None:
     """The f000 reflectivity completion for this run's microphysics (None: not a TEMPO run)."""
     if str(configs.get('config_microp_scheme', '')).strip() != 'mp_tempo':
         return None
     # The TEMPO PARAMETER words are the same at both fork pins (metadata tempo_constants, 1d6e370e = 44c0849).
+    # v3.2.5 computes rdry/rv in its kernel, the one PARAMETER word that differs from v3.0.3, so the same words serve.
+    from woof.hex.mpasphys.rrfs.tempo_v303 import tempo_version
     return StartFrameReflectivity(snapshot, hailaware=bool(configs.get('config_tempo_hailaware', True)),
                                   melting=bool(configs.get('config_tempo_refl10cm_from_melting', False)),
-                                  pin_set='rrfs-44c0849', device=device)
+                                  pin_set='rrfs-44c0849', device=device, version=tempo_version(configs),
+                                  hailhyperaware=bool(configs.get('config_tempo_hailhyperaware', True)),
+                                  corrections=corrections)
 
 
 def main(argv=None) -> int:
@@ -586,6 +755,8 @@ def main(argv=None) -> int:
     parser.add_argument('--pin-set', default='rrfs-44c0849')
     parser.add_argument('--hailaware', type=int, default=1)
     parser.add_argument('--melting', type=int, default=0)
+    parser.add_argument('--tempo-version', default=None, help='v3.2.5 or v3.0.3: the TEMPO the state came from (default: the file says)')
+    parser.add_argument('--hailhyperaware', type=int, default=1, help='config_tempo_hailhyperaware of the run the state came from (v3.2.5)')
     parser.add_argument('--floor-dbz', type=float, default=0.0)
     parser.add_argument('--check', action='store_true', help='measure the residue against the stored field only')
     parser.add_argument('--receipt')
@@ -594,7 +765,9 @@ def main(argv=None) -> int:
     for i, path in enumerate(a.files):
         fallback = a.fallback[i] if i < len(a.fallback) else None
         rows.append(rediagnose_file(path, fallback=fallback, pin_set=a.pin_set, hailaware=bool(a.hailaware),
-                                    melting=bool(a.melting), floor_dbz=a.floor_dbz, write=not a.check))
+                                    melting=bool(a.melting), version=a.tempo_version,
+                                    hailhyperaware=bool(a.hailhyperaware), floor_dbz=a.floor_dbz,
+                                    write=not a.check))
     text = json.dumps(dict(members=rows), indent=2)
     if a.receipt:
         Path(a.receipt).write_text(text)

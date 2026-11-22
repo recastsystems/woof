@@ -506,7 +506,7 @@
     "constructor": "RawModule",
     "factory": "_module",
     "factory_sha256": "834b00031ae5a2fa1b78325bb6b4900174b34086261fabf1f783a53decfca205",
-    "file": "woof/da/hydrometeor_analysis.py",
+    "file": "gpuwm/da/hydrometeor_analysis.py",
     "status": "unresolved"
    },
    {
@@ -650,7 +650,7 @@
     "constructor": "RawKernel",
     "factory": "_kernel",
     "factory_sha256": "922f443b1507aeb49dbbf3b5fae40a24a2730d151c15fc3c9f42f688eeade896",
-    "file": "woof/da/fixed_order_gemm.py",
+    "file": "gpuwm/da/fixed_order_gemm.py",
     "status": "resolved_literal"
    },
    {
@@ -898,7 +898,7 @@
     "constructor": "RawModule",
     "factory": "_module",
     "factory_sha256": "d7d04f91a6b67cb2829ba52859d2894f11e6bcca7b4fa3cf459c793e9dd39d2c",
-    "file": "woof/da/letkf_device.py",
+    "file": "gpuwm/da/letkf_device.py",
     "status": "unresolved"
    },
    {
@@ -1881,7 +1881,7 @@
    },
    {
     "file": "woof/core/kernels/sase.cu",
-    "sha256": "af8c732fbc4945c517a965a7dc4c2e931667400064d01072f27728f4a67d7ae8"
+    "sha256": "60008fb0a0eb8b3475afc74f3a971366e611cceadc681e734e48c4450af77695"
    },
    {
     "file": "woof/core/kernels/satmedmf.cu",
@@ -2507,7 +2507,7 @@
    },
    {
     "file": "woof/core/sfire_ideal_atmos.py",
-    "sha256": "2b5b7fe20c90f7267ad73eeca02aac090b629eadf8446abe86e8d5099992f1fc"
+    "sha256": "e6d7f87ec5052ae3266f1e83db90e4ed8aef35c49fb2aba7f9b77ab11e280685"
    },
    {
     "file": "woof/core/sfire_moisture.py",
@@ -2547,7 +2547,7 @@
    },
    {
     "file": "woof/core/terrain_drag.py",
-    "sha256": "0f3c957364c1e98eed04f4fd58dc3aeb6510926f38f13fea3c38d868e5794412"
+    "sha256": "fed6f54e31967246f52c07039fd5496efc18ca38b6bb1540ab66d22be99d693f"
    },
    {
     "file": "woof/core/thompson_aerosol_launch.py",
@@ -2566,20 +2566,20 @@
     "sha256": "3b317f695e3738b800423734225741d2d86af204b11d0425b87caa64ce35d40f"
    },
    {
-    "file": "woof/da/fixed_order_gemm.py",
-    "sha256": "d72f29d153b71f6ea07785869709cfcd647197ccced80420f005416cd76239c9"
+    "file": "gpuwm/da/fixed_order_gemm.py",
+    "sha256": "be47a8358008b20ee9f9730b3bc19c2c8e84328b2a45fa44dffcb122d07fac44"
    },
    {
-    "file": "woof/da/hydrometeor_analysis.py",
-    "sha256": "77542f73ebcc62d6b14b0ea28447631639f8a10bf29a76b142b54b0dd94e5b6b"
+    "file": "gpuwm/da/hydrometeor_analysis.py",
+    "sha256": "0ada4219ce0815de5dd95456188d5aae33d67a0cc00e637fe88d819a235fe39f"
    },
    {
-    "file": "woof/da/letkf_device.py",
-    "sha256": "cfb00689486e487b1ff5a3f0c18e9db888dea72db21f39086cf98478074cc150"
+    "file": "gpuwm/da/letkf_device.py",
+    "sha256": "fb5e35e08482c211f58935ccde55455c7fc9e57fda197b3ba6895ed8e47e7637"
    },
    {
     "file": "woof/da/radar_tten.py",
-    "sha256": "bea1ace4b8df937fa8a0d11659efb6b7438516cbf18cf129ab90c5580a023f7d"
+    "sha256": "76bbc9735f496339ed871368aac37d237709e8dfe37f884bba3e33edf10d5533"
    },
    {
     "file": "woof/doctor.py",
@@ -2588,10 +2588,6 @@
    {
     "file": "woof/eclipse_windows.py",
     "sha256": "2bc61cac5f094b7ef21290a4d7b96dfb433db1cbdc889e3f24569932fdea6811"
-   },
-   {
-    "file": "woof/ensemble/batch_acoustic_fusion.py",
-    "sha256": "5661292fde4c7ae699be970b2112ed8c27aeb1b11ed77979e7f76946554c3783"
    },
    {
     "file": "woof/ensemble/batch_fluxes.py",
@@ -2655,7 +2651,7 @@
    },
    {
     "file": "woof/ensemble/surface_recipe.py",
-    "sha256": "04aa0b8e4a82b21258cb591c0c06ff77dcbbc085abca8e0204cd151bfb0deb6e"
+    "sha256": "d97fb1616e130a755389c402458d546b236191af7e46ca494b583bff75e03ed3"
    },
    {
     "file": "woof/ensemble/visibility.py",
@@ -2663,7 +2659,7 @@
    },
    {
     "file": "woof/hydro/cfe.py",
-    "sha256": "123f269b4d9f74c18543ea9dee9fe86e60864bbffb2b208a9c9c04e227fee444"
+    "sha256": "f8fd30281a04ee2859695616ce1f3324c453241cfb545e53b820765680da03d1"
    },
    {
     "file": "woof/hydro/driver.py",
@@ -2671,7 +2667,7 @@
    },
    {
     "file": "woof/hydro/forcing.py",
-    "sha256": "bbbc2a48982e56bb128ea701946797649dbdedf7ee5841a83b6fad83d5f101b9"
+    "sha256": "4bdad73481508aaa3705af389db537f0e5452be54c68cbd697265bbdfb3c3f27"
    },
    {
     "file": "woof/hydro/module_history.py",
@@ -2687,7 +2683,7 @@
    },
    {
     "file": "woof/hydro/pet.py",
-    "sha256": "ac55caf46ff0f4da5af2574e29394b1438a704f647a1e24cc4c61c0c1cb23f43"
+    "sha256": "d91ed7217f420245a93d8246efe295eee6eabf36facf2fdfb78a9026f64c7805"
    },
    {
     "file": "woof/kernel_aot.py",
@@ -2731,7 +2727,7 @@
    },
    {
     "file": "woof/ocean/waves/model.py",
-    "sha256": "adda85160f303e6e1764d38f0f8b7c93a9cb6b7298dddaf93bc27f730fe19e62"
+    "sha256": "e1d939e9b71f9a1f5a3516ba3e83d11f6da04e814f3894ea37b2e2ccc1f794c1"
    },
    {
     "file": "woof/tc_accumulator.py",
@@ -2755,7 +2751,7 @@
    },
    {
     "file": "woof/verify/smallstep_bookkeeping_oracle.py",
-    "sha256": "aa65f7af6e22588e81d134fb596a867267294c731c679892d5e4e87b80671db4"
+    "sha256": "78ee5836abe222348c238ba59d75dcf78e7d100ab3791b07e2308fc904aacf65"
    },
    {
     "file": "woof/verify/smallstep_horizontal_oracle.py",
@@ -2976,15 +2972,15 @@
     "sha256": "e13574cd07171fa8170db7a53766fa6cffa2b2cf549fafe5d03c88b6d88fed19"
    },
    {
-    "file": "woof/da/fixed_order_gemm.py",
+    "file": "gpuwm/da/fixed_order_gemm.py",
     "sha256": "bcabc9bdba7b2c9b963dd5fa43c76d5f34e8766edb6906373a3d2ab965db4a49"
    },
    {
-    "file": "woof/da/hydrometeor_analysis.py",
+    "file": "gpuwm/da/hydrometeor_analysis.py",
     "sha256": "4c46644ff59ee55f2dd942955e086a4197243024d46b2d35da07702dcdf66131"
    },
    {
-    "file": "woof/da/letkf_device.py",
+    "file": "gpuwm/da/letkf_device.py",
     "sha256": "e5453c7ad013db9248f5ee4de65270ee1e014e9f35ef13540cf4fa8aba54005f"
    },
    {
@@ -2998,10 +2994,6 @@
    {
     "file": "woof/eclipse_windows.py",
     "sha256": "5ec704690ffec70206342ddde57a5913b6ebf88847ce4e82a1c8b781491b3bea"
-   },
-   {
-    "file": "woof/ensemble/batch_acoustic_fusion.py",
-    "sha256": "af01fd4273be18a84cbdd2a190387ab6d7e0d47705591ab93a3449145eb15177"
    },
    {
     "file": "woof/ensemble/batch_fluxes.py",
@@ -9215,7 +9207,7 @@
      "-arch=compute_120"
     ]
    },
-   "source_sha256": "a6ed1b936ff380d548864f9ff2bf8dc4b865451c66876718f25ac2b3e5bf645d"
+   "source_sha256": "320e0edff7184243ff463d8eabdda050376c0fe188fbf6ea0961c69554556c94"
   },
   "kernels:satmedmf": {
    "assessment": "static_diagnostic_only",

@@ -128,7 +128,7 @@ def render(exe: str, source: pathlib.Path, work: pathlib.Path, tag: str,
         # Pinned: the default label carries the executing woof version on
         # the woof side, but rw_wrfbatch's own default is a constant.  It
         # is stated anyway so the gate cannot drift with a default.
-        "--source-label", "WOOF",
+        "--source-label", "WOOF-ArWen",
         str(source),
     ]
     result = subprocess.run(command, capture_output=True, text=True,

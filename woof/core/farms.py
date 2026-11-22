@@ -147,7 +147,7 @@ class FastSurfaceShortwave(ShortwaveInterpolation):
                                   ('AERSSA2D','AERASY2D','AOD5502D','ANGEXP2D'))
         else:
             raise ValueError('FARMS aer_opt=3 needs stock WRF gt_aod diagnostics')
-        julian, _, _ = calendar_scalars(self.start_time,state.elapsed_seconds)
+        julian, _, _ = calendar_scalars(self.start_time,state.elapsed_seconds,generation=getattr(cfg,'solar_generation','wrf_480'))
         fluxes = farms_surface_columns(
             column(atmosphere['p_interface']), column(atmosphere['rho']),
             column(atmosphere['dz']), surface(driver.fields['albedo']),

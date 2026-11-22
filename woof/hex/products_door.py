@@ -89,8 +89,15 @@ WINDOWED_REQUIREMENTS = {
     "10m_wind_run_max": (1, 1),
     "2m_temp_0_24h_max": (1, 24),
     "2m_temp_0_24h_min": (1, 24),
+    # The UH tracks (WOOF 2026-11-10): the 2-5 km UH maximum of every stored frame folded over 1 h, 3 h and the
+    # whole run, as the ArWen route draws them (woof windowed uh_2to5km_*_max), so the routes draw the same maps.
+    "uh_2to5km_1h_max": (1, 1),
+    "uh_2to5km_3h_max": (1, 3),
+    "uh_2to5km_run_max": (1, 1),
 }
 WINDOWED_PRODUCTS = tuple(WINDOWED_REQUIREMENTS)
+#: Windowed maps only a regional view draws: storm-scale swaths that a global view's spacing cannot hold.
+REGIONAL_WINDOWED_PRODUCTS = ("uh_2to5km_1h_max", "uh_2to5km_3h_max", "uh_2to5km_run_max")
 BASE_GLOBAL_PRODUCTS = GLOBAL_PRODUCTS
 REGIONAL_EXTRA_PRODUCTS = (
     "2m_dewpoint_10m_winds",
@@ -115,6 +122,26 @@ REGIONAL_EXTRA_PRODUCTS = (
     "1km_reflectivity_uh0to2km",
     "1km_reflectivity_uh0to3km",
     "1km_reflectivity_uh2to5km",
+    # The severe-weather set the ArWen route draws on every regional run (WOOF 2026-11-15): mixed-layer CAPE, the
+    # CIN of each parcel, 0-1 and 0-3 km storm-relative helicity, 0-1 and 0-6 km bulk shear, the fixed-layer
+    # significant tornado parameter and 0-1 km EHI. THE BREAKAGE THIS PREVENTS (a hex region run against a
+    # gfs-regional-3km run on the same gate, 2026-11-16): a hex region rendered surface and
+    # most-unstable CAPE alone, with none of the shear, helicity or composite maps, though its frames carry
+    # every field they need (HGT included).
+    "mlcape",
+    "sbcin",
+    "mlcin",
+    "mucin",
+    "srh_0_1km",
+    "srh_0_3km",
+    "bulk_shear_0_1km",
+    "bulk_shear_0_6km",
+    "stp_fixed",
+    "ehi_0_1km",
+    # McCaul's total lightning threat and the 10 m gust, which the renderer also derives from a hex frame's own
+    # columns (fork jacobbieker/woof PR 433; the rest of that PR's set was already here).
+    "lightning_threat_3",
+    "10m_wind_gusts",
 )
 GLOBAL_PRODUCTS = BASE_GLOBAL_PRODUCTS + WINDOWED_PRODUCTS
 REGIONAL_PRODUCTS = GLOBAL_PRODUCTS + REGIONAL_EXTRA_PRODUCTS
@@ -182,7 +209,7 @@ EARTH_RADIUS_KM = 6371.229
 #: Cities a LIMITED-AREA run takes its soundings at when none are named: the
 #: ones on its mesh, nearest the domain centre first, at most
 #: ``DEFAULT_REGION_POINT_COUNT``; a domain with none of them gets its centre.
-#: THE BREAKAGE THIS PREVENTS (graded-plateau 1 km region, box J,
+#: THE BREAKAGE THIS PREVENTS (graded-plateau 1 km region,
 #: 2026-10-24): a regional run fell back to the world set (London, Tokyo,
 #: Sydney), rw_hex_points refused London as 7,025 km off the mesh, and that
 #: one refusal took every sounding with it.
@@ -233,6 +260,38 @@ DEFAULT_REGION_POINT_COUNT = 8
 MPAS_EARTH_RADIUS_M = 6371229.0
 
 
+def grid_sphere_radius(grid) -> float | None:
+    """An open grid file's ``sphere_radius``, or ``None`` when it has none or it is not a positive number."""
+
+    try:
+        radius = float(getattr(grid, "sphere_radius"))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None
+    return radius if math.isfinite(radius) and radius > 0.0 else None
+
+
+def grid_length_to_earth_m(radius: float) -> float:
+    """Metres on the Earth for one unit of a grid file's own lengths.
+
+    A grid file's ``dcEdge`` (and the square root of its ``areaCell``) is in
+    the units of its own sphere: metres on a grid already scaled to the
+    Earth, radians of arc on the unit sphere a mesh generator writes
+    (``sphere_radius = 1.0``; the zoom globes are such files).  The model
+    scales every grid to the Earth when it starts, so a length there is the
+    file's length times the Earth's radius over the file's.  The point
+    check, the cell spacings behind the views and the brand's measured
+    spacing all take their scale here, so maps, soundings and meteograms
+    read one spacing off one grid.
+
+    THE BREAKAGE THIS PREVENTS (a 240-to-60 km zoom globe, 2026-11-14): the
+    brand's measured spacing read ``dcEdge`` as metres, the grid was a
+    unit-sphere file (shortest edge 0.0077), and every sounding and
+    meteogram of the run was headed "Variable-resolution globe to 0 km".
+    """
+
+    return 1.0 if radius == MPAS_EARTH_RADIUS_M else MPAS_EARTH_RADIUS_M / radius
+
+
 def mesh_point_check(mesh, points) -> tuple[list, list, tuple[float, float]] | None:
     """``(on_mesh, off_mesh, (centre_lat, centre_lon))`` for ``points`` on a mesh, or ``None``.
 
@@ -254,10 +313,10 @@ def mesh_point_check(mesh, points) -> tuple[list, list, tuple[float, float]] | N
             lat = np.asarray(grid["latCell"][:], dtype=np.float64)
             lon = np.asarray(grid["lonCell"][:], dtype=np.float64)
             area = np.asarray(grid["areaCell"][:], dtype=np.float64)
-            radius = float(grid.getncattr("sphere_radius"))
+            radius = grid_sphere_radius(grid)
     except (OSError, ValueError, KeyError, AttributeError, ImportError):
         return None
-    if lat.size == 0 or not (math.isfinite(radius) and radius > 0.0):
+    if lat.size == 0 or radius is None:
         return None
     cells = np.stack((np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)), axis=1)
     mean = cells.mean(axis=0)
@@ -269,7 +328,7 @@ def mesh_point_check(mesh, points) -> tuple[list, list, tuple[float, float]] | N
         reach = float(np.arccos(np.clip(cells @ centre, -1.0, 1.0)).max())
     else:
         centre, centre_deg, reach = None, (0.0, 0.0), math.pi
-    spacing_km = np.sqrt(2.0 * (area / (radius * radius)) / math.sqrt(3.0)) * MPAS_EARTH_RADIUS_M / 1000.0
+    spacing_km = np.sqrt(2.0 * area / math.sqrt(3.0)) * grid_length_to_earth_m(radius) / 1000.0
     reach += float(spacing_km.max()) / (MPAS_EARTH_RADIUS_M / 1000.0)
     on_mesh, off_mesh = [], []
     for name, plat, plon in points:
@@ -317,14 +376,14 @@ def add_label_arguments(parser) -> None:
 
     parser.add_argument(
         "--model-label", default=None, metavar="NAME",
-        help="the model the maps and soundings name, top left (e.g. 'WOOF Hex'; "
+        help="the model the maps and soundings name, top left (e.g. 'WOOF-HEX-A'; "
              "the mesh spacing is added; a map's row takes 32 characters, a longer "
              "name ends in its whole words and '...'); forwarded to the product "
              "stage. Default: hex")
     parser.add_argument(
         "--brand", default=None, metavar="TEXT",
         help="bold text at the top right of every sounding and meteogram (e.g. "
-             "'WOOF Hex · Global 120 km · Init GFS 22 Oct 2026 00Z'); forwarded "
+             "'WOOF-HEX-A · Global 120 km · Init GFS 22 Oct 2026 00Z'); forwarded "
              "to the product stage. Default: composed from the run's own records "
              "(shape, finest spacing, init source and time)")
     add_view_label_argument(parser, forwarded=True)
@@ -387,8 +446,8 @@ def view_title(view: str, *, moving: bool = False) -> str:
     THE BREAKAGE THIS PREVENTS (2026-10-30): every view of a zoom globe
     was headlined by the WHOLE mesh's range and the picture grid's spacing,
     so the site's ``Core zoom · 8 → 38 km`` opened a picture titled ``(hex
-    133-6.9 km) ... Δx 8.063 km`` (run_713c9e1913164e02) and ``Around the core
-    · 6 → 96 km`` one saying ``Δx 6.08 km`` (run_c108e049fecb4bd0)."""
+    133-6.9 km) ... Δx 8.063 km`` and ``Around the core
+    · 6 → 96 km`` one saying ``Δx 6.08 km``."""
 
     if moving and view == "refined-core":
         name = MOVING_CORE_TITLE
@@ -460,7 +519,7 @@ def points_take_brand(points_exe: Path) -> bool:
 #: The model a hex sounding names top right.  A sounding never shows a default
 #: tool name or nothing there; the header comes from the run's own metadata on
 #: every path.
-BRAND_MODEL = "WOOF Hex"
+BRAND_MODEL = "WOOF-HEX-A"
 #: The brand with nothing known about the run, not even the model.
 BRAND_FALLBACK = "WOOF"
 BRAND_SHAPES = {
@@ -520,12 +579,12 @@ def default_brand(*, shape: str | None = None, spacing_km=None, source: str | No
                   start: str | None = None, model: str | None = BRAND_MODEL,
                   spacing_measured: bool = False) -> str:
     """The top-right text of a sounding when no ``--brand`` is given:
-    ``WOOF Hex · Storm-following 3 km · Init GFS 23 Oct 2026 18Z``.
+    ``WOOF-HEX-A · Storm-following 3 km · Init GFS 23 Oct 2026 18Z``.
 
     ``shape`` is one of :data:`BRAND_SHAPES` (global row, variable-resolution
     globe, limited-area region, storm-following).  A part the run does not
     record is dropped, never guessed: no source gives ``Init 23 Oct 2026
-    18Z``, nothing at all gives ``WOOF Hex``, and no model ``WOOF``.  Every
+    18Z``, nothing at all gives ``WOOF-HEX-A``, and no model ``WOOF``.  Every
     door that ends in the product stage gets its brand here, so none can
     fall back to an empty top right."""
 
@@ -640,7 +699,9 @@ def _mesh_row_spacing(mesh_name: str | None, mesh: Path | None,
 def _mesh_file_spacing(mesh: Path | None) -> tuple[float | None, float | None]:
     """(finest, coarsest) km measured from the grid's own ``dcEdge``: the
     median edge on a uniform mesh (its nominal spacing), the shortest on a
-    variable one."""
+    variable one.  The edges are in the units of the file's own sphere
+    (``grid_length_to_earth_m``); a file that names no sphere is read as
+    metres."""
 
     if mesh is None:
         return None, None
@@ -653,8 +714,11 @@ def _mesh_file_spacing(mesh: Path | None) -> tuple[float | None, float | None]:
             if "dcEdge" not in grid.variables:
                 return None, None
             edges = np.asarray(grid["dcEdge"][:], dtype=np.float64)
+            radius = grid_sphere_radius(grid)
     except Exception:  # noqa: BLE001 - not a readable grid
         return None, None
+    if radius is not None:
+        edges = edges * grid_length_to_earth_m(radius)
     edges = edges[edges > 0.0]
     if edges.size == 0:
         return None, None
@@ -1095,11 +1159,32 @@ def mesh_cell_spacing_km(mesh) -> "list[float] | None":
         from .netcdf_lock import NETCDF
         with NETCDF, Dataset(mesh) as grid:
             area = grid["areaCell"][:]
-            radius = float(getattr(grid, "sphere_radius", 1.0) or 1.0)
+            radius = grid_sphere_radius(grid) or 1.0   # a file that names no sphere: the unit sphere's areas
     except (OSError, ValueError, KeyError, IndexError, TypeError):
         return None
-    scale = 6371.229 / radius if radius < 1000.0 else 0.001  # a unit sphere's areas, else metres
+    scale = grid_length_to_earth_m(radius) / 1000.0
     return [math.sqrt(2.0 * float(a) / math.sqrt(3.0)) * scale for a in area]
+
+
+def mesh_is_uniform_globe(mesh) -> bool:
+    """A global mesh whose 95th-percentile cell spacing is within VARIABLE_RESOLUTION_SPACING_RATIO of its 5th: it has
+    no refined region, so no refined-core view, and it draws the default regions. False when the grid cannot be read
+    (the converter's own refusal then decides, as before).
+
+    THE BREAKAGE THIS PREVENTS (woof hex 0.6.0 candidate, 2026-11-11): the door knew a mesh was uniform only from
+    the converter refusing --window mesh with "no refined region". The converter rebuilt from engine f717cd5e2c
+    (pinned by 36530ae5, so that `render` draws a global start) draws a uniform globe's whole sphere for --window mesh
+    instead, so a plain 120 km x1.40962 forecast rendered a second globe titled "Core zoom 121 km" and a
+    "refined-context" view where 0.5.0 rendered North America and Europe."""
+
+    if mesh is None or mesh_is_limited_area(mesh):
+        return False
+    spacing = mesh_cell_spacing_km(mesh)
+    if not spacing:
+        return False
+    ordered = sorted(spacing)
+    low, high = ordered[len(ordered) // 20], ordered[(19 * len(ordered)) // 20]
+    return low > 0.0 and high / low < VARIABLE_RESOLUTION_SPACING_RATIO
 
 
 def global_window(mesh, size: str) -> tuple[str, str | None]:
@@ -1734,8 +1819,8 @@ def run_products(args) -> int:
             f"there; pass --init INIT.nc.")
     start = simulation_start(args.simulation_start, forecast_dir, histories)
     windowed, windows_not_requested = windowed_for_history(histories, start)
-    global_products = BASE_GLOBAL_PRODUCTS + windowed
-    regional_products = global_products + REGIONAL_EXTRA_PRODUCTS
+    global_products = BASE_GLOBAL_PRODUCTS + tuple(p for p in windowed if p not in REGIONAL_WINDOWED_PRODUCTS)
+    regional_products = BASE_GLOBAL_PRODUCTS + windowed + REGIONAL_EXTRA_PRODUCTS
     for slug, reason in windows_not_requested.items():
         print(f"PRODUCTS window not requested: {slug}: {reason}", flush=True)
     case = case_token(args.case, mesh, start,
@@ -1796,7 +1881,10 @@ def run_products(args) -> int:
                 int((_parse_stamp(frame_stamp(p)) - _parse_stamp(start)).total_seconds()), p.name)
                 for p in live["frames"]]
             rc, manifest, refusal = _render_view(histories=histories,
-                products=tuple(dict.fromkeys((*products, *WINDOWED_PRODUCTS))) + chemistry_products,
+                products=tuple(dict.fromkeys((*products, *(
+                    p for p in WINDOWED_PRODUCTS
+                    if p not in REGIONAL_WINDOWED_PRODUCTS or set(REGIONAL_EXTRA_PRODUCTS) <= set(products))))
+                ) + chemistry_products,
                 draw_latest=getattr(args, "draw_latest", False), preserve_leads=preserve,
                 incremental_import=True, **common)
         elif live is None:
@@ -1907,15 +1995,25 @@ def run_products(args) -> int:
         pending.append(pool.submit(view, "global", globe, global_products, args.global_size, "none"))
     refined_centre = None
     mesh_uniform = None
-    if not args.no_mesh_view:
+    if not args.no_mesh_view and not limited_area and mesh_is_uniform_globe(mesh):
+        # A quasi-uniform globe has no refined region, so no refined-core view: decided here from the mesh, not from
+        # the converter refusing --window mesh (the converter of 0.6.0 draws the whole sphere for it instead).
+        views.append({"view": "refined-core", "window": "mesh", "rc": 0, "elapsed_seconds": 0.0,
+                      "refusal": "no refined region: the mesh's cell spacing is uniform to within a factor "
+                                 f"{VARIABLE_RESOLUTION_SPACING_RATIO:g} (95th over 5th percentile)",
+                      "note": "uniform mesh: no refined region to frame"})
+        mesh_uniform = True
+        print("PRODUCTS uniform mesh: no refined-core view; default regions instead", flush=True)
+        regions = dict(DEFAULT_REGIONS)
+    elif not args.no_mesh_view:
         core_future = pool.submit(view, "refined-core", "mesh", regional_products, args.regional_size)
         # The context view is placed from the core's window. When the live draws of this run already rendered the core
         # into this tree, its window is on disk, so the context starts beside the core's whole-run maps instead of
         # after them. THE BREAKAGE THIS PREVENTS (an Arizona zoom globe, 8 x RTX PRO 6000, woof hex 0.4.10,
         # 2026-10-30): after the forecast the context view, the slowest, waited for the core view's 37 conversions
         # and its renders before its own first conversion began. A live draw of one frame (--history) has the same
-        # window on disk from the frame before it. THE BREAKAGE THAT PREVENTS (Arizona 800 km core, 12 h, four cards,
-        # run_69fad83444ce2a34): every frame's context waited for its core, so a draw took 85 s beside a forecast hour's
+        # window on disk from the frame before it. THE BREAKAGE THAT PREVENTS (Arizona 800 km core, 12 h, four
+        # cards): every frame's context waited for its core, so a draw took 85 s beside a forecast hour's
         # 38 s, and the box sat 86 s with four cards idle after the last step for the last frame's draw.
         drawn_core = (live_view_manifest(out_case, "refined-core")
                       if live is not None or getattr(args, "history", None) else None)
@@ -2184,13 +2282,13 @@ def add_products_arguments(parser) -> None:
                              "default: hex")
     parser.add_argument("--brand", default=None, metavar="TEXT",
                         help="bold text at the top right of every sounding and meteogram, "
-                             "e.g. 'WOOF Hex · Global 120 km · Init GFS 22 Oct 2026 00Z' "
+                             "e.g. 'WOOF-HEX-A · Global 120 km · Init GFS 22 Oct 2026 00Z' "
                              "(at most 120 characters); default: composed from the run's own "
                              "records (products_door.default_brand)")
     parser.add_argument("--source-label", default=None, metavar="TEXT",
                         help="source credit printed on each map (1-160 printable ASCII "
                              "characters), e.g. which ensemble member it came from; default: "
-                             "Hex forecast where the renderer supports it")
+                             "WOOF-HEX-A and the version, where the renderer supports it")
     add_view_label_argument(parser)
     parser.add_argument("--global-size", default="1800x1000")
     parser.add_argument("--regional-size", default="1400x1000")

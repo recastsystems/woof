@@ -438,7 +438,7 @@ def _width_trend(costs, counts=_COST_COUNTS) -> float:
     width range: 1.0 is flat, 16.0 is a fixed per-call cost amortized over
     48 -> 768 columns.  This is the quantity the projection to production
     width depends on.  ``max/min`` over the points is not: one point delayed
-    by the scheduler moves it by the whole delay (2.9.12 pass 19 R5, a development machine at
+    by the scheduler moves it by the whole delay (2.9.12 pass 19 R5, a shared test host at
     load ~150: 48: 0.845, 96: 0.785, 192: 1.037, 384: 0.663, 768: 0.653 read
     1.59 by max/min with no trend -- the middle point was the slow one; the
     fitted ratio of those numbers is 1.32 and the same test passed 3/3 at

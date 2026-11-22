@@ -80,7 +80,9 @@ def _mapping(*, land_binding="cycle_invariant", soil=False, soil_missing="landma
         }
     return {
         "format": "grib2",
-        "coordinates": {"vertical": {"levels": [100000.0]}},
+        # The GRIB assembly reads coordinates.horizontal (its normalization
+        # key); a mapping without it raised KeyError before any masking ran.
+        "coordinates": {"horizontal": {}, "vertical": {"levels": [100000.0]}},
         "fields": fields,
         "target": {"soil_layer_count": 1},
     }

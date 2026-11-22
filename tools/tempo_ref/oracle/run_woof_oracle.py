@@ -175,14 +175,15 @@ def run(args):
 
     def make_runtime():
         if args.blob:
-            return TempoRuntime(args.blob, nz_max=64)
-        return TempoRuntime(table_dir=args.tables, nz_max=64)
+            return TempoRuntime(args.blob, nz_max=64, version=args.version)
+        return TempoRuntime(table_dir=args.tables, nz_max=64, version=args.version)
 
     modes = ["free", "replay"] if args.mode == "both" else [args.mode]
     result = dict(
         strict=os.environ.get("GPUWM_WRF_EXACT") == "1",
         wrf_exact_enabled=bool(wrf_exact.ENABLED),
         strict_options=list(wrf_exact.STRICT_OPTIONS) if wrf_exact.ENABLED else [],
+        tempo_version=args.version,
         blob_source=("fortran dump " + str(args.blob)) if args.blob else
                     ("rust tempo_init from " + str(args.tables)),
         device=cp.cuda.runtime.getDeviceProperties(0)["name"].decode(),
@@ -213,6 +214,10 @@ def run(args):
                     prev = s["ref"][it - 1]
                     for n in UPDATED:
                         f[n][...] = cp.asarray(prev[n].T[:, None, :])
+                if args.version != "v3.0.3":
+                    # v3.2.5 tempo_run: is_first_step = (itimestep == 1); the
+                    # Fortran oracle restarts itimestep at 1 for every set.
+                    rt.first_call = it == 0
                 out = rt.step(f, s["dt"], TempoConfig())
                 ref = s["ref"][it]
                 got = {n: f[n][:, 0, :].get().T for n in UPDATED}
@@ -347,6 +352,8 @@ def parse_args(argv=None):
                                         "running the GPU")
     ap.add_argument("--out", required=True)
     ap.add_argument("--mode", default="both", choices=("free", "replay", "both"))
+    ap.add_argument("--version", default="v3.0.3", choices=("v3.0.3", "v3.2.5"),
+                    help="TEMPO generation of the runtime and of the reference files")
     ap.add_argument("--strict", action="store_true",
                     help="refuse to run unless GPUWM_WRF_EXACT=1 is set")
     return ap.parse_args(argv)

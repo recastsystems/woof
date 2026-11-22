@@ -62,6 +62,10 @@ pub(crate) struct NestShift {
 }
 
 impl NestShift {
+    /// A move that leaves no cell of any grid on the target: the frame is
+    /// stored missing everywhere ([`shift_plane`]).
+    pub(crate) const NOWHERE: Self = Self { dx: i64::MAX / 4, dy: 0 };
+
     /// The move from `from` to `to`, or `None` when they are not two places
     /// of one nest (another grid, or another refinement ratio).
     ///
@@ -284,6 +288,65 @@ pub(crate) fn locate_shift(
     None
 }
 
+/// The ground under a raw wrfout's first and last mass cells, `(lat, lon)`
+/// each, at its first time; `None` when the file has no coordinates.
+pub(crate) fn corner_ground(file: &WrfFile) -> Option<[(f32, f32); 2]> {
+    let lat = file.xlat(0).ok()?;
+    let lon = file.xlong(0).ok()?;
+    let (first_lat, last_lat) = (*lat.first()?, *lat.last()?);
+    let (first_lon, last_lon) = (*lon.first()?, *lon.last()?);
+    Some([
+        (first_lat as f32, first_lon as f32),
+        (last_lat as f32, last_lon as f32),
+    ])
+}
+
+/// Whether two frames that record one place sit on different ground: their
+/// corner cells are more than [`coordinate_tolerance_deg`] apart.  Unknown
+/// ground (no coordinates read) is not a difference.
+pub(crate) fn ground_differs(
+    ground: Option<[(f32, f32); 2]>,
+    other: Option<[(f32, f32); 2]>,
+    dx_m: Option<f64>,
+) -> bool {
+    let (Some(ground), Some(other)) = (ground, other) else {
+        return false;
+    };
+    let tolerance = coordinate_tolerance_deg(dx_m.unwrap_or(f64::NAN));
+    ground.iter().zip(other.iter()).any(|(&(lat, lon), &(lat_o, lon_o))| {
+        let dlat = f64::from(lat) - f64::from(lat_o);
+        let dlon = (f64::from(lon) - f64::from(lon_o) + 540.0).rem_euclid(360.0) - 180.0;
+        !(dlat.abs() <= tolerance && dlon.abs() <= tolerance)
+    })
+}
+
+/// Whether two grids' latitude and longitude spans have nothing in common,
+/// so no cell of one lies on the other's ground.
+pub(crate) fn grids_disjoint(one: &LatLonGrid, other: &LatLonGrid) -> bool {
+    fn spans(grid: &LatLonGrid) -> Option<(f64, f64, f64, f64)> {
+        let anchor = f64::from(*grid.lon_deg.iter().find(|v| v.is_finite())?);
+        let (mut south, mut north, mut west, mut east) =
+            (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+        for (&lat, &lon) in grid.lat_deg.iter().zip(&grid.lon_deg) {
+            if !(lat.is_finite() && lon.is_finite()) {
+                continue;
+            }
+            let lon = (f64::from(lon) - anchor + 540.0).rem_euclid(360.0) - 180.0 + anchor;
+            south = south.min(f64::from(lat));
+            north = north.max(f64::from(lat));
+            west = west.min(lon);
+            east = east.max(lon);
+        }
+        Some((south, north, west, east))
+    }
+    let (Some((s1, n1, w1, e1)), Some((s2, n2, w2, e2))) = (spans(one), spans(other)) else {
+        return false;
+    };
+    let offset = (((w1 + e1) - (w2 + e2)) / 720.0).round() * 360.0;
+    let (w2, e2) = (w2 + offset, e2 + offset);
+    !(s1 < n2 && s2 < n1 && w1 < e2 && w2 < e1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,6 +473,29 @@ mod tests {
             locate_shift(&earlier, &later, coordinate_tolerance_deg(3000.0)).unwrap();
         assert_eq!(found, NestShift { dx: -12, dy: 8 });
         assert_eq!(shared, 4 * 4);
+    }
+
+    #[test]
+    fn a_nest_fixed_in_a_moving_parent_is_another_place_on_the_ground() {
+        // One recorded place, ground two parent cells (8 nest cells) west.
+        let (earlier, later) = (grid(81, 61, 20, 16), grid(79, 61, 20, 16));
+        let corners = |g: &LatLonGrid| {
+            let n = g.lat_deg.len() - 1;
+            Some([(g.lat_deg[0], g.lon_deg[0]), (g.lat_deg[n], g.lon_deg[n])])
+        };
+        assert!(ground_differs(corners(&earlier), corners(&later), Some(3000.0)));
+        assert!(!ground_differs(corners(&later), corners(&later), Some(3000.0)));
+        assert!(!ground_differs(None, corners(&later), Some(3000.0)));
+        let recorded = NestShift::between(place(80, 60), place(80, 60)).unwrap();
+        assert!(recorded.is_null());
+        assert!(verify_shift(&earlier, &later, recorded, coordinate_tolerance_deg(3000.0)).is_err());
+        let (found, _) = locate_shift(&earlier, &later, coordinate_tolerance_deg(3000.0)).unwrap();
+        assert_eq!(found, NestShift { dx: -8, dy: 0 });
+        assert!(!grids_disjoint(&earlier, &later));
+        // A whole width away: nothing in common, stored missing.
+        let far = grid(90, 61, 20, 16);
+        assert!(grids_disjoint(&earlier, &far));
+        assert!(shift_plane(&[1.0; 20 * 16], 20, 16, NestShift::NOWHERE).iter().all(|v| v.is_nan()));
     }
 
     #[test]

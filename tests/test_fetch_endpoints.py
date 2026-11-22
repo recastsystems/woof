@@ -110,16 +110,18 @@ def test_non_ncep_sources_head_their_ladder_with_the_publisher_door():
     """A fresh cycle asks the publisher's door; past its window the mirror, where there is one.
 
     The ECMWF door keeps 72 h and the AWS mirror behind it keeps every
-    cycle, so a 400-day-old ECMWF cycle goes straight to the mirror.
+    cycle, so a 400-day-old ECMWF cycle goes straight to the mirror; Google's
+    mirror is the archive rung after it on every ECMWF route (it keeps every
+    cycle back to 2025-01), for when the AWS mirror answers 503 SlowDown.
     The DWD and MSC doors have no archive behind them, so an old cycle
     still asks the one door (retention is an optimisation, not a bar).
     """
 
     now = _utc_now()
     fresh = {"icon-eu": ["dwd"], "gem-gdps": ["msc"],
-             "ecmwf-open-data": ["ecmwf", "aws"], "aifs": ["ecmwf", "aws"]}
+             "ecmwf-open-data": ["ecmwf", "aws", "google"], "aifs": ["ecmwf", "aws", "google"]}
     old = {"icon-eu": ["dwd"], "gem-gdps": ["msc"],
-           "ecmwf-open-data": ["aws"], "aifs": ["aws"]}
+           "ecmwf-open-data": ["aws", "google"], "aifs": ["aws", "google"]}
     for source in OTHER_SOURCES:
         for age, expected in ((timedelta(hours=2), fresh),
                               (timedelta(days=400), old)):

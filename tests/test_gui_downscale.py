@@ -381,7 +381,7 @@ def test_a_downscale_the_engine_accepted_is_started_whatever_fails_after_it(gui,
     # the assistant making room on the card) raised, so Start answered that the page server hit an error while the
     # child ran, and the card's OWNER line was let go while the child held the card.
     server, runner = gui
-    owner = tmp_path / "gpu-mutex" / "OWNER"
+    owner = tmp_path / "card-queue" / "OWNER"
     owner.parent.mkdir()
     owner.write_text("", encoding="utf-8")
     queue = server.api.queue

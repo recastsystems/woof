@@ -2781,7 +2781,7 @@ mod tests {
 
     /// RRFS-A cadence comes straight from the registry and is domain-neutral
     /// (it does not depend on the unsettled CONUS-vs-NA fetch-plan question:
-    /// see `docs/superpowers/plans/2026-06-11-rrfs-support.md`). Cycles run
+    /// see `docs/internal/plans/2026-06-11-rrfs-support.md`). Cycles run
     /// HOURLY 00z-23z and the forecast horizon is f000..=f060, so every cycle
     /// is valid, f060 passes, and f061 is rejected with the flag named.
     #[test]

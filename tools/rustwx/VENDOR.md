@@ -247,7 +247,7 @@ both orientations, with and without titles and timestamps, at three sizes.
     the payload and left the sidecar describing a file that no longer
     existed.  `size` counts a shared payload where it lives rather than
     once per name.  `rw_fetch`'s record gained a `dedup` block reporting
-    bytes written, bytes deduplicated and reference entries, and WOOF's
+    bytes written, bytes deduplicated and reference entries, and WOOF-ArWen's
     HRRR fetch manifest carries the sum.
 14. `vendor/wx-core/src/download/client.rs`: the cross-process NOMADS
     rate governor fails CLOSED on its own failures.  `read_nomads_state`
@@ -264,7 +264,7 @@ both orientations, with and without titles and timestamps, at three sizes.
     record did not land absorbs the minimum gap locally rather than
     leaving the next process free to send immediately.  Audited as
     finding F-6 / lying state LS-8.  The governor's constants,
-    protocol, file names and env overrides are unchanged -- WOOF's new
+    protocol, file names and env overrides are unchanged -- WOOF-ArWen's new
     `woof/nomads_governor.py` speaks the same protocol over the same
     files so the Rust and Python transports pace each other.
 15. `vendor/wx-core/src/download/client.rs::get_range` validates the
@@ -276,7 +276,7 @@ both orientations, with and without titles and timestamps, at three sizes.
     other span, a short body -- cached it and concatenated it into the
     caller's subset, leaving the outer GRIB bars to reject the assembly
     with nothing to say about which chunk was wrong while the bad bytes
-    stayed cached.  These are the same three clauses WOOF's Python
+    stayed cached.  These are the same three clauses WOOF-ArWen's Python
     range transport has always applied.  Audited as finding F-7.
 16. `crates/rustwx-io/src/cache.rs::quarantine_cache_path` no longer
     deletes the original when the quarantine rename fails.  The source
@@ -331,7 +331,7 @@ both orientations, with and without titles and timestamps, at three sizes.
     sniffing `subtitle_right_override` for the phrase "local WRF
     NetCDF" -- which this lane's subtitle never says, because
     `rw_wrfbatch --source-label` replaces that line with the local
-    model's own name.  So every isobaric and 2 m frame WOOF rendered
+    model's own name.  So every isobaric and 2 m frame WOOF-ArWen rendered
     carried the id of an NCAR archive it had never read.  The guard is
     now an explicit declaration rather than a string sniff:
     `rustwx_products::shared_context::TitleProvenance` rides on the
@@ -500,7 +500,7 @@ both orientations, with and without titles and timestamps, at three sizes.
     16.9 km east of the radar, is corrected in `sites.rs` regardless
     (-80.0178 -> -80.2183, the ROC/NCEI survey value).
 
-14. `crates/rw-obs` is new (not in the source workspace): WOOF's
+14. `crates/rw-obs` is new (not in the source workspace): WOOF-ArWen's
     observation front doors, one binary per instrument -- `rw_asos`
     (IEM ASOS/AWOS METAR), `rw_mrms`, `rw_stage4`.  They share a crate
     because they share substance: one pack container, one seam time
@@ -1258,10 +1258,10 @@ and then started again from its first byte.
   goes by range too, so it can resume.
 - **Bounded streams.** `get_ranges` ran its chunks on rayon's global pool:
   one stream per CPU thread per object, 24 on a 24-thread machine, times
-  every object a caller moved at once (WOOF moves six, so 144).  It now
+  every object a caller moved at once (WOOF-ArWen moves six, so 144).  It now
   runs a scoped pool of `DownloadConfig::streams` (16 by default,
   `RUSTWX_DOWNLOAD_STREAMS`), NOMADS still serial, and the first failed
-  chunk stops new ones from starting.  WOOF splits one 48-stream budget
+  chunk stops new ones from starting.  WOOF-ArWen splits one 48-stream budget
   over the files it has in flight and passes each `rw_fetch` its share.
   Both numbers are measured: from a link about 100 ms from S3 one stream
   carried about 1 MB/s, and six files in flight reached the link's 24 to
@@ -1270,7 +1270,7 @@ and then started again from its first byte.
   any stream and carries the object's size once known.  `rw_fetch fetch`
   prints it as `rw_fetch-progress fHHH RECEIVED TOTAL` on stderr about once
   a second, because a whole object is assembled in memory and published in
-  one rename, so nothing on disk grows while it moves and WOOF's progress
+  one rename, so nothing on disk grows while it moves and WOOF-ArWen's progress
   line read 0 B for every file in flight.
 - **A retry opens a new connection.** `with_retry` sent every attempt
   through the agent's connection pool, so a retry after a dead pooled
@@ -1323,10 +1323,10 @@ The breakage it answers: `rw_fetch`'s existence probe used `head_ok`,
 which folds a connection that failed twice into "absent" (and, on NOMADS,
 a throttled answer as well), so a dropped link during the probe made
 `rw_fetch fetch` refuse the hour as "no source served this object"
-(exit 1).  WOOF never retries an exit 1, so a whole fetch ended on one
+(exit 1).  WOOF-ArWen never retries an exit 1, so a whole fetch ended on one
 dropped link without another attempt or another host.
 The probe now records the unreachable case, and a fetch hour whose sources
-could not be reached exits 3, which WOOF asks again within its retry
+could not be reached exits 3, which WOOF-ArWen asks again within its retry
 budget.
 
 ## rw-wrfbatch: the pressure-level volume ceiling reads the host (2026-09-28)

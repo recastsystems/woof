@@ -40,7 +40,7 @@ where ice is present (`ice_ocean_coupled`, plus owned water the atmosphere sees
 as land); ice-free open ocean keeps the atmosphere's own fluxes,
 and updates the water SST separately from the blended ice/water skin. Any mixed-layer cooling below freezing forms additional ice with equal
 and opposite latent heat, leaving the water at its freezing point. With
-`sf_ocean_physics=2` (3D PWP, the default for runs of 48 h or longer), the
+`sf_ocean_physics=2` (3D PWP, chosen by setting it), the
 PWP step skips its atmospheric surface heat where ice is present (the columns
 whose surface fluxes the ice step set, `ice_ocean_coupled`),
 and the PWP mixed layer (the surface layer and every layer whose top lies

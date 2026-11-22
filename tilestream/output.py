@@ -244,7 +244,7 @@ _DERIVED_RULES = {
     # The coupled ocean's history rows publish the live diagnostic masked to
     # NaN off the open ocean (woof.core.surface_ocean.ocean_history_diagnostic),
     # a fresh array that no carrier identity can match.  Named breakage: every
-    # streamed or store-direct run with an ocean (PWP is the 48 h+ default)
+    # streamed or store-direct run with an ocean (PWP, then the 48 h+ default)
     # refused its first frame with ShortFrameRefused(['OCEAN_SST',
     # 'OCEAN_SST_CHANGE']) (full-CONUS HRRR 48 h on 2026-10-21).
     "OCEAN_SST": "fields/ocean_sst where xland > 1.5 and lakemask < 0.5, else NaN",

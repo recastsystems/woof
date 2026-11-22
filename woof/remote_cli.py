@@ -1,4 +1,4 @@
-"""OpenSSH client for durable WOOF jobs on an existing Linux installation."""
+"""OpenSSH client for durable WOOF-ArWen jobs on an existing Linux installation."""
 from __future__ import annotations
 
 import json
@@ -238,15 +238,15 @@ def _transport(command: list[str], request: dict, *, timeout: float = 40) -> dic
             detail = bytes(chunks["stderr"]).decode("utf-8", errors="replace").strip()
             # The node never answered, so the client that ran is the fact the
             # user needs: which ssh spoke, and therefore which agent and keys.
-            raise ValueError("SSH did not return one WOOF response" + (f": {detail[:2000]}" if detail else "")
+            raise ValueError("SSH did not return one WOOF-ArWen response" + (f": {detail[:2000]}" if detail else "")
                              + f" (ssh client: {command[0]})")
         reply = json.loads(lines[0])
         if (not isinstance(reply, dict) or reply.get("schema") != SCHEMA
                 or type(reply.get("ok")) is not bool
                 or reply.get("action") != request["action"]):
-            raise ValueError("SSH returned an incompatible WOOF response")
+            raise ValueError("SSH returned an incompatible WOOF-ArWen response")
         if process.returncode != (0 if reply["ok"] else 2):
-            raise ValueError(f"SSH exit {process.returncode} disagrees with the WOOF response")
+            raise ValueError(f"SSH exit {process.returncode} disagrees with the WOOF-ArWen response")
         return reply
     finally:
         if process.poll() is None:
@@ -320,7 +320,7 @@ def _capability_verdict(command, workspace, error, capability):
         version = (probe.get("runtime") or {}).get("version")
     except (OSError, ValueError, KeyError):
         version = None
-    named = f"WOOF {version}" if version else "a WOOF this client could not identify"
+    named = f"WOOF-ArWen {version}" if version else "a WOOF-ArWen this client could not identify"
     serves, alternative = _CAPABILITY_WORDS.get(capability, (f"this request (capability {capability})", ""))
     return {**error, "message": (
         f"This node runs {named}, which does not serve {serves} (capability {capability}). "
@@ -435,11 +435,11 @@ def remote_main(args) -> int:
 
 
 def register_cli(subparsers) -> None:
-    parser = subparsers.add_parser("remote", help="control durable WOOF jobs on an existing Linux SSH node")
+    parser = subparsers.add_parser("remote", help="control durable WOOF-ArWen jobs on an existing Linux SSH node")
     actions = parser.add_subparsers(dest="remote_action", required=True)
     for action in ACTIONS:
         command = actions.add_parser(action, help={
-            "probe": "show the remote interpreter and installed WOOF identity",
+            "probe": "show the remote interpreter and installed WOOF-ArWen identity",
             "start": "review or start a forecast using existing remote inputs",
             "list": "list recorded jobs in this remote workspace",
             "status": "read a job's durable state", "logs": "read a bounded log chunk",
@@ -455,7 +455,7 @@ def register_cli(subparsers) -> None:
             "sync-outputs": "retrieve this run's whole committed output set, verified file by file",
             "list-products": "print the product vocabulary the selected node's own renderer serves"}[action])
         command.add_argument("--host", required=True, help="existing SSH alias or user@host")
-        command.add_argument("--python", required=True, help="absolute remote Python path with WOOF installed")
+        command.add_argument("--python", required=True, help="absolute remote Python path with WOOF-ArWen installed")
         command.add_argument("--workspace", required=True, help="existing absolute remote workspace directory")
         command.add_argument("--port", type=int, help="SSH port (otherwise SSH configuration applies)")
         command.add_argument("--identity", help="existing local SSH identity path; contents are never copied")

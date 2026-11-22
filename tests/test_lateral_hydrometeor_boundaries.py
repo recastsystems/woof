@@ -195,7 +195,7 @@ def test_an_unknown_boundary_species_is_refused():
 def test_spec_bdy_final_forces_the_masses_back_with_their_numbers():
     """Masses are WRF moist-array species (forced back, solve_em.F:4703).
     The seeded numbers are scalar-array species, which WRF forces back only
-    on a nest; WOOF forces a number back WITH its mass on a specified ring
+    on a nest; WOOF-ArWen forces a number back WITH its mass on a specified ring
     too, because left to its tendency it reached 0 on the outermost row
     under a restored mass (woof/ingest/handover_numbers.py).  A strict WRF
     process keeps WRF's ring (test below)."""
@@ -836,3 +836,235 @@ def test_a_tile_serves_its_slice_of_the_whole_edge_held(monkeypatch):
                                   whole[("qs", "west", "value")][rows])
     assert device["qs"].west.value[0, :4, 0].min() > 0   # the band's held rows 30-33
     assert not device["qs"].west.tendency.any()
+
+
+# ------------------------------- the envelope is a key (ARWEN door item 10)
+
+def _run_config(**overrides):
+    from woof.config import RunConfig
+    return RunConfig(nx=20, ny=20, nz=4, dx=3000.0, dy=3000.0, ztop=20000.0,
+                     dt=15.0, run_seconds=3600.0, **overrides)
+
+
+def test_the_ring_envelope_is_a_documented_key_with_a_sound_default():
+    """Item 10 (an outside runner, gpuwm 2.9.13 and 3.0.1): the envelope
+    was the constant RING_CELL_SCALE_M with no configuration key, so a run
+    forced by 3-hourly parent frames could not ask the ring to serve the
+    parent's condensate (36 % of it reached the boundary row over 48 h).
+    It is RunConfig.lbc_hydrometeor_envelope_km: 25 km by default, the
+    scale the hourly HRRR band defect was fixed with, so a plain run serves
+    exactly what it served before; any stretch can be named; 0 serves the
+    linear table; a negative stretch is refused by name."""
+    from woof.config import ConfigurationRefused, _validate_dynamics_coefficients
+    from woof.ingest.lateral_bc import (RING_CELL_SCALE_M, ring_cell_radius,
+                                         ring_envelope_km)
+
+    plain = _run_config()
+    assert plain.lbc_hydrometeor_envelope_km == RING_CELL_SCALE_M / 1000.0 == 25.0
+    assert ring_cell_radius(plain) == 5                  # 12.5 km at 3 km
+    assert ring_cell_radius(_run_config(lbc_hydrometeor_envelope_km=50.0)) == 9
+    assert ring_cell_radius(_run_config(lbc_hydrometeor_envelope_km=0.0)) == 0
+    # A config object that predates the key keeps the 25 km it ran with.
+    assert ring_envelope_km(SimpleNamespace(dx=3000.0)) == 25.0
+    _validate_dynamics_coefficients(plain)
+    with pytest.raises(ConfigurationRefused, match="lbc_hydrometeor_envelope_km"):
+        _validate_dynamics_coefficients(
+            _run_config(lbc_hydrometeor_envelope_km=-1.0))
+
+
+def _served_west(envelope_km, monkeypatch):
+    """One 3-hourly interval through the forecast's own upload hold
+    (_held_resident_interval), at ``envelope_km``; returns the served west
+    tables, the domain's linear tables and the run record's statement."""
+    from woof.ingest import lateral_bc
+    nz, ny, width = 2, 60, 5
+    q0, q1 = np.zeros((nz, ny, width)), np.zeros((nz, ny, width))
+    q0[:, 5:40], q1[:, 10:50] = 6e-4, 8e-4       # a moving band, 3 h apart
+    q1[:, 52:55] = 2e-3                           # a cell in one frame only
+    domain = SimpleNamespace(start_seconds=0.0, end_seconds=10800.0,
+                             fields=_ring_tables({"qs": q0}, {"qs": q1},
+                                                 duration=10800.0))
+    device = {name: SimpleNamespace(**{
+        side: SimpleNamespace(
+            value=np.array(getattr(field, side).value, np.float32),
+            tendency=np.array(getattr(field, side).tendency, np.float32),
+            time_law=None)
+        for side in ("west", "east", "south", "north")})
+        for name, field in domain.fields.items()}
+    resident = SimpleNamespace(ring_held=set(), external_reload_count=0,
+                               streaming_external=False)
+    state = SimpleNamespace(_lateral_boundary_device=resident, _host_setup_state=True)
+    monkeypatch.setattr(lateral_bc, "_resident_interval",
+                        lambda s, iv: SimpleNamespace(fields=device))
+    cfg = SimpleNamespace(dx=3000.0, lbc_hydrometeor_envelope_km=envelope_km)
+    lateral_bc.reset_hydrometeor_ring_ledger()
+    lateral_bc._HELD_HOST_CACHE.clear()
+    lateral_bc._held_resident_interval(state, cfg, domain)
+    record = lateral_bc.hydrometeor_ring_receipt(cfg, ("qv", "qs"))
+    return device["qs"].west, domain.fields["qs"].west, record
+
+
+def test_envelope_zero_serves_the_linear_table_and_the_record_says_so(monkeypatch):
+    """At 0 the ring is fed the prepared linear table byte for byte (the
+    cell in one frame comes in too, which is what 25 km prevents); at the
+    default the band is held and the cell is not.  The run record names
+    the key, the envelope, the rule and the fraction of the source's
+    condensate on the outermost row that was served."""
+    served, linear, record = _served_west(0.0, monkeypatch)
+    np.testing.assert_array_equal(served.value, np.asarray(linear.value, np.float32))
+    np.testing.assert_array_equal(served.tendency, np.asarray(linear.tendency, np.float32))
+    assert record["key"] == "lbc_hydrometeor_envelope_km"
+    assert record["envelope_km"] == 0.0 and record["radius_columns"] == 0
+    assert record["rule"].startswith("linear table")
+    assert record["served_fraction_of_source"]["qs"] == pytest.approx(1.0)
+
+    served, linear, record = _served_west(25.0, monkeypatch)
+    assert not served.tendency.any()
+    assert served.value[0, 52:55, 0].max() == 0.0        # the one-frame cell
+    assert served.value[0, 20:30, 0].min() > 0.0         # the band both frames hold
+    assert record["envelope_km"] == 25.0 and record["radius_columns"] == 5
+    fraction = record["served_fraction_of_source"]["qs"]
+    # The ledger's arithmetic, done here by hand on the outermost row.
+    v0 = np.asarray(linear.value, np.float32)[..., 0]
+    v1 = v0 + np.asarray(linear.tendency, np.float32)[..., 0] * np.float32(10800.0)
+    parent = 0.5 * (np.maximum(v0, 0).sum() + np.maximum(v1, 0).sum())
+    assert fraction == pytest.approx(served.value[..., 0].sum() / parent, rel=1e-6)
+    assert 0.0 < fraction < 1.0
+    assert record["served_fraction_of_source_all_masses"] == pytest.approx(fraction)
+
+
+def test_no_hydrometeor_boundary_has_no_ring_record():
+    from woof.ingest import lateral_bc
+    # A forecast clears the ledger before it steps; a vapour-only boundary
+    # then holds nothing, so the record stays empty.
+    lateral_bc.reset_hydrometeor_ring_ledger()
+    assert lateral_bc.hydrometeor_ring_receipt(SimpleNamespace(dx=3000.0), ("qv",)) is None
+
+
+def test_a_prepared_state_listing_vapour_only_still_records_what_the_ring_held(monkeypatch):
+    """A prepared forecast restores its state with the scalar list
+    ('qv',) while its boundary intervals carry the hydrometeors (seen on a
+    real 3-hourly mapped run, 2026-11-12: the ring held 4 intervals and the
+    record was null).  The record takes the masses the ring held."""
+    from woof.ingest import lateral_bc
+    _, _, expected = _served_west(25.0, monkeypatch)
+    record = lateral_bc.hydrometeor_ring_receipt(SimpleNamespace(dx=3000.0), ("qv",))
+    assert record is not None
+    assert record["masses"] == ["qs"]
+    assert record["intervals_served"] == 1
+    assert record["served_fraction_of_source"] == expected["served_fraction_of_source"]
+
+
+def test_both_forecast_records_carry_the_ring_statement(monkeypatch):
+    """The single-domain and the tree run records read the same statement
+    off the root's own boundary inventory; a nest's record has none."""
+    from woof.prepared_domain_tree_forecast import _root_ring_hydrometeor_record
+    from woof.prepared_single_domain_forecast import _ring_hydrometeor_record
+
+    _served_west(25.0, monkeypatch)
+    cfg = SimpleNamespace(dx=3000.0, lbc_hydrometeor_envelope_km=25.0,
+                          specified=True, nested=False)
+    state = SimpleNamespace(_external_scalar_boundary_fields=("qv", "qs"))
+    single = _ring_hydrometeor_record(state, cfg)
+    assert single["envelope_km"] == 25.0 and single["intervals_served"] == 1
+    assert 0.0 < single["served_fraction_of_source"]["qs"] < 1.0
+    tree = _root_ring_hydrometeor_record(
+        {1: SimpleNamespace(state=state, cfg=SimpleNamespace(run=cfg))})
+    assert tree == single
+    nest = SimpleNamespace(dx=1000.0, specified=False, nested=True)
+    assert _ring_hydrometeor_record(state, nest) is None
+
+
+def test_a_forecast_that_meets_the_interval_held_last_still_records_it(monkeypatch):
+    """The host hold keeps the last interval it held.  A second forecast in
+    the same process clears the ledger, meets that same interval through
+    the cache, and its run record still states what the ring served."""
+    from woof.ingest import lateral_bc
+
+    nz, ny, width = 2, 30, 5
+    q0, q1 = np.zeros((nz, ny, width)), np.zeros((nz, ny, width))
+    q0[:, 5:20], q1[:, 8:25] = 6e-4, 8e-4
+    interval = SimpleNamespace(start_seconds=0.0, end_seconds=10800.0,
+                               fields=_ring_tables({"qs": q0}, {"qs": q1},
+                                                   duration=10800.0))
+    cfg = SimpleNamespace(dx=3000.0, lbc_hydrometeor_envelope_km=25.0)
+    lateral_bc._HELD_HOST_CACHE.clear()
+    lateral_bc.reset_hydrometeor_ring_ledger()
+    first = lateral_bc._held_host_sides(interval, lateral_bc.ring_cell_radius(cfg))
+    before = lateral_bc.hydrometeor_ring_receipt(cfg, ("qv", "qs"))
+    lateral_bc.reset_hydrometeor_ring_ledger()
+    again = lateral_bc._held_host_sides(interval, lateral_bc.ring_cell_radius(cfg))
+    after = lateral_bc.hydrometeor_ring_receipt(cfg, ("qv", "qs"))
+    assert again is first
+    assert after["intervals_served"] == 1
+    assert after == before
+
+
+def _member_interval(start_seconds, scale):
+    nz, ny, width = 2, 30, 5
+    q0, q1 = np.zeros((nz, ny, width)), np.zeros((nz, ny, width))
+    q0[:, 5:20], q1[:, 8:25] = 6e-4 * scale, 8e-4 * scale
+    return SimpleNamespace(start_seconds=start_seconds, end_seconds=start_seconds + 10800.0,
+                           fields=_ring_tables({"qs": q0}, {"qs": q1}, duration=10800.0))
+
+
+def test_the_ensemble_record_states_each_members_ring(monkeypatch):
+    """Item 10 follow-up: the single-domain and tree records carry
+    lateral_boundary_hydrometeors; the ensemble's native member batch held each
+    member's ring through the same function and said nothing.  The block is
+    the one-run block, with each member's own intervals and fractions, and an
+    interval held at pack build but never stepped into is not counted."""
+    from woof.ensemble.batch_boundaries import MemberBoundaryTables
+    from woof.ingest import lateral_bc
+
+    cfg = SimpleNamespace(dx=3000.0, lbc_hydrometeor_envelope_km=25.0,
+                          specified=True, nested=False)
+    radius = lateral_bc.ring_cell_radius(cfg)
+    ledgers, singles = {}, {}
+    for member, scale in ((3, 1.0), (7, 2.0)):
+        ledgers[member] = {}
+        lateral_bc._HELD_HOST_CACHE.clear()
+        lateral_bc.reset_hydrometeor_ring_ledger()
+        for start in (0.0, 10800.0):
+            interval = _member_interval(start, scale if start == 0.0 else 0.5)
+            tables, served = lateral_bc._held_host_sides_served(interval, radius)
+            assert tables and served is not None
+            ledgers[member][(start, start + 10800.0)] = served
+        singles[member] = lateral_bc.hydrometeor_ring_receipt(cfg, ("qv", "qs"))
+    block = lateral_bc.ensemble_hydrometeor_ring_receipt(cfg, ("qv", "qs"), ledgers)
+    assert block["key"] == "lbc_hydrometeor_envelope_km" and block["envelope_km"] == 25.0
+    assert block["masses"] == ["qs"] and block["radius_columns"] == radius
+    for member in (3, 7):
+        mine = block["members"][str(member)]
+        assert mine["intervals_served"] == 2
+        assert mine["served_fraction_of_source"] == singles[member]["served_fraction_of_source"]
+        assert 0.0 < mine["served_fraction_of_source_all_masses"] < 1.0
+    # Stopped inside the first interval: the second was held, never stepped.
+    early = lateral_bc.ensemble_hydrometeor_ring_receipt(cfg, ("qv", "qs"), ledgers,
+                                                         through_seconds=10800.0)
+    assert {m["intervals_served"] for m in early["members"].values()} == {1}
+    # The batch tables state it for their own members, in pack order.
+    tables = MemberBoundaryTables.__new__(MemberBoundaryTables)
+    tables.cfg, tables.fields, tables.members = cfg, ("qs", "qv"), 2
+    tables.ring_ledgers = (ledgers[3], ledgers[7])
+    assert tables.hydrometeor_receipt((3, 7)) == block
+    # Vapour only (the ring held nothing), and a nest, carry no block, as for one run.
+    assert lateral_bc.ensemble_hydrometeor_ring_receipt(cfg, ("qv",), {3: {}, 7: {}}) is None
+    nest = SimpleNamespace(**{**vars(cfg), "specified": False, "nested": True})
+    assert lateral_bc.ensemble_hydrometeor_ring_receipt(nest, ("qv", "qs"), ledgers) is None
+
+
+def test_both_ensemble_receipts_carry_the_block():
+    """The native member batch and the batch forecast state it beside their
+    other receipt keys, read from their boundary tables."""
+    import ast
+    import inspect
+    from woof.ensemble import batch_boundaries, batch_forecast, native_forecast
+
+    for module in (native_forecast, batch_forecast):
+        tree = ast.parse(inspect.getsource(module))
+        keys = {node.value for node in ast.walk(tree)
+                if isinstance(node, ast.Constant) and node.value == "lateral_boundary_hydrometeors"}
+        assert keys, module.__name__
+    source = inspect.getsource(batch_boundaries.MemberBoundaryTables.from_prepared)
+    assert "_held_host_sides_served" in source and "ring_ledgers" in source

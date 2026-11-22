@@ -60,6 +60,15 @@ _FIELDS_ADDED_BEFORE_THE_ANCHOR = frozenset((
     "snicar_snowshape_opt", "snicar_snowbc_intmix", "snicar_snowdust_intmix",
     "snicar_bc_ppb", "snicar_dust_ppm", "snicar_ice_density",
     "snicar_bubble_radius_um", "wtddt",
+    # Noah-MP scale-aware ground SCF selector.
+    "opt_scf",
+    "snicar_fresh_grain_opt",
+    # 3.0.0 fold: WRF 4.8.0 NTU/UDM generations (L11) beside ntu_ccnty, and
+    # the Noah-MP clean re-implementation's keyword-only selectors.
+    "ntu_version", "udm_version",
+    "snicar_lap_opt", "snicar_lap_table", "snicar_lap_series",
+    "snicar_ice_ri_opt", "snicar_dust_optics_opt", "opt_tksno", "noahmp_snow_tinit",
+    "snicar_solarspec_opt", "snicar_bandnumber_opt", "snicar_solver_opt", "noahmp_wetland",
     # Derived marker (2582c065c99): whether h_sca_adv_order was left unset.
     "_legacy_h_sca"))
 
@@ -135,7 +144,10 @@ def test_off_does_not_read_count_or_change_checkpoint_identity():
                  # (woof.tc.config.drop_inert_tc).
                  "tc_flux_curve", "tc_spray", "tc_spray_partition",
                  "tc_wave_roughness", "tc_wave_source", "tc_fetch_m",
-                 "tc_horizontal_length_m"):
+                 "tc_horizontal_length_m",
+                 # WRF-480 L10: the Fitch pin, inert with farms off
+                 # (woof.wind_table.drop_inert_config).
+                 "windfarm_fitch_version"):
         before.pop(name)
     assert _configuration_digest_values(asdict(cfg)) == _configuration_digest_values(before)
     assert _mosaic_checkpoint_config(asdict(cfg)) == before

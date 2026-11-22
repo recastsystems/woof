@@ -212,7 +212,7 @@ class Era5Store:
 
 def fetch_normals(value, args, latitude, longitude):
     # The ERA5 archive's Licence to Use Copernicus Products permits commercial use with
-    # attribution (ruling of 2026-10-20): acquisition is default, the attribution rides the receipt.
+    # attribution: acquisition is default, the attribution rides the receipt.
     import cupy as cp
     from woof.io.nc_writer_bridge import ClassicSchema
     from .s2s_products import TIME_FORMAT, windows, FIELDS as UNITS

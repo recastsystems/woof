@@ -10,7 +10,7 @@ fetch route writes; and the fetch door's own remedy printed a
 ``--source-manifest DIR/SHA256SUMS`` pair the mapped preparation refuses.
 Only a hand-written argument list got through.
 
-The fix is table work: a source this WOOF cannot download states in its
+The fix is table work: a source this WOOF-ArWen cannot download states in its
 refusal row how its folder binds (``source_root``), and both doors read
 that row.  Every test here is parametrized over the rows that declare a
 layout, so a source added as a row inherits the coverage.

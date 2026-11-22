@@ -57,10 +57,11 @@ def test_parameter_cache_reuse_and_mapping_invalidation(chunk_width):
 
 
 @requires_gpu
-def test_slab_consumers_leave_cached_parameters_unchanged():
+def test_slab_consumers_leave_cached_parameters_unchanged(monkeypatch):
     import cupy as cp
     from woof.core.dycore import step
-    from test_noahmp_runtime import _build
+    from test_noahmp_runtime import _build, _host_layout_route
+    _host_layout_route(monkeypatch)
 
     state, cfg, driver = _build(nx=6, ny=4)
     step(state, cfg)
@@ -160,6 +161,8 @@ def test_the_held_caches_fit_the_preflight_price():
 @requires_gpu
 def test_prepared_footprint_switch_has_no_host_classification(monkeypatch):
     import cupy as cp
+    from test_noahmp_runtime import _host_layout_route
+    _host_layout_route(monkeypatch)
     from woof.core.noahmp_runtime import SLAB_COLUMN_CHUNK
     from woof.core.noahmp_slab_libm import take_slab_rows
 

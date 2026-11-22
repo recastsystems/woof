@@ -273,8 +273,11 @@ def test_spp_true_without_declared_consumers_fails_before_any_initializer(tmp_pa
 
 def test_stochastic_memory_declares_original_words_2d_spp_and_measured_fft_workspace():
     inputs = prepared()
-    cfg = replace(inputs.experiment.root.run, cu_physics=3, bl_pbl_physics=5,
-        sf_sfclay_physics=5, sf_surface_physics=3, spp_conv=1, spp_pbl=1, spp_lsm=1)
+    # GF SPP needs the previous pin's GFDRV (WRF v4.8.0's GFL carries no SPP
+    # pattern, so spp_conv with the GFL default is refused by name).
+    cfg = replace(inputs.experiment.root.run, cu_physics=3, cu_gf_version="wrf_461",
+        bl_pbl_physics=5, sf_sfclay_physics=5, sf_surface_physics=3,
+        spp_conv=1, spp_pbl=1, spp_lsm=1)
     exp = replace(inputs.experiment, domains=(replace(inputs.experiment.root, run=cfg),))
     provider = StochasticModelProvider.from_mapping({"sppt": True, "skebs": True, "spp": True})
     assert provider.configure_experiment(exp) is exp

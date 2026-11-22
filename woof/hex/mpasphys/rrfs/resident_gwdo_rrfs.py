@@ -53,7 +53,7 @@ class ResidentGwdoSlot:
         self._signature = None
         self.plans = self.outputs = self.before = self.prsi = self.kpbl = self.density = None
 
-    def _build(self, packet, diags):
+    def _build(self, packet, diags, alpha_fd=oro.ALPHA_FD_DEFAULT):
         cp = self.cp
         fields = packet['fields']
         nz, nc = fields['u_p'].shape
@@ -118,7 +118,8 @@ class ResidentGwdoSlot:
         self.outputs = outputs
         self.before = fields['rublten'], fields['rvblten']
         self.plans = pack.build(), unpack.build()
-        module = oro._module(cp.cuda.runtime.getDevice(), nz)
+        # UGWP MPAS_20261104 bl_ugwp.F:144 alpha_fd (default 12: the pin's compiled source).
+        module = oro._module(cp.cuda.runtime.getDevice(), nz, float(alpha_fd))
         self.dx_kernel = module.get_function('ugwp_oro_dx')
         self.run_kernel = module.get_function('ugwp_oro_run')
         self.diff_kernel = module.get_function('ugwp_oro_diff')
@@ -128,11 +129,12 @@ class ResidentGwdoSlot:
         # Binding has no copies once the fields are resident and constants are host metadata.
         packet = oro._bind_native_pools(self.provider, call)['ugwp_oro_v842']
         diags = bool(call.options['config_ugwp_diags'])
-        signature = (diags, *(tuple((name, _descriptor(a)) for name, a in packet[key].items())
+        alpha_fd = oro.call_alpha_fd(call)
+        signature = (diags, alpha_fd, *(tuple((name, _descriptor(a)) for name, a in packet[key].items())
                               for key in ('fields', 'targets', 'prepared_targets', 'from_targets')),
                      tuple(_descriptor(a) for a in packet['orientation']))
         if signature != self._signature:
-            self._build(packet, diags)
+            self._build(packet, diags, alpha_fd)
             self._signature = signature
         constants = packet['constants']
         nz, nc = self._shape

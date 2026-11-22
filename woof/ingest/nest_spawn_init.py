@@ -192,7 +192,7 @@ def spawn_land_state_from_parent(child_dc, parent_node, *, static_fields,
     into account the land/sea/ice mask to only consider values from the
     same surface type".
 
-    WOOF keeps the half of ``fine_input_stream = 2`` it CAN have -- the
+    WOOF-ArWen keeps the half of ``fine_input_stream = 2`` it CAN have -- the
     own-grid statics (:func:`prepare_spawn_statics`) -- which is strictly
     more than ``input_from_file = .false.`` gives, and is exactly why the
     masked interpolator is essential rather than decorative: the child's

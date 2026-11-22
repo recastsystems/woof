@@ -28,7 +28,10 @@ parent's too (its microphysics never ran there).
 
 ``DI,DJ`` is the move in CHILD cells, new placement minus old: a child that
 moved one parent cell east at ratio 3 is ``3,0``.  The earlier checkpoint
-must have this child's shape; anything else is refused by name.
+must have this child's shape; anything else is refused by name.  A move
+larger than the child shares no ground with it, so nothing is carried: the
+child keeps its cold start from the parent, and every cell takes the
+parent's rain since the child began.
 """
 
 from __future__ import annotations
@@ -116,6 +119,62 @@ def _strip_mask(plan, shape, ring: int = 0) -> np.ndarray:
     return mask
 
 
+def _start_cold(child, cfg, *, checkpoint, header, plan, shift, strip) -> dict:
+    """The receipt of a move that shares no ground: nothing is carried, and
+    the strip -- every cell -- takes the parent's rain since the child began.
+    """
+    strip_values = {}
+    if strip is not None:
+        with np.load(strip, allow_pickle=False) as data:
+            strip_values = {key: data[key] for key in data.files}
+    existing = getattr(child, "existing_scratch", None)
+    accumulators = {}
+    for slot in STRIP_ACCUMULATOR_HISTORY:
+        target = existing(slot) if callable(existing) else None
+        if target is None:
+            continue
+        entry = {"overlap_cells": 0, "strip_cells": 0}
+        seeded = strip_values.get(slot)
+        if seeded is not None:
+            if tuple(seeded.shape) != tuple(target.shape[-2:]):
+                raise WarmStartRefusal(
+                    f"strip accumulation {slot} is {tuple(seeded.shape)}, the "
+                    f"child's is {tuple(target.shape)}")
+            mask = _strip_mask(plan, tuple(target.shape[-2:]),
+                               ring=int(getattr(cfg, "spec_zone", 1) or 0))
+            host = (np.asarray(target.get()) if hasattr(target, "get")
+                    else np.array(target, copy=True))
+            host[..., mask] = seeded.astype(host.dtype)[mask]
+            if hasattr(target, "__cuda_array_interface__"):
+                import cupy as cp
+
+                target[...] = cp.asarray(host)
+            else:
+                target[...] = host
+            entry["strip_cells"] = int(mask.sum())
+        accumulators[slot] = entry
+    return {
+        "contract": WARM_START_CONTRACT,
+        "checkpoint": str(checkpoint),
+        "checkpoint_valid_time": header.get("valid_time"),
+        "shift_child_cells": [int(shift[0]), int(shift[1])],
+        "start": "cold",
+        "cold_reason": (
+            f"a move of ({int(shift[0])}, {int(shift[1])}) child cells is "
+            f"larger than this {cfg.nx}x{cfg.ny} child, so it shares no "
+            "ground with the earlier one; it starts from the parent here"),
+        "overlap_fraction": 0.0,
+        "overlap_cells": 0,
+        "strip_cells": int(plan.child_cells),
+        "state_fields_stamped": 0,
+        "state_fields_skipped": {},
+        "land_fields_stamped": [],
+        "accumulators": accumulators,
+        "strip_accumulations": None if strip is None else str(strip),
+        "rk_seeds_refreshed": [],
+    }
+
+
 def apply_warm_start(child, cfg, driver, *, checkpoint, shift,
                      strip=None) -> dict:
     """Carry ``checkpoint``'s state onto ``child`` where the two overlap.
@@ -160,10 +219,17 @@ def apply_warm_start(child, cfg, driver, *, checkpoint, shift,
                                j_parent_start=base + shift_j),
         parent_grid_ratio=1, child_nx=int(cfg.nx), child_ny=int(cfg.ny))
     if plan.disjoint:
-        raise WarmStartRefusal(
-            f"a shift of ({shift_i}, {shift_j}) child cells leaves no ground "
-            f"shared between {checkpoint} and this {cfg.nx}x{cfg.ny} child; "
-            "that is a new child, not a moved one, so it starts cold")
+        # A move larger than the grid: no ground is shared, so there is no
+        # state to carry, and the child keeps its cold start from the parent
+        # at the new place -- the start its first segment had.  The whole
+        # grid is fresh ground, so every cell takes the parent's rain since
+        # the child began (the strip is the whole grid, as
+        # moving_downscale.reseeded_after already counts it).  This used to
+        # refuse, which ended a storm-following run at the first move longer
+        # than its inner grid: a 1 km grid can jump 60 km at one move, and a
+        # 96-cell 333 m grid inside it is 32 km across.
+        return _start_cold(child, cfg, checkpoint=checkpoint, header=header,
+                           plan=plan, shift=(shift_i, shift_j), strip=strip)
 
     names = [name for name in relocatable_attrs(child)
              if f"state/{name}" in stored]

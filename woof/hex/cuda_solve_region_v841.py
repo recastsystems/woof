@@ -434,6 +434,9 @@ class SolveRegionKernels:
 
     def table(self, rows: Sequence[tuple[int, ...]]) -> Any:
         key = tuple(tuple(int(v) for v in row) for row in rows)
+        from .speed_words import HALO_TABLE_CACHE, on
+        if on(HALO_TABLE_CACHE):
+            return self._table_lru(key)
         found = self._tables.get(key)
         if found is None:
             if len(self._tables) >= _TABLE_CACHE_LIMIT:
@@ -444,6 +447,39 @@ class SolveRegionKernels:
             self._tables[key] = found
             self.table_uploads += 1
         return found
+
+    def _table_lru(self, key: tuple[tuple[int, ...], ...]) -> Any:
+        """WOOF_HEX_HALO_TABLE_CACHE: the same tables, least recently used evicted one at a time (8192 kept).
+
+        THE COST THIS REMOVES (8 ranks of the 2.5-million-column CONUS globe, the audit of 19 Nov 2026): a regional
+        garbage discipline's tables outnumber 256 within a step, so the whole cache was cleared about three times a
+        step and every table uploaded again from pageable memory.  A table's words name the same bytes whichever
+        way it is cached (the class note above), so no word changes.  The upload is queued on the current stream
+        from pinned memory; an evicted entry whose copy has not run yet is waited for before its block goes.
+        """
+        from collections import OrderedDict
+        from .speed_words import TABLE_CACHE_ENTRIES, pinned_upload_int64
+        lru = getattr(self, "_lru", None)
+        if lru is None:
+            lru = self._lru = OrderedDict()
+        found = lru.get(key)
+        if found is not None:
+            lru.move_to_end(key)
+            return found[0]
+        cp = _cp()
+        host = np.asarray(key, dtype=np.int64).reshape(len(key), _DESCRIPTOR_WORDS)
+        table, pinned = pinned_upload_int64(cp, host)
+        done = None
+        if pinned is not None:
+            done = cp.cuda.Event(disable_timing=True)
+            done.record()
+        lru[key] = (table, pinned, done)
+        while len(lru) > TABLE_CACHE_ENTRIES:
+            _, (_, _, old) = lru.popitem(last=False)
+            if old is not None and not old.done:
+                old.synchronize()
+        self.table_uploads += 1
+        return table
 
     # -- the envelope -------------------------------------------------------
 

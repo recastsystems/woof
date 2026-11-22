@@ -74,8 +74,8 @@ python3 window_spread.py <run_dir> <out.json> --win-min 15 --spinup-min 60
 `same_instrument.py` is the one that matters for the comparison: it reduces
 **both** models' raw per-minute profiles with a single routine, so a
 difference in the output is a difference in the models rather than in two
-codebases' conventions. It validates on the way in by reproducing WOOF's own
-published fit from WOOF's own arrays.
+codebases' conventions. It validates on the way in by reproducing WOOF-ArWen's own
+published fit from WOOF-ArWen's own arrays.
 
 `INSTRUMENT-HISTORY.md` records which parts of the scorer were changed after
 output had been seen, and why. No band is cut anywhere in this lane.
@@ -107,7 +107,7 @@ fraction of points on WRF's saturated-BN2 arm under WRF's own predicate.
 
 `same_instrument_moist.py` documents, at the top of the file, **the npz
 contract the WOOF-side P1 case module must satisfy** so both sides can be
-reduced by one routine. Read that before writing the WOOF side.
+reduced by one routine. Read that before writing the WOOF-ArWen side.
 
 **One name, two heights: the z_i trap.** `zi_thetav_load_m` is the height of
 the total-buoyancy-flux minimum. In a clear CBL that is the inversion; in a
@@ -127,7 +127,7 @@ in a cloudy case.
 `--matched-moist-sounding <asset>`. That is deliberate: which sounding defines
 the moist case is a case definition with physics consequences, the shipped
 `test/em_les/input_sounding` measurably does not condense under the em_les
-forcing (see `docs/superpowers/receipts/les/moist-oracle-sounding-probe-*.md`),
+forcing (see `docs/internal/receipts/les/moist-oracle-sounding-probe-*.md`),
 and a recipe that quietly picked one would have decided it. Two shipped
 candidates are staged as assets:
 

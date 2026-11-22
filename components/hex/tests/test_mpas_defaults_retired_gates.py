@@ -1,7 +1,7 @@
 """MPAS-A defaults are the defaults, and no certificate gate refuses a run.
 
-Owner ruling 2026-10-10., and earlier "why would we ever run at not actual normal
-defaults".  Three things are held here:
+A bare run uses MPAS-A's actual defaults (since 2026-10-10).
+Three things are held here:
 
 * a bare run gets MPAS-A v8.4.2's Registry schedule -- RK order 2, four
   acoustic sub-steps (two through v8.4.1, still selectable), three splits, the monotonic limiter, radiation every
@@ -469,8 +469,8 @@ _RETIRED_PHRASES = (
     "at physics cadences this run does not use",
     "holds no forecast mint",
     "physics nobody proved",
-    "pinned WOOF source hash mismatch",
-    "pinned WOOF contract surface hash mismatch",
+    "pinned WOOF-ArWen source hash mismatch",
+    "pinned WOOF-ArWen contract surface hash mismatch",
     "has not been proved",
 )
 

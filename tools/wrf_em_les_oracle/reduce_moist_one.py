@@ -4,7 +4,7 @@
 This defines nothing.  It imports `reduce_moist` from `same_instrument_moist`
 -- the routine that was written and committed before any moist run existed --
 and runs it on a single `<prefix>_moist_profiles.npz`, so the WRF arm's
-resolved fractions are computed by exactly the routine the WOOF comparison
+resolved fractions are computed by exactly the routine the WOOF-ArWen comparison
 will use, rather than by a second implementation that could quietly differ.
 
 Written after the campaign data existed, and declared as such in

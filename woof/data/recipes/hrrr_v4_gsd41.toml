@@ -165,8 +165,8 @@ seaice_threshold = 271.4
 # fork Registry default (hrrr_wrf.nl omits it); inert while w_damping = 0
 w_crit_cfl = 2.0
 # Operational HRRR runs no ocean model (hrrr_wrf.nl sets no sf_ocean_physics;
-# fork Registry default 0). Pinned so a 48 h run does not take the multi-day
-# mixed-layer ocean default.
+# fork Registry default 0). Pinned so the recipe states it; an omitted key is
+# also 0 at every run length since 3.0.2 (through 3.0.1 a 48 h run took PWP).
 sf_ocean_physics = 0
 # Sea ice is RUC's own ice column with the analysed ice fraction held, as in
 # operational HRRR; the zero-layer prognostic ice model stays off.

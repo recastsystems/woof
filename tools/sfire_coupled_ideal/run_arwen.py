@@ -1,4 +1,4 @@
-"""Run the complete native em_fire physical setup through WOOF's dycore.
+"""Run the complete native em_fire physical setup through WOOF-ArWen's dycore.
 
 The default uses ordinary engine arithmetic. Strict WRF arithmetic is an
 explicit diagnostic control, recorded separately in the run receipt.
@@ -244,7 +244,7 @@ def main() -> None:
         valid = timestamp(start, clock.elapsed_seconds)
         output = args.out / f"wrfout_d01_{valid}"
         with WrfoutWriter(output, nx=cfg.nx, ny=cfg.ny, nz=cfg.nz, dx=cfg.dx, dy=cfg.dy,
-                          title="WOOF coupled SFIRE ideal verification", global_attrs=attributes,
+                          title="WOOF-ArWen coupled SFIRE ideal verification", global_attrs=attributes,
                           field_schema=frame, soil_layers=soil_layer_count(cfg), engine="rust") as writer:
             writer.write_frame(valid, frame)
         output_hashes[output.name] = sha256(output)

@@ -166,8 +166,8 @@
       }
     },
     {
-      "id": "recast-woof-1.1.6",
-      "engine_commit": "dc3753350b907007cefa558b69095efde070d3c7",
+      "id": "recast-woof-1.1.7",
+      "engine_commit": "6137973e1fec4a616345d98280425cbf88ce347d",
       "sources": {
         "woof/core/kernels/rrtmg_sw.cu": "43134d6d6d2be4b3e668c7ab92d5850f1f992a09812dd09c9536fce5d9ab791e",
         "woof/core/rrtmg_legacy_prep.py": "708df127ad31fb63f34b0f3b3fa9380a1ce7df16531b72fc8af4780c450ac19c",
@@ -176,7 +176,7 @@
         "woof/core/rrtmg_sw.py": "bb28d6433b24b74bd1bb49f690ebbf87373314c19bb938dcaa98cc9f40b8c048",
         "woof/ingest/wrf_ozone.py": "6eebfaa389801460885a66844cd020ad8847c69a9af42d4c1b07f3e294fc8b2c"
       },
-      "description": "Recast WOOF 1.1.6: the radiation helpers of the engine this distribution was assembled from (dc3753350b90) as it ships them (moved to woof/ and their comments and messages reworded by the assembly; no code token differs); byte-equal in source to the hex row engine-2.9.12-source. Admission establishes source identity only."
+      "description": "Recast WOOF 1.1.7: the radiation helpers of the engine this distribution was assembled from (6137973e1fec) as it ships them (moved to woof/ and their comments and messages reworded by the assembly; no code token differs); byte-equal in source to the hex row engine-2.9.12-source. Admission establishes source identity only."
     }
   ]
 }

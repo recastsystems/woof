@@ -1274,10 +1274,13 @@ def _prepare_child_input_on_grid_uncached(
             backend=preprocess)
         mapping_receipt["source_adapter"] = "regular-grid-native-state-v1"
         provider = getattr(catalog, "lake_ice_provider", None)
-        if provider is not None and getattr(provider, "observation", None) is not None:
+        if provider is not None and getattr(provider, "wants_analysis", False):
             # Observed lake ice on the child's own grid: SEAICE (and XICE)
             # set and SKINTEMP capped on the lake cells the analysis sees
             # frozen; the soil router builds their ice column from these.
+            # The provider acquires the analysis on the first grid with
+            # lake cells, so a lake-free root no longer decides for a nest
+            # that has lakes, and a lake-free tree fetches nothing.
             from dataclasses import replace as _replace
             child_lat, child_lon = grid.latlon_mass()
             fields, _, lake_ice_receipt = provider.freeze(

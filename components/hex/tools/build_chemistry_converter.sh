@@ -49,6 +49,15 @@ fi
 if ! grep -q "pub struct DiagCompanion" "$out/source/tools/rustwx/crates/rw-mpas/src/history.rs"; then
   (cd "$out/source" && patch --batch -p1 < "$root/engine-patches/diag-stream.patch")
 fi
+# HAILCAST in the product path (woof fix/hex-hailcast-render abc6b8ee49): the diagnostics stream's HAILCAST_DIAM_MAX
+# (mm) and hex's HAIL_MAXK1 / HAIL_MAX2D (m) mapped in every field set, TEMPO's mm words read as m, peaks kept.
+# THE BREAKAGE: 0.6.2 writes the hail fields by default below 4 km, and this bundled converter is the one
+# `woof hex render` runs (woof.hex.engines.resolve takes the wheel's own before woof's), so without it a hail
+# product named at the door was refused ("not stored: hail_max_hailcast_surface") whatever woof was installed.
+# Skipped once the engine carries it.
+if ! grep -q '"HAILCAST_DIAM_MAX"' "$out/source/tools/rustwx/crates/rw-mpas/src/fieldmap.rs"; then
+  (cd "$out/source" && patch --batch -p1 < "$root/engine-patches/rw-mpas-hailcast-field.patch")
+fi
 cd "$out/source/tools/rustwx"
 cargo build --release --locked -p rw-mpas --bin rw_mpas_convert
 cargo test --release --locked -p rw-mpas --lib chemistry_product_tests
@@ -64,6 +73,7 @@ record = {'schema': 'gpuwm-hex.chemistry-converter-build/v1',
           'patch_sha256': sha(root / 'engine-patches/chemistry-products.patch'),
           'invariants_patch_sha256': sha(root / 'engine-patches/history-invariants.patch'),
           'diag_stream_patch_sha256': sha(root / 'engine-patches/diag-stream.patch'),
+          'hailcast_patch_sha256': sha(root / 'engine-patches/rw-mpas-hailcast-field.patch'),
           'recipe_sha256': sha(root / 'tools/build_chemistry_converter.sh'),
           'engine_version_declaration_sha256': sha(out / 'source/pyproject.toml')}
 (out / 'provenance.json').write_text(json.dumps(record, indent=2) + '\n')

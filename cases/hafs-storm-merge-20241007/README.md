@@ -22,7 +22,7 @@ Run on the forecast host with this branch and its Python dependencies:
 
 ```
 python score_history.py RUN/chain/run/wrfout diagnostics/fixes.json
-python render_history_cf.py RUN/chain/run/wrfout diagnostics/maps 'WOOF; GFS baseline'
+python render_history_cf.py RUN/chain/run/wrfout diagnostics/maps 'WOOF-ArWen; GFS baseline'
 python plot_history.py --arm 'GFS=diagnostics/fixes.json' --verification SCORED_CASE.json --out diagnostics/charts.png
 ```
 

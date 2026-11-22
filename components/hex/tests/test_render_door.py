@@ -473,7 +473,7 @@ class TestNativeResolutionAndNames:
     def test_variables_keyword_is_a_group_not_a_missing_product(self):
         refuse_uncovered_products("all,variables", {}, Path("h.nc"), [])
 
-    @pytest.mark.parametrize("source_label", [None, "Hex LES | WOOF physics"])
+    @pytest.mark.parametrize("source_label", [None, "Hex LES | ArWen physics"])
     def test_a_render_files_native_names_and_carries_georef(
             self, monkeypatch, tmp_path, source_label):
         """The door end to end over stand-in engines: what it asks the
@@ -548,7 +548,7 @@ class TestNativeResolutionAndNames:
             view=None, model_label="hex", source_label=source_label)
         assert render_door.run_render(args) == 0
 
-        expected_source = source_label if source_label is not None else "Hex forecast"
+        expected_source = source_label if source_label is not None else render_door.default_source_label()
         render = seen["RENDER"]
         assert render[render.index("--source-label") + 1] == expected_source
 
@@ -579,7 +579,7 @@ class TestNativeResolutionAndNames:
 
     def test_a_render_with_no_basemap_geometry_is_refused_before_converting(
             self, monkeypatch, tmp_path):
-        """A relocated renderer drew 59 maps with no coastline, border or
+        """A relocated renderer rendered 59 maps with no coastline, border or
         state line and reported every one RENDERED (2026-10-11).  With no
         Natural Earth set anywhere on the ladder the door refuses by name,
         and it does so before the converter is launched."""
@@ -640,7 +640,7 @@ class TestNativeResolutionAndNames:
 
 
 def test_region_latlon_is_a_window_the_export_door_passes_to_the_converter():
-    """The WOOF parent route exports on region-latlon:, the regular lat-lon box the engine's mapped
+    """The WOOF-ArWen parent route exports on region-latlon:, the regular lat-lon box the engine's mapped
     NetCDF route reads; the door must pass it through, not refuse it as an unknown window."""
     from woof.hex import render_door
 

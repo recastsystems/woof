@@ -433,7 +433,7 @@ class V841MpasColumnPhysicsConfig(V841DryDycoreConfig):
                 "config_convection_scheme='cu_grell_freitas'",
             )
 
-        # RETIRED 2026-10-10 (owner ruling):
+        # RETIRED 2026-10-10:
         # the timestep and the schedule are no longer admitted from the
         # earned-anchor registry or the dycore step certificates.  What is
         # still refused is what cannot run: a physics cadence that is not a

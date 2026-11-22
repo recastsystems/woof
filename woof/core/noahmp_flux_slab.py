@@ -260,7 +260,8 @@ def pack_vege_flux_slab(fields: Mapping[str, object],
 
 def evaluate_vege_flux_slab(fields: Mapping[str, object], n: int, *,
                             use_device_libm: bool = False,
-                            atan_profile="glibc_2_39") -> dict:
+                            atan_profile="glibc_2_39",
+                            melt_reset_esat: bool = False) -> dict:
     """Run VEGE_FLUX over a whole slab; return ``OUTPUT_NAMES -> (n,)``.
 
     ``use_device_libm`` is the existing negative control and is forwarded
@@ -282,6 +283,8 @@ def evaluate_vege_flux_slab(fields: Mapping[str, object], n: int, *,
     if opt_sfc == 2: kernel_name = "k_vegeflux_sfc2"
     profile_options = ({} if atan_profile == "glibc_2_39" else
                        {"atan_profile": atan_profile})
+    if melt_reset_esat:
+        profile_options["melt_reset_esat"] = True
     module = (_vege._module(use_device_libm, selected_options=True, **profile_options)
               if opt_stc != 1 or opt_crs != 1 or opt_sfc != 1 else _vege._module(use_device_libm, **profile_options))
     kernel = module.get_function(kernel_name)
@@ -306,7 +309,8 @@ def evaluate_vege_flux_slab(fields: Mapping[str, object], n: int, *,
 
 def evaluate_vege_flux_masked_slab(fields: Mapping[str, object], n: int,
                                    active, *, use_device_libm: bool = False,
-                            atan_profile="glibc_2_39") -> dict:
+                            atan_profile="glibc_2_39",
+                            melt_reset_esat: bool = False) -> dict:
     """Evaluate only active columns in a fixed-width device slab.
 
     The leaf arithmetic is unchanged. Inactive outputs are positive zero,
@@ -332,6 +336,8 @@ def evaluate_vege_flux_masked_slab(fields: Mapping[str, object], n: int,
     if opt_sfc == 2: kernel_name = "k_vegeflux_masked_sfc2"
     profile_options = ({} if atan_profile == "glibc_2_39" else
                        {"atan_profile": atan_profile})
+    if melt_reset_esat:
+        profile_options["melt_reset_esat"] = True
     module = (_vege._module(use_device_libm, selected_options=True, **profile_options)
               if opt_stc != 1 or opt_crs != 1 or opt_sfc != 1 else _vege._module(use_device_libm, **profile_options))
     kernel = module.get_function(kernel_name)
@@ -402,8 +408,13 @@ def pack_bare_flux_slab(fields: Mapping[str, object], n: int):
     return inputs, ints
 
 
-def evaluate_bare_flux_slab(fields: Mapping[str, object], n: int) -> dict:
-    """Run BARE_FLUX over a whole slab; return ``OUTPUT_NAMES -> (n,)``."""
+def evaluate_bare_flux_slab(fields: Mapping[str, object], n: int, *,
+                            melt_reset_esat: bool = False) -> dict:
+    """Run BARE_FLUX over a whole slab; return ``OUTPUT_NAMES -> (n,)``.
+
+    ``melt_reset_esat`` is correct-mode SN1 (woof/correct_mode.py): every
+    entry point then comes from the selected image compiled with it.
+    """
     cp = _cupy()
     n = _check_size(n)
     if n == 0:
@@ -425,7 +436,10 @@ def evaluate_bare_flux_slab(fields: Mapping[str, object], n: int) -> dict:
     opt_sfc = _sfc_option(fields)
     if opt_sfc == 2:
         kernel_name = "noahmp_bare_flux_masked_sfc2" if active is not None else "noahmp_bare_flux_sfc2"
-    if opt_sfc == 2 or kernel_name.endswith(("_stc2", "_stc3", "_masked")):
+    if melt_reset_esat:
+        from woof.core.noahmp_kernel_sources import melt_reset_kernel
+        kernel = melt_reset_kernel("noahmp_bareflux", kernel_name)
+    elif opt_sfc == 2 or kernel_name.endswith(("_stc2", "_stc3", "_masked")):
         from woof.core.noahmp_kernel_sources import selected_kernel
         kernel = selected_kernel("noahmp_bareflux", kernel_name)
     else:

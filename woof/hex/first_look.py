@@ -23,7 +23,7 @@ and cores carry, ``live_slots``), so the drawing keeps level with a forecast on 
 priority, carry no point soundings, and draw no windowed map (those need the whole series): the full pass draws those.
 Each draw has its own scratch, so draws never share one; the files several draws share in the tree (a view's
 georeference and receipts, the case's manifest and index) are written whole and merged under a lock (render_door).
-The thread records what it drew in ``live-frames.json`` beside the forecast folder, which also tells a host (the WOOF
+The thread records what it rendered in ``live-frames.json`` beside the forecast folder, which also tells a host (the WOOF
 worker) that the door draws every hour itself.
 
 The receipt also lets the full pass skip what is already drawn (``products --live-frames``). THE BREAKAGE THIS

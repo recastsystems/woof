@@ -60,6 +60,32 @@ def test_the_probe_honors_the_variable_before_spawning(monkeypatch):
     assert reason is not None and "GPUWM_NO_LOCAL_GPU" in reason
 
 
+def test_the_mynn_width_probe_honors_the_variable(monkeypatch):
+    """The MYNN column-width probe opened the card under the variable
+    (measured 2026-11-12: a 16 GB node's 7.27 GB free, read with it set)."""
+
+    import sys
+    import types
+
+    from woof.core import mynn_pbl_scratch
+
+    asked = []
+
+    def _record(*args, **_kwargs):
+        # The probe swallows any exception, so a raise would pass unseen.
+        asked.append(args)
+        raise RuntimeError("no device in this test")
+
+    fake = types.SimpleNamespace(cuda=types.SimpleNamespace(
+        runtime=types.SimpleNamespace(getDevice=_record, memGetInfo=_record,
+                                      getDeviceProperties=_record),
+        Device=_record))
+    monkeypatch.setitem(sys.modules, "cupy", fake)
+    monkeypatch.setenv(local_gpu.NO_LOCAL_GPU_ENV, "1")
+    assert mynn_pbl_scratch.probe_mynn_card() is None
+    assert asked == [], "the MYNN width probe asked CuPy under GPUWM_NO_LOCAL_GPU"
+
+
 def test_the_probe_still_measures_when_the_variable_is_unset(monkeypatch):
     """The measured-thresholds rule survives: unset means measure."""
 

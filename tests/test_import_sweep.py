@@ -281,7 +281,8 @@ def test_no_shipped_module_imports_a_declared_script() -> None:
             if relative[:-len(".py")].replace("/", ".") in SCRIPT_MODULES:
                 continue
             for line in path.read_text(encoding="utf-8").splitlines():
-                if "import" not in line:
+                # (WOOF 1.1.7) an import statement, not a comment or docstring that says "import"
+                if not re.match(r"\s*(?:from\s+[\w.]+\s+)?import\s", line):
                     continue
                 for leaf, module in leaves.items():
                     if re.search(rf"\b{leaf}\b", line):
@@ -312,7 +313,10 @@ def test_the_sweep_reaches_the_data_assimilation_stack() -> None:
 
     walked, _absences, failures = sweep(("woof.da",))
 
-    assert "woof.da.letkf" in walked, sorted(walked)
+    # 3.0.3 removed the local data assimilation; what stays is the analysis
+    # door, IAU, radar heating, perturbations, products and operators.
+    assert "woof.da.analysis_door" in walked, sorted(walked)
+    assert "woof.da.letkf" not in walked, sorted(walked)
     assert len(walked) >= 15, walked
     assert not failures, [str(failure) for failure in failures]
 

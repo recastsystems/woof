@@ -267,3 +267,55 @@ mod tests {
         assert!(decode_bytes(b"SNMIE002").is_err());
     }
 }
+
+// ---------------------------------------------------------------------------
+// clean-snicar-lap: light-absorbing-particle optics table (OC and five dust
+// bins), written by examples/snow-lap-optics.rs. Re-implemented from
+// published descriptions, not bitwise to upstream Noah-MP.
+pub const LAP_ROWS: usize = 6;
+pub const LAP_TABLE_WORDS: usize = LAP_ROWS * NW * 3;
+pub const LAP_MAGIC: &[u8; 8] = b"SNLAP001";
+
+pub fn decode_lap_bytes(bytes: &[u8]) -> Result<Vec<f32>, String> {
+    if bytes.len() != 8 + LAP_TABLE_WORDS * 4 || &bytes[..8] != LAP_MAGIC {
+        return Err("snow LAP optics layout mismatch".into());
+    }
+    let v: Vec<f32> = bytes[8..].chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+    for p in v.chunks_exact(3) {
+        if !p.iter().all(|x| x.is_finite()) || p[0] <= 0. || p[1] < 0. || p[1] > p[0] || p[2].abs() > 1. {
+            return Err("nonphysical snow LAP optics".into());
+        }
+    }
+    Ok(v)
+}
+
+/// Strict C ABI, as gpuwm_snow_optics_load_v1: digest-checked bytes are the
+/// bytes decoded; output belongs to the caller.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpuwm_snow_lap_optics_load_v1(
+    path: *const std::ffi::c_char,
+    digest: *const std::ffi::c_char,
+    out: *mut f32,
+    n: usize,
+) -> i32 {
+    let result = std::panic::catch_unwind(|| {
+        use sha2::{Digest, Sha256};
+        if path.is_null() || digest.is_null() || out.is_null() || n != LAP_TABLE_WORDS {
+            return Err("snow LAP optics ABI mismatch".to_string());
+        }
+        let path = unsafe { std::ffi::CStr::from_ptr(path) }.to_str().map_err(|e| e.to_string())?;
+        let expected = unsafe { std::ffi::CStr::from_ptr(digest) }.to_str().map_err(|e| e.to_string())?;
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        if format!("{:x}", Sha256::digest(&bytes)) != expected {
+            return Err("snow LAP optics SHA256 mismatch".into());
+        }
+        let tmp = decode_lap_bytes(&bytes)?;
+        unsafe { std::ptr::copy_nonoverlapping(tmp.as_ptr(), out, n); }
+        Ok(())
+    });
+    match result {
+        Ok(Ok(())) => 0,
+        Ok(Err(e)) => crate::capi::set_error(e),
+        Err(_) => crate::capi::set_error("snow LAP optics panic"),
+    }
+}

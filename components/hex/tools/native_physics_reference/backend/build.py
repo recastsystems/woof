@@ -22,13 +22,13 @@ STRICT = ['-O3', '-ffree-line-length-none',
 PIN = 'f34984b2c89353cf31c235b08d3b4acd96b37bb3'
 INTRINSIC = {'iso_c_binding', 'iso_fortran_env', 'ieee_arithmetic', 'ieee_exceptions',
              'ieee_features', 'mpi', 'mpi_f08', 'netcdf', 'omp_lib'}
-# THE BREAKAGE THIS PREVENTS (owner ruling 2026-10-14: no default routes into code that cannot be sold):
+# THE BREAKAGE THIS PREVENTS (no default routes into code that cannot be sold):
 # MPAS-A v8.4.2's own sources USE Noah-MP v5.0 (UCAR terms: no sale of the Software or of any work that
 # contains it), so a library compiled from the full tree contains it even when no run selects it.
 # --licence-stub noahmp compiles the Apache-2.0 interface stub beside this file (make_licence_stubs.py) in
 # place of physics_noahmp: MPAS's own sources compile unchanged against it, and any stub routine that is called
 # stops the run naming the opt-in.  Without --licence-stub the build is byte-for-byte the build it was before
-# stubs existed.  (UGWP and the other NOAA-GSL physics are compiled as always: owner ruling 2026-10-14, they
+# stubs existed.  (UGWP and the other NOAA-GSL physics are compiled as always: they
 # are treated as US Government code and are not held.)
 LICENCE_STUBS = {
     'noahmp': {'file': 'licence_stub_noahmp.F90', 'terms': 'ucar-noahmp',

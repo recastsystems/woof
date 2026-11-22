@@ -14,7 +14,7 @@ runs, and the gap between them was total:
     ``[tiles] mode = "on"`` forecast raised ``StreamingRefused`` and NO
     configuration the front door accepts was capable of streaming.
 
-This module is the gate for closing that.  It builds a WOOF
+This module is the gate for closing that.  It builds a WOOF-ArWen
 :class:`~woof.core.model.ExperimentState` out of an experiment TOML the
 schema validates, hands it to :func:`woof.core.model.execute_experiment` --
 the executor both routes call and the only thing between them and the dycore

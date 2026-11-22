@@ -10,8 +10,8 @@ from woof.hex.restart_rrfs import RestartControl,write_stream,read_stream,read_r
 from woof.hex.output import HistoryField
 from woof.hex.output_rrfs import StreamSession
 
-REF=Path(os.environ.get('RRFS_MPAS_REF') or Path(os.environ.get('MPAS_LANES', '.')) / 'ref/rrfs/MPAS-Model-rrfs')
-WF=Path(os.environ.get('RRFS_WORKFLOW_REF') or Path(os.environ.get('MPAS_LANES', '.')) / 'ref/rrfs/rrfs-workflow')
+REF=Path(os.environ.get('RRFS_MPAS_REF') or Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/rrfs/MPAS-Model-rrfs')
+WF=Path(os.environ.get('RRFS_WORKFLOW_REF') or Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/rrfs/rrfs-workflow')
 START=datetime(2023,3,31,12)
 
 @pytest.mark.parametrize('seed',[0,1,1234567,4294967295])
@@ -392,7 +392,7 @@ def test_native_real_attribute_precision(tmp_path,precision,global_dtype):
 @pytest.mark.parametrize('name',['ufscommunity.hrrrv5.gfs.winter','ufscommunity.hrrrv5.rap.winter','ufscommunity.hrrrv5.rap.summer'])
 @pytest.mark.usefixtures('rrfs_clock')
 def test_published_ci_decks_keep_first_duplicate_attribute(tmp_path,name):
-    root=os.environ.get('RRFS_PUBLIC_CI_DECKS') or str(Path(os.environ.get('MPAS_LANES', '.')) / 'ref/rrfs/cases/gsl-ci-public-v1/decks')
+    root=os.environ.get('RRFS_PUBLIC_CI_DECKS') or str(Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/rrfs/cases/gsl-ci-public-v1/decks')
     source=Path(root)/name
     if not source.is_dir():pytest.skip('published pinned fork CI deck absent')
     shutil.copytree(source,tmp_path,dirs_exist_ok=True)
@@ -452,7 +452,7 @@ def test_native_option_substrings_and_fallbacks(tmp_path,precision,clobber,io_ty
 @pytest.mark.usefixtures('rrfs_clock')
 def test_every_published_deck_against_original_c_parser(tmp_path):
     import hashlib
-    index=Path(os.environ.get('RRFS_DECK_INDEX') or Path(os.environ.get('MPAS_LANES', '.')) / 'ref/rrfs/decks/INDEX.json')
+    index=Path(os.environ.get('RRFS_DECK_INDEX') or Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/rrfs/decks/INDEX.json')
     native=os.environ.get('RRFS_NATIVE_XML')
     if not index.is_file() or not native:pytest.skip('published matrix or native C parser absent')
     matrix=json.loads(index.read_text());witness=[]

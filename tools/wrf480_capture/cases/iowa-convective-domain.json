@@ -1,0 +1,20 @@
+{
+  "schema": "gpuwm-hrrr-target-domain-v1",
+  "name": "iowa_convective_40x40_3km",
+  "map_proj": "lambert",
+  "nx": 40,
+  "ny": 40,
+  "nz": 50,
+  "dx_m": 3000.0,
+  "dy_m": 3000.0,
+  "ref_lat": 41.55,
+  "ref_lon": -94.0,
+  "truelat1": 38.5,
+  "truelat2": 38.5,
+  "stand_lon": -97.5,
+  "time_step_seconds": 15,
+  "spec_bdy_width": 5,
+  "spec_zone": 1,
+  "relax_zone": 4,
+  "surface_fallback_radius_cells": 24
+}

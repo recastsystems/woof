@@ -100,9 +100,18 @@ aging lookup table. The validation example compares 16 Table 4 cases and
 100×20 versus 200×40 resolution; resulting differences are retained in the
 lane evidence rather than tuned away using an original table.
 
-Fresh radius rises from 54.526 to 204.526 um between air temperatures −30
-and 0 C. Shallow snow without a resolved layer keeps fresh radius. Wet
-metamorphism uses dr^3/dt=4.22e-13*f_liquid^3 m3/s. Exact phase-change
+Fresh radius rises linearly between air temperatures −30 and 0 C, from
+54.526 to 204.526 um with `snicar_fresh_grain_opt=1` (default) or from 33.0
+to 91.0 um with `snicar_fresh_grain_opt=2`, the MODSCAG-constrained values
+of Lin et al. 2025 (public RAL talk, 3 June 2024, "Optimization of snow
+grain size"). Option 2 is re-implemented from published descriptions, not
+bitwise to upstream; with it, dry aging follows the same regenerated
+power-law trajectory below the fit's 54.5 um start instead of lifting new
+grains to it. Shallow snow without a resolved layer keeps fresh radius. Wet
+metamorphism follows the CLM5 technical note Eq. 2.3.75,
+dr/dt=1e18*C1*f_liquid^3/(4*pi*r^2) um/s with C1=4.22e-13 m3/s
+(f_liquid = liquid/(liquid+ice)); before 2026-11-09 the 3/(4*pi) volume
+factor was missing and wet grains grew 4.19x too fast. Exact phase-change
 refreezing mixes 1000 um grains with pre-existing ice by mass. The coupling
 choices follow [doi:10.1175/JHM-D-24-0082.1](https://doi.org/10.1175/JHM-D-24-0082.1),
 section 2b2. Layer overlap remapping conserves retained carriers and uses

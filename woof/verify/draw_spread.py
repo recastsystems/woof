@@ -9,7 +9,7 @@ variation.
 
 **It computes no band, no threshold and no verdict.**  It is arithmetic
 over committed numbers.  Bands are cut by the registered method in
-``docs/superpowers/receipts/les/P1-MOIST-COMPARISON-EXPECTATION.md`` §4
+``docs/internal/receipts/les/P1-MOIST-COMPARISON-EXPECTATION.md`` §4
 from the spreads this produces, in a step that cites that document's
 registration sha; nothing here can gate anything.
 

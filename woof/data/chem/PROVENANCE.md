@@ -1,6 +1,6 @@
 # Chem table provenance
 
-The chem table is WOOF's single inventory of the species, sets, sources and
+The chem table is WOOF-ArWen's single inventory of the species, sets, sources and
 table diagnostics a run can carry (loader `gpuwm.chem_table`, schema
 `schema.v1.json`). Every number in a row carries its origin in that row: a WRF
 v4.7.1 file and line (`chem/...`, `Registry/...`, pinned by

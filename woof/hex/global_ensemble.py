@@ -332,7 +332,7 @@ def memory_group_limit(value: Mapping[str, Any], args: argparse.Namespace) -> in
     from . import forecast_door as door
     from .device_admission import (card_profile_from_attributes, co_tenancy_limits, model_for_card,
                                    mpas_member_increment_bytes, route_required_free_bytes)
-    from .multi_member import argv_physics_route
+    from .multi_member import argv_physics_route, argv_physics_suite
 
     cards = _probe_cards(getattr(args, "devices", None))
     if not cards:
@@ -341,6 +341,7 @@ def memory_group_limit(value: Mapping[str, Any], args: argparse.Namespace) -> in
     # Each member is priced on the route it runs: the MPAS route (the hex default) holds far more than the
     # ArWen-route rows (U-H4: 30 km MPAS members planned 2 per RTX PRO 6000 at the ArWen price and ran out of memory).
     route = argv_physics_route(argv)
+    suite = argv_physics_suite(argv) if route == "mpas" else None
     headroom = _forecast_flag(argv, "--headroom-mib")
     margin = None if headroom is None else int(round(float(headroom) * door.MIB))
     cells = int(value["mesh"]["cells"])
@@ -352,7 +353,7 @@ def memory_group_limit(value: Mapping[str, Any], args: argparse.Namespace) -> in
         profile = card_profile_from_attributes(card["name"], {"MultiProcessorCount": card["sms"],
                                                               "MaxThreadsPerMultiProcessor": card["threads"]})
         model = model_for_card(profile, "global", rollback_armed="--stop-on-refusal" in argv)
-        solo = route_required_free_bytes(cells, model, margin, route=route)
+        solo = route_required_free_bytes(cells, model, margin, route=route, suite=suite)
         increment = mpas_member_increment_bytes(cells, levels) if route == "mpas" else None
         table, memory = co_tenancy_limits(
             mesh_kind="global", cells=cells, levels=levels, card_bytes=int(card["total"]),
@@ -436,10 +437,11 @@ def cards_per_member(value: Mapping[str, Any], args: argparse.Namespace,
     from . import forecast_door as door
     from .device_admission import (card_profile_from_attributes, model_for_card, mpas_rank_card_bytes,
                                    route_required_free_bytes)
-    from .multi_member import argv_physics_route
+    from .multi_member import argv_physics_route, argv_physics_suite
 
     argv = list(value["commands"]["forecast"])
     route = argv_physics_route(argv)
+    suite = argv_physics_suite(argv) if route == "mpas" else None
     levels = int(value.get("vertical", {}).get("n_vert_levels", 55))
     headroom = _forecast_flag(argv, "--headroom-mib")
     margin = None if headroom is None else int(round(float(headroom) * door.MIB))
@@ -449,12 +451,12 @@ def cards_per_member(value: Mapping[str, Any], args: argparse.Namespace,
                                                                "MaxThreadsPerMultiProcessor": smallest["threads"]})
     model = model_for_card(profile, "global", rollback_armed="--stop-on-refusal" in argv)
     total = int(smallest["total"])
-    if route_required_free_bytes(cells, model, margin, route=route) <= total:
+    if route_required_free_bytes(cells, model, margin, route=route, suite=suite) <= total:
         return 1
     for count in range(2, len(cards) + 1):
         share = -(-int(cells * (1.0 + RANK_HALO_SHARE)) // count)
         # A rank alone on its card: the measured rank-per-card row on the MPAS route (both-routes RED 4).
-        rank = (mpas_rank_card_bytes(share, levels, model, margin) if route == "mpas"
+        rank = (mpas_rank_card_bytes(share, levels, model, margin, suite=suite) if route == "mpas"
                 else route_required_free_bytes(share, model, margin, route=route))
         if rank <= total:
             return count

@@ -83,7 +83,7 @@ def test_feature_entry_preserves_clock_numerics_and_stream_owner(
     if default_streams:
         # The native checkpoint carrier owns these CLI checkpoints. The
         # default-stream helper must not create a second checkpoint stream.
-        assert stream_calls == [dict(history_minutes=6, checkpoint_hours=None, omit=None, bound_inputs={})]
+        assert stream_calls == [dict(history_minutes=6, checkpoint_hours=None, omit=None, native_state_publication=False, bound_inputs={})]
     else:
         assert stream_calls == []
     request = json.loads((arguments.out/'native-physics-request.json').read_text())

@@ -425,36 +425,6 @@ def test_gate_clears_an_exclusive_card_with_no_configuration(
     assert "CLEAR" in capsys.readouterr().out
 
 
-def test_sweep_queue_gates_on_the_configuration_its_arm_launches(
-        tmp_path, monkeypatch):
-    from tools import da_sweep_run
-
-    commands: list[list[str]] = []
-
-    def record(command, **_kwargs):
-        commands.append(list(command))
-        return SimpleNamespace(returncode=0, stdout="gate: CLEAR", stderr="")
-
-    monkeypatch.setattr(da_sweep_run.subprocess, "run", record)
-    clear, _detail = da_sweep_run.gate_clear(
-        Path("gate.py"), tmp_path / "gate.log", tmp_path / "arm.toml")
-    assert clear
-    assert commands[0][-2:] == ["--config", str(tmp_path / "arm.toml")]
-
-    commands.clear()
-    da_sweep_run.gate_clear(Path("gate.py"), tmp_path / "gate.log")
-    assert "--config" not in commands[0]
-
-
-def test_sweep_queue_binds_the_gate_configuration_tokens(tmp_path):
-    from tools import da_sweep_run
-
-    bound = da_sweep_run.expand_tokens(
-        "${REPO}/configs/arm.toml", run_dir=tmp_path, repo=Path("/repo"),
-        case_root=None)
-    assert bound == "/repo/configs/arm.toml"
-
-
 def test_supervisor_prices_the_attached_card_census(monkeypatch):
     import woof.core.preflight as pf
     import woof.core.streaming as streaming

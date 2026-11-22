@@ -52,7 +52,7 @@ def evaporation(rho, heat, zz, vapor, cloud, *, backend='cpu'):
     Every operation is elementwise, so level-major fields run in blocks of whole levels on all cores
     (host_parallel.row_map) and each word is the one the single whole-field call writes.  THE COST THIS
     REMOVES: two evaporations per move (donor and target) were 3.5 + 3.75 s of one core in a resumed
-    storm-following segment (box-aws2x 2026-10-24, sampled), the largest single-core part of the remap.
+    storm-following segment (a two-card cloud machine, 2026-10-24, sampled), the largest single-core part of the remap.
     """
     arrays = [np.asarray(value) for value in (rho, heat, zz, vapor, cloud)]
     shape = arrays[0].shape
@@ -529,7 +529,7 @@ def remap_balanced_thermodynamics(payload, weights, prepared, *, extended=False)
 
     ``extended``: the caller already gave the map this payload's below-ground extension.
 
-    THE COST THIS REMOVES (box-aws2x 2026-10-24, resumed storm-following segment, sampled): this
+    THE COST THIS REMOVES (a two-card cloud machine, 2026-10-24, resumed storm-following segment, sampled): this
     function ran every product map, both evaporations, the column projection and the tracer casts one
     after another on one thread, 18 s of the remap.  The independent pieces now run concurrently
     (host_parallel.run_tasks / row_map); each is the same call on the same inputs and every sum keeps

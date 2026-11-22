@@ -27,7 +27,7 @@ and [Verification and Validation in Scientific Computing](https://assets.cambrid
   This page uses the V&V terms below. Input and configuration validation retain
   their separate software meaning.
 
-**Matching WRF is verification. It never validates a forecast.** WOOF can
+**Matching WRF is verification. It never validates a forecast.** WOOF-ArWen can
 inherit WRF's published validation record only to the extent that the two are
 statistically indistinguishable for that configuration and the quantities and
 conditions covered by that record. A passed consistency test has finite power;
@@ -41,10 +41,10 @@ likewise ties accuracy assessment to specified variables and validation points.
 | Kind | Evidence and reference | Scope and remaining gap |
 |---|---|---|
 | Code verification | Historical component Fortran oracles and ULP checks: **WRF v4.6.1**, commit `d66e442fccc04111067e29274c9f9eaccc3cef28`; sections 1 and 5 and [PHYSICS.md](PHYSICS.md). Newer component ports identify **v4.7.1** explicitly in their option rows, for example UW PBL and urban physics. | Coverage differs by routine; transcription and self-consistency are distinguished from an independent Fortran oracle. A reference version belongs to the individual fixture, not to every component in the release. |
-| Code verification | Historical six-hour, four-domain comparison, initial-state digest and decay tables below: **WRF v4.6.1**, same commit; WOOF run of record `152f7d31`, 2026-07-28. | Initial states fail the recorded ceilings on all four domains. Differences combine initialization and forecast evolution; the tables are not evidence for all current configurations. |
+| Code verification | Historical six-hour, four-domain comparison, initial-state digest and decay tables below: **WRF v4.6.1**, same commit; WOOF-ArWen run of record `152f7d31`, 2026-07-28. | Initial states fail the recorded ceilings on all four domains. Differences combine initialization and forecast evolution; the tables are not evidence for all current configurations. |
 | Code verification | Byte identity for named component oracles and same-build replay/restart checks; [DETERMINISM.md](DETERMINISM.md). | WRF-based oracle claims use that oracle's version. Same-build checks have no external WRF reference and do not establish physical accuracy. |
-| Code verification | Light ensemble consistency test, 2026-10-02: 100 six-hour references per regime from **WRF v4.7.1**, commit `f52c197ed39d12e087d02c50f412d90d418f6186`, strict GNU flags `-O2 -fno-fast-math -ffp-contract=off`; WOOF `e459f79ed4c5ae74e8a23d6e1c6f66c1519dc1e1`. | Three WOOF runs per regime; hour-six area-weighted means of 11 fields. Convective and winter pass; coastal fails, so the overall three-regime result fails. The fixed rule rejects at least one regime in 33/5,000 held-out WRF resampling trials (0.66%); this is conditional on the sampled cases and can miss spatial error. |
-| Code verification | Descriptive 20-member envelope across five 24-hour cases: **WRF v4.7.1**, same commit and strict flags; corrected WOOF `1b15157c0f9803f75c2ecd9fb3a100c706bcf453`. | WOOF is at or below the largest reference-member RMSE from the WRF mean in 1,098/1,440 field-hours; a different WRF compiler build is within it in 941/1,440. The declared whole-case consistency result is 0/5. The envelope and accompanying PCA screen have no calibrated significance level and do not establish statistical indistinguishability. |
+| Code verification | Light ensemble consistency test, 2026-10-02: 100 six-hour references per regime from **WRF v4.7.1**, commit `f52c197ed39d12e087d02c50f412d90d418f6186`, strict GNU flags `-O2 -fno-fast-math -ffp-contract=off`; WOOF-ArWen `e459f79ed4c5ae74e8a23d6e1c6f66c1519dc1e1`. | Three WOOF-ArWen runs per regime; hour-six area-weighted means of 11 fields. Convective and winter pass; coastal fails, so the overall three-regime result fails. The fixed rule rejects at least one regime in 33/5,000 held-out WRF resampling trials (0.66%); this is conditional on the sampled cases and can miss spatial error. |
+| Code verification | Descriptive 20-member envelope across five 24-hour cases: **WRF v4.7.1**, same commit and strict flags; corrected WOOF-ArWen `1b15157c0f9803f75c2ecd9fb3a100c706bcf453`. | WOOF-ArWen is at or below the largest reference-member RMSE from the WRF mean in 1,098/1,440 field-hours; a different WRF compiler build is within it in 941/1,440. The declared whole-case consistency result is 0/5. The envelope and accompanying PCA screen have no calibrated significance level and do not establish statistical indistinguishability. |
 | Code verification | Analytic and component convergence checks, including the NumPy advection reference's smooth-profile convergence test in `tests/test_advection.py::test_convergence_order`; no WRF version applies. | These are component tests, not a full-model manufactured-solution campaign or an error estimate for a weather forecast. |
 | Solution verification | No published run-specific numerical-error budget for the weather forecasts described here. | Grid/time-step refinement studies and quantified discretization, iteration and roundoff contributions remain gaps. The nested-grid comparisons below and ensemble spread are not substitutes. |
 | Validation against observations | Limited ASOS case scoring is described in the [snow/soil initialization note](../soil-texture-downscaling.md); the [physics selection record](PHYSICS.md#mynn-scope-note-what-composes-and-what-is-pinned) reports a small station/ceilometer fog comparison without a published case count or score receipt. MRMS reflectivity scoring of one model-top A/B has a [retained receipt](receipts/ptop-default-ab/RECEIPT.md). WRF version: not applicable as the reference is observations. | These specific comparisons are distinct from the preregistered observation battery, which has no scored forecast result in its published receipts. They do not establish skill across seasons, regions, physics suites or leads, or a complete numerical and observational uncertainty budget. |
@@ -83,7 +83,7 @@ process; their conclusions are not interchangeable:
    rather than hidden behind a tolerance (see
    [PHYSICS.md](PHYSICS.md)).
 
-2. **t=0 full-state digest.** WOOF's own ingest opens the same
+2. **t=0 full-state digest.** WOOF-ArWen's own ingest opens the same
    analysis data as the WRF reference chain, and the two initial
    states are then scored array by array -- every registered carrier
    group, on every domain both runs wrote, against ceilings pinned in
@@ -279,7 +279,7 @@ echo -- by design, not an error.
 
 The run survived two external process kills; frames produced before
 each kill were copied aside and byte-compared when regenerated after
-relaunch: SHA256-identical (d03 and d04 checked explicitly). WOOF
+relaunch: SHA256-identical (d03 and d04 checked explicitly). WOOF-ArWen
 reproduces its own trajectory bit-for-bit under restart-free relaunch
 on the same hardware and build.
 

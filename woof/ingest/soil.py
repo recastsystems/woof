@@ -415,12 +415,78 @@ def _require_same_shape(fields: Mapping[str, object], names) -> tuple[int, int]:
     return shape
 
 
-def _interp_nodes(nodes, zsource, ztarget):
+def _wrf_source_depths(zsource) -> np.ndarray:
+    """The REAL depths real.exe holds for the input soil levels.
+
+    ``init_soil_2_real`` sets ``zhave = st_levels_input / 100.`` from whole
+    centimetres (module_soil_pre.F), one float32 division per level.
+    """
+    f32 = np.float32
     out = []
-    for z in ztarget:
-        lower = int(np.searchsorted(zsource, z) - 1)
-        weight = (z - zsource[lower]) / (zsource[lower + 1] - zsource[lower])
-        out.append(nodes[lower] + weight * (nodes[lower + 1] - nodes[lower]))
+    for z in np.asarray(zsource, dtype=np.float64):
+        cm = z * 100.0
+        if abs(cm - round(cm)) < 1.0e-6:
+            out.append(f32(round(cm)) / f32(100.0))
+        else:
+            out.append(f32(z))
+    return np.asarray(out, dtype=f32)
+
+
+def _wrf_target_depths(ztarget) -> np.ndarray:
+    """The REAL layer-centre depths ``ZS`` real.exe holds for the target layers.
+
+    WRF builds ``zs(1) = 0.5*dzs(1)`` and ``zs(l) = zs(l-1) + 0.5*dzs(l-1) +
+    0.5*dzs(l)`` in float32 from the layer thicknesses, so the third Noah
+    centre is 0.70000005, not float32(0.7).  Centres that do not tile from
+    the surface keep their own float32 value.
+    """
+    f32 = np.float32
+    if np.asarray(ztarget).dtype == f32:
+        return np.asarray(ztarget)
+    centres = np.asarray(ztarget, dtype=np.float64)
+    top = 0.0
+    thickness = []
+    for centre in centres:
+        dz = 2.0 * (centre - top)
+        if dz <= 0.0:
+            return centres.astype(f32)
+        thickness.append(f32(dz))
+        top += dz
+    zs = np.empty(len(thickness), dtype=f32)
+    zs[0] = f32(0.5) * thickness[0]
+    for level in range(1, len(thickness)):
+        zs[level] = (zs[level - 1] + f32(0.5) * thickness[level - 1]
+                     + f32(0.5) * thickness[level])
+    return zs
+
+
+def _interp_nodes(nodes, zsource, ztarget):
+    """``init_soil_2_real``'s linear blend in real.exe's own REAL arithmetic.
+
+    module_soil_pre.F takes the FIRST bracket with ``zhave(l) <= zs <=
+    zhave(l+1)`` and forms ``(v(l)*(zhave(l+1)-zs) + v(l+1)*(zs-zhave(l)))
+    / (zhave(l+1)-zhave(l))``, each operation rounded to float32.  The old
+    float64 blend rounded once at the end and left 1,270 of 9,404 land SMOIS
+    words one unit off native WRF on the January 2000 tutorial case.
+    """
+    f32 = np.float32
+    zh = _wrf_source_depths(zsource)
+    zs = _wrf_target_depths(ztarget)
+    values = np.asarray(nodes, dtype=f32)
+    out = []
+    for z in zs:
+        lower = None
+        for level in range(len(zh) - 1):
+            if zh[level] <= z <= zh[level + 1]:
+                lower = level
+                break
+        if lower is None:
+            lower = int(min(max(np.searchsorted(zh, z) - 1, 0), len(zh) - 2))
+        upper_gap = zh[lower + 1] - z
+        lower_gap = z - zh[lower]
+        span = zh[lower + 1] - zh[lower]
+        out.append(((values[lower] * upper_gap
+                     + values[lower + 1] * lower_gap) / span).astype(f32))
     return np.stack(out)
 
 

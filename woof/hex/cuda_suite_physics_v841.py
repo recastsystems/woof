@@ -151,6 +151,19 @@ _SLOT_PINNED = {
         "woof/core/terrain_drag.py", "woof/core/kernels/terrain_drag.cu",
         "woof/static/orographic.py"),
 }
+#: Files a slot executes when the engine carries them: ArWen's TEMPO v3.2.5 kernels (woof kernels/tempo325, the
+#: tempo_version default there) exist only in engines that ported it; older engines run v3.0.3 and lack the folder.
+#: THE BREAKAGE THIS PREVENTS: an engine whose v3.2.5 TEMPO kernels change keeps the same suite identity, so the
+#: hex side never sees that the ArWen-route TEMPO it runs changed.
+_SLOT_PINNED_IF_PRESENT = {
+    ("microphysics", "tempo"): (
+        "woof/core/kernels/tempo325/tempo_common.cuh",
+        "woof/core/kernels/tempo325/tempo_column.cuh",
+        "woof/core/kernels/tempo325/tempo_processes.cuh",
+        "woof/core/kernels/tempo325/tempo_diags.cuh",
+        "woof/core/kernels/tempo325/tempo_cloud_ml.cuh",
+        ),
+}
 
 
 # --------------------------------------------------------------------------
@@ -1083,6 +1096,11 @@ def _measure_engine(root: Path, selection: Mapping[str, str], microphysics=None)
                 f"the suite row executes {relative}, absent from {root}"
             )
         manifest[relative] = sha256(path.read_bytes()).hexdigest()
+    for (key, value), files in _SLOT_PINNED_IF_PRESENT.items():
+        if selection.get(key) == value:
+            for relative in files:
+                if (root / relative).is_file():
+                    manifest[relative] = sha256((root / relative).read_bytes()).hexdigest()
     if selection.get("microphysics") == "tempo":
         from woof.core.tempo_rust import resolve
         library = resolve()
@@ -1486,7 +1504,7 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
         # engine's: polar columns flipped water/sea ice/glacier, the history
         # census refused, Noah-MP's glacier water budget failed and the next
         # move refused "carried ice volume has no carried ice area" (the storm
-        # hex storm-following, box M 2026-10-27). Prescribed runs keep the
+        # hex storm-following, 2026-10-27). Prescribed runs keep the
         # route's published ice owner.
         from .ocean_pwp import hex_owns_ice
         if hex_owns_ice() and self._constructor.selection.get("land_surface_scheme") == "noahmp":
@@ -1709,13 +1727,18 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
         rebuilt.validate(n_vert_levels=shape[0], n_cells=shape[1])
         return rebuilt, tuple(sorted(rates))
 
-    def diagnostic_snapshot(self, *, selective=False, resident=False) -> CudaArwenDiagnosticSnapshotV841:
+    def diagnostic_snapshot(self, *, selective=False, resident=False, include_native_cloud=False) -> CudaArwenDiagnosticSnapshotV841:
         """The frozen snapshot with the row's soil width."""
 
         if self._phase != "boundary":
             raise RuntimeError("diagnostic_snapshot is legal only at a committed boundary")
         self._private_binding_guard()
-        names = (*_REQUIRED_ARWEN_EXPORT_FIELDS, *_OPTIONAL_ARWEN_EXPORT_FIELDS)
+        from .producer_cloud import arwen_cloud_fields, normalize_cloud, MYNN_CLOUD_FIELDS
+        # The selected PBL, not allocated defaults or total cloud, owns SGS.
+        pbl = self._constructor.selection["pbl_scheme"] if include_native_cloud else None
+        cloud_names = (arwen_cloud_fields(pbl)
+                       if include_native_cloud else ())
+        names = (*_REQUIRED_ARWEN_EXPORT_FIELDS, *_OPTIONAL_ARWEN_EXPORT_FIELDS, *cloud_names)
         exported, export_inventory = diagnostic_export(self._seam, names, selective=selective, resident=resident)
         if (
             not isinstance(exported, Mapping)
@@ -1736,13 +1759,16 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
             if key not in export_arrays and f"diag/{name}" in export_arrays:
                 key = f"diag/{name}"
             if key not in export_arrays:
-                if name in _REQUIRED_ARWEN_EXPORT_FIELDS:
+                if name in (*_REQUIRED_ARWEN_EXPORT_FIELDS, *cloud_names):
                     raise ValueError(f"suite export lacks required {key!r}")
                 continue
             host = export_arrays[key] if resident else np.asarray(export_arrays[key])
             if host.dtype != np.dtype(np.float32):
                 raise TypeError(f"suite export {key!r} is not FP32")
-            if name in _SOIL_DIAGNOSTIC_FIELDS:
+            if name in cloud_names:
+                normalized = normalize_cloud(name, host, nlev, ncol)
+                shape = (nlev, ncol)
+            elif name in _SOIL_DIAGNOSTIC_FIELDS:
                 if nsoil == 0:
                     # Land surface off (sf_surface_physics=0): the engine
                     # still exports tslb/smois at its allocated width (4
@@ -1794,7 +1820,10 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
             "rubldiff": cp.zeros((nlev, ncol), dtype=cp.float32),
             "rvbldiff": cp.zeros((nlev, ncol), dtype=cp.float32),
         }
-        surface = {k: v for k, v in selected.items() if k not in _SOIL_DIAGNOSTIC_FIELDS}
+        surface = {k: v for k, v in selected.items()
+                   if k not in _SOIL_DIAGNOSTIC_FIELDS and k not in cloud_names}
+        cloud = {public: selected[native] for public, native, _ in MYNN_CLOUD_FIELDS
+                 if native in cloud_names}
         surface.update(history_cumulus_rain_rate(self, self._seam, precipitation["rainc"], cp))
         soil = {k: v for k, v in selected.items() if k in _SOIL_DIAGNOSTIC_FIELDS}
         classification = self._validate_surface_classification()
@@ -1812,8 +1841,12 @@ class PersistentSuiteCudaPhysicsBackendV841(PersistentTwoPhaseCudaPhysicsBackend
             "last_land_surface_census": None if census is None else dict(census),
             "gwdo_note": "hex-side YSU-GWDO absent; zero-filled carriers",
         }
+        if include_native_cloud:
+            receipt["native_sgs_cloud"] = {"pbl": pbl, "fields": list(cloud),
+                "authority": "native MYNN state" if cloud_names else "structural absence"}
         return CudaArwenDiagnosticSnapshotV841(
             surface=MappingProxyType(surface),
+            cloud=MappingProxyType(cloud),
             soil=MappingProxyType(soil),
             precipitation=MappingProxyType(precipitation),
             gwdo=MappingProxyType(gwdo),

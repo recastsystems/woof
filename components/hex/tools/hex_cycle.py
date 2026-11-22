@@ -39,6 +39,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import shlex
 import subprocess
@@ -165,7 +166,7 @@ def run(args) -> int:
         # cards were busy; the gap until now is a card-queue wait, marked so a report can cut it out.
         if not (init.is_file() and Path(str(init) + ".provenance.json").is_file()):
             raise SystemExit(f"--resume-at forecast needs the front half's init at {init}")
-        timeline.mark("forecast.grant", cards=os.environ.get("GPU_MUTEX_CARDS", ""))
+        timeline.mark("forecast.grant", cards=card_queue.get(card_queue.CARDS))
     else:
         timeline.mark("cycle", "begin", cycle=cycle)
         available = _head(url)

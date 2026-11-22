@@ -44,6 +44,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -622,7 +623,98 @@ def lead_summary(document: Mapping[str, object]) -> list[dict[str, object]]:
     return rows
 
 
+class CachedCompositeSource:
+    """The MRMS composite, fetched on demand into the case's own cache.
+
+    Satisfies the seam a scorer reads: ``field(valid_time)`` answers with an
+    :class:`~woof.verify.obs.contracts.ObsGridField` or raises the three
+    distinguishable failures the nowcast registration records separately.
+    """
+
+    def __init__(self, cache, *, match_seconds: int,
+                 coverage_floor: float) -> None:
+        self.cache = cache
+        self.match_seconds = int(match_seconds)
+        self.coverage_floor = float(coverage_floor)
+        self._source = None
+        self._packs: tuple[str, ...] = ()
+        self._details: dict[str, dict[str, object]] = {}
+        self._walk_problem: dict[str, str] = {}
+
+    def _rebuilt(self):
+        from woof.obs.sources import MrmsCompositeSource
+
+        packs = tuple(str(path) for path in self.cache.pack_paths())
+        if not packs:
+            raise LookupError(
+                "the case's observation cache holds no composite packs")
+        if self._source is None or packs != self._packs:
+            self._source = MrmsCompositeSource(
+                [Path(value) for value in packs], self.cache.geometry_path,
+                match_seconds=self.match_seconds,
+                minimum_observed_fraction=self.coverage_floor)
+            self._packs = packs
+        return self._source
+
+    def field(self, valid_time: str):
+        from woof.obs.mrms_fetch import MrmsArchiveUnavailable
+        from woof.verify.obs.contracts import ObservedFractionBelowFloor
+
+        walked: list[object] = []
+        try:
+            frame = self.cache.ensure(valid_time)
+        except MrmsArchiveUnavailable as error:
+            raise ObservationsUnreachable(str(error)) from error
+        if frame.observed_fraction < self.coverage_floor:
+            # The registered selection walks outward inside the same window
+            # for a better-covered frame; it can only walk over frames that
+            # are on disk.
+            try:
+                walked = list(self.cache.ensure_window(valid_time))
+            except MrmsArchiveUnavailable as error:
+                # An offline run refuses the listing outright, and so does a
+                # box that cannot reach the archive.  The nearest frame came
+                # back a line ago and is on disk: score it rather than throw
+                # the lead away, and say on the lead that the outward walk
+                # did not run.  The alternative recorded `unavailable` for a
+                # scan the case already held.
+                self._walk_problem[frame.valid_time] = (
+                    "the poorly covered nearest scan was scored because the "
+                    f"frames around it could not be listed: {error}")
+        # Every frame the walk pulled is recorded, not only the one ensure()
+        # picked: the registered selection can score any of them, and a lead
+        # scored on a neighbour used to lose the archive identity of the
+        # object it was actually scored from.
+        for candidate in [frame, *walked]:
+            self._details[candidate.valid_time] = {
+                "archive_bucket": candidate.bucket,
+                "archive_key": candidate.key,
+                "archive_object_uri": candidate.object_uri,
+                "archive_object_sha256": candidate.object_sha256,
+                "pack_path": candidate.pack_path,
+                "pack_sha256": candidate.pack_sha256,
+                "observed_fraction": candidate.observed_fraction,
+            }
+        try:
+            return self._rebuilt().field(valid_time)
+        except ObservedFractionBelowFloor:
+            raise
+        except MrmsArchiveUnavailable as error:  # pragma: no cover - defensive
+            raise ObservationsUnreachable(str(error)) from error
+
+    def scan_detail(self, valid_time: str) -> dict[str, object]:
+        detail = dict(self._details.get(str(valid_time), {}))
+        problem = self._walk_problem.get(str(valid_time))
+        if problem:
+            detail["coverage_walk"] = problem
+        return detail
+
+    def record(self) -> dict[str, object]:
+        return self.cache.record()
+
+
 __all__ = [
+    "CachedCompositeSource",
     "DEFAULT_BOUNDARY_WIDTH_CELLS", "DEFAULT_FRAME_COVERAGE_FLOOR",
     "DEFAULT_HALF_WIDTHS", "DEFAULT_INTERIOR_RIM_M", "DEFAULT_LEAD_MINUTES",
     "DEFAULT_MATCH_TOLERANCE_SECONDS", "DEFAULT_PRIMARY_HALF_WIDTH",

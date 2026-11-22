@@ -707,6 +707,14 @@ pub fn operational_style_for_store_variable(
         return None;
     }
 
+    // A stored u or v plane keeps the generic ramp it has always had. The
+    // signed wind-component maps (10m/850/700/500mb_u_wind and _v_wind) are
+    // their own named products; borrowing their identity here would recolour
+    // every raw component plane of the browser as well.
+    if matches!(selector.field, CanonicalField::UWind | CanonicalField::VWind) {
+        return None;
+    }
+
     let recipe = direct_recipe_for_selector(var_name, selector, model)?;
     let scale = crate::plot_design::operational_fill_scale_for_recipe(recipe, selector);
     let (convert, units_override) = direct_fill_unit_conversion(recipe, selector);
@@ -952,6 +960,7 @@ fn windowed_qpf_1h_style() -> StoreVariableStyle {
     let scale = crate::windowed_decoder::windowed_product_scale(HrrrWindowedProduct::Qpf1h);
     let mut request = MapRenderRequest::from_core_field(probe_core_field(), scale);
     apply_probe_static_design(&mut request);
+    request.legend.mode = crate::qpf::qpf_legend_mode();
     StoreVariableStyle {
         title: HrrrWindowedProduct::Qpf1h.title().to_string(),
         display_units: "in".to_string(),
@@ -971,6 +980,9 @@ fn windowed_product_style(product: HrrrWindowedProduct) -> Option<StoreVariableS
     let scale = crate::windowed_decoder::windowed_product_scale(product);
     let mut request = MapRenderRequest::from_core_field(probe_core_field(), scale);
     apply_probe_static_design(&mut request);
+    if product.is_qpf() {
+        request.legend.mode = crate::qpf::qpf_legend_mode();
+    }
     let (convert, display_units) = windowed_product_units(product);
     Some(StoreVariableStyle {
         title: product.title().to_string(),
@@ -1902,6 +1914,12 @@ mod tests {
         );
         assert_eq!(total.title, "Total QPF");
         assert_eq!(hourly.title, "1-h QPF", "titles pin the window identity");
+        // The viewer draws rain as the static maps do: one listed colour per
+        // band (`crate::qpf::qpf_inches_scale` names the breakage).
+        for style in [&total, &hourly] {
+            assert_eq!(style.legend_mode, LegendMode::Thresholds);
+            assert_eq!(style.colormap_options.legend.mode, LegendMode::Thresholds);
+        }
     }
 
     #[test]

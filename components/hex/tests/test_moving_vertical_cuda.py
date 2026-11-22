@@ -7,6 +7,24 @@ from woof.hex.moving_remap import ConservativeMap
 from woof.hex.moving_vertical import HeightConservativeMap
 
 
+@pytest.fixture(autouse=True, scope='module')
+def strict_numerics():
+    """These cases compare the CUDA remap word for word with the CPU reference: a strict-numerics proof.
+
+    THE BREAKAGE IT PREVENTS: run outside the battery (whose conftest names strict), the process takes the
+    fast default, the engine drops the cumulative and layer kernels' ``--fmad=false``, and 12 cases fail on
+    every card (RTX 4090, RTX 5070 Ti) though the strict words hold. The interface and device-profile cases
+    pin their own fast compilation and still pass.
+    """
+    from woof.hex import numerics
+    try:
+        numerics.set_mode('strict', source='test_moving_vertical_cuda')
+        from woof import numerics as engine
+        engine.select('strict')
+    except ValueError as error:
+        pytest.skip(f'this process already compiled kernels with fast numerics: {error}')
+
+
 @pytest.mark.skipif(os.environ.get('HEX_TEST_CUDA') != '1', reason='requires an owned CUDA card')
 def test_device_ground_extension_keeps_host_words_and_reuses_one_carried_upload(monkeypatch):
     import cupy as cp

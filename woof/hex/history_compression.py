@@ -1,11 +1,11 @@
 """Which MPAS-route output files are written lossless-compressed, and how.
 
-Ruling 2026-10-28: "Lossless compression is the default"; 2026-10-27: Regional and hex get features together.
-WOOF's history frames are lossless NetCDF-4 since gpuwm 2.9.10, and the ArWen-physics route here already
+Lossless compression is the default (2026-10-28); Regional and hex get features together (2026-10-27).
+WOOF-ArWen's history frames are lossless NetCDF-4 since gpuwm 2.9.10, and the ArWen-physics route here already
 writes deflated frames (woof.hex.history_deflate). The MPAS-physics route (the hex default) wrote its history
 and diagnostics files uncompressed through rw_mpas_stream. They are now written lossless-compressed by
 rw_mpas_stream itself: NETCDF4_CLASSIC, chunks byte-shuffled and deflated on every core by the engine's
-netcdf_writer (the WOOF history writer, below the forecast's priority), never by HDF5 on one thread. Every
+netcdf_writer (the WOOF-ArWen history writer, below the forecast's priority), never by HDF5 on one thread. Every
 dimension, attribute, variable and word is the one the uncompressed file holds.
 
 Only the ``output`` (history) and ``diagnostics`` streams are compressed. Init, restart, LBC, IAU and
@@ -13,7 +13,7 @@ Only the ``output`` (history) and ``diagnostics`` streams are compressed. Init, 
 which has no NetCDF-4 reader. A stream whose file holds several output times is not compressed either:
 its later records append to the file, and a compressed file is written whole.
 
-The knobs are WOOF's: ``GPUWM_HISTORY_COMPRESSION`` ``deflate`` (default) or ``none`` (the stream's own
+The knobs are WOOF-ArWen's: ``GPUWM_HISTORY_COMPRESSION`` ``deflate`` (default) or ``none`` (the stream's own
 ``io_type`` container, as before), ``GPUWM_HISTORY_COMPRESSION_LEVEL`` (zlib 1-9, default 4) and
 ``GPUWM_HISTORY_COMPRESSION_THREADS`` (0 = every core). A native-identity proof (woof.hex.verify_mpas)
 writes ``none``: it compares each file's container with native MPAS's.
@@ -31,7 +31,7 @@ COMPRESSED_STREAMS = frozenset({"output", "diagnostics"})
 
 
 def mode() -> str:
-    """``deflate`` (default) or ``none``, from GPUWM_HISTORY_COMPRESSION (WOOF's knob)."""
+    """``deflate`` (default) or ``none``, from GPUWM_HISTORY_COMPRESSION (WOOF-ArWen's knob)."""
     chosen = (os.environ.get(ENVIRONMENT, "deflate") or "deflate").strip().lower() or "deflate"
     if chosen not in ("deflate", "none"):
         raise ValueError(f"unknown history compression {chosen!r} ({ENVIRONMENT}): expected 'deflate' "

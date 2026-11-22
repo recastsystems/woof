@@ -1,4 +1,4 @@
-"""A float64 mesh (WOOF route) matches wave points prepared from its float32 native static; a wrong cell still fails.
+"""A float64 mesh (WOOF-ArWen route) matches wave points prepared from its float32 native static; a wrong cell still fails.
 
 THE BREAKAGE THIS CHECKS: every ArWen-route run with --waves on over the native global x1.40962 mesh refused at
 service start, because the coordinate check gave a float64 mesh angle no float32 rounding allowance although the

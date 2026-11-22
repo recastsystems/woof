@@ -1,0 +1,36 @@
+{
+ "schema": "hexcore.closures.v1",
+ "doc": "hexcore.mpasphys.rrfs.closures: learned and symbolic surface and boundary-layer closures on the RRFS hrrrv5 route. At most one option per run; all off by default.",
+ "files": {
+  "sfn_r4.pt": "0a3a5d467962c772ed4ca3d92c6dfcf1b328e5e4a7111008affa0c8082c62f81",
+  "neural_pbl_v1.pt": "9328bae3724fac1baf13f251d37b586a723a53153439e493a678136f8b7990f4",
+  "autophysics_pbl_sets.v1.json": "ddece7d83979847ba3f73ff9dc8a49bea52eaa373d3343c8cc2c0d7207c146b6"
+ },
+ "options": {
+  "surface_flux_net": {
+   "key": "config_surface_flux_net", "word": "GPUWM_HEX_SURFACE_FLUX_NET", "torch": true, "slots": ["land"],
+   "first_set": "r4_a50", "aliases": {"r4a50": "r4_a50", "r4": "r4_a50"},
+   "sets": {
+    "r4_a50": {"weights": "sfn_r4.pt", "scale": 0.5, "stride": 5, "tsk_couple": "diag", "tsk_eq_weight": 1.0}
+   }
+  },
+  "neural_pbl": {
+   "key": "config_neural_pbl", "word": "GPUWM_HEX_NEURAL_PBL", "torch": true, "slots": ["land", "pbl"],
+   "first_set": "v1", "dry_gate_set": "v2",
+   "sub_switch": {"key": "config_neural_pbl_dry_gate", "word": "GPUWM_HEX_NEURAL_PBL_DRY_GATE", "turns": "v1 into v2"},
+   "sets": {
+    "v1": {"weights": "neural_pbl_v1.pt", "stride": 5, "dry_gate": false, "tsk_couple": "diag", "tsk_eq_weight": 1.0},
+    "v2": {"weights": "neural_pbl_v1.pt", "stride": 5, "dry_gate": true, "tsk_couple": "diag", "tsk_eq_weight": 1.0}
+   }
+  },
+  "autophysics_pbl": {
+   "key": "config_autophysics_pbl", "word": "GPUWM_HEX_AUTOPHYSICS_PBL", "torch": false, "slots": ["land"],
+   "first_set": "v2", "aliases": {"v3": "v3_bowen", "warm_night": "v2_warm_night"},
+   "sets": {
+    "v2": {"parameters": "autophysics_pbl_sets.v1.json", "parameter_set": "v2", "gain": 1.0, "stride": 5, "tsk_couple": "diag", "tsk_eq_weight": 0.5},
+    "v3_bowen": {"parameters": "autophysics_pbl_sets.v1.json", "parameter_set": "v3_bowen", "gain": 1.0, "stride": 5, "tsk_couple": "diag", "tsk_eq_weight": 0.5},
+    "v2_warm_night": {"parameters": "autophysics_pbl_sets.v1.json", "parameter_set": "v2_warm_night", "gain": 1.0, "stride": 5, "tsk_couple": "diag", "tsk_eq_weight": 0.5}
+   }
+  }
+ }
+}

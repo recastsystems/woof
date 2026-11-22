@@ -70,9 +70,26 @@ def feedback_selected_noahmp(node, reg, *, spec_zone, chunk_shape):
     snow_modes = tuple(int(getattr(cfg, "opt_alb", 2)) == 3 for cfg in (pcfg, ccfg))
     if any(snow_modes) and not all(snow_modes):
         raise ValueError("snow from papers requires opt_alb=3 on both feedback domains")
-    names = feedback_fields(getattr(pcfg,"opt_run",3),getattr(pcfg,"opt_soil",1),getattr(pcfg,"dveg",4),getattr(pcfg,"soiltstep",0.0),getattr(pcfg,"opt_tdrn",0),getattr(pcfg,"noahmp_output",1),getattr(pcfg,"opt_irr",0),getattr(pcfg,"opt_crop",0))
+    from woof.core.noahmp_runoff_split import carrier_of
+    names = feedback_fields(carrier_of(pcfg),getattr(pcfg,"opt_soil",1),getattr(pcfg,"dveg",4),getattr(pcfg,"soiltstep",0.0),getattr(pcfg,"opt_tdrn",0),getattr(pcfg,"noahmp_output",1),getattr(pcfg,"opt_irr",0),getattr(pcfg,"opt_crop",0))
     if all(snow_modes):
         names += ("taussxy", "snicar_statexy")  # effective radius is physical state for this option
+        laps = tuple(int(getattr(cfg, "snicar_lap_opt", 0) or 0) > 0 for cfg in (pcfg, ccfg))
+        if any(laps) and not all(laps):
+            raise ValueError("snow particles (snicar_lap_opt) must be on for both feedback domains")
+        if all(laps):
+            names += ("snicar_lapxy",)
+    # Zhang (2022) wetland store: carried state, fed back like the soil water
+    # it partitions (a copied word, as copy_fcnm does), with its two
+    # instantaneous diagnostics.  The static maps stay each domain's own
+    # (FSATMX and WCAP are built for that domain's dx).
+    wet_modes = tuple(int(getattr(cfg, "noahmp_wetland", 0)) != 0 for cfg in (pcfg, ccfg))
+    if any(wet_modes) and not all(wet_modes):
+        raise ValueError("noahmp_wetland must match on both feedback domains: the "
+                         "parent cannot receive a wetland store it does not carry")
+    if all(wet_modes):
+        from woof.core.noahmp_wetland import DIAGNOSTICS as WET_DIAGNOSTICS, STATE as WET_STATE
+        names += (*WET_STATE, *WET_DIAGNOSTICS)
     # Validate the complete transaction before the first surface field write.
     for name in names:
         a, b = target.array(f"fields/{name}"), source.array(f"fields/{name}")

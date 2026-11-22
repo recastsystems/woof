@@ -148,7 +148,7 @@ def test_doctor_cli_exit_codes_and_report_shape(monkeypatch, capsys,
     else:
         # Line 1 is the install headline (which copy of woof produced
         # this); the report's own banner follows it.
-        assert "\nwoof doctor\n" in out
+        assert "\nwoof doctor (WOOF-ArWen)\n" in out
     assert rc_healthy_or_not in (0, 1)
 
     monkeypatch.setattr(doctor, "find_spec", lambda name: None)
@@ -1157,8 +1157,14 @@ def _package_modules():
     import pkgutil
 
     import woof
+    from tools.import_sweep import SCRIPT_MODULES
 
     for info in pkgutil.walk_packages(woof.__path__, prefix="woof."):
+        # (WOOF 1.1.7) a program, not a library: importing one runs it with
+        # this process's arguments (the hex recorder's command line and its
+        # tools); tools/import_sweep.py SCRIPT_MODULES names each one
+        if info.name in SCRIPT_MODULES:
+            continue
         try:
             yield info.name, importlib.import_module(info.name)
         except Exception:      # optional deps (cupy, wrf-rust) may be absent

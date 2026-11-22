@@ -1,7 +1,7 @@
 """A declared donor that is itself a table route is fetched by its own row.
 
 ``woof fetch --source hrrr-native`` refused with "declares a hrrr-prs
-donor and this WOOF has no route for it" (box S, 2026-10-06): the donor
+donor and this WOOF-ArWen has no route for it" (box S, 2026-10-06): the donor
 fetch knew only the two GFS-container sources.  hrrr-prs is a row of the
 route table, so the donor is planned and moved the way its own fetch
 line would be, into the donor folder, and the handoff binds the primary.

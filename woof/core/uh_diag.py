@@ -529,7 +529,7 @@ def device_fold_window(uh, use, window) -> None:
 def reset_tracker_window(state, slot: str) -> None:
     """Zero one consumer's window, immediately after that consumer read it.
 
-    EVERY evaluation resets, accepted or held (WOOF's ruling,
+    EVERY evaluation resets, accepted or held (WOOF-ArWen's ruling,
     2026-08-07).  Letting the window grow across holds would make a move
     more likely simply because more time passed since the last one, which
     is cadence dependence coming back in through the reset rule instead of

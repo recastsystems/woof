@@ -229,7 +229,7 @@ def gocart_optics(rows,fields,alt,relhum,dz8w,*,outputs=None,out=None,
     return result
 
 def opt_out(tauaer,dz8w,*,ext=None,aod=None):
-    """EXTCOF55 and its ordered all-level WOOF column integral.
+    """EXTCOF55 and its ordered all-level WOOF-ArWen column integral.
 
     ``ext`` (nz,ny,nx) and ``aod`` (ny,nx) may be preallocated float32."""
     from woof.core.kernels import get_kernel
@@ -291,7 +291,7 @@ ALLOCATES = (
                                "(chem/module_aer_opt_out.F:54-57)"),
     ChemAllocation("aod550", "2d", output_name="AOD5502D", units="1",
                    description="aerosol optical depth at 550 nm: the ordered "
-                               "column integral of EXTCOF55 (WOOF; WRF-Chem "
+                               "column integral of EXTCOF55 (WOOF-ArWen; WRF-Chem "
                                "writes no such field)"),
 )
 

@@ -119,7 +119,7 @@ it as arithmetic would divide by zero.
 
 The point of the rational is drift: a step of 100/3 s stays exact over
 thousands of steps, where a float accumulates error and the frame times
-walk off their alarms.  WOOF's clock is an integer tick lattice for the
+walk off their alarms.  WOOF-ArWen's clock is an integer tick lattice for the
 same reason, so the pair maps onto it directly: `_adaptive_interval`
 returns a `Fraction`, and `tick_den` is the LCM of every domain's
 rational-dt denominator.  Turning the adaptive clock on folds a further
@@ -255,7 +255,7 @@ and gets it wrong in the direction that kills the work.
 
 ## What the port required beyond `calc_dt`
 
-Porting the arithmetic was the easy half.  WOOF's clock is an integer
+Porting the arithmetic was the easy half.  WOOF-ArWen's clock is an integer
 tick lattice with a **precomputed periodic** schedule, and eleven places
 assumed a uniform step.  Each was silent or nearly so; only the first
 four were foreseeable from reading:
@@ -675,7 +675,7 @@ All eleven are READ as columns, which is what stops a tail being
 silently dropped: `emdiv`, `smdiv` and `h_sca_adv_order` were typed
 `dyn.scalar`, which took element 1 and discarded the rest.  Nine of them
 can then actually DIFFER between domains.  The other two cannot, and it
-is the scheme rather than the scoping that says so: WOOF implements one
+is the scheme rather than the scoping that says so: WOOF-ArWen implements one
 value of each, so the importer refuses any element of
 `h_sca_adv_order` that is not 5 and any element of `moist_adv_opt` that
 is not 1, per domain and naming the domain.  They are columns so that a

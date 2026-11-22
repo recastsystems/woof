@@ -23,6 +23,34 @@ const PPD: f32 = 120.0;
 /// Source: mpas_init_atm_gwd.F:73, including native constant-folding order.
 pub const SG_DELTA: f32 = ((2.0 * PI) * RE) / (360.0 * PPD);
 
+/// Which orographic-statistics recipe a native GWD pass runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum GwdRecipe {
+    /// MPAS-A v8.4.2 mpas_init_atm_gwd.F (the pin; byte-identical to native v8.4.2 init).
+    #[default]
+    V842,
+    /// MPAS-Model PR #1408 (INIT_GWDO, S.-Y. Hong 2025-08-24): elvmax for the KIM drag's blocking
+    /// layer, OA/OL revised (odd-box halves counted on both sides, OL threshold = box mean instead of
+    /// the Kim (1996) critical height), boxes at least 4x4 source pixels with var2d scaled by
+    /// hratio/4 below that, config_gwd_cell_scaling default 2.0.
+    Kim2026,
+}
+impl GwdRecipe {
+    pub fn parse(name: &str) -> MpasResult<Self> {
+        match name {
+            "v842" => Ok(Self::V842),
+            "kim2026" => Ok(Self::Kim2026),
+            other => Err(MpasError::Refusal(format!(
+                "--gwd-recipe {other:?}: v842 (MPAS-A v8.4.2) or kim2026 (MPAS PR #1408, adds elvmax for the KIM drag)"))),
+        }
+    }
+    /// The recipe's own config_gwd_cell_scaling default (v8.4.2 Registry 1.0; PR #1408 Registry 2.0).
+    pub fn default_cell_scaling(self) -> f32 {
+        match self { Self::V842 => 1.0, Self::Kim2026 => 2.0 }
+    }
+}
+
 /// MPAS dataset selection, mpas_init_atm_gwd.F:183-204.
 /// No model/suite default is changed by this option.
 #[derive(Debug, Clone)]
@@ -31,6 +59,7 @@ pub struct NativeGwdConfig {
     pub landuse: PathBuf,
     pub topo_shift: i64,
     pub cell_scaling: f32,
+    pub recipe: GwdRecipe,
     pub host_memory_limit_bytes: Option<u64>,
     pub tile_workers: Option<usize>,
     /// Other static stages resident concurrently with the native GWD pass.
@@ -52,6 +81,7 @@ impl NativeGwdConfig {
             landuse: root.join("landuse_30s"),
             topo_shift: *topo_shift,
             cell_scaling,
+            recipe: GwdRecipe::V842,
             host_memory_limit_bytes: None,
             tile_workers: None,
             extra_resident_bytes: 0,
@@ -140,6 +170,79 @@ pub struct CellStats {
     pub oa: [f32; 4],
     pub ol: [f32; 4],
     pub land: u8,
+    /// PR #1408 get_elvmax; 0 for the v8.4.2 recipe (which never produces it).
+    pub elvmax: f32,
+}
+
+/// MPAS PR #1408 compute_gwd_fields :255-267: the box diameter and hratio after cell scaling.
+/// Boxes thinner than 4 source pixels (sg_delta) are widened to 4 and var2d is scaled by hratio/4.
+pub fn kim_box_diameter(dc: f32) -> (f32, f32) {
+    let hratio = dc / SG_DELTA;
+    (if hratio < 4.0 { SG_DELTA * 4.0 } else { dc }, hratio)
+}
+
+/// MPAS PR #1408 statistics over one box: get_var/get_con unchanged, get_oa1-4 revised
+/// (:958-1121), get_ol1-4 thresholded by box_mean (:1139-1287), get_elvmax (:1300-1319),
+/// and the hratio var2d scaling (:290-293). Input storage is Fortran i-fast order.
+pub fn reduce_box_kim(topo: &[f32], landuse: &[i32], nx: i64, ny: i64, hratio: f32) -> MpasResult<CellStats> {
+    let base = reduce_box(topo, landuse, nx, ny)?;
+    let n = (nx * ny) as f32;
+    let mut mean = 0.0f32;
+    for &v in topo {
+        mean += v;
+    }
+    mean /= n;
+    let ratio = ny as f32 / nx as f32;
+    let (mut nu, mut nd, mut nw, mut nt) = ([0i32; 4], [0i32; 4], [0i32; 4], [0i32; 4]);
+    let up_i = if nx % 2 == 0 { nx / 2 } else { nx / 2 + 1 };
+    let up_j = if ny % 2 == 0 { ny / 2 } else { ny / 2 + 1 };
+    for j in 1..=ny {
+        for i in 1..=nx {
+            let v = topo[((j - 1) * nx + i - 1) as usize];
+            let r = (i as f32 * ratio).round() as i64;
+            let up = [i <= up_i, j <= up_j, r <= ny - j + 1, r <= j];
+            let down = [i > nx / 2, j > ny / 2, r >= ny - j + 1, r >= j];
+            let include = [
+                j >= (ny / 4).max(1) && j <= (3 * ny / 4).max(1),
+                i >= nx / 4 && i <= 3 * nx / 4,
+                (j <= ny / 2 && i <= nx / 2) || (j > ny / 2 && i > nx / 2),
+                (j > ny / 2 && i <= nx / 2) || (j <= ny / 2 && i > nx / 2),
+            ];
+            for k in 0..4 {
+                if v > mean {
+                    if up[k] { nu[k] += 1; }
+                    if down[k] { nd[k] += 1; }
+                }
+                if include[k] {
+                    nt[k] += 1;
+                    if v > mean { nw[k] += 1; }
+                }
+            }
+        }
+    }
+    if nx < 4 {
+        // Same native column-zero alias as reduce_box (:1164-1166), now against box_mean.
+        for j in 1..=ny {
+            let v = if j == 1 { 0.0 } else { topo[((j - 1) * nx - 1) as usize] };
+            nt[1] += 1;
+            if v > mean { nw[1] += 1; }
+        }
+    }
+    let mut elvmax = topo[0];
+    for &v in topo {
+        if v > elvmax { elvmax = v; }
+    }
+    let var2d = if hratio < 4.0 { base.var2d * hratio * 0.25 } else { base.var2d };
+    Ok(CellStats {
+        var2d,
+        con: base.con,
+        oa: std::array::from_fn(|k| if nu[k] + nd[k] > 0 {
+            (nu[k] - nd[k]) as f32 / (nu[k] + nd[k]) as f32
+        } else { 0.0 }),
+        ol: std::array::from_fn(|k| nw[k] as f32 / nt[k] as f32),
+        land: base.land,
+        elvmax,
+    })
 }
 
 /// Entire active reduction, not separately selectable routines.
@@ -259,6 +362,7 @@ pub fn reduce_box(topo: &[f32], landuse: &[i32], nx: i64, ny: i64) -> MpasResult
         }),
         ol: std::array::from_fn(|k| nw[k] as f32 / nt[k] as f32),
         land: u8::from(xland >= 0.5),
+        elvmax: 0.0,
     })
 }
 
@@ -463,10 +567,26 @@ impl NativeMesh {
             max_edges,
         })
     }
+    /// Per-cell (box diameter, hratio) for a recipe: v8.4.2 boxes use dc; PR #1408 widens thin ones.
+    pub fn box_diameters(&self, recipe: GwdRecipe) -> Vec<(f32, f32)> {
+        self.dc.iter().map(|&dc| match recipe {
+            GwdRecipe::V842 => (dc, f32::INFINITY),
+            GwdRecipe::Kim2026 => kim_box_diameter(dc),
+        }).collect()
+    }
+    /// Cells whose box has fewer than 4 rows (native OL1 reads row zero there, :1126-1128).
+    pub fn thin_box_cells(&self, recipe: GwdRecipe) -> Vec<usize> {
+        let dcs = self.box_diameters(recipe);
+        (0..self.lat.len()).filter(|&c| box_size(self.lat[c], dcs[c].0).1 < 4).collect()
+    }
     pub fn minimum_band_rows(&self) -> MpasResult<i64> {
+        self.minimum_band_rows_for(GwdRecipe::V842)
+    }
+    pub fn minimum_band_rows_for(&self, recipe: GwdRecipe) -> MpasResult<i64> {
+        let dcs = self.box_diameters(recipe);
         let mut most = 1;
         for c in 0..self.lat.len() {
-            let (nx, ny) = box_size(self.lat[c], self.dc[c]);
+            let (nx, ny) = box_size(self.lat[c], dcs[c].0);
             if nx < 1 || ny < 1 || ny > NY {
                 return Err(MpasError::Refusal(
                     "native GWD box must be nonempty and may reflect across at most one pole"
@@ -528,7 +648,8 @@ pub fn compute(
     let lu = GeogDataset::open(&cfg.landuse)?;
     validate_dataset(&topo, true)?;
     validate_dataset(&lu, false)?;
-    let needed = mesh.minimum_band_rows()?;
+    let dcs = mesh.box_diameters(cfg.recipe);
+    let needed = mesh.minimum_band_rows_for(cfg.recipe)?;
     if band_rows < needed {
         return Err(MpasError::Refusal(format!(
             "native GWD granted {band_rows} rows but complete reflected boxes require {needed}; shorter bands would substitute zero terrain"
@@ -537,7 +658,7 @@ pub fn compute(
     let n = mesh.lat.len();
     let max_box_bytes = (0..n)
         .map(|c| {
-            let (nx, ny) = box_size(mesh.lat[c], mesh.dc[c]);
+            let (nx, ny) = box_size(mesh.lat[c], dcs[c].0);
             (nx * ny) as u64 * 8
         })
         .max()
@@ -570,7 +691,7 @@ pub fn compute(
         .map_err(|e| MpasError::Refusal(format!("cannot create native GWD worker pool: {e}")))?;
     let geometry: Vec<_> = (0..n)
         .map(|c| {
-            let (nx, ny) = box_size(mesh.lat[c], mesh.dc[c]);
+            let (nx, ny) = box_size(mesh.lat[c], dcs[c].0);
             let (ic, jc) = centre(mesh.lat[c], mesh.lon[c]);
             (ic, jc, nx, ny)
         })
@@ -583,7 +704,8 @@ pub fn compute(
             con: 0.0,
             oa: [0.0; 4],
             ol: [0.0; 4],
-            land: 0
+            land: 0,
+            elvmax: 0.0,
         };
         n
     ];
@@ -623,7 +745,10 @@ pub fn compute(
                 tt[k] = t[(row + topo_i) as usize]; ll[k] = l[(row + ii-1) as usize];
                 if tt[k].is_nan() || ll[k] == -1 { return Err(MpasError::Refusal(format!("native GWD source tile missing at pixel ({ii},{jj}); zero-fill would create false drag fields"))); }
             } }
-            Ok((c, reduce_box(&tt, &ll, nx, ny)?))
+            Ok((c, match cfg.recipe {
+                GwdRecipe::V842 => reduce_box(&tt, &ll, nx, ny)?,
+                GwdRecipe::Kim2026 => reduce_box_kim(&tt, &ll, nx, ny, dcs[c].1)?,
+            }))
         }).collect());
         for (c, s) in results? {
             stats[c] = s;
@@ -638,6 +763,10 @@ pub fn compute(
         con: stats.iter().map(|s| s.con as f64).collect(),
         oa: std::array::from_fn(|k| stats.iter().map(|s| s.oa[k] as f64).collect()),
         ol: std::array::from_fn(|k| stats.iter().map(|s| s.ol[k] as f64).collect()),
+        elvmax: match cfg.recipe {
+            GwdRecipe::V842 => Vec::new(),
+            GwdRecipe::Kim2026 => stats.iter().map(|s| s.elvmax as f64).collect(),
+        },
         hlanduse: land,
         smoothed_cells: smoothed,
         smooth_skipped_boundary_cells: 0,
@@ -662,6 +791,7 @@ pub struct OverlayReceipt {
     pub smoothed_cells: usize,
     pub topo_shift: i64,
     pub cell_scaling: f32,
+    pub recipe: GwdRecipe,
     pub rkind_bytes: u8,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub native_undefined_ol1_cells: Vec<usize>,
@@ -685,20 +815,41 @@ pub fn write_overlay(
         )));
     }
     let mesh = NativeMesh::read(grid, cfg.cell_scaling)?;
-    let rows = mesh.minimum_band_rows()?.max(768);
+    // Bands only tile the source reads (values are band-independent). At the bare minimum a coarse
+    // mesh's ~1,000-row boxes leave ~10 cells per band, so the overlay re-read the 30" globe ~30 times
+    // (x1.2562, PR #1408 scaling 2.0: 15 GB read, >8 min against native's 2 min single-thread). A
+    // 4096-row floor (1.4 GB of band) keeps each source row read a few times at most.
+    let rows = mesh.minimum_band_rows_for(cfg.recipe)?.max(4096).min(NY);
     let fields = compute(cfg, &mesh, rows, progress)?;
-    let names = [
+    let mut names = vec![
         "var2d", "con", "oa1", "oa2", "oa3", "oa4", "ol1", "ol2", "ol3", "ol4",
     ];
+    if cfg.recipe == GwdRecipe::Kim2026 { names.push("elvmax"); }
+    // elvmax carries its MPAS PR #1408 Registry units and description, as the full static writes them (the
+    // ten v8.4.2 fields stay exactly as the overlay always wrote them).
     let vars = names
         .iter()
-        .map(|&name| NcVarDef::new(name, NcType::Float, vec![0]))
+        .map(|&name| {
+            let v = NcVarDef::new(name, NcType::Float, vec![0]);
+            if name == "elvmax" {
+                v.with_attrs(vec![
+                    NcAttr::text("units", "m"),
+                    NcAttr::text("long_name", "elevation maximum over a grid cell"),
+                ])
+            } else {
+                v
+            }
+        })
         .collect();
+    let dcs = mesh.box_diameters(cfg.recipe);
     let undefined_ol1: Vec<usize> = (0..mesh.lat.len())
-        .filter(|&c| box_size(mesh.lat[c], mesh.dc[c]).1 < 4).collect();
+        .filter(|&c| box_size(mesh.lat[c], dcs[c].0).1 < 4).collect();
     let mut attrs = vec![
         NcAttr::text("rw_mpas_gwd_role", "native-gwd-overlay-not-runnable-static"),
-        NcAttr::text("rw_mpas_gwd_source", "MPAS-A v8.4.2 mpas_init_atm_gwd.F f34984b RKIND=4"),
+        NcAttr::text("rw_mpas_gwd_source", match cfg.recipe {
+            GwdRecipe::V842 => "MPAS-A v8.4.2 mpas_init_atm_gwd.F f34984b RKIND=4",
+            GwdRecipe::Kim2026 => "MPAS-A v8.4.2 mpas_init_atm_gwd.F f34984b + MPAS-Model PR #1408 (INIT_GWDO) RKIND=4",
+        }),
     ];
     if !undefined_ol1.is_empty() {
         attrs.push(NcAttr::text("rw_mpas_native_undefined", "EXCLUSIONS PROPOSED FOR OWNER SIGN-OFF: OL1 row zero, mpas_init_atm_gwd.F:1126-1128; case-specific sign-off required"));
@@ -728,6 +879,9 @@ pub fn write_overlay(
             NcData::Floats(&fields.ol[k].iter().map(|&v| v as f32).collect::<Vec<_>>()),
         )?;
     }
+    if !fields.elvmax.is_empty() {
+        w.put("elvmax", NcData::Floats(&fields.elvmax.iter().map(|&v| v as f32).collect::<Vec<_>>()))?;
+    }
     w.finish()?;
     Ok(OverlayReceipt {
         schema: "rw-mpas-native-gwd/v1",
@@ -739,6 +893,7 @@ pub fn write_overlay(
         smoothed_cells: fields.smoothed_cells,
         topo_shift: cfg.topo_shift,
         cell_scaling: cfg.cell_scaling,
+        recipe: cfg.recipe,
         rkind_bytes: 4,
         native_undefined_exclusion_status: (!undefined_ol1.is_empty())
             .then_some("PROPOSED FOR OWNER SIGN-OFF: case-specific sign-off required"),

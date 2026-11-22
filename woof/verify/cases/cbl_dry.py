@@ -273,7 +273,7 @@ def compare(outdir=None, *, schemes=(1,)) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 # Gray-zone partition sweep (campaign deliverable D1).
 #
-# The instrument registered by docs/superpowers/specs/
+# The instrument registered by docs/internal/specs/
 # 2026-08-02-sase-grayzone-campaign.md section 2 (I1): the same dry CBL,
 # widened to 64 x 64 columns and run across a declared dx ladder, scored
 # by the Honnert et al. (2011) partition construction that
@@ -342,7 +342,7 @@ def sweep_config(dx_m: float, bl_pbl_physics: int) -> RunConfig:
     # Shin-Hong (11) that fall-through is the DECLARED reading, not an
     # accident: vertical transport from the PBL scheme with horizontal
     # Smagorinsky is the configuration class Shin & Hong (2015) ran
-    # (registered in docs/superpowers/specs/
+    # (registered in docs/internal/specs/
     # 2026-08-03-shinhong-grayzone-expectation.md), so the predicate
     # stays exactly SASE-only.
     supplies_own_mixing = bl_pbl_physics == SASE_PBL_SCHEME

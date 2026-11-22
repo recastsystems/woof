@@ -24,7 +24,7 @@ model grid; the entry's ``weight`` turns the source's units into WRF's
 ``emis_ant`` units before WRF's own expression runs (for a flux in
 kg m-2 s-1: 1e9 to ug m-2 s-1, or ``1e6 * 3600 / (M/1000)`` to
 mol km-2 hr-1 for a gas of molar mass ``M`` g mol-1).  That conversion is
-WOOF's and is written in the row, next to the source it converts.
+WOOF-ArWen's and is written in the row, next to the source it converts.
 """
 
 from __future__ import annotations

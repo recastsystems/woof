@@ -64,6 +64,13 @@ def _mesh(arguments: argparse.Namespace):
     return Mesh.from_netcdf(arguments.grid, arguments.static)
 
 
+def version_line() -> str:
+    """``woof hex X.Y.Z``: the installed distribution and its version, read from the package's own metadata."""
+    from . import DISTRIBUTION_NAME, __version__
+
+    return f"{DISTRIBUTION_NAME} {__version__}"
+
+
 def _version(arguments: argparse.Namespace) -> int:
     from . import DISTRIBUTION_NAME, __version__
     from .forecast_door import PROJECT_ROOT
@@ -302,10 +309,14 @@ def _add_render_parser(commands: argparse._SubParsersAction) -> None:
 #:   (products without the drawing), ``add-nest`` beside export.
 #: * ``global`` and the doors after it compose every door above from a row;
 #:   ``regional`` is the limited-area counterpart of ``global``.
+#: * the differentiable-engine doors last (``tangent``, ``adjoint-test``, ``sensitivity``,
+#:   ``param-grad``): they replay a recorded forecast with its tangent and adjoint, so they come after the
+#:   doors that make forecasts.
 _DOORS: tuple[tuple[tuple[str, ...], Callable[[argparse._SubParsersAction], None]], ...] = (
     (("tc-verify",), _door(".tc_verify", "register_cli")),
     (("country",), _door(".country_door", "add_country_parser")),
     (("version",), _add_version_parser),
+    (("examples",), _door(".examples_door", "add_examples_parser")),
     (("verify-dycore", "verify-mpas"), _add_verify_parsers),
     (("doctor",), _door(".doctor", "add_doctor_parser")),
     (("mesh-plan",), _door(".mesh_plan_door", "add_mesh_plan_parser")),
@@ -340,6 +351,7 @@ _DOORS: tuple[tuple[tuple[str, ...], Callable[[argparse._SubParsersAction], None
     (("chem-sources",), _door(".chem_emissions", "add_parser")),
     (("global-cycle",), _door(".global_cycle", "add_global_cycle_parser")),
     (("regional",), _door(".regional_door", "add_regional_parser")),
+    (("tangent", "adjoint-test", "sensitivity", "param-grad"), _door(".ad_doors", "add_ad_parsers")),
 )
 
 
@@ -378,10 +390,12 @@ def build_parser(command: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="woof hex",
         description=(
-            "woof hex: front doors for the GPU-native global variable-resolution "
-            "model core (a port of MPAS-Atmosphere v8.4.2)"
+            "woof hex: WOOF-HEX-A (hexagonal mesh; A for Atmosphere, as in MPAS-A), front doors for the "
+            "GPU-native global variable-resolution model core (a port of MPAS-Atmosphere v8.4.2)"
         ),
     )
+    parser.add_argument("--version", action="version", version=version_line(),
+                        help="print the installed version and exit (the `version` door adds where it is installed)")
     parser.add_argument("--backend", choices=("cuda", "amd"),
                         help="execution backend (default: CUDA; AMD is experimental)")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -409,6 +423,46 @@ def _command_word(argv: Sequence[str]) -> str | None:
     return str(argv[0]) if argv and not str(argv[0]).startswith("-") else None
 
 
+#: Flags whose value is a signed coordinate list (LAT,LON[,...] or a S,N,W,E box).
+COORDINATE_FLAGS = frozenset({"--point", "--ellipse", "--blend-core", "--at", "--box"})
+
+
+def join_negative_coordinates(argv: Sequence[str]) -> list[str]:
+    """``--point -33.87,151.21`` as ``--point=-33.87,151.21``.
+
+    argparse reads a token that starts with ``-`` as an option unless it matches its negative-number pattern
+    (``^-\\d+$|^-\\d*\\.\\d+$``), which a comma-separated pair never does.  Only a coordinate flag followed by a
+    token made wholly of comma-separated numbers is joined, so ``--point --help`` still errors as it should.
+
+    THE BREAKAGE THIS PREVENTS (found 2026-11-15 beside the gpuwm 3.0.3 first-contact fixes; WOOF-ArWen's door joins
+    these the same way): ``woof hex regional --point -33.9,151.2`` (Sydney), or any point south of the equator,
+    stopped at ``argument --point: expected one argument``.
+    """
+
+    def numeric(token: str) -> bool:
+        fields = token.split(",")
+        if not token.startswith("-") or not 1 <= len(fields) <= 5:
+            return False
+        try:
+            [float(field) for field in fields]
+        except ValueError:
+            return False
+        return True
+
+    argv = [str(token) for token in argv]
+    joined: list[str] = []
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token in COORDINATE_FLAGS and index + 1 < len(argv) and numeric(argv[index + 1]):
+            joined.append(f"{token}={argv[index + 1]}")
+            index += 2
+            continue
+        joined.append(token)
+        index += 1
+    return joined
+
+
 NUMERICS_HELP = (
     "kernel numerics: 'fast' (the default) compiles with FMA contraction and flush-to-zero (IEEE division and "
     "square root kept; land surface keeps its subnormals); 'strict' compiles every kernel the way the bitwise "
@@ -417,7 +471,7 @@ NUMERICS_HELP = (
 
 
 def _add_numerics_option(commands: argparse._SubParsersAction) -> None:
-    """``--numerics {fast,strict}`` on every door (owner ruling 2026-10-16: strict is opt-in)."""
+    """``--numerics {fast,strict}`` on every door (strict is opt-in)."""
     for sub in commands.choices.values():
         if any("--numerics" in action.option_strings for action in sub._actions):
             continue
@@ -454,8 +508,34 @@ def _fold_stochastic_switches(arguments: argparse.Namespace) -> None:
     arguments.stochastic = json.dumps(current, sort_keys=True)
 
 
+def _streams_write_any_text() -> None:
+    """Let an output stream that is not UTF-8 write every character the doors print.
+
+    THE BREAKAGE THIS PREVENTS (0.6.2's check, Windows 11, Python 3.13): with its output piped or sent to a file,
+    Python on Windows writes in the ANSI code page (cp1252), and ten doors' ``--help`` (forecast, global, regional,
+    country, mesh-plan, pair, products, s2s, run-plan, global-cycle) stopped with ``UnicodeEncodeError`` on the arrow
+    in their help text, exit 1, before printing it. Such a stream now writes a character it cannot encode as a
+    backslash escape; a UTF-8 stream is left as it is.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "").replace("_", "")
+        if encoding.startswith("utf8") or not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, OSError, ValueError):
+            pass
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _streams_write_any_text()
     argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] == "--version":
+        # Answered here, before the engine is imported or any door's parser is built: the word a user types to
+        # learn what is installed works in an install whose engine is missing or broken. It used to print the
+        # usage line and exit 2.
+        print(version_line())
+        return 0
     try:
         from woof.backend import consume_backend_option
         argv = consume_backend_option(argv, local_backend_commands=("verify-dycore",))
@@ -492,6 +572,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _main_once(argv: Sequence[str]) -> int:
+    argv = join_negative_coordinates(argv)
     try:
         parser = build_parser(_command_word(argv))
     except ModuleNotFoundError as error:

@@ -70,16 +70,23 @@ PUBLIC_SOURCES = (
 )
 # The Fortran fixture generator uses a pinned scalar reference runtime.
 # A host runtime can change log10(real32), and therefore freeze-table words.
+#: Each package is fetched from its Launchpad librarian object, which keeps
+#: every binary Ubuntu has published.  The archive pool drops a version once
+#: a newer one supersedes it: libc6 2.35-0ubuntu3.15 answered 404 there on
+#: 2026-11-14, so the pinned runtime could no longer be prepared.  The
+#: librarian answers the object's length, which the size pin needs; the
+#: launchpad.net/+files/ redirect in front of it does not.  The sha256 and
+#: byte pins are unchanged.
 REFERENCE_RUNTIME_ASSETS = (
     (TableAsset("libc6_2.35-0ubuntu3.15_amd64.deb", 3234380,
                 "79e35256227e16a607c154cdeb8d76ff12d20e31de286ea7fd9ad3b96fe0452d"),
-     "https://archive.ubuntu.com/ubuntu/pool/main/g/glibc/"),
+     "https://launchpadlibrarian.net/875852022/"),
     (TableAsset("libgfortran5_12.3.0-1ubuntu1~22.04.3_amd64.deb", 878662,
                 "14dbb269458f60ca64af646c9300b8b85dd962ddbb434ba362062a54c07c4db6"),
-     "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-12/"),
+     "https://launchpadlibrarian.net/843559187/"),
     (TableAsset("libquadmath0_12.3.0-1ubuntu1~22.04.3_amd64.deb", 153976,
                 "c4c59e67e76674c8c494ce5e0415b71d770a759b48893c0d3cbabddceeb690b2"),
-     "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-12/"),
+     "https://launchpadlibrarian.net/843559196/"),
 )
 
 REFERENCE_RUNTIME_SCRIPT = r"""#!/usr/bin/env bash

@@ -1,6 +1,6 @@
 """CUDA graph capture of the tiled step: pay the launch cost once, not per tile.
 
-WOOF's step issues ~1,203 kernel launches and the profile in PERF-SURVEY.md
+WOOF-ArWen's step issues ~1,203 kernel launches and the profile in PERF-SURVEY.md
 measures a 26% dead gap between them -- 6.34 us of idle per launch against
 24.1 us of device work.  That gap is host submission cost, and a tiled sweep
 pays it ONCE PER TILE: the same 1,203 launches are re-issued for every tile in

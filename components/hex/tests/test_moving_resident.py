@@ -415,3 +415,130 @@ def test_gpu_driver_budget_excludes_global_mesh_parent_and_shared_host_aliases()
     mesh = SimpleNamespace(arrays={'local':local}, partition_source_mesh=SimpleNamespace(arrays={'all':parent}))
     grid = SimpleNamespace(vertical_grid=SimpleNamespace(zz=local), terrain_metrics=SimpleNamespace(zb_cell=local))
     assert _driver_input_bytes((mesh,grid,None,SimpleNamespace(rho=local),None,None,('qv',))) == local.nbytes
+
+
+# Brought from fork jacobbieker/woof PR 497 (Apache-2.0), environment names ours.
+def test_a_move_to_another_member_than_the_record_named_renames_the_record(tmp_path):
+    """The record named member A, the policy moved to B: A's record goes and B's is named before the verdict.
+
+    THE BREAKAGE THIS PREVENTS (Milton 2024, 96 km global, 2026-11-15): name_resident_move dropped A's record and
+    returned, so the stop found no record for B, the process sealed its carrier to the file and exited, and 2 of
+    the 6 moves started a cold process.
+    """
+    calls, events = [], []
+    (tmp_path / 'control').mkdir()
+    record = tmp_path / 'control' / moving_run.RESIDENT_NEXT
+    record.write_text(json.dumps(dict(member='A')))
+    proc = SimpleNamespace(poll=lambda: None)
+    ctl = SimpleNamespace(a=SimpleNamespace(resident=True), current_seg=tmp_path, current_proc=proc,
+                          prelaunched=dict(proc=proc, seg=tmp_path / 'next', target='A', resident=True),
+                          state=dict(current='S', members=dict(S=dict(grid='g'))),
+                          operator_path=lambda s, t: f'{s}--{t}', resident_ready=lambda: True,
+                          event=lambda name, **kw: events.append(name))
+    ctl.drop_prelaunch = lambda why: moving_run.Controller.drop_prelaunch(ctl, why)
+
+    def launch(kind, **kw):
+        calls.append(kw['member_name'])
+        return proc, tmp_path / 'next', tmp_path / 'next' / 'control', dict(index=1, resident=True)
+    ctl.launch = launch
+    moving_run.Controller.name_resident_move(ctl, 'B', 3600.0, tmp_path / 'control')
+    assert not record.exists()
+    assert calls == ['B']
+    assert ctl.prelaunched['target'] == 'B'
+    assert events == ['prelaunch-dropped', 'prelaunch']
+
+
+def test_the_preparation_is_skipped_when_the_host_has_no_room_for_a_second_copy(monkeypatch):
+    # Milton 2024 at 96 km: a 30 GB segment prepared a second 30 GB copy beside itself on a host with ~15 GB free
+    # and was OOM-killed at moves.  Before any preparation the copy is priced at the resident set, then at the last
+    # preparation's measured growth; the reserve is on top; the gate can be turned off.
+    GiB = 2**30
+    monkeypatch.delenv('WOOF_HEX_MOVING_PREPARE_HOST_GATE', raising=False)
+    monkeypatch.delenv('WOOF_HEX_MOVING_PREPARE_HOST_RESERVE_GB', raising=False)
+    gate = resident.preparation_host_gate(available=15 * GiB, rss=30 * GiB)
+    assert not gate['admitted'] and gate['priced_from'] == 'resident set' and gate['need_bytes'] == 30 * GiB
+    assert resident.preparation_host_gate(available=33 * GiB, rss=30 * GiB)['admitted']
+    assert not resident.preparation_host_gate(available=31 * GiB, rss=30 * GiB)['admitted']   # the 2 GiB reserve
+    resident._R.prep_host_bytes = 10 * GiB
+    gate = resident.preparation_host_gate(available=15 * GiB, rss=30 * GiB)
+    assert gate['admitted'] and gate['priced_from'] == 'last preparation'
+    from woof.core import preflight
+    monkeypatch.setattr(preflight, 'host_available_bytes', lambda: None)
+    assert resident.preparation_host_gate(rss=30 * GiB)['admitted']   # an unknown is not a refusal
+    monkeypatch.setenv('WOOF_HEX_MOVING_PREPARE_HOST_GATE', '0')
+    resident._R.prep_host_bytes = None
+    assert resident.preparation_host_gate(available=1, rss=30 * GiB)['admitted']
+
+
+def test_a_skipped_preparation_leaves_nothing_prepared_and_is_logged_once(tmp_path, monkeypatch):
+    import threading
+    spec = dict(index=3, member='m03')
+    calls = []
+    monkeypatch.setattr(resident, 'next_spec', lambda control: spec)
+    monkeypatch.setattr(resident, 'preparation_host_gate', lambda: dict(admitted=False, need_bytes=1))
+    monkeypatch.setattr(resident, '_log', calls.append)
+    monkeypatch.setattr(resident, '_prepare_safely', lambda s: pytest.fail('a skipped preparation ran'))
+    resident._R.current.update(decode=object(), mesh=object())
+    resident._R.prepared['decode'] = dict(key='stale', value=None)
+    stop = threading.Event()
+    watcher = threading.Thread(target=resident._watch, args=(tmp_path, stop))
+    watcher.start()
+    deadline = __import__('time').monotonic() + 10
+    while not calls and __import__('time').monotonic() < deadline:
+        stop.wait(0.1)
+    stop.wait(1.5)
+    stop.set()
+    watcher.join(timeout=5)
+    assert len(calls) == 1 and calls[0]['preparation_skipped']['segment'] == 3
+    assert resident._R.prepared == {} and resident._R.prep_spec is None and resident._R.prep_thread is None
+
+
+def test_the_host_heap_trim_reports_the_resident_set_on_linux_and_nothing_elsewhere():
+    import sys
+    trimmed = resident.trim_host_heap()
+    if sys.platform.startswith('linux'):
+        assert trimmed is not None and trimmed['seconds'] >= 0
+    else:
+        assert trimmed is None
+    assert resident.process_rss_bytes() is None or resident.process_rss_bytes() > 0
+
+
+@pytest.mark.parametrize('prepared_for', ['mn1', 'mn2'])
+def test_the_continuation_drops_a_preparation_made_for_another_member(tmp_path, monkeypatch, prepared_for):
+    old = tmp_path / 'segment-000'
+    new = tmp_path / 'segment-001'
+    (old / 'control').mkdir(parents=True)
+    (new / 'control').mkdir(parents=True)
+    monkeypatch.setenv('WOOF_HEX_MOVING_CONTROL', str(old / 'control'))
+    monkeypatch.setattr(os, 'dup2', lambda *a: None)
+    monkeypatch.setattr(resident, 'release_device_memory', lambda: None)
+    spec = dict(schema=resident.SPEC_SCHEMA, member='mn1', index=1, argv=['forecast'], segment=str(new),
+                env={'WOOF_HEX_MOVING_CONTROL': str(new / 'control')})
+    resident._R.continuation = spec
+    resident._R.prep_spec = dict(spec, member=prepared_for)
+    resident._R.prepared['inputs'] = dict(key='k', value=object())
+    resident.next_segment()
+    resident._R.watch_stop.set()
+    assert ('inputs' in resident._R.prepared) == (prepared_for == 'mn1')
+
+
+def test_a_preparation_whose_resident_set_did_not_grow_keeps_the_last_estimate(monkeypatch):
+    import time
+    rss = [10]
+    monkeypatch.setattr(resident, 'process_rss_bytes', lambda: rss[0])
+    monkeypatch.setattr(resident, 'prepare', lambda spec: None)
+    resident._prepare_safely({})
+    assert resident._R.prep_host_bytes is None
+
+    def transient(spec):   # a temporary freed before the preparation returns is its peak, and so its price
+        rss[0] = 50
+        time.sleep(2.5)
+        rss[0] = 30
+    monkeypatch.setattr(resident, 'prepare', transient)
+    rss[0] = 10
+    resident._prepare_safely({})
+    assert resident._R.prep_host_bytes == 40
+    GiB = 2**30
+    resident._R.prep_host_bytes = 8 * GiB   # priced with the 1.25 margin: 10 GiB plus the 2 GiB reserve
+    assert not resident.preparation_host_gate(available=11 * GiB, rss=1)['admitted']
+    assert resident.preparation_host_gate(available=13 * GiB, rss=1)['admitted']

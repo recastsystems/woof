@@ -213,30 +213,6 @@ def test_the_fraction_gate_takes_the_limit_not_the_host(tmp_path, monkeypatch):
     HS.check_allocatable(int(0.47 * 2 * HS.GIB), reserve_bytes=0)
 
 
-@pytest.mark.parametrize("case", _HOST_MEMORY_CASES,
-                         ids=[case["name"] for case in _HOST_MEMORY_CASES])
-def test_the_diagnostics_read_the_same_walk(tmp_path, monkeypatch, case):
-    """THE BREAKAGE: the DA ensemble report read only the mount root's
-    ``memory.max`` and the node probe kept its own walk that read cgroup v1
-    only at the mount root, so inside a capped scope the report said no
-    limit applied and the probe missed a v1 limit on the process's own
-    cgroup, while the planner and the store capped at it.  Both read the
-    planner's walk now, and the report still sets the uncapped host figure
-    beside the limit."""
-    from tilestream import da_stream, node_probe
-
-    info = _stand_in(tmp_path, monkeypatch, case)
-
-    limit, how = node_probe.cgroup_memory_limit()
-    assert limit == case["limit"], how
-    report = da_stream.container_memory_limit()
-    assert report["cgroup_bytes"] == case["limit"]
-    assert report["cgroup_room_bytes"] == case["headroom"]
-    assert (report["cgroup_path"] is None) == (case["limit"] is None)
-    assert report["meminfo_total"] == info["MemTotal"]
-    assert report["pinned_ceiling"] == HS.pinned_ceiling_bytes()
-
-
 def test_the_endurance_trace_reads_its_own_cgroup_usage(tmp_path, monkeypatch):
     """THE BREAKAGE: the endurance trace's cgroup column read the mount
     root's ``memory.current``, which a cgroup v2 root does not have, so in a

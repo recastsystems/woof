@@ -6,7 +6,7 @@ twice and comparing bytes is the standing corruption detector; a
 mismatch is a corruption finding that stops the claim, full stop.
 
 The screen this reproduces is the one the shipped 250 m demonstration
-committed (`docs/superpowers/receipts/les/inflow-fetch/dual_run_screen.txt`)
+committed (`docs/internal/receipts/les/inflow-fetch/dual_run_screen.txt`)
 and reports the same lines. That script lived in a measurement-wave
 scratch directory and was rewritten from scratch each campaign, which is
 how the same misclassification could be re-made twice; this is that

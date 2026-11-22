@@ -314,6 +314,66 @@ class SameHostRankExecution(RankExecution):
 
     def _streams_type(self):
         execution = self
+        from . import per_rank_output
+        if per_rank_output.enabled():
+            class PerRankPhysicsStreams(PhysicsStreams):
+                """Every rank writes its own owned NetCDF shard directly (zero rank-0 assembly)."""
+
+                gathers_first_call = True
+                _per_rank_output = True
+
+                def __init__(self, session, streams, output, **options):
+                    super().__init__(session, streams, output, **options)
+                    owned = copy(self.layout)
+                    owned.dimensions = dict(self.layout.dimensions)
+                    for entity in _ENTITY_MAPS:
+                        owned.dimensions[entity] = self.layout.dimensions[entity + 'Solve']
+                    self.layout = owned
+                    self.mesh = copy(self.mesh)
+                    self.mesh.dimensions = dict(owned.dimensions)
+                    self._rank_map_path = per_rank_output.write_rank_map(
+                        self.output, execution.rank, execution.partitions[execution.rank],
+                        execution.global_layout, n_ranks=len(execution.partitions),
+                    )
+                    self._rank_attrs = per_rank_output.rank_global_attrs(
+                        execution.rank, len(execution.partitions), execution.global_layout,
+                    )
+
+                def _assemble(self, local):
+                    return per_rank_output.remap_owned_connectivity(
+                        local, execution.partitions[execution.rank], self.rows, execution.global_layout,
+                    )
+
+                def _read_first_call(self, names):
+                    return super()._read_first_call(names)
+
+                def _encode(self, jobs, snapshot, when, step, *extra, **options):
+                    self._bind_file_attributes(jobs)
+                    rewritten = []
+                    for stream, target, record in jobs:
+                        rank_path = per_rank_output.rank_target(target, execution.rank)
+                        attrs = dict(self._file_attributes.get(target, self.attrs))
+                        attrs.update(self._rank_attrs)
+                        self._file_attributes[rank_path] = attrs
+                        rewritten.append((stream, rank_path, record))
+                    return super()._encode(rewritten, snapshot, when, step, *extra, **options)
+
+                def _publish_closed(self, jobs, step):
+                    from ..history_writer import mark_closed_frame_durable
+                    from .streams_output_v842 import _one_frame_per_file
+                    waiting = getattr(self, '_publish_after', None)
+                    previous = None if waiting is None else waiting.pop(step, None)
+                    if previous is not None:
+                        previous.wait()
+                    ready_file = self.output / f'history-ready.rank{execution.rank:04d}.jsonl'
+                    for stream, target, record in jobs:
+                        if stream.name != 'output' or record != 0 or not _one_frame_per_file(stream):
+                            continue
+                        mark_closed_frame_durable(target)
+                        with ready_file.open('a', encoding='utf-8') as ready:
+                            ready.write(json.dumps({'step': int(step), 'rank': int(execution.rank), 'path': str(target)}) + '\n')
+
+            return PerRankPhysicsStreams
 
         class GatheredPhysicsStreams(PhysicsStreams):
             """Every rank snapshots its owned words; rank 0 writes the global frame."""
@@ -395,7 +455,7 @@ def assemble_snapshot(snapshots, partitions, rows, global_layout, *, workers=Non
     Fields are assembled concurrently (each into its own global array; numpy's take and scatter release the
     GIL), and each rank's owned words are a view of its leading entities, not a copy.  THE BREAKAGE THIS
     PREVENTS: one host thread copied and scattered every word of a frame while every rank waited, so a 60 km
-    MPAS-suite frame on 2 cards stalled the step 1.55 s (0.31 s on one card), 1.54x the WOOF route's
+    MPAS-suite frame on 2 cards stalled the step 1.55 s (0.31 s on one card), 1.54x the WOOF-ArWen route's
     2-card mean step (MPAS-ROUTE-SPEED-2026-10-24).  The words written are the serial assembly's.  ``workers=1`` keeps
     the serial assembly.
     """
@@ -492,6 +552,50 @@ def _host_arrays(value, out, seen, depth=0):
         _host_arrays(item, out, seen, depth + 1)
     return out
 
+def _parent_rss_gib():
+    try:
+        with open('/proc/self/status') as handle:
+            for line in handle:
+                if line.startswith('VmRSS:'):
+                    return int(line.split()[1]) / 1048576.0
+    except OSError:
+        pass
+    return float('nan')
+
+
+def _release_restored(moving, moving_state):
+    """GPUWM_HEX_RESTART_RELEASE (speed_words): what a same-host resume's parent stops holding before the ranks start.
+
+    Every rank's share of the restored words, the precipitation window, the output accumulators and the ocean state
+    is in its own pool.rank<r>/moving-restore.pickle by now (project_restored_pools), which is all a rank reads
+    (DistributedMoving.restore_physics); each rank route carries its own rank_carrier.  The global copies had no
+    reader left, yet moving_state goes to every rank process in its launch, and the door's route kept the whole
+    restored carrier.  THE BREAKAGE THIS PREVENTS (the 2.5-million-column CONUS globe resumed from its 81 GB
+    seal on 8 ranks): the parent held 305 GiB and was killed; with this release it peaked at 219 GiB, rc 0.
+    Returns the MiB let go (receipt only).
+    """
+    import gc
+    mib = 0.0
+    for key in ('restored', 'accumulators', 'window', 'ocean_pwp'):
+        value = moving_state.get(key)
+        if value is None:
+            continue
+        try:
+            mib += sum(int(getattr(v, 'nbytes', 0)) for v in (value.values() if isinstance(value, dict) else [value]))
+        except Exception:
+            pass
+        moving_state[key] = {} if key == 'restored' else None
+    if getattr(moving, 'carrier', None) is not None:
+        moving.carrier = None
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').malloc_trim(0)
+    except Exception:
+        pass
+    return round(mib / 1048576.0, 1)
+
+
 def _released_host_bytes(inputs, cuts, prepared, executor):
     """MiB of host arrays the forecast parent stops holding once the ranks' inputs are prepared (receipt only).
 
@@ -522,7 +626,7 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
     from ..physics_suites import load_table
 
     if getattr(arguments, 'samehost_reference', None):
-        raise ValueError('MPAS-physics same-host receipts cannot claim the WOOF reference fingerprint format')
+        raise ValueError('MPAS-physics same-host receipts cannot claim the WOOF-ArWen reference fingerprint format')
     # A row whose native layout prepare reads halo-ring ends (the RRFS fork) gets each rank's real ends;
     # partition_layout drops the global layout's empty-halo ends.
     ring_ends = getattr(config, 'native_layout_prepare', None) is not None
@@ -600,73 +704,135 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
 
     # The side thread always finishes (shutdown waits) before this function goes on or raises, so no projection
     # write is left running into the job directory; a projection error is raised at result().
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix='hex-project-payloads') as side:
-        projection_future = side.submit(projection)
-        inputs = runtime.load_native_dynamics_inputs(arguments, layout, payload,
-            keep_initialized_deformation=runtime.keeps_initialized_deformation(row))
-        mesh = inputs[0]
-        declarations = dict(getattr(mesh, 'variable_dimensions', {}) or {})
-        for name in ('defc_a', 'defc_b'):
-            if name in mesh.arrays:
-                declarations.setdefault(name, ('nCells', 'maxEdges'))
-        mesh.variable_dimensions = declarations
-        moving_state = None
-        if moving is not None:
-            from .moving_mpi_v842 import prepare_moving
-            inputs, moving_state = prepare_moving(moving, inputs, config, layout, payload, arguments)
-        from .cycling_v842 import recouple_analysis
-        inputs, analysis_receipt = recouple_analysis(arguments, layout, inputs, work_dir=job/'da-cycling')
-        shared_future = None
-        if executor == 'processes':
-            # The global mesh every child's partition is cut from (each local mesh's partition_source_mesh) goes to
-            # the children once, written while the projection and the rank cuts run (rank_processes.SharedObjects).
-            from ..rank_processes import SharedObjects
-            source_mesh = inputs[0]
-
-            def write_shared():
-                began_shared = time.perf_counter()
-                return (SharedObjects({'partition-source-mesh-0': source_mesh}, threads=32),
-                        time.perf_counter() - began_shared)
-            shared_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='hex-shared-objects')
-            shared_future = shared_pool.submit(write_shared)
-            shared_pool.shutdown(wait=False)
+    from . import per_rank_start as _per_rank_start
+    _per_rank_start.refuse_unsupported(layout, config)
+    _start_shards_dir = _per_rank_start.shard_dir()
+    _diet_start = _per_rank_start.enabled()
+    _direct_start_ready = (
+        _start_shards_dir is not None
+        and (_start_shards_dir / 'manifest.json').is_file()
+        and (_start_shards_dir / 'field_indices.pkl').is_file()
+        and moving is None
+        and not getattr(arguments, 'da_analysis', None)
+    )
+    if _direct_start_ready:
         tables = build_all(partitions) if tables is None else tables
-        indices = build_field_indices(partitions, mesh.arrays['cellsOnEdge'], tables=tables)
+        indices = _per_rank_start.load_field_indices(_start_shards_dir)
+        shared_future = None
+        moving_state = None
+        analysis_receipt = None
+        projection_seconds = 0.0
+        prepared = [None] * len(partitions)
+        for _r in local_ranks:
+            prepared[_r] = _per_rank_start.load_rank_start_shard(
+                _start_shards_dir, _r, partitions[_r], configs_before=configs_before
+            )
+        released = dict(direct_start_shards=str(_start_shards_dir), loaded_ranks=list(local_ranks))
+        print(f'woof hex: WOOF_HEX_START_SHARDS: loaded ranks {local_ranks} directly from {_start_shards_dir} '
+              '(zero whole-globe init load)', file=sys.stderr, flush=True)
+    else:
+        if _diet_start:
+            _pre_projected, _pre_projection_seconds = projection()
+        else:
+            _pre_projected, _pre_projection_seconds = None, None
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix='hex-project-payloads') as side:
+            projection_future = None if _pre_projected is not None else side.submit(projection)
+            inputs = runtime.load_native_dynamics_inputs(arguments, layout, payload,
+                keep_initialized_deformation=runtime.keeps_initialized_deformation(row))
+            mesh = inputs[0]
+            declarations = dict(getattr(mesh, 'variable_dimensions', {}) or {})
+            for name in ('defc_a', 'defc_b'):
+                if name in mesh.arrays:
+                    declarations.setdefault(name, ('nCells', 'maxEdges'))
+            mesh.variable_dimensions = declarations
+            moving_state = None
+            if moving is not None:
+                from .moving_mpi_v842 import prepare_moving
+                inputs, moving_state = prepare_moving(moving, inputs, config, layout, payload, arguments,
+                                                      partitions=partitions)
+            from .cycling_v842 import recouple_analysis
+            inputs, analysis_receipt = recouple_analysis(arguments, layout, inputs, work_dir=job/'da-cycling')
+            from . import per_rank_start
+            diet_start = per_rank_start.enabled()
+            shared_future = None
+            if executor == 'processes' and len(local_ranks) > 1 and not diet_start:
+                # The global mesh every child's partition is cut from (each local mesh's partition_source_mesh) goes to
+                # the children once, written while the projection and the rank cuts run (rank_processes.SharedObjects).
+                from ..rank_processes import SharedObjects
+                source_mesh = inputs[0]
 
-        # Every rank's inputs are cut while the payload projection is still running: local_inputs reads only the
-        # global inputs and the partition, never the projected pools.  THE COST THIS REMOVES (conus3km, 8 ranks,
-        # eight-card system, 2026-10-29): once the global inputs were read beside the pool transport, the projection (20-22 s)
-        # was the last thing running, and the 8 rank cuts (6-7 s) waited for it before starting.
-        def cut(rank):
-            began_cut = time.perf_counter()
-            return local_inputs(inputs, partitions[rank]), time.perf_counter() - began_cut
+                def write_shared():
+                    began_shared = time.perf_counter()
+                    return (SharedObjects({'partition-source-mesh-0': source_mesh}, threads=32),
+                            time.perf_counter() - began_shared)
+                shared_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='hex-shared-objects')
+                shared_future = shared_pool.submit(write_shared)
+                shared_pool.shutdown(wait=False)
+            tables = build_all(partitions) if tables is None else tables
+            indices = build_field_indices(partitions, mesh.arrays['cellsOnEdge'], tables=tables)
 
-        with ThreadPoolExecutor(max_workers=len(local_ranks)) as cutters:
-            cuts = dict(zip(local_ranks, cutters.map(cut, local_ranks)))
-        projected, projection_seconds = projection_future.result()
+            # Every rank's inputs are cut while the payload projection is still running: local_inputs reads only the
+            # global inputs and the partition, never the projected pools.  THE COST THIS REMOVES (conus3km, 8 ranks,
+            # eight-card system, 2026-10-29): once the global inputs were read beside the pool transport, the projection (20-22 s)
+            # was the last thing running, and the 8 rank cuts (6-7 s) waited for it before starting.
+            def cut(rank):
+                began_cut = time.perf_counter()
+                return local_inputs(inputs, partitions[rank]), time.perf_counter() - began_cut
 
-    def prepare(rank):
-        rank_began = time.perf_counter()
-        local_payload = job / f'pool.rank{rank}'
-        local_layout = projected[rank]
-        local_layout.samehost_partition = True
-        if ring_ends:
-            local_layout.halo_ends = rank_halo_ends(partitions[rank], mesh.arrays['cellsOnEdge'],
-                mesh.arrays['cellsOnVertex'], int(layout.configs['config_num_halos']))
-        local_layout.configs = dict(configs_before)
-        if moving_state is not None:
-            from .moving_mpi_v842 import project_restored_pools
-            project_restored_pools(moving_state, layout, partitions[rank], local_layout, local_payload)
-        local, cut_seconds = cuts[rank]
-        return local_layout, local_payload, local, time.perf_counter() - rank_began + cut_seconds
+            with ThreadPoolExecutor(max_workers=len(local_ranks)) as cutters:
+                cuts = dict(zip(local_ranks, cutters.map(cut, local_ranks)))
+            if _pre_projected is not None:
+                projected, projection_seconds = _pre_projected, _pre_projection_seconds
+            else:
+                projected, projection_seconds = projection_future.result()
 
-    prepared = [None] * len(partitions)
-    with ThreadPoolExecutor(max_workers=len(local_ranks)) as pool:
-        for rank, item in zip(local_ranks, pool.map(prepare, local_ranks)):
-            prepared[rank] = item
-    released = _released_host_bytes(inputs, [cuts[r] for r in local_ranks],
-                                    [prepared[r] for r in local_ranks], executor)
-    del cuts, inputs, mesh
+        def prepare(rank):
+            rank_began = time.perf_counter()
+            local_payload = job / f'pool.rank{rank}'
+            local_layout = projected[rank]
+            local_layout.samehost_partition = True
+            if ring_ends:
+                local_layout.halo_ends = rank_halo_ends(partitions[rank], mesh.arrays['cellsOnEdge'],
+                    mesh.arrays['cellsOnVertex'], int(layout.configs['config_num_halos']))
+            local_layout.configs = dict(configs_before)
+            if moving_state is not None:
+                from .moving_mpi_v842 import project_restored_pools
+                project_restored_pools(moving_state, layout, partitions[rank], local_layout, local_payload)
+            local, cut_seconds = cuts[rank]
+            if _diet_start and getattr(local[0], 'partition_source_mesh', None) is not None:
+                local[0].partition_source_mesh = None
+            return local_layout, local_payload, local, time.perf_counter() - rank_began + cut_seconds
+
+        prepared = [None] * len(partitions)
+        with ThreadPoolExecutor(max_workers=len(local_ranks)) as pool:
+            for rank, item in zip(local_ranks, pool.map(prepare, local_ranks)):
+                prepared[rank] = item
+        released = _released_host_bytes(inputs, [cuts[r] for r in local_ranks],
+                                        [prepared[r] for r in local_ranks], executor)
+        _save_shards = _per_rank_start.save_shard_dir()
+        if _save_shards is not None:
+            _per_rank_start.save_rank_start_shards(
+                _save_shards, partitions, prepared,
+                global_dimensions={str(k): int(v) for k, v in layout.dimensions.items()},
+                field_indices=indices,
+            )
+            print(f'woof hex: WOOF_HEX_SAVE_START_SHARDS: saved rank start shards to {_save_shards}',
+                  file=sys.stderr, flush=True)
+        del cuts, inputs, mesh
+        if _diet_start:
+            _b_rss, _a_rss = _per_rank_start.release_host_memory()
+            released['per_rank_start_rss_gib'] = dict(before=round(_b_rss, 2), after=round(_a_rss, 2))
+            print(f'woof hex: WOOF_HEX_PER_RANK_START: parent released global start buffers; '
+                  f'parent RSS {_b_rss:.2f} GiB -> {_a_rss:.2f} GiB', file=sys.stderr, flush=True)
+    from ..speed_words import RESTART_RELEASE, on as _word_on
+    if _word_on(RESTART_RELEASE) and moving_state is not None:
+        before = _parent_rss_gib()
+        released['restart_release'] = _release_restored(moving, moving_state)
+        after = _parent_rss_gib()
+        # The receipt's field lives in the run folder; this line reaches the run's own log.
+        print(f'woof hex: GPUWM_HEX_RESTART_RELEASE: the parent let go of the restored globe before the ranks start: '
+              f'{released["restart_release"]:,.0f} MiB of restored words; parent RSS {before:.1f} GiB before, '
+              f'{after:.1f} GiB after', file=sys.stderr, flush=True)
     receipt = dict(schema='mpas-samehost-launch-v1', completed=False, ranks=len(devices),
                    devices=list(devices), framework='ported (no native library)',
                    transport='same-host device copies', halo_transport=halo, local_ranks=list(local_ranks), parent_released_host_mib=released,
@@ -744,6 +910,21 @@ def run_samehost_ranks(arguments, config, layout, payload, streams, start, stop,
     return 0
 
 
+def requested_transport(arguments):
+    """The same-host halo transport asked for: --samehost-transport, or, when the door left it at auto,
+    WOOF_HEX_SAMEHOST_TRANSPORT (the launch word for the door flag, as WOOF_HEX_SAMEHOST_RANKS is for
+    --samehost-ranks: a kit leg reaches the forecast through words, not door flags).  Unset: auto, as before.
+    An audit of 19 Nov 2026 made NCCL halos a site toggle; there they were bit-exact and 5.55 s an hour
+    slower than the process route's parallel receives (121.72 against 116.17 s of dycore), so it stays a choice.
+    """
+    value = (getattr(arguments, 'samehost_transport', None) or 'auto').strip().lower()
+    if value == 'auto':
+        value = (os.environ.get('WOOF_HEX_SAMEHOST_TRANSPORT') or 'auto').strip().lower()
+    if value not in ('auto', 'peer', 'staged', 'nccl'):
+        raise ValueError(f'WOOF_HEX_SAMEHOST_TRANSPORT must be auto, peer, staged or nccl, got {value!r}')
+    return value
+
+
 def executor_choice(arguments):
     """Which executor runs the ranks, and why: one process per card unless asked for threads or unavailable.
 
@@ -762,7 +943,7 @@ def executor_choice(arguments):
     # shared host buffer. Breakage this prevents: on the default process executor --samehost-transport peer was
     # accepted and silently ignored (halos host-staged, peer_bytes 0), so a P2P/NVLink box asked for peer got staged.
     # Retire this when ProcessHaloTransport copies device to device (hex-mc-scaling, rrfs/mc-scale2).
-    peer = (getattr(arguments, 'samehost_transport', None) or 'auto').strip().lower() == 'peer'
+    peer = requested_transport(arguments) == 'peer'
     if peer and requested == 'processes':
         raise ValueError('--samehost-transport peer needs --samehost-ranks threads: one process per card moves '
                          'halos through host memory, not card to card')
@@ -771,7 +952,7 @@ def executor_choice(arguments):
               '(card-to-card halo copies)', file=sys.stderr, flush=True)
         return 'threads', 'requested peer halo transport (process ranks stage halos through the host)'
     from .. import multihost
-    if (getattr(arguments, 'samehost_transport', None) or 'auto').strip().lower() == 'nccl' or multihost.current():
+    if requested_transport(arguments) == 'nccl' or multihost.current():
         # NCCL halos (one host or several) run one process per card: an NCCL communicator has one rank per process.
         if requested == 'threads':
             raise ValueError('NCCL halos (--samehost-transport nccl or --hosts) need one process per card; drop '
@@ -793,7 +974,7 @@ def executor_choice(arguments):
 
 def halo_choice(arguments, session, executor):
     """'nccl' (NCCL point-to-point, any number of hosts) or 'process' (shared host memory, one host)."""
-    requested = (getattr(arguments, 'samehost_transport', None) or 'auto').strip().lower()
+    requested = requested_transport(arguments)
     if session is not None:
         if requested in ('peer', 'staged'):
             raise ValueError(f'--hosts moves halos through NCCL; --samehost-transport {requested} names a one-host '
@@ -945,10 +1126,10 @@ def _run_rank_threads(arguments, config, layout, streams, start, stop, dt, steps
 
     # The door's --samehost-transport (auto/peer/staged), as the ArWen same-host route honours it (53a8c65, carried
     # onto this tree's threads route). Breakage it prevents: this route hard-coded 'auto', so --samehost-transport
-    # peer was accepted and silently dropped (V6000 2x RTX PRO 6000 on two NUMA nodes: auto stages every halo
+    # peer was accepted and silently dropped (2x RTX PRO 6000 on two NUMA nodes: auto stages every halo
     # through the host, peer_bytes 0).
     transport = SameHostTransport(tables, devices, xp=cp,
-                                  copy_policy=getattr(arguments, 'samehost_transport', None) or 'auto',
+                                  copy_policy=requested_transport(arguments),
                                   timeout=timeout, field_halo_indices=indices,
                                   measure_gpu=exchange_timing_requested())
     comms = ThreadComm.world(len(devices))

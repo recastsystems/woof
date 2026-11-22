@@ -1,6 +1,6 @@
 """Launch orchestration and continuation contract for NextGen components.
 
-Original WOOF orchestration; no external hydrologic algorithm is implemented
+Original WOOF-ArWen orchestration; no external hydrologic algorithm is implemented
 here. Numerical work belongs to prepared CUDA/Rust components.
 """
 from __future__ import annotations
@@ -71,7 +71,7 @@ def _scheduled_stages(stages, schedule, interval):
 class ResidentHydroDriver:
     """One member's fixed-parent state and prebound CUDA launch sequence.
 
-    ``before`` stages precede WOOF's actual LSM call; ``after`` stages consume
+    ``before`` stages precede WOOF-ArWen's actual LSM call; ``after`` stages consume
     its runoff and advance the catchment/network state. Standalone binds its
     runoff modules in ``after`` as well. All preparation happens in factories.
     """

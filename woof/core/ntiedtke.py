@@ -1488,7 +1488,7 @@ class NewTiedtke:
     0.3 to 1.0 through the depth of the column.
 
     Grell-Freitas is NOT in WRF's fold list; it sums the lanes itself, so
-    WOOF's dycore exports PURE ADVECTION and that export must not move.
+    WOOF-ArWen's dycore exports PURE ADVECTION and that export must not move.
     Doing the fold in the adapter is what keeps it that way.
     """
 

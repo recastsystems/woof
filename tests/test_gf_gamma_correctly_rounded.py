@@ -1,7 +1,7 @@
 """The gamma gate, after the earlier gamma was replaced.
 
 WHAT CHANGED, AND WHY THIS FILE EXISTS.  Through ArWen 2.6.5 ``gfk_tgamma``
-was WOOF's earlier gamma, which returned the same words as glibc 2.39's
+was WOOF-ArWen's earlier gamma, which returned the same words as glibc 2.39's
 ``tgammaf``, and it was graded against
 ``woof/data/gf/oracle/gf-libm-tgammaf.csv``, a recording of what glibc
 2.39 returns.  That gamma, like its replacement, was this project's own
@@ -18,7 +18,7 @@ can regenerate the reference, whereas ``gf-libm-tgammaf.csv`` can only be
 regenerated on x86-64 glibc 2.39.
 
 It also PINS THE DIVERGENCE.  gfortran binds WRF's F2008 ``gamma()``
-intrinsic to glibc's ``tgammaf``, so WOOF no longer reproduces WRF's ``fzu``
+intrinsic to glibc's ``tgammaf``, so WOOF-ArWen no longer reproduces WRF's ``fzu``
 bit for bit.  ``docs/gf_gamma_known_delta.md`` is the record; the tests below
 are what stop it drifting.
 

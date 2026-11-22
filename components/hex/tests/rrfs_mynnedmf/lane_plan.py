@@ -111,6 +111,9 @@ def classify(stmt):
         return ("goto",)
     if stmt.startswith(("print", "write")):
         return ("print",)
+    if re.match(r"(?:de)?allocate\s*\(", stmt):
+        # v6 layout (MYNN-EDMF v6.1.1 driver): arena allocation; a loop holding one stays serial.
+        return ("alloc",)
     if m := re.match(r"(.+?)\s*=\s*(.*)$", stmt):
         return ("assign", m[1], KIND_RHS.sub(",kind_phys", m[2]))
     raise ValueError(stmt)
@@ -380,7 +383,7 @@ class LoopAnalysis:
                 state["flags"].add("label")
                 simple(classify(kind[2]), inner_loops)
                 return
-            if tag in ("goto", "return"):
+            if tag in ("goto", "return", "alloc"):
                 state["flags"].add(tag)
                 return
             if tag == "exit":

@@ -54,7 +54,7 @@ use chrono::{DateTime, Datelike, NaiveDateTime, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 
 use rw_nexrad::s3::parse_time;
-use rw_obs::net::{agent, get_text, query_encode};
+use rw_obs::net::{agent, get_text, get_text_cached, query_encode};
 use rw_obs::seam::{seam_time, wrap_longitude, Provenance, TIME_FORMAT};
 use rw_obs::table::{
     altimeter_inhg_to_station_pa, fahrenheit_to_kelvin,
@@ -176,6 +176,29 @@ const TABLE_RECORD_SCHEMA: &str = "gpuwm-obs.asos-table.v1";
 /// 27 requests.
 const DEFAULT_NETWORKS_PER_REQUEST: usize = 10;
 const TABLE_SOURCE: &str = "iem-metar";
+/// A window that ended this long ago is settled archive content: its CSV is
+/// cached for good, so a second arm or a rerun scoring the same frame never
+/// asks IEM again (the 2026-11-09 429 defect: the arm that asked second was
+/// refused). Late METARs and corrections land within hours, so 48 h is well
+/// past settling.
+const SETTLED_WINDOW_HOURS: i64 = 48;
+/// A window newer than that is cached for this long: long enough for the
+/// arms of one scoring run to share it, short enough that a live window
+/// picks up new reports on the next run.
+const RECENT_WINDOW_CACHE_SECONDS: u64 = 15 * 60;
+
+fn window_cache_rule(end: DateTime<Utc>, now: DateTime<Utc>) -> rw_http::CacheRule {
+    if now - end >= chrono::Duration::hours(SETTLED_WINDOW_HOURS) {
+        rw_http::CacheRule::Forever
+    } else {
+        rw_http::CacheRule::Ttl(std::time::Duration::from_secs(RECENT_WINDOW_CACHE_SECONDS))
+    }
+}
+
+/// Only an ASOS CSV is cached; a 200 carrying an error page is not.
+fn is_asos_csv(body: &[u8]) -> bool {
+    body.starts_with(b"station,")
+}
 
 const ABI_MARKER: &str = "gpuwm-obs.asos-surface.v2\tstations\treports\tprovenance\t\
 observation_time\ttemperature_2m\tdewpoint_2m\twind_speed_10m\tmslp\tK\tm s-1\tPa\t\
@@ -892,8 +915,10 @@ fn cmd_fetch(options: &Options) -> Result<String, Box<dyn Error>> {
     let mut urls: Vec<String> = Vec::new();
     let mut body = String::new();
     let mut rows = 0usize;
+    let rule = window_cache_rule(end, Utc::now());
+    let mut last_from_network = false;
     for group in table.stations.chunks(chunk.max(1)) {
-        if !urls.is_empty() && !pause.is_zero() {
+        if last_from_network && !pause.is_zero() {
             std::thread::sleep(pause);
         }
         let url = if options.one_minute() {
@@ -901,7 +926,8 @@ fn cmd_fetch(options: &Options) -> Result<String, Box<dyn Error>> {
         } else {
             select_report_types(fetch_url(options.archive(), group, start, end), options.report_types())
         };
-        let text = get_text(&client, &url, "IEM ASOS window")?;
+        let (text, hit) = get_text_cached(&client, &url, "IEM ASOS window", rule, &is_asos_csv)?;
+        last_from_network = !hit;
         let mut lines = text.lines().filter(|line| !line.trim().is_empty());
         let header = lines.next().unwrap_or("");
         if !header.starts_with("station,") {
@@ -1571,13 +1597,16 @@ fn cmd_fetch_networks(options: &Options, networks: &[String]) -> Result<String, 
     let mut walls: Vec<f64> = Vec::new();
     let mut body = String::new();
     let mut rows = 0usize;
+    let rule = window_cache_rule(end, Utc::now());
+    let mut last_from_network = false;
     for group in networks.chunks(chunk.max(1)) {
-        if !urls.is_empty() && !pause.is_zero() {
+        if last_from_network && !pause.is_zero() {
             std::thread::sleep(pause);
         }
         let url = select_report_types(fetch_url_networks(options.archive(), group, start, end), options.report_types());
         let t = std::time::Instant::now();
-        let text = get_text(&client, &url, "IEM ASOS network window")?;
+        let (text, hit) = get_text_cached(&client, &url, "IEM ASOS network window", rule, &is_asos_csv)?;
+        last_from_network = !hit;
         walls.push(t.elapsed().as_secs_f64());
         let mut lines = text.lines().filter(|line| !line.trim().is_empty());
         let header = lines.next().unwrap_or("");
@@ -1867,7 +1896,7 @@ fn cmd_awc(options: &Options) -> Result<String, Box<dyn Error>> {
     let client = agent();
     let fetched_at = Utc::now();
     let t = std::time::Instant::now();
-    let mut response = client.get(&url).call().map_err(|e| err(format!("GET {url} failed: {e}")))?;
+    let mut response = rw_http::get(&client, &url).map_err(|e| err(format!("GET {url} failed: {e}")))?;
     let status = response.status().as_u16();
     if !(200..300).contains(&status) {
         return Err(err(format!("GET {url} answered HTTP {status}")));

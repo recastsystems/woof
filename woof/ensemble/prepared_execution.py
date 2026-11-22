@@ -815,7 +815,11 @@ def make_automatic_prepared_executor(runner, *, request, collector, output_direc
                                       provenance=(request.provenance[first_id] if request.provenance else None))
         initial_device = None if request.member_device_ids is None else request.member_device_ids[0]
         scope = nullcontext() if initial_device is None or device_scope is None else device_scope(initial_device)
-        first_out.mkdir(parents=True, exist_ok=False)
+        # The ensemble session claims every member directory before execution (production.py, the directory
+        # holding only member-provenance.json); the first member runs in that claim. Any other content is
+        # another run's output and is still refused (member-roster ensembles failed here with FileExistsError).
+        if not (first_out.is_dir() and {q.name for q in first_out.iterdir()} <= {"member-provenance.json"}):
+            first_out.mkdir(parents=True, exist_ok=False)
         with scope, member_output_scope(capture):
             result = runner(first_inputs, output_directory=first_out, ensemble_bootstrap=handoff, **options)
         report = asdict(result) if is_dataclass(result) else result

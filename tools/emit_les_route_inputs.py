@@ -6,7 +6,7 @@ preparation profile pins -- so no product path can emit namelists for a
 tree carrying a PBL-off LES child.  The shipped 250 m demonstration hit
 that wall with one such domain and solved it by emitting a wizard set and
 extending the per-domain columns by hand
-(``docs/superpowers/receipts/les/make_d03.py``,
+(``docs/internal/receipts/les/make_d03.py``,
 ``INFLOW-FETCH-D90-2026-08-03.md:68-75``).
 
 This is that idiom generalized: it derives the whole set from the run

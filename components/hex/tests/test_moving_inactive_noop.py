@@ -2,7 +2,7 @@
 
 Breakage prevented: the moving variable-resolution region lands inside the
 full-step LTS driver, the forecast door and the LTS class admission, which the
-default WOOF route runs.  These checks pin that an unset environment leaves
+default WOOF-ArWen route runs.  These checks pin that an unset environment leaves
 that route as it was: no moving module is imported, the host and the history
 schedule reach the executor as the same objects (no carrier, no clock offset,
 even when the prepared state's clock is not zero), and the class map is the

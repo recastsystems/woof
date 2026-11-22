@@ -258,7 +258,13 @@ list. It touches no CUDA beyond the memory and device-properties queries.
 
 ## 6.3 What the door writes
 
-`--out` receives, on a clean run:
+On the default route (MPAS physics) `--out` receives MPAS's own stream
+files, `history.<valid-time>.nc` and `diag.<valid-time>.nc` for each
+capture (the history files are the ones the render door takes), and
+`native-physics-receipt.json`, the run's receipt; the forecast then starts
+the standard products in the background into `<out>/products` and logs them
+to `<out>/products.log`. On the WOOF-ArWen route (`--physics-suite
+arwen_mpas_column`) `--out` receives, on a clean run:
 
 - `cuda-history.<valid-time>.nc`, one per capture, the files the render
   door takes;
@@ -268,8 +274,9 @@ list. It touches no CUDA beyond the memory and device-properties queries.
   receipt, the driver's receipt embedded whole, the history files, and the
   exact `woof hex render` command for them.
 
-The door prints that command as its last line, so the next step is a
-paste rather than a lookup. Its form:
+By default the door then draws the standard products itself; with
+`--no-products` it prints that command as its last line instead, so the
+next step is a paste rather than a lookup. Its form:
 
 ```
 NEXT woof hex render --history <out>/cuda-history.<valid-time>.nc --mesh <grid> --out <out>/png --simulation-start <start>
@@ -277,7 +284,7 @@ NEXT woof hex render --history <out>/cuda-history.<valid-time>.nc --mesh <grid> 
 
 ## 6.4 What a run claims: read the receipt
 
-Every run writes `cuda-v841-forecast-receipt.json`. Its `claim` names
+Every WOOF-route run writes `cuda-v841-forecast-receipt.json`. Its `claim` names
 exactly what happened (the mesh, the physics set, dt, the init). Its
 `nonclaims` and `dropped_guarantees` are just as binding: among them:
 
@@ -387,7 +394,7 @@ were verified on hardware:
 - On a **quasi-uniform** mesh every column lands in one class and the
   option is inert: the run above (x1.40962, `--local-timestep`) produced
   history **byte-identical** to the default run, re-verified for this
-  manual on the proving node.
+  manual.
 - On the published variable-resolution mesh **the option does not pay**:
   measured one model hour, x4.163842, dry lane, RTX 5070 Ti, 1.268 s/step
   default against 1.283 s/step with the option, 0.988x. The acoustic loop

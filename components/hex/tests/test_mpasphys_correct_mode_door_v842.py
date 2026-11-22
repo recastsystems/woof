@@ -1,4 +1,4 @@
-"""Correct mode at the forecast door and in the proof harness (coordinator ruling 2026-10-14).
+"""Correct mode at the forecast door and in the proof harness (2026-10-14).
 
 - A bare MPAS-suite door run resolves correct, lists its named gaps in the run record and prints them loudly.
 - ``--physics-mode exact`` gives the route, namelist text and receipt of the code before the switch.
@@ -94,7 +94,8 @@ def test_a_bare_mpas_suite_door_run_resolves_correct_and_lists_the_gaps(tmp_path
     # RP3 lives in the surface layer and sea ice; the GPU sea ice does not carry it, so RP3 is not applied.
     assert set(gaps) == {("RP3", "seaice")}
     assert all({"finding", "slot", "reason", "owner"} <= set(g) for g in gaps.values())
-    assert gaps["RP3", "seaice"]["owner"] == "p18-seaice"
+    from woof.hex.mpasphys.driver_v842 import CORRECTIONS_V842
+    assert gaps["RP3", "seaice"]["owner"] == CORRECTIONS_V842["RP3"]["owners"]["seaice"]
     assert gaps["RP3", "seaice"]["backend"] == "hex-cuda"
     assert all(g["reason"] == "slot does not implement it" for g in gaps.values())
     err = capsys.readouterr().err
@@ -215,7 +216,7 @@ def test_a_dry_run_with_no_suite_needs_no_mode(tmp_path, monkeypatch):
     monkeypatch.setattr(door, "resolve_request", reached)
     with pytest.raises(Reached):
         door._run_forecast(arguments)
-    # On that (ArWen) route the bare run takes its preset row's mode, correct (lane H1), and
+    # On that (ArWen) route the bare run takes its preset row's mode, correct, and
     # --physics-mode exact hands the driver the argument vector of before: no mode flag at all.
     same = fresh(tmp_path, "argv")
     plain = door.build_driver_argv(resolve_request(_namespace(same), registry=_registry()))
@@ -230,14 +231,14 @@ def test_a_dry_run_with_no_suite_needs_no_mode(tmp_path, monkeypatch):
 
 def test_a_named_mode_without_an_mpas_suite_goes_to_the_arwen_route(tmp_path):
     # --physics-mode and --physics-correct-skip on a run with no MPAS suite route reach the ArWen door,
-    # which reads the same option (lane H1); native_route does not take the run.
+    # which reads the same option; native_route does not take the run.
     assert native_route(_namespace(fresh(tmp_path, "mode"), physics_mode="correct"),
                         default_mode="correct") == (None, "")
     assert native_route(_namespace(fresh(tmp_path, "skip"), physics_correct_skip=["WB5"]),
                         default_mode="correct") == (None, "")
     # The ArWen door refuses a skip of a finding its route never applies (an A/B arm that equals its
     # control), by name.
-    with pytest.raises(Exception, match="WOOF route"):
+    with pytest.raises(Exception, match="WOOF-ArWen route"):
         door._physics_mode_fields(argparse.Namespace(physics_mode="correct", physics_correct_skip=["RP3"]))
 
 
@@ -318,7 +319,7 @@ def test_verify_mpas_runs_exact_when_the_deck_names_no_mode(tmp_path, monkeypatc
     # A proof run draws no detached map products inside the folder it compares (f073a2e1).
     assert argv[-1] == "--no-products"
     argv = argv[:-1]
-    # Every proof names strict kernel numerics (owner ruling 2026-10-16: fast is the door default).
+    # Every proof names strict kernel numerics (fast is the door default).
     assert argv[-2:] == ["--numerics", "strict"]
     argv = argv[:-2]
     # A deck naming no default backend keeps running the native referee it was written for.

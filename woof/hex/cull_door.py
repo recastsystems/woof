@@ -191,7 +191,7 @@ def port_identity() -> dict[str, str]:
 
     ``model_name`` names THIS program.  Writing ``mpas`` would be the false
     stamp the boundary producer's refusal exists to prevent: these files
-    carry WOOF's physics and this port's numerics, and a stream stamped
+    carry WOOF-ArWen's physics and this port's numerics, and a stream stamped
     ``mpas`` would claim a provenance no file in the chain has.
     """
 

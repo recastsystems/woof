@@ -80,7 +80,6 @@ SITE_FILES = (
     # the native member RUC unit. Audit its actual source/options recording.
     "woof/ensemble/batch_ruc.py",
     "woof/ensemble/surface_recipe.py",
-    "woof/da/letkf_device.py",
     # The land no-FTZ route (WRF 4.7 Noah-MP night snow-aging port): the one
     # Noah-MP compile site moved from a RawModule in noahmp_kernel_sources.py
     # to direct NVRTC here, recording source, options and image.
@@ -146,10 +145,25 @@ RAWMODULE_CONSTRUCTORS_OUTSIDE_THE_MANIFEST = {
         "compiled from a literal string to prove the HIP toolchain and the "
         "32-lane grouping work; not a forecast translation unit"),
     "woof/core/mynn471_gpu.py": (
-        "the MYNN 4.7.1 input gather (mynn471_pack): one kernel that copies "
-        "each input field, at its own strides, into the packed slab as the "
-        "same float or int value; it computes no forecast arithmetic, and the "
-        "MYNN column itself compiles through the recorded nvcc image route"),
+        "the generated MYNN routes' input gather (mynn471_pack) and batched "
+        "write-back (mynn471_copy): one kernel copies each input field, at "
+        "its own strides, into the packed slab as the same float or int "
+        "value, the other copies the column's output words into the state "
+        "fields; they compute no forecast arithmetic, and the MYNN column "
+        "itself compiles through the recorded nvcc image route"),
+    "woof/core/gfl_873b414.py": (
+        "the WRF 4.8.0 GFL lane relayout (gfl_relayout): one kernel that moves "
+        "each column's level values between the state fields and the "
+        "lane-interleaved scratch as the same float; it computes no forecast "
+        "arithmetic, and the GFL column itself compiles through the recorded "
+        "nvcc image route"),
+    "woof/core/noahmp_snow_tinit.py": (
+        "the Noah-MP snow-layer cold start (noahmp_snow_tinit = 2): one "
+        "kernel run once at initialisation that places each snow layer on a "
+        "straight line between skin and top-soil temperature, capped at "
+        "freezing; it runs before the first step and no step reads its "
+        "compile options, graded against its host reference byte for byte "
+        "by tests/test_noahmp_snow_tinit.py"),
     "woof/core/mynn_pbl_gpu.py": (
         "a one-kernel finiteness and range check over the MYNN inputs, built "
         "from a predicate string at call time; it reads the arrays and sets "
@@ -171,34 +185,17 @@ RAWMODULE_CONSTRUCTORS_OUTSIDE_THE_MANIFEST = {
         "by tests/test_storm_tracking_isobaric_gpu.py; it runs between steps "
         "to steer a nest, computes no forecast field and is not a "
         "translation unit the manifest freezes"),
-    "woof/da/fixed_order_gemm.py": (
-        "the LETKF analysis's fixed-order batched products, one RawKernel per "
-        "float dtype compiled on first use; they run in the data-assimilation "
-        "analysis, not a forecast step, record nothing and are not a "
-        "translation unit the manifest freezes"),
     "woof/da/radar_tten.py": (
         "the research data-assimilation line's radar latent heating, one "
         "RawKernel per entry point compiled on first use: the builder runs "
         "between legs, and its one model-side kernel runs only while a "
         "forcing is attached by the cycle driver's opt-in flag; it records "
         "nothing and is graded against NOAA's compiled Fortran instead"),
-    "woof/da/hydrometeor_analysis.py": (
-        "the radar precipitation analysis of the research DA line (NOAA's "
-        "Thompson retrieval and GSD precipitation block, glibc_flt64.cuh "
-        "prepended), one RawModule compiled on first use; it runs in the "
-        "data-assimilation analysis, not a forecast step, records nothing and "
-        "is graded bit for bit against NOAA's own Fortran by "
-        "tools/gsd_precip_oracle"),
     "woof/core/tempo_runtime.py": (
         "the TEMPO unit's own compile site (mp_physics = 900, "
         "--fmad=false), its headers composed into the one compiled string; "
         "it records through record_module in the same function under its "
         "own key, as the BEP+BEM composed unit above does"),
-    "woof/da/letkf_device.py": (
-        "the LETKF analysis's member-count kernels, one RawModule per "
-        "ensemble size and card compiled on first use; they run in the "
-        "data-assimilation analysis, not a forecast step, record nothing "
-        "and are not a translation unit the manifest freezes"),
     "woof/core/noah_mosaic.py": (
         "the Noah mosaic tile loop's two compile sites (with and without the "
         "urban canopy, --fmad=false); each records through record_module in "
@@ -714,40 +711,3 @@ def test_gpu_a_compiled_module_records_the_source_the_test_rebuilds():
     assert entry["compiled_image"]["status"] in {"resolved", "unavailable"}
     reset_kernel_manifest()
 
-
-def test_letkf_device_records_its_original_compiler_inputs(monkeypatch):
-    import importlib
-    import sys
-    import types
-    from woof.da import letkf_device
-    # The package exports a function named kernel_manifest. Import the
-    # submodule explicitly so this seam patches the compiler's recorder.
-    manifest = importlib.import_module("woof.certify.kernel_manifest")
-    events = []
-    class Device:
-        def __init__(self, device):
-            self.device = device
-        def __enter__(self):
-            events.append(("device", self.device))
-        def __exit__(self, *args):
-            return False
-    class Module:
-        def __init__(self, *, code, options):
-            self.code, self.options = code, options
-            events.append(("construct", code, options))
-        def compile(self):
-            events.append(("compile",))
-    records = []
-    monkeypatch.setitem(sys.modules, "cupy", types.SimpleNamespace(
-        cuda=types.SimpleNamespace(Device=Device), RawModule=Module))
-    monkeypatch.setattr(manifest, "record_module", lambda key, **args: records.append((key, args)))
-    letkf_device._module.cache_clear()
-    try:
-        module = letkf_device._module(7, 2)
-        assert events == [("device", 2), ("construct", module.code, module.options), ("compile",)]
-        assert module.code == letkf_device._SOURCE.replace("RR", "7")
-        assert module.options == ("--fmad=false", "-std=c++14")
-        assert records == [("letkf_device_members_7", {
-            "source": module.code, "options": module.options, "module": module})]
-    finally:
-        letkf_device._module.cache_clear()

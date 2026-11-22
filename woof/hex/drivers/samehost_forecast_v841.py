@@ -12,6 +12,7 @@ from collections import defaultdict
 from dataclasses import fields
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import time
 import traceback
@@ -266,7 +267,7 @@ def automatic_options(arguments, request):
     # No device query or step-loop replacement for rows that always select one.
     policy = select_card_count(request.cells, 0, 1)
     if single_card_rows(request.cells):
-        grant = os.environ.get("GPU_MUTEX_CARDS", "").replace(",", " ").split()
+        grant = card_queue.granted()
         visible = grant or [token for token in os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",") if token]
         policy.update(visible_cards=len(visible) if visible else None, card_memory_bytes=None,
                       basis="every memory tier for this mesh selects one card; no extra CUDA census")
@@ -302,7 +303,7 @@ def rank_event(output_root, stage, phase, rank, device, *, attrs=None):
         # gpuwm 2.8.7 and earlier carry no woof.timeline; a rank event is
         # telemetry and must not stop a same-host forecast.
         return
-    grant = os.environ.get("GPU_MUTEX_CARDS", "").replace(",", " ").split()
+    grant = card_queue.granted()
     visible = grant or os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")
     token = visible[device] if device < len(visible) else ""
     card = int(token) if token.isdecimal() else (None if token else device)
@@ -1264,7 +1265,8 @@ def _execute_samehost(forecast, *, physics_scope, devices, layouts_path, part_pa
         # item 4): the limiter splits its scale-factor exchange the same way.
         from woof.hex.cuda_transport_v841 import limiter_species_per_pass
         n_species = int(described[0]["n_species"])
-        fct_parts = -(-n_species // limiter_species_per_pass(n_species)) if n_species else 1
+        from ..speed_words import schedule_species_per_pass   # GPUWM_HEX_LIMITER_BATCH; off: as before
+        fct_parts = -(-n_species // schedule_species_per_pass(n_species)) if n_species else 1
         native_rounds = expected_round_sequence(monotonic=monotonic, regional=regional,
                                                 fct_parts=fct_parts, **round_schedule)
         physics_rounds = native_rounds[:-1] + ("P", native_rounds[-1])

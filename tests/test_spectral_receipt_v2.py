@@ -46,8 +46,8 @@ minimum = 3.9
 maximum = 4.1
 """ if with_gate else ""
     path.write_text(f'''schema = "gpuwm.spectral-comparison-source/v1"
-title = "synthetic WOOF versus WRF"
-left_label = "WOOF"
+title = "synthetic WOOF-ArWen versus WRF"
+left_label = "WOOF-ArWen"
 reference_label = "WRF"
 default_dx_m = 1000.0
 crop_cells = 0

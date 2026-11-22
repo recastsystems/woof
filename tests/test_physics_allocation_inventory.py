@@ -2049,6 +2049,12 @@ _PHYSICS_ALLOCATION_INVENTORY['woof/core/kf.py']['trigger2_perturbations'] = 2
 # the structural batch-bound test still checks site by site.
 _PHYSICS_ALLOCATION_INVENTORY['woof/core/noahmp_thermal_slab.py']['evaluate_radiation_slab'] = 5
 _PHYSICS_ALLOCATION_INVENTORY['woof/core/noahmp_water_slab.py']['evaluate_water_slab'] = 12
+# Snow compaction option 2 extends the forcing row by one (n, stride + 1)
+# surface-pressure slot; bounded by the batch width n like the others.
+_PHYSICS_ALLOCATION_INVENTORY['woof/core/noahmp_water_slab.py']['evaluate_water_slab'] = 13
+# opt_runsrf/opt_runsub split WATER: the same (n, stride + k) parameter and
+# forcing extensions plus its (n, out) rows, bounded by the batch width n.
+_PHYSICS_ALLOCATION_INVENTORY['woof/core/noahmp_water_slab.py']['_evaluate_split'] = 6
 # Startup driver carriers added by the 3.0 ports: TEMF's sfcevp and
 # exch_temf surface planes in __init__; fractional sea-ice *_sea planes,
 # soil smoiseq, crop type, the paper-written snow state, the Deng
@@ -2068,6 +2074,12 @@ _PHYSICS_ALLOCATION_INVENTORY['woof/core/wind_mav.py'] = {'__init__': 19}
 # default and four diagnostic planes. cloud_farms_transient_shapes includes
 # the packed inputs and result copies in its conservative spectral envelope.
 _PHYSICS_ALLOCATION_INVENTORY['woof/core/wrf_stock_aer3.py'] = {'optics_device': 6}
+# Noah-MP wetland option (Zhang et al. 2022): the WATER
+# slab's par/fin wetland tails, bounded by the column chunk like the other
+# option tails; the wetland store/static/diagnostic planes in initialize_physics,
+# five (ny, nx) float32 planes allocated only when noahmp_wetland=1.
+_PHYSICS_ALLOCATION_INVENTORY['woof/core/noahmp_water_slab.py']['evaluate_water_slab'] += 2
+_PHYSICS_ALLOCATION_INVENTORY['woof/core/physics.py']['initialize_physics'] += 1
 # These port modules allocate through declared caller scratch, numpy host
 # buffers or the owners recorded above. Empty rows catch future raw sites.
 _PHYSICS_ALLOCATION_INVENTORY.update({
@@ -2080,3 +2092,21 @@ _PHYSICS_ALLOCATION_INVENTORY.update({
     'woof/core/solar_diagnostics.py': {}, 'woof/core/ssib_records.py': {},
     'woof/core/tracer_pblmix.py': {}, 'woof/core/trajectory.py': {},
 })
+# 3.0.0 fold (WRF 4.8.0 assembly + Noah-MP clean re-implementation):
+# - dyn_lightning (WRF 4.8.0 L12, Lynn et al. 2012): per-step charging/flash
+#   work arrays bounded by the domain (nz, ny, nx), only with
+#   dyn_lightning_option > 0; wind_fitch480 allocates nothing of its own.
+# - initialize_physics 75 -> 78: the MYNN 4.8.0 diagnostic fields (one site,
+#   mynn480_gpu.diagnostic_shapes, only under bl_mynn_version = "wrf_480") and
+#   the two SNICAR LAP fields (LAP_WORDS and LAP_DEPOSITION_WORDS per column),
+#   only when snicar_lap_opt selects them.
+# - sfclay _dx_plane: one (ny, nx) grid-spacing plane for kim_tofd.
+# - shinhong launch_shinhong_480: four (nz, ny, nx) column scratch arrays of
+#   the 4.8.0 physics_mmm rewrite, bounded by the domain.
+_PHYSICS_ALLOCATION_INVENTORY['woof/core/dyn_lightning.py'] = {'launch_dyn_lightning': 6, 'update_dyn_lightning': 2}
+_PHYSICS_ALLOCATION_INVENTORY['woof/core/wind_fitch480.py'] = {}
+# - initialize_physics 78 -> 79: the Noah-MP wetland planes (noahmp_wetland=1 only;
+#   fold of fold/noahmp-clean fda9634eea), counted again after the absolute update.
+_PHYSICS_ALLOCATION_INVENTORY['woof/core/physics.py'].update({'initialize_physics': 79})
+_PHYSICS_ALLOCATION_INVENTORY['woof/core/sfclay.py']['_dx_plane'] = 1
+_PHYSICS_ALLOCATION_INVENTORY['woof/core/shinhong.py']['launch_shinhong_480'] = 4

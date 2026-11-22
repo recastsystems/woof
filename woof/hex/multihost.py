@@ -24,6 +24,7 @@ many hosts the ranks span.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import ipaddress
 import json
 import os
@@ -40,17 +41,22 @@ import time
 from typing import Any, Sequence
 
 __all__ = ["HostSpec", "HostPlan", "parse_hosts", "assign_hosts", "begin", "current", "Rendezvous", "connect",
-           "ENV_JOIN", "ENV_HOSTS"]
+           "ENV_JOIN", "ENV_HOSTS", "ENV_EXTERNAL", "ENV_TOKEN", "ENV_HOST_INDEX",
+           "send_shard_receipt", "recv_shard_receipt", "send_manifest_mirror", "recv_manifest_mirror",
+           "joined_host_index"]
 
 ENV_JOIN = "WOOF_HEX_MULTIHOST_JOIN"
 ENV_HOSTS = "WOOF_HEX_HOSTS"
+ENV_EXTERNAL = "WOOF_HEX_MULTIHOST_EXTERNAL"
+ENV_TOKEN = "WOOF_HEX_MULTIHOST_TOKEN"
+ENV_HOST_INDEX = "WOOF_HEX_MULTIHOST_HOST_INDEX"
 _HELLO = struct.Struct("!I")
 #: Environment a remote (ssh) host's command needs to run the same installation the same way.
 _FORWARD_PREFIXES = ("GPUWM_", "RW_MPAS_", "MPAS_", "NCCL_", "CUPY_", "PYTHON", "OMP_", "OPENBLAS_", "UCX_",
                      "FI_", "HEX_", "RCCL_", "HIP_", "HSA_", "ROCM_", "ROCR_")
 _FORWARD_NAMES = ("PATH", "LD_LIBRARY_PATH", "PYTHONPATH", "VIRTUAL_ENV", "TMPDIR", "XDG_CACHE_HOME", "HOME", "HIPCC", "HIP_PATH", "ROCM_PATH")
 _NOT_FORWARDED = ("CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES",
-                  "GPU_MUTEX_CARDS", "NCCL_HOSTID", ENV_JOIN)
+                  "CARD_QUEUE_CARDS", "NCCL_HOSTID", ENV_JOIN)
 
 
 class MultiHostError(RuntimeError):
@@ -323,6 +329,12 @@ class Rendezvous:
                 self._condition.wait(min(left, 2.0))
             return self._arrived.pop(key)
 
+    def poll(self, kind: str, ident: Any) -> socket.socket | None:
+        """Non-blocking pop of an arrived (kind, ident) link, or None if not arrived yet."""
+        key = (str(kind), str(ident))
+        with self._condition:
+            return self._arrived.pop(key, None)
+
     def close(self) -> None:
         self._closed = True
         try:
@@ -384,6 +396,39 @@ def _host_text(arguments) -> str | None:
     return getattr(arguments, "hosts", None) or os.environ.get(ENV_HOSTS) or None
 
 
+def _join_from_env() -> dict[str, Any] | None:
+    """Read joined-host rendezvous details from WOOF_HEX_MULTIHOST_JOIN JSON or standard env vars.
+
+    Standard env vars (for external/pool/torchrun-style launch): WOOF_HEX_MULTIHOST_HOST_INDEX >= 1,
+    WOOF_HEX_MULTIHOST_ADDRESS (or MASTER_ADDR), WOOF_HEX_MULTIHOST_PORT (or MASTER_PORT),
+    and WOOF_HEX_MULTIHOST_TOKEN.
+    """
+    raw = os.environ.get(ENV_JOIN)
+    if raw:
+        return json.loads(raw)
+    host_text = os.environ.get(ENV_HOST_INDEX)
+    if host_text is None or not host_text.strip():
+        return None
+    host_index = int(host_text)
+    if host_index <= 0:
+        return None
+    address = os.environ.get("WOOF_HEX_MULTIHOST_ADDRESS") or os.environ.get("MASTER_ADDR")
+    port_text = os.environ.get("WOOF_HEX_MULTIHOST_PORT") or os.environ.get("MASTER_PORT")
+    token = os.environ.get(ENV_TOKEN)
+    if not address or not port_text or not token:
+        raise MultiHostError(
+            f"{ENV_HOST_INDEX}={host_index} requires MASTER_ADDR/WOOF_HEX_MULTIHOST_ADDRESS, "
+            f"MASTER_PORT/WOOF_HEX_MULTIHOST_PORT and {ENV_TOKEN}"
+        )
+    return dict(
+        address=str(address),
+        port=int(port_text),
+        token=str(token),
+        host=host_index,
+        timeout=float(os.environ.get("WOOF_HEX_MULTIHOST_TIMEOUT", "3600")),
+    )
+
+
 def begin(arguments):
     """Start the multi-host run if ``--hosts`` (or WOOF_HEX_HOSTS) names one; returns the session or None.
 
@@ -398,14 +443,14 @@ def begin(arguments):
     if text is None:
         return None
     hosts = parse_hosts(text)
-    joined = os.environ.get(ENV_JOIN)
+    joined = _join_from_env()
     arguments.samehost_devices = ",".join(str(card) for host in hosts for card in host.cards)
     executor = (getattr(arguments, "samehost_ranks", None) or os.environ.get("WOOF_HEX_SAMEHOST_RANKS") or "auto")
     if str(executor).lower() == "threads":
         raise ValueError("--hosts runs one process per card (rank threads cannot span hosts); drop "
                          "--samehost-ranks threads")
-    if joined:
-        _SESSION = JoinedHost(json.loads(joined), hosts)
+    if joined is not None:
+        _SESSION = JoinedHost(joined, hosts)
     else:
         _SESSION = LaunchSession(hosts, arguments)
         _SESSION.start()
@@ -423,7 +468,10 @@ class LaunchSession:
         self.plan: HostPlan | None = None
         self.out = Path(getattr(arguments, "out")).resolve()
         self.timeout = float(os.environ.get("WOOF_HEX_MULTIHOST_TIMEOUT", "3600"))
-        self.rendezvous = Rendezvous(port=int(os.environ.get("WOOF_HEX_MULTIHOST_PORT", "0") or 0))
+        port_text = os.environ.get("WOOF_HEX_MULTIHOST_PORT") or os.environ.get("MASTER_PORT") or "0"
+        token = os.environ.get(ENV_TOKEN) or None
+        self.external = os.environ.get(ENV_EXTERNAL, "0").strip().lower() in ("1", "true", "yes", "on")
+        self.rendezvous = Rendezvous(port=int(port_text), token=token)
         self.address = self._address()
         self.processes: dict[int, subprocess.Popen] = {}
         self.failures: dict[int, str] = {}
@@ -445,7 +493,7 @@ class LaunchSession:
         return f"{socket.gethostname()}:{self.hosts[host].name}"
 
     def _address(self) -> str:
-        named = os.environ.get("WOOF_HEX_MULTIHOST_ADDRESS")
+        named = os.environ.get("WOOF_HEX_MULTIHOST_ADDRESS") or os.environ.get("MASTER_ADDR")
         if named:
             return named
         remote = [host for host in self.hosts[1:] if host.launch == "ssh"]
@@ -481,6 +529,12 @@ class LaunchSession:
     def start(self) -> None:
         self.started_utc = time.time()
         (self.out / ".multihost").mkdir(parents=True, exist_ok=True)
+        if self.external:
+            print(f"woof hex: multihost external rendezvous listening on {self.address}:{self.rendezvous.port} "
+                  f"for {len(self.hosts) - 1} external host(s)", file=sys.stderr, flush=True)
+            for host in range(1, len(self.hosts)):
+                threading.Thread(target=self._lifeline, args=(host,), daemon=True).start()
+            return
         for host in range(1, len(self.hosts)):
             spec = self.hosts[host]
             join = dict(address=self.address, port=self.rendezvous.port, token=self.rendezvous.token, host=host,
@@ -559,8 +613,13 @@ class LaunchSession:
         return Link(sock, timeout=timeout, name=f"{kind}-0-{rank}")
 
     def finish(self) -> None:
-        """Every host reported; wait for their processes, then close the links."""
+        """Every host reported; signal clean completion on lifelines, wait for processes, then close links."""
         self._finished = True
+        for sock in self._lifelines.values():
+            try:
+                sock.sendall(b"D")
+            except OSError:
+                pass
         for host, process in self.processes.items():
             try:
                 process.wait(timeout=120)
@@ -587,7 +646,7 @@ class LaunchSession:
         self.rendezvous.close()
 
     def receipt(self) -> dict[str, Any]:
-        return dict(role="rank 0 host", address=self.address, port=self.rendezvous.port,
+        return dict(role="rank 0 host", address=self.address, port=self.rendezvous.port, external=self.external,
                     hosts=[dict(name=h.name, cards=list(h.cards), launch=h.launch) for h in self.hosts],
                     plan=None if self.plan is None else self.plan.receipt(), logs=self.logs,
                     exit_codes={str(h): p.poll() for h, p in self.processes.items()},
@@ -614,14 +673,18 @@ class JoinedHost:
         threading.Thread(target=self._watch_lifeline, name="hex-multihost-lifeline", daemon=True).start()
 
     def _watch_lifeline(self) -> None:
+        clean_done = False
         try:
             while True:
                 data = self._lifeline.recv(1)
                 if not data:
                     break
+                if data == b"D":
+                    clean_done = True
+                    break
         except OSError:
             pass
-        if not self._finished:
+        if not self._finished and not clean_done:
             print(f"woof hex: host {self.host_index}: rank 0's host stopped; stopping this host's ranks",
                   file=sys.stderr, flush=True)
             # This host's rank processes die with this process (rank_processes.set_parent_death_signal).
@@ -675,3 +738,108 @@ def is_loopback(address: str) -> bool:
         return ipaddress.ip_address(address).is_loopback
     except ValueError:
         return False
+
+
+def send_shard_receipt(spec: dict[str, Any], token: str, rank: int, record: dict[str, Any]) -> None:
+    """Send one rank's small JSON checkpoint-shard receipt to rank 0's rendezvous (cross-host local NVMe)."""
+    sock = connect(spec["address"], spec["port"], spec["token"], "shard_receipt",
+                   f"{token}:{int(rank)}", timeout=float(spec.get("timeout", 600.0)))
+    try:
+        _send_json(sock, record)
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+def recv_shard_receipt(rendezvous: Rendezvous, token: str, rank: int) -> dict[str, Any] | None:
+    """Non-blocking read of one rank's checkpoint-shard JSON receipt from rank 0's rendezvous."""
+    sock = rendezvous.poll("shard_receipt", f"{token}:{int(rank)}")
+    if sock is None:
+        return None
+    try:
+        sock.settimeout(30.0)
+        data = _recv_json(sock)
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError, ConnectionError):
+        return None
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+#: The rendezvous link a joined host's first rank opens to take rank 0's manifest mirror of a seal.
+MIRROR_KIND = "shard_manifest"
+
+
+def joined_host_index() -> int | None:
+    """This process's host index when it runs on a joined host (WOOF_HEX_MULTIHOST_JOIN, or the external launch's
+    WOOF_HEX_MULTIHOST_HOST_INDEX >= 1); None on rank 0's host and on one host."""
+    raw = os.environ.get(ENV_JOIN)
+    if raw:
+        try:
+            return int(json.loads(raw).get("host", 0)) or None
+        except (ValueError, TypeError, AttributeError):
+            return None
+    text = (os.environ.get(ENV_HOST_INDEX) or "").strip()
+    if text:
+        try:
+            return int(text) if int(text) > 0 else None
+        except ValueError:
+            return None
+    return None
+
+
+def send_manifest_mirror(rendezvous: Rendezvous, token: str, rank: int, header: dict[str, Any], data: bytes, *,
+                         timeout: float, failed=None) -> None:
+    """Rank 0's side: hand one joined host's first rank (``rank``) the mirror of a sealed manifest, and wait for its
+    acknowledgement that the bytes are on that host's disk with the SHA256 rank 0 took."""
+    sock = rendezvous.wait(MIRROR_KIND, f"{token}:{int(rank)}", timeout, failed=failed)
+    try:
+        sock.settimeout(float(timeout))
+        _send_json(sock, header)
+        sock.sendall(data)
+        if _recv_exact(sock, 1) != b"K":
+            raise MultiHostError(f"rank {rank} did not acknowledge the checkpoint manifest mirror")
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+def recv_manifest_mirror(spec: dict[str, Any], token: str, rank: int, path: str | Path) -> dict[str, Any]:
+    """A joined host's first rank: take rank 0's manifest mirror of seal ``token`` into ``path`` (hashed as it lands,
+    fsynced); returns rank 0's header.  Refuses bytes whose SHA256 is not the one rank 0 sent."""
+    timeout = float(spec.get("timeout", 600.0))
+    sock = connect(spec["address"], spec["port"], spec["token"], MIRROR_KIND, f"{token}:{int(rank)}",
+                   timeout=timeout)
+    try:
+        sock.settimeout(timeout)
+        header = _recv_json(sock)
+        left = int(header["bytes"])
+        digest = hashlib.sha256()
+        buffer = bytearray(8 << 20)
+        view = memoryview(buffer)
+        with open(path, "wb") as stream:
+            while left:
+                got = sock.recv_into(view[:min(len(buffer), left)])
+                if not got:
+                    raise ConnectionError("rank 0 closed the link during the checkpoint manifest mirror")
+                digest.update(view[:got])
+                stream.write(view[:got])
+                left -= got
+            stream.flush()
+            os.fsync(stream.fileno())
+        if digest.hexdigest() != header["sha256"]:
+            raise MultiHostError("the checkpoint manifest mirror arrived with another SHA256 than rank 0 sent")
+        sock.sendall(b"K")
+        return header
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass

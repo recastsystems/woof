@@ -765,7 +765,7 @@ def test_the_kwargs_reach_the_TILE_STEP_and_not_merely_the_sweep():
 
     ``TiledRun._sweep`` copied the caller's ``step_kwargs`` into a local
     dict and then called ``step(tile, tile_cfg)`` with none of them, so a
-    keyword WOOF's loop threaded into a STEP was accepted by ``sweep``,
+    keyword WOOF-ArWen's loop threaded into a STEP was accepted by ``sweep``,
     documented as forwarded, and dropped at the last hop.  A fake run
     cannot see that -- it never reaches a tile -- so this reads the
     transport's own source.

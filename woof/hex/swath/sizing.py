@@ -150,8 +150,13 @@ def _sized(
     exe: Path,
     card: str | None,
     vram_gib: float | None,
+    generator_words: Sequence[str] = (),
 ) -> Mapping[str, Any]:
-    """One ``--dry-run`` invocation. No gates: this is the raw instrument."""
+    """One ``--dry-run`` invocation. No gates: this is the raw instrument.
+
+    ``generator_words`` are the generator's own words for a geometry other than its default
+    (``--geometry 2``): the count is then the one that geometry builds.
+    """
 
     with tempfile.TemporaryDirectory(prefix="gpuwm-hex-swath-") as scratch:
         spec_path = Path(scratch) / "spec.json"
@@ -163,6 +168,7 @@ def _sized(
             arguments.extend(["--card", card])
         if vram_gib is not None:
             arguments.extend(["--vram-gib", str(vram_gib)])
+        arguments.extend(str(word) for word in generator_words)
         return _run(exe, arguments)
 
 
@@ -172,6 +178,7 @@ def dry_run(
     engine: str | Path | None = None,
     card: str | None = None,
     vram_gib: float | None = None,
+    generator_words: Sequence[str] = (),
 ) -> Mapping[str, Any]:
     """Size one resolution spec through the real generator. Writes nothing.
 
@@ -191,7 +198,12 @@ def dry_run(
     from ..mesh_spec_gates import gates_from_receipt
 
     exe = resolve_engine(engine)
-    receipt = _sized(spec, exe, card, vram_gib)
+    receipt = _sized(spec, exe, card, vram_gib, generator_words)
+    if generator_words:
+        # A geometry other than the default: its dry run is the count under the field it builds,
+        # and it carries none of geometry 1's ladder figures for the gates below to read.  Geometry
+        # 2 gates itself at the build (it writes no mesh with an obtuse triangle).
+        return {**receipt, "gates_applied_by_hexcore": None}
 
     def measure(candidate: Mapping[str, Any]) -> float:
         probe = _sized(candidate, exe, card, vram_gib)

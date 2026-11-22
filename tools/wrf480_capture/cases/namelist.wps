@@ -1,0 +1,22 @@
+&share
+ wrf_core = 'ARW', max_dom = 1,
+ start_date = '2024-05-21_21:00:00', end_date = '2024-05-21_22:00:00',
+ interval_seconds = 3600,
+/
+&geogrid
+ parent_id = 1, parent_grid_ratio = 1, i_parent_start = 1, j_parent_start = 1,
+ e_we = 41, e_sn = 41,
+ geog_data_res = 'default',
+ dx = 3000, dy = 3000,
+ map_proj = 'lambert',
+ ref_lat = 41.55, ref_lon = -94.0,
+ truelat1 = 38.5, truelat2 = 38.5, stand_lon = -97.5,
+ geog_data_path = 'WPS_GEOG',
+/
+&ungrib
+ out_format = 'WPS', prefix = 'FILE',
+/
+&metgrid
+ fg_name = 'FILE', 'SOIL',
+ constants_name = 'QNWFA_QNIFA_SIGMA_MONTHLY.dat',
+/

@@ -24,7 +24,7 @@ its dx from the mesh cells inside it, both derived by the converter.  Each
 PNG is filed as ``<view>/<product>/<valid-day>/<mesh>_<view>_<product>_<lead>.png``
 -- ``hex15km_global_500mb_height_winds_f006.png`` -- where ``<mesh>`` is the
 grid label the converter read off the mesh.  THE BREAKAGE THIS PREVENTS,
-MEASURED: the live global hex gallery drew a 15 km mesh on 20 km and 28 km
+MEASURED: the live global hex gallery rendered a 15 km mesh on 20 km and 28 km
 grids, headlined every map ``(d01 20 km)`` and named every file
 ``rustwx_wrf_20261010_0z_f000_d01-20km_<product>.png`` -- the renderer's
 generic WRF template, which says neither which model nor which mesh.
@@ -123,7 +123,7 @@ _GROUP_KEYWORDS = frozenset({"all", "direct", "derived", "heavy", "windowed",
 
 #: The door's window names and the converter window each one asks for.
 #: ``global`` is the whole sphere AT THE MESH'S OWN SPACING
-#: (``global-mesh``): the frozen 0.25 degree overview drew a 15 km mesh on a
+#: (``global-mesh``): the frozen 0.25 degree overview rendered a 15 km mesh on a
 #: 27.8 km grid, so it is no longer what a bare ``--window global`` means.
 #: It stays reachable, unchanged, as ``global-0.25`` -- its weights digests
 #: are recorded in evidence and its geometry does not move.
@@ -389,9 +389,9 @@ def drawn_grid_label(convert_exe: Path, label: str | None) -> str | None:
 
     THE BREAKAGE THIS PREVENTS (2026-10-30): every hex picture was
     headlined by the WHOLE mesh's range and the picture grid's spacing, so
-    the core picture of run_713c9e1913164e02 read ``(hex 133-6.9 km) ...
+    the core picture of one run read ``(hex 133-6.9 km) ...
     Δx 8.063 km`` under the site's ``Core zoom · 8 → 38 km``, and the view
-    around the core of run_c108e049fecb4bd0 ``Δx 6.08 km`` under ``Around the
+    around the core of another ``Δx 6.08 km`` under ``Around the
     core · 6 → 96 km``.  A converter built before ``--grid-label`` refuses
     the flag, so it is asked first; such a build keeps the mesh's headline,
     said once per converter rather than failing the view."""
@@ -572,7 +572,7 @@ def resolve_basemap_dir(renderer_exe: Path,
     THE BREAKAGE THIS PREVENTS, MEASURED (2026-10-11): the renderer finds
     its coastlines, borders and state lines beside its own build tree, and
     the door launched it bare.  A renderer binary copied to another folder
-    therefore found none, drew every field with no geography under it,
+    therefore found none, rendered every field with no geography under it,
     exited 0 and reported every product RENDERED: 59 delivered maps had no
     basemap.  The regional path never had this because it launches the
     same binary through ``woof.rustwx``, which pins the root.  So the door
@@ -625,13 +625,26 @@ def source_line_budget(width: int, height: int) -> int:
     return SOURCE_LINE_FITS.get((int(width), int(height)), max(16, int(width) // 30))
 
 
+def default_source_label() -> str:
+    """(WOOF 1.1.7) "WOOF-HEX-A 1.1.7": the MPAS engine's product name and the version that is executing, as the
+    WRF engine's maps say "WOOF-ArWen 1.1.7" (woof.render.default_source_label). It was "Hex forecast", which
+    named neither the product nor the build that drew the map."""
+    from woof.provenance import UNKNOWN_VERSION
+    from woof.provenance_gate import executing_version
+    try:
+        version = executing_version()
+    except Exception:                                   # noqa: BLE001
+        return "WOOF-HEX-A"
+    return "WOOF-HEX-A" if not version or version == UNKNOWN_VERSION else f"WOOF-HEX-A {version}"
+
+
 def credited_source_line(label: str | None, credit: str, width: int, height: int) -> str:
     """The map's own source line with the credit after it, in the longest form the canvas draws whole: the whole line
     (``source: Hex forecast, member mem003 of 36 · <credit>``), then shorter forms of the map's own part (``source: Hex
     mem003 of 36``, ``Hex mem003 of 36``, ``mem003``), then the credit alone. The credit, a licence's words, is never
     shortened."""
 
-    own = " ".join(str(label or "Hex forecast").split())
+    own = " ".join(str(label or default_source_label()).split())
     member = re.fullmatch(r"(?P<model>.*?)(?: forecast)?,? member (?P<id>\S+)(?P<of> of \d+)?", own)
     if member:
         short = " ".join(x for x in (member["model"], member["id"]) if x) + (member["of"] or "")
@@ -647,17 +660,42 @@ def credited_source_line(label: str | None, credit: str, width: int, height: int
     return credit
 
 
+#: The bars the host asks each map to draw, as JSON {product: band edges}: the renderer theme's colormaps.levels
+#: (the palette is kept and spread over the edges). WOOF sends its rain bands, so 1 h, 6 h and total rain each
+#: get a bar that fits the window. Unset or unreadable, no bar changes.
+THEME_LEVELS_ENV = "WOOF_HEX_THEME_LEVELS"
+
+
+def theme_levels() -> dict:
+    """The host's bars ($WOOF_HEX_THEME_LEVELS): {product: increasing edges}; {} when unset or not that shape."""
+
+    try:
+        levels = json.loads(os.environ.get(THEME_LEVELS_ENV) or "{}")
+    except ValueError:
+        return {}
+    if not isinstance(levels, dict):
+        return {}
+    return {str(k): [float(x) for x in v] for k, v in levels.items()
+            if isinstance(v, list) and len(v) >= 2 and all(isinstance(x, (int, float)) for x in v)
+            and all(a < b for a, b in zip(v, v[1:]))}
+
+
 def source_credit_theme(scratch: Path, label: str | None, width: int, height: int) -> str | None:
     """The render theme carrying this map's credited source line (credited_source_line), written in ``scratch``; None
     when the host names no credit (``$WOOF_HEX_SOURCE_CREDIT``) or names a theme of its own (``$RUSTWX_THEME``). The
     theme names no ``extends``: the renderer keeps its plain look and only the source line changes."""
 
     credit = " ".join(os.environ.get(SOURCE_CREDIT_ENV, "").split())
-    if not credit or os.environ.get("RUSTWX_THEME"):
+    levels = theme_levels()
+    if not (credit or levels) or os.environ.get("RUSTWX_THEME"):
         return None
+    theme: dict = {}
+    if credit:
+        theme["text"] = {"source_label": credited_source_line(label, credit, width, height)}
+    if levels:
+        theme["colormaps"] = {"levels": levels}
     path = Path(scratch) / "source-credit-theme.json"
-    path.write_text(json.dumps({"text": {"source_label": credited_source_line(label, credit, width, height)}})
-                    + "\n", encoding="utf-8")
+    path.write_text(json.dumps(theme) + "\n", encoding="utf-8")
     return str(path)
 
 
@@ -737,7 +775,7 @@ def default_label(mesh: Path | None) -> str:
 def legacy_product_file_name(label: str, engine_name: str, product: str) -> str:
     """``<label>_<YYYYMMDD>_<HH>z_f<lead>_<product>.png`` for one engine PNG.
 
-    THE BREAKAGE THIS PREVENTS (the owner's naming ruling, restated 2026-10-10):
+    THE BREAKAGE THIS PREVENTS:
     the engine names every frame it imports from a wrfout-shaped file
     ``rustwx_wrf_<date>_<H>z_f<NNN>_d01-<dx>km_...``, so a hex global
     forecast's maps were filed under another model's name and a resolution
@@ -771,7 +809,7 @@ def window_argument(text: str) -> str:
         f"unknown window {value!r}: choose {', '.join(WINDOW_TO_CONVERTER)}, "
         f"or region:CLAT,CLON,WIDTH_KM,HEIGHT_KM[,TRUELAT1,TRUELAT2] (dx from "
         f"the mesh), region-latlon:CLAT,CLON,WIDTH_KM,HEIGHT_KM (the same box on a "
-        f"regular lat-lon grid: what a WOOF domain reads as its parent), or "
+        f"regular lat-lon grid: what a WOOF-ArWen domain reads as its parent), or "
         f"lambert:CLAT,CLON,DX_M,NX,NY,TRUELAT1,TRUELAT2,STAND_LON")
 
 
@@ -796,8 +834,8 @@ PICTURE_GRID_MAX_COLUMNS = 2000
 _MPAS_EARTH_RADIUS_M = 6_371_229.0
 #: The lat-lon window's sphere (rw-mpas WRF_EARTH_RADIUS_M): global-mesh's columns are pi * this / spacing, times 2.
 #: Its own name, not the tile planner's _WRF_EARTH_RADIUS_M, so this block stands in a render door without tiles
-#: (woof hex 0.4.9 carries it as a hotfix row; its render door has no such name: NameError on canary
-#: run_35e9999842049ddb).
+#: (woof hex 0.4.9 carries it as a hotfix row; its render door has no such name: NameError on a
+#: canary run).
 _GLOBAL_WINDOW_RADIUS_M = 6_370_000.0
 
 
@@ -832,7 +870,7 @@ def global_picture_window(mesh: Path | None, width: int) -> tuple[str, str] | No
     whatever the mesh and however long the run. A mesh coarser than that (60 and 120 km globes) keeps its own spacing,
     and its picture is unchanged; its subtitle names the render grid either way.
 
-    THE BREAKAGE THIS PREVENTS, MEASURED (owner canary run_b8d705f1f8db9c92, 48 h 96 -> 3 km Arizona zoom globe on
+    THE BREAKAGE THIS PREVENTS, MEASURED (a canary run, 48 h 96 -> 3 km Arizona zoom globe on
     one RTX PRO 6000 box, 2026-10-30): ``global-mesh`` takes the mesh's MEDIAN cell spacing, three cells in four of that
     mesh are its 3 km core, so the global view was the whole sphere at 9.4 km, 4240 x 2121 = 9.0 M points, for a
     picture 1800 pixels across. The renderer's import holds about 10 KB per grid point per frame (RTX 5090 host, real hex
@@ -1095,6 +1133,60 @@ def _run_renderer(command: list[str], *, log_prefix: str,
     if env is None:
         return _run(command, log_prefix=log_prefix)
     return _run(command, log_prefix=log_prefix, env=env)
+
+
+def door_run_start(histories: list[Path], given: str | None) -> str | None:
+    """The run start the door renders with: ``--simulation-start`` when given; else the histories' own.
+
+    Several frames need it (histories_run_start refuses when they cannot give one).  One frame takes the start it
+    carries when it carries one, and is filed at lead 0 as before when it carries none.  THE BREAKAGE THIS PREVENTS
+    (0.6.2, 20 Nov 2026, a 3 h hrrrv5 run from an installed wheel): ``render --history
+    history.2026-11-19_15.00.00.nc`` of a run started at 12Z was labelled "Init 11/19 15Z | F000 | Valid 11/19 15Z": the
+    picture named a start the run never had, and the file was named f000."""
+    if given:
+        return given
+    if len(histories) > 1:
+        return histories_run_start(histories)
+    import netCDF4
+
+    try:
+        with netCDF4.Dataset(str(histories[0])) as dataset:
+            value = str(dataset.getncattr("config_start_time")).strip() if "config_start_time" in dataset.ncattrs() else ""
+    except OSError:
+        return None     # not a netCDF file the door can read here: the converter names what it cannot read
+    return value if re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{2}:\d{2}:\d{2}", value) else None
+
+
+def histories_run_start(histories: list[Path]) -> str | None:
+    """The run start every history names in ``config_start_time``, as ``YYYY-MM-DD_HH:MM:SS``.
+
+    THE BREAKAGE THIS PREVENTS (0.6.1, reproduced on the transport products page's render): given several
+    history frames and no ``--simulation-start``, the converter filed every frame as lead 0, so each frame's
+    pictures overwrote the one before and the door still ended ``failed=0``. An MPAS history carries its run's
+    start (``config_start_time``), so the door reads it there. Histories that name two starts, or a history
+    that names none, are refused: the door cannot tell the leads apart and says which flag does."""
+    import netCDF4
+
+    starts: dict[str, list[str]] = {}
+    for history in histories:
+        with netCDF4.Dataset(str(history)) as dataset:
+            value = str(dataset.getncattr("config_start_time")).strip() if "config_start_time" in dataset.ncattrs() else ""
+        starts.setdefault(value, []).append(Path(history).name)
+    if "" in starts:
+        raise RenderDoorError(
+            f"{len(histories)} history frames and no --simulation-start, and {starts[''][0]} names no run start "
+            "(config_start_time): without one every frame is filed as lead 0 and each overwrites the last. "
+            "Give the run start: --simulation-start YYYY-MM-DD_HH:MM:SS")
+    if len(starts) > 1:
+        named = "; ".join(f"{value} ({names[0]})" for value, names in sorted(starts.items()))
+        raise RenderDoorError(
+            f"the history frames name {len(starts)} run starts ({named}): render one run at a time, or give "
+            "--simulation-start YYYY-MM-DD_HH:MM:SS")
+    value = next(iter(starts))
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{2}:\d{2}:\d{2}", value):
+        raise RenderDoorError(
+            f"the histories' run start {value!r} is not YYYY-MM-DD_HH:MM:SS: give --simulation-start")
+    return value
 
 
 def convert_frames(convert_exe: Path, *, histories: list[Path] | None,
@@ -1664,6 +1756,30 @@ def graticule_overlays(lat, lon) -> dict | None:
     return {"lines": lines, "labels": labels, "step_deg": step}
 
 
+def merge_overlays(graticule: Path | None, extra: Path, scratch: Path) -> Path:
+    """The caller's ``--overlays`` (points, lines, labels: report rings, city names) drawn with the graticule.
+
+    THE BREAKAGE THIS PREVENTS: a hail map for a partner names the towns and rings the reports it is judged
+    against; the door put only its own graticule on them, so those maps went around it (the CF route, no state product
+    path).  The caller's file is the renderer's own ``--overlays`` schema; its entries are drawn over the graticule.
+    """
+    merged = {"lines": [], "labels": [], "points": []}
+    for path in (graticule, extra):
+        if path is None:
+            continue
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(doc, dict):
+            raise RenderDoorError(f"--overlays {path}: a JSON object with lines, labels and points")
+        for key, value in doc.items():
+            if key not in merged or not isinstance(value, list):
+                raise RenderDoorError(f"--overlays {path}: unknown entry {key!r} (lines, labels and points only)")
+            merged[key].extend(value)
+    out = Path(scratch) / "overlays.json"
+    out.write_text(json.dumps({k: v for k, v in merged.items() if v}) + "\n", encoding="utf-8")
+    print(f"OVERLAYS {extra}: {sum(len(v) for v in merged.values())} entries with the graticule", flush=True)
+    return out
+
+
 def write_graticule_overlays(frame: Path, scratch: Path) -> tuple[Path | None, dict | None]:
     """Write :func:`graticule_overlays` for ``frame`` (a converted
     wrfout-shaped file) into ``scratch``; ``(None, None)`` when the frame
@@ -1950,7 +2066,7 @@ def _run_render_inner(args, tile, overlap) -> tuple[int, dict]:
     # renderer that predates it keeps its own credit instead of refusing
     # every default render. A label the caller names still refuses there.
     if source_label is None and engine_accepts(renderer_exe, "--source-label"):
-        source_label = "Hex forecast"
+        source_label = default_source_label()
     if source_label is not None:
         if not source_label or len(source_label) > 160 or any(
                 ord(c) < 32 or ord(c) > 126 for c in source_label):
@@ -2010,6 +2126,12 @@ def _run_render_inner(args, tile, overlap) -> tuple[int, dict]:
                 "not carry the 3-D state the converter reads.")
             for item in args.history
         ]
+        if not getattr(args, "simulation_start", None):
+            # The frames' leads and the pictures' init time come from the run start the histories carry.
+            args.simulation_start = door_run_start(histories, None)
+            if args.simulation_start and tile is None:
+                print(f"START run start {args.simulation_start} read from the histories (config_start_time); "
+                      "--simulation-start names another", flush=True)
     init = None
     if getattr(args, "init", None):
         if compose is not None:
@@ -2198,6 +2320,8 @@ def _run_render_inner(args, tile, overlap) -> tuple[int, dict]:
         overlays_path, graticule = write_graticule_overlays(
             Path(frames_meta[0]["output"]), scratch)
     print(f"GRATICULE {graticule if graticule else 'none'}", flush=True)
+    if getattr(args, "overlays", None):
+        overlays_path = merge_overlays(overlays_path, Path(args.overlays), Path(scratch))
     if leads is not None:
         rows, catalog_summary, catalog_invocation = list_catalog(
             renderer_exe, series_outputs, scratch=scratch, heavy=args.heavy,
@@ -2595,7 +2719,7 @@ def add_render_arguments(parser) -> None:
     parser.add_argument(
         "--source-label", default=None, metavar="TEXT",
         help="source credit printed on each picture (1-160 printable ASCII "
-             "characters); default: Hex forecast where the renderer supports it")
+             "characters); default: WOOF-HEX-A and the version, where the renderer supports it")
     parser.add_argument(
         "--grid-label", default=None, metavar="TEXT",
         help="the picture's headline grid name in place of the mesh's (e.g. "
@@ -2661,6 +2785,10 @@ def add_render_arguments(parser) -> None:
     parser.add_argument(
         "--keep-scratch", action="store_true",
         help="keep the scratch dir after a clean run")
+    parser.add_argument(
+        "--overlays", default=None, metavar="FILE.json",
+        help="points, lines and labels drawn on every map over the graticule (the renderer's --overlays "
+             "schema: report rings, city names)")
     parser.add_argument(
         "--basemap-dir", default=None, metavar="DIR",
         help=f"the renderer's map geometry (natural_earth_10m/, "

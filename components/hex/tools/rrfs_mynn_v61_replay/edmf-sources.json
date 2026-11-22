@@ -1,0 +1,35 @@
+{
+  "schema": "gpuwm-hex.mynn-version-sources/v1",
+  "version": "MYNN-EDMF v6.1.1",
+  "repository": "https://github.com/NCAR/MYNN-EDMF",
+  "commit": "2b2da61b05a8ef9f9b06795c816dc01e347e0736",
+  "licence": "Apache-2.0 (LICENCE at this commit)",
+  "note": "The upstream files bl_mynnedmf_v611.py is generated from (generate_backend.py --layout v6) and edmf_referee.py --pin v6 builds. The pinned referee builds from the rrfs-44c0849 source tree (MYNN-EDMF c6d08709).",
+  "files": {
+    "LICENCE": {
+      "bytes": 566,
+      "sha256": "cb467384ad43d97fd7f1d43ea4ac84d4ce6908319b7aff2223c392deedd87265",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-EDMF/2b2da61b05a8ef9f9b06795c816dc01e347e0736/LICENCE"
+    },
+    "src/MPAS/module_bl_mynnedmf_common.F90": {
+      "bytes": 7392,
+      "sha256": "3a31e727d865bdce73075a2ae9f29f87be83eb1b0d26e13d627a452518df61b8",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-EDMF/2b2da61b05a8ef9f9b06795c816dc01e347e0736/src/MPAS/module_bl_mynnedmf_common.F90"
+    },
+    "src/module_bl_mynnedmf_diags.F90": {
+      "bytes": 9181,
+      "sha256": "5b1ce44be1999835c1f344c838d6d74db7a0ba63f751cc1551982b7d4f056e63",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-EDMF/2b2da61b05a8ef9f9b06795c816dc01e347e0736/src/module_bl_mynnedmf_diags.F90"
+    },
+    "src/module_bl_mynnedmf.F90": {
+      "bytes": 357483,
+      "sha256": "6cbb1efee7a13002c0b3abc598e9e91e13a487f9b59593e77df5bbe09a89c565",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-EDMF/2b2da61b05a8ef9f9b06795c816dc01e347e0736/src/module_bl_mynnedmf.F90"
+    },
+    "src/module_bl_mynnedmf_driver.F90": {
+      "bytes": 47149,
+      "sha256": "dd88d58207848a71f92594c411a8c6155f07b343031cf10ecac267fa06d02a85",
+      "url": "https://raw.githubusercontent.com/NCAR/MYNN-EDMF/2b2da61b05a8ef9f9b06795c816dc01e347e0736/src/module_bl_mynnedmf_driver.F90"
+    }
+  }
+}

@@ -228,17 +228,15 @@ tests/test_spp_consumers_gpu.py
 tests/test_spp_wrf461_column_oracle_gpu.py
 tests/test_ruc_spp_gpu.py
 
-# SHARD 1y: the batch line's qualification trials: acoustic Mu/W fusion,
-# member layout and the advection family dispatch.  No production door
-# reaches them (the batched moist step uses the separate launches), but
-# their source audits read the acoustic and advection kernels the dycore
-# ships, so a kernel edit turns them red.  Unlisted, that was 21 red tests
-# nobody saw: 2.8.4 gave advance_mu_th_msf two bodies in one conditional
-# block and the fusion audit counted both.  The audit's CPU half,
-# tests/test_ensemble_batch_acoustic_fusion_audit.py, is on stage 1.
+# SHARD 1y: the batch line's qualification trials: member layout and the
+# advection family dispatch.  No production door reaches them (the batched
+# moist step uses the separate launches), but their source audits read the
+# advection kernels the dycore ships, so a kernel edit turns them red.
+# The acoustic Mu/W fusion trial was removed on fix/305-f21-joined-muw: no
+# route selected it, its counted text audits went stale twice (21 red tests
+# at 2.8.5), and on an RTX 4090 it differed from single runs on 18 of 52
+# device tests.  The packed separate launches keep their word-identity tests.
 # Removing this block is an argument about the trials, made in a commit.
-tests/test_ensemble_batch_acoustic_fusion_gpu.py
-tests/test_ensemble_batch_acoustic_fusion_dycore_gpu.py
 tests/test_ensemble_batch_layout_trials_gpu.py
 tests/test_ensemble_batch_layout_dycore_gpu.py
 tests/test_ensemble_batch_advection_family_gpu.py
@@ -663,7 +661,6 @@ tests/test_ccn_start_fill.py
 # transfer preserves the declaration, and the transfer is the step that
 # dropped it.  Whole-module GPU by pytestmark, so on a CPU leg it would
 # collect and skip every row while the line read as coverage.
-tests/test_radar_staging_gpu.py
 
 # SHARD 1m: the 2026-09-30 speed lanes' device legs (lanes speed-mynn,
 # speed-rrtmg-legacy, speed-rte-rrtmgp, speed-megakernel, speed-ruc and
@@ -1104,6 +1101,9 @@ tests/test_mynn_gsd41.py
 tests/test_mynn_massflux_gsd41.py
 tests/test_mynn_predict_gsd41.py
 tests/test_mynn_water_gsd41.py
+# mynn_fixes_v61: each upstream MYNN v6.1 fix against the frozen unit, and
+# option-off loads only the frozen kernels.
+tests/test_mynn_fixes_v61.py
 tests/test_solar_albedo_cuda.py
 tests/test_solar_albedo_integration.py
 

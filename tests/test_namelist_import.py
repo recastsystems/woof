@@ -27,6 +27,7 @@ from woof.physics_compat import CONSTANT_DOWNWARD_LONGWAVE_ACK
 from woof.experiment import DEFAULT_COLUMN_CHUNK, load_experiment
 from woof.namelist_import import (GF_SCHEME_GENERATION_NOTICE,
                                    MYNN_MIXSCALARS_DEFAULT_NOTICE,
+                                   MYNN_MIXSCALARS_DEFAULT_NOTICE_480,
                                    SubstitutionReport, import_namelists,
                                    parse_namelist)
 from woof.native_wrf_contract import validate_native_lambert_contracts
@@ -460,7 +461,7 @@ def test_importer_does_not_coerce_noninteger_hierarchy_tokens(
 @pytest.mark.parametrize(
     "key, values",
     [
-        ("parent_id", (0, 1)),
+        ("parent_id", (2, 1)),
         ("parent_grid_ratio", (9, 3)),
         ("i_parent_start", (2, 40)),
         ("j_parent_start", (2, 30)),
@@ -470,8 +471,34 @@ def test_importer_binds_wps_root_topology(tmp_path, key, values):
     wps, inp = _generic_hierarchy_pair(tmp_path, 2)
     wps.write_text(_replace_namelist_column(
         wps.read_text(encoding="utf-8"), key, values), encoding="utf-8")
-    with pytest.raises(ValueError, match="WPS d01 root topology"):
+    match = ("WPS d01 parent_id must be 1" if key == "parent_id"
+             else "WPS d01 root topology")
+    with pytest.raises(ValueError, match=match):
         import_namelists(wps, inp, name="reject-wps-root")
+
+
+@pytest.mark.parametrize("max_dom", [1, 2])
+def test_importer_takes_wrf_root_spelling_in_namelist_wps(tmp_path, max_dom):
+    """Item 2 of the 2026-11-12 runner defects: generators write
+    ``&geogrid parent_id = 0`` for d01 and import-namelist refused it
+    ("WPS d01 root topology must use parent_id=1"), so an outside runner
+    handed it a rewritten copy.  The head grid's 0 is now taken and booked
+    as normalized; the nest's parent is still compared."""
+    wps, inp = _generic_hierarchy_pair(tmp_path, max_dom)
+    wps_text = wps.read_text(encoding="utf-8")
+    wps.write_text(_replace_namelist_column(
+        wps_text, "parent_id", (0,) + (1,) * (max_dom - 1)),
+        encoding="utf-8")
+    toml_text, report = import_namelists(wps, inp, name="wps-root-zero")
+    booked = [entry for entry in report.dropped
+              if entry.section == "geogrid" and entry.key == "parent_id (root)"]
+    assert [entry.values for entry in booked] == [(0,)]
+    assert "normalized" in booked[0].reason
+    resolved = tmp_path / "wps-root-zero.toml"
+    resolved.write_text(toml_text, encoding="utf-8")
+    exp = load_experiment(resolved)
+    assert [(d.grid_id, d.parent_id) for d in exp.domains] == [
+        (1, 0), (2, 1)][:max_dom]
 
 
 def test_nonintegral_root_spacing_uses_one_exact_ratio_chain(tmp_path):
@@ -1277,7 +1304,7 @@ def test_omitted_keys_take_wrf_registry_defaults(tmp_path):
 
 
 def test_grell_freitas_imports_natively_per_domain(tmp_path):
-    """cu_physics = 3 is a scheme WOOF runs, not a substitution.
+    """cu_physics = 3 is a scheme WOOF-ArWen runs, not a substitution.
 
     The shinhong round-trip contract, on the cumulus axis: the selector
     reaches its domain as itself, the Grell-family keys ride along with
@@ -1411,7 +1438,7 @@ def test_cugd_avedx_nondefault_with_gf_is_refused_by_name(tmp_path):
 def test_cugd_avedx_registry_default_with_gf_is_recorded_inert(tmp_path):
     """cugd_avedx = 1 (the Registry default) is inert under v4.6.1 GF --
     the driver hands it only to G3 -- so it is validated and recorded in
-    the fixed-by-WOOF section, never emitted into the TOML."""
+    the fixed-by-ArWen section, never emitted into the TOML."""
     toml_text, report = import_namelists(
         *_pair(tmp_path, inp=_gf_input("\n cugd_avedx = 1,")),
         name="gfavedx1")
@@ -1875,8 +1902,13 @@ def test_mynn_mixing_length_and_scalar_diffusion_import_without_substitution(tmp
         assert domain.run.bl_mynn_mixscalars == 0
     assert "bl_mynn_mixlength = 2" in text
     assert "scalar_pblmix = 1" in text
-    # The omitted key took the v4.6.1 Registry default, and the import
-    # says so: v4.7.x defaults it to 1 and is indistinguishable here.
+    # The omitted key took 0, and the import says which Registry that is:
+    # a bare line reads WRF 4.8.0's (default 0 again); a 4.7.1 import
+    # says v4.7.x defaults it to 1 and is indistinguishable here.
+    assert MYNN_MIXSCALARS_DEFAULT_NOTICE_480 in report.notices
+    assert "Registry.EM_COMMON:2503" in report.format()
+    _, report = import_namelists(*_pair(tmp_path, inp=inp), name="mynn-options",
+                                 wrf_version="4.7.1")
     assert MYNN_MIXSCALARS_DEFAULT_NOTICE in report.notices
     assert "Registry.EM_COMMON:2479" in report.format()
 
@@ -1892,11 +1924,13 @@ def test_mynn_mixscalars_default_notice_names_the_omission_only(tmp_path):
         text, report = import_namelists(
             *_pair(tmp_path, inp=inp), name=f"mynn-mixscalars-{value}")
         assert MYNN_MIXSCALARS_DEFAULT_NOTICE not in report.notices
+        assert MYNN_MIXSCALARS_DEFAULT_NOTICE_480 not in report.notices
         exp = _load(tmp_path, text, f"mynn-mixscalars-{value}.toml")
         assert {d.run.bl_mynn_mixscalars for d in exp.domains} == {value}
     # A non-MYNN namelist that omits the key gets no MYNN notice.
     _, report = import_namelists(*_pair(tmp_path, inp=INPUT_TEXT), name="ysu-plain")
     assert MYNN_MIXSCALARS_DEFAULT_NOTICE not in report.notices
+    assert MYNN_MIXSCALARS_DEFAULT_NOTICE_480 not in report.notices
 
 
 def test_hrrr_fork_namelist_omits_mixscalars_and_imports_hrrr_mixing(tmp_path):
@@ -1919,7 +1953,7 @@ def test_hrrr_fork_namelist_omits_mixscalars_and_imports_hrrr_mixing(tmp_path):
     for domain in exp.domains:
         assert domain.run.scalar_pblmix == 1
         assert domain.run.bl_mynn_mixscalars == 0
-    assert MYNN_MIXSCALARS_DEFAULT_NOTICE in report.notices
+    assert MYNN_MIXSCALARS_DEFAULT_NOTICE_480 in report.notices
 
 
 def test_wrf3x_mynn_tkebudget_spelling_imports_the_gsd41_generation(tmp_path):
@@ -2215,7 +2249,7 @@ def test_report_carries_three_explicit_sections(tmp_path):
                              extra_physics=" shcu_physics = 0,\n")
     formatted = report.format()
     assert "Other parsed controls (not a configuration-equivalence claim):" in formatted
-    assert "Fixed by WOOF (validated against the only implemented " \
+    assert "Fixed by WOOF-ArWen (validated against the only implemented " \
            "value):" in formatted
     assert "Not implemented (namelist keys consumed without a woof " \
            "counterpart):" in formatted

@@ -5,7 +5,7 @@ import argparse
 import sys
 
 
-_START = """Recast WOOF: GPU weather forecasts
+_START = """Recast WOOF: GPU weather forecasts. woof runs WOOF-ArWen (WRF); woof hex runs WOOF-HEX-A (MPAS)
 usage: woof COMMAND [OPTIONS]
 
 Create and launch
@@ -23,9 +23,9 @@ Pictures
   woof render WRFOUT... --series --out DIR     Draw a run's products
   woof render --diff A_RUN B_RUN --out DIR     Run A minus run B
 
-The hex model (preview), regional and global
+WOOF-HEX-A (preview), regional and global
   woof hex --help               MPAS-style unstructured-mesh model
-  woof hex global --help        Global forecasts on the hex model
+  woof hex global --help        Global forecasts on WOOF-HEX-A
 
 Set up or troubleshoot
   woof setup --with-geog        Install native tools, tables and geography

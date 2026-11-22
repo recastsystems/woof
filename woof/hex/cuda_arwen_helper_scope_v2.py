@@ -86,7 +86,7 @@ def _source_set_sha256(files):
 def _inside(root, name):
     path = (root / name).resolve(strict=True)
     if not path.is_relative_to(root):
-        raise RuntimeError("WOOF execution source escapes its engine tree: " + name)
+        raise RuntimeError("WOOF-ArWen execution source escapes its engine tree: " + name)
     return path
 
 
@@ -171,7 +171,7 @@ def bind_arwen_helpers_v2(root):
         module = importlib.import_module(name[:-3].replace("/", "."))
         actual = Path(module.__file__).resolve(strict=True)
         if actual != paths[name]:
-            raise RuntimeError("WOOF execution module was imported from another engine tree: " + name)
+            raise RuntimeError("WOOF-ArWen execution module was imported from another engine tree: " + name)
         if name in BASELINE_HELPERS and getattr(legacy, aliases[actual.stem]) is not module:
             raise RuntimeError("pinned legacy helper binding is stale: " + name)
         imported_paths[name] = str(actual)
@@ -179,7 +179,7 @@ def bind_arwen_helpers_v2(root):
         module = importlib.import_module(name[:-3].replace("/", "."))
         actual = Path(module.__file__).resolve(strict=True)
         if actual != paths[name]:
-            raise RuntimeError("WOOF execution dependency was imported from another engine tree: " + name)
+            raise RuntimeError("WOOF-ArWen execution dependency was imported from another engine tree: " + name)
         imported_paths[name] = str(actual)
     # CudaSW compiles exactly this sibling file. Bind both its path and bytes.
     sw_module = importlib.import_module("woof.core.rrtmg_sw")

@@ -1,6 +1,6 @@
 """The vertical door's CDF-5 copier ships in the wheel and is found there first.
 
-THE BREAKAGE (verify-final-hex item 4, 2026-10-12): ``gpuwm-hex-netcdf-copy``
+THE BREAKAGE (a release review of 0.4.0, 2026-10-12): ``gpuwm-hex-netcdf-copy``
 was looked up only through an environment variable, PATH and a source tree's
 ``rust/netcdf-copy``.  The wheel did not carry it and the sdist did not carry
 the crate, so every pip install copied vertical templates the slow way (about

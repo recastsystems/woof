@@ -1,6 +1,6 @@
 # Observational referee
 
-This subsystem answers a narrow question: **does a woof hex/WOOF arm produce
+This subsystem answers a narrow question: **does a woof hex/WOOF-ArWen arm produce
 better observable weather than its reference arm?** It does not revive
 native-MPAS parity as a product goal, and it does not use a historical model as
 an oracle. Observations are the primary referees: Stage-IV for precipitation,

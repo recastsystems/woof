@@ -1,6 +1,6 @@
 """The host thread waits for the card with blocking sync, not CUDA's spin (woof/cuda_wait.py).
 
-Breakage it prevents: a GPU-bound WOOF forecast holding one host core at 100 % for its whole step
+Breakage it prevents: a GPU-bound WOOF-ArWen forecast holding one host core at 100 % for its whole step
 loop (a 3 km GFS nest forecast, 2026-10-27: perf put the main thread 67 % in libcuda, 16 % in sched_yield).
 Driven with a fake driver: no card needed.
 """
@@ -146,7 +146,7 @@ def _smi(stdout, returncode=0):
 
 
 def test_a_multi_card_preparation_with_no_mask_takes_the_least_busy_card(monkeypatch, capsys):
-    """Breakage: every unmasked GFS preparation on V8X held a context on card 0, another lane's."""
+    """Breakage: every unmasked GFS preparation on a rented 8-card box held a context on card 0, another lane's."""
     from woof.ingest import preprocess_backend as pb
 
     monkeypatch.setattr(pb, "_cuda_not_yet_initialized", lambda: True)

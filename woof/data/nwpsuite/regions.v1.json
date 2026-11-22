@@ -15,11 +15,6 @@
         ],
         "ensemble_ic": [
           "gefs"
-        ],
-        "obs_da": [
-          "conventional",
-          "gnssro",
-          "radiance"
         ]
       },
       "verify": {
@@ -61,9 +56,6 @@
         ],
         "ensemble_ic": [
           "gefs"
-        ],
-        "obs_da": [
-          "conventional"
         ]
       },
       "verify": {

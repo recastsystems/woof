@@ -137,7 +137,7 @@ ratios 3 and 4 [PROVENANCE.md:576; tests/test_nest_interp.py].
 
 ### 2.5.1 The mechanism
 
-A moving nest in WOOF is a sequence of static nests joined by a re-grid at cycle
+A moving nest in WOOF-ArWen is a sequence of static nests joined by a re-grid at cycle
 boundaries. WRF's continuous per-step motion is not adopted and its namelist keys
 stay refused [docs/nest-relocation-identity-decision.md:29-31]. The design is exact
 rather than approximate: a placement is a whole number of parent cells, so a move of
@@ -234,7 +234,7 @@ With `diff_opt=2`, two LES closures are selectable per domain
 
 `km_opt=2` additionally requires `bl_pbl_physics=0`: WRF will evolve TKE with the
 PBL on, but that combination has no vertical TKE mixing (WRF's
-`vertical_diffusion_2` is PBL-off-gated), so WOOF refuses it rather than run a
+`vertical_diffusion_2` is PBL-off-gated), so WOOF-ArWen refuses it rather than run a
 half-wired scheme [docs/public/LES.md:24-32].
 
 The property most often misread: with the PBL off, `km_opt` 2 or 3 give vertical
@@ -284,11 +284,11 @@ form. A guard test fails if any shipped config arrives on the exposed path, and 
 check resolves the level ladder from `nz`/`ztop` when a config leaves interfaces
 implicit [tests/test_shipped_configs_mixing_stability.py; docs/public/LES.md:421-428].
 
-Related divergence D8, which is a different operator from the one above: WOOF
+Related divergence D8, which is a different operator from the one above: WOOF-ArWen
 hands the *vertical* diffusion of vertical velocity (`vertical_diffusion_w_2`)
 `xkmv` where WRF hands it `xkmh`. WRF's horizontal `w` operator
 (`horizontal_diffusion_w_2`), the one the criterion above is about, takes `xkmv` in
-WRF and WOOF follows it unchanged. It can only matter where the two
+WRF and WOOF-ArWen follows it unchanged. It can only matter where the two
 coefficients differ (`km_opt` 2 or 3 with `mix_isotropic = 0`); taking WRF's choice
 is unstable at dx 250 m against dz 17 m, and on the idealized convective
 boundary-layer case the WRF oracle lane measured `XKMH == XKMV` at all 589,824
@@ -321,7 +321,7 @@ surface heat flux 0.24 K m/s [docs/public/LES.md:59-204]:
   fraction, 0.27% on prognostic subgrid TKE. No pass band is cut; differences are
   reported, not judged.
 - Realisation spread measured, not assumed (n=18 at 100 m, n=9 at 50 m): on the
-  flux-fraction arm WOOF's spread is 8.7x WRF's (0.01414 vs 0.00163 stdev at
+  flux-fraction arm WOOF-ArWen's spread is 8.7x WRF's (0.01414 vs 0.00163 stdev at
   100 m), an open question recorded rather than diagnosed; on the TKE-based
   resolved fraction the two are at parity (0.00231 vs 0.00247).
 - TKE budget closure over a 120-step window: relative residual 2.49e-9.

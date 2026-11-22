@@ -1,9 +1,9 @@
 """Build New Tiedtke driver-boundary columns from a wrfout file.
 
 THE CROSS-FEED. run_nt_live.F90 already drives the byte-unmodified WRF
-Fortran over columns dumped live from WOOF. This produces the same column
+Fortran over columns dumped live from WOOF-ArWen. This produces the same column
 format from a wrfout instead, so the SAME implementation can be driven
-from WRF's own state and from WOOF's, and the two compared. Identical
+from WRF's own state and from WOOF-ArWen's, and the two compared. Identical
 code, two states -- the mirror of the first experiment, which held the
 state fixed and varied the code.
 
@@ -21,11 +21,11 @@ goes wrong. Two traps already found and closed:
     USE_THETA_M = 1. Verified numerically rather than read: the identity
     THM = (T+300)(1 + Rv/Rd qv) - 300 holds to 6.9e-05 K over the whole
     d02 field. Taking THM would have been an 11.2 K error at low levels.
-  * Only fields BOTH WOOF and WRF write are used. WOOF's wrfout carries
+  * Only fields BOTH WOOF-ArWen and WRF write are used. WOOF-ArWen's wrfout carries
     77 variables against WRF's 203 and has no DNW/DN/C1F/C2F/P_HYD/THM --
     so dnw and dn are derived from ZNW, which both carry. That is what
     makes the round-trip guard possible: the same code path can be run on
-    WOOF's own wrfout and checked against the live dump, which is the
+    WOOF-ArWen's own wrfout and checked against the live dump, which is the
     only way to know the reconstruction is right.
 
 Formulas are WRF's own, from the 4.8.0 tree:
@@ -65,11 +65,11 @@ def _hex(x) -> str:
 def build(path: str, coeffs: str | None = None):
     """Every driver-boundary field, on the mass grid, bottom-up.
 
-    ``coeffs`` names a file to take C1H/C2H from. WOOF's wrfout writes 77
+    ``coeffs`` names a file to take C1H/C2H from. WOOF-ArWen's wrfout writes 77
     variables against WRF's 203 and carries no C1H/C2H, but the hybrid
     coefficients are functions of ZNW and etac alone -- and ZNW is BIT-
     IDENTICAL between the two models here, with the same P_TOP, so WRF's
-    are WOOF's. Checked, not assumed.
+    are WOOF-ArWen's. Checked, not assumed.
     """
     d = Dataset(path)
     _co = Dataset(coeffs) if coeffs else d

@@ -28,7 +28,7 @@ Expected layout under --runs (names declared in the design):
     sw-wrf-mp28/wrfout_d01_*
     sw-wrf-novec-mp08/wrfout_d01_*    build B, the control
     sw-wrf-novec-mp28/wrfout_d01_*
-    sw-arwen-mp08/frame_t*.npz        WOOF, from build A's 1800 s frame
+    sw-arwen-mp08/frame_t*.npz        WOOF-ArWen, from build A's 1800 s frame
     sw-arwen-mp08-b/                  its duplicate (dual-run screen)
     sw-arwen-mp28/  sw-arwen-mp28-b/
 """

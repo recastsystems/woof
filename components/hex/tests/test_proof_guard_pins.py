@@ -410,8 +410,8 @@ def test_head_and_tree_are_provenance_not_gates() -> None:
     import inspect
 
     source = inspect.getsource(runner.verify_arwen_checkout_git)
-    assert "WOOF checkout HEAD changed" not in source
-    assert "WOOF checkout tree changed" not in source
+    assert "WOOF-ArWen checkout HEAD changed" not in source
+    assert "WOOF-ArWen checkout tree changed" not in source
     assert "6b896c3dd5ef2fb94507210af49766f78f831d57" not in source
 
 

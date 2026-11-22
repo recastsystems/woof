@@ -490,7 +490,7 @@ def test_the_rust_engine_output_is_relocated_into_the_layout(monkeypatch,
 
     written, failures, skipped = render_module.render_wrfouts_rust(
         [wrfout], products="all", timeidx=None, outdir=out,
-        size=(800, 600), source_label="WOOF test")
+        size=(800, 600), source_label="WOOF-ArWen test")
     assert failures == [] and skipped == []
     # The delivered name carries the frame's identity only: the domain
     # and product tokens are the two folders directly above it, and a
@@ -533,7 +533,7 @@ def test_a_06z_case_is_filed_nested_not_silently_left_flat(monkeypatch,
 
     written, failures, skipped = render_module.render_wrfouts_rust(
         [wrfout], products="all", timeidx=None, outdir=out,
-        size=(800, 600), source_label="WOOF test")
+        size=(800, 600), source_label="WOOF-ArWen test")
     assert failures == [] and skipped == []
     assert sorted(p.relative_to(out).as_posix() for p in written) == sorted((
         "d02-3km/composite_reflectivity/2026-04-16/"
@@ -573,7 +573,7 @@ def test_an_engine_output_that_defeats_the_parse_lands_flat_but_loudly(
 
     written, failures, skipped = render_module.render_wrfouts_rust(
         [wrfout], products="all", timeidx=None, outdir=out,
-        size=(800, 600), source_label="WOOF test")
+        size=(800, 600), source_label="WOOF-ArWen test")
     assert failures == [] and skipped == []
 
     # The parseable frame is filed; the alien one stays flat (rebranded,
@@ -898,7 +898,7 @@ def test_a_delivered_path_fits_the_windows_tools_that_open_it(tmp_path,
                                                               capsys):
     """The deepest real layout, measured through the placement seam.
 
-    :func:`woof.render_layout.fs_path` lets WOOF itself write and read
+    :func:`woof.render_layout.fs_path` lets WOOF-ArWen itself write and read
     past MAX_PATH, which is why the picture is filed rather than dropped
     -- but it does nothing for the tools the delivery is OPENED with.
     Explorer, the readers a user's own script imports, ``tar``, and any
@@ -1291,7 +1291,7 @@ def test_two_episodes_of_one_domain_no_longer_share_a_delivered_name(
 
     written, failures, skipped = render_module.render_wrfouts_rust(
         inputs, products="all", timeidx=None, outdir=out,
-        size=(800, 600), source_label="WOOF test")
+        size=(800, 600), source_label="WOOF-ArWen test")
     assert failures == [] and skipped == []
     assert sorted(p.relative_to(out).as_posix() for p in written) == [
         "d05-500m/episode-001/composite_reflectivity/1974-04-03/"
@@ -1323,7 +1323,7 @@ def test_a_lifecycle_free_render_is_byte_identical_through_the_seam(
 
     written, _failures, _skipped = render_module.render_wrfouts_rust(
         [wrfout], products="all", timeidx=None, outdir=out,
-        size=(800, 600), source_label="WOOF test")
+        size=(800, 600), source_label="WOOF-ArWen test")
     assert [p.relative_to(out).as_posix() for p in written] == [
         "d02-3km/composite_reflectivity/1974-04-03/"
         "arwen_wrf_19740403_18z_f000.png"]
@@ -1340,7 +1340,7 @@ def test_the_matplotlib_fallback_files_episodes_the_same_way(tmp_path):
     out = tmp_path / "png"
     written, failures, skipped = render_module.render_wrfouts(
         [wrfout], products=("t2",), timeidx=0, outdir=out, dpi=72,
-        source_label="WOOF test")
+        source_label="WOOF-ArWen test")
     assert failures == [] and skipped == []
     assert [p.relative_to(out).as_posix() for p in written] == [
         "d02-1km/episode-003/t2/1974-04-03/"

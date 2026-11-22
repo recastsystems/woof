@@ -1,0 +1,15 @@
+# gfortran: GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# glibc:    ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+# referee:  /w/build/WRF-4.8.0-serial-pristine (BUILD.json wrf.exe f6f47f86de59...)
+# tofd_factor .003, chained steps 3
+# libm symbols the referee scheme object imports:
+                 U atanf
+                 U expf
+                 U logf
+                 U powf
+826fa604b5052ae71138e886e07e061a951302a69b3f18a9df8590c35504bcd3  /w/build/WRF-4.8.0-serial-pristine/phys/ccpp_kind_types.o
+9baef629e1b28209c34d525b3431e3dd7f30f9eefe6242dd505e4040c80f6950  /w/build/WRF-4.8.0-serial-pristine/phys/physics_mmm/sf_sfclayrev.o
+777640c2096620f39d2808db48ef90e7e13574a818f4e4be0c681a9653b2424f  /w/build/WRF-4.8.0-serial-pristine/phys/module_sf_sfclayrev.o
+ba3f0ad66c2191c0f207824fd4040907c926db256826f366c7f93eb6440e7b1e  tools/sfclayrev_wrf480_oracle/run_sfclayrev480.F90
+61161b6fea632fa2e9fbe84270e6fafc62bc41f59c7694f4db9c81f3a66c5dc8  tests/data/oracles/sfclayrev480/sfclayrev480-inputs.hex
+a6e6bf1a94c67aaf113c0b9107ab9ed7ff4cabc4a907414e612c42945e155dda  sfclayrev480-outputs.hex

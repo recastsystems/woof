@@ -296,6 +296,14 @@ def forecast_column_config(run):
     # warms the background physics; its unrelated grid cannot locate that farm.
     if getattr(run, "wind_farm_scheme", "off") != "off":
         common.update(wind_farm_scheme="off", wind_farm_table="", wind_farms="")
+    # LES-nest inflow seeding perturbs the boundary tables a NestCoupler
+    # refreshes; the column is no nest child (nested=False above), so the
+    # mechanism has nothing to act on and validate_run_config refuses it.
+    # Breakage (WOOF 2026-11-10, run_c8297bf7540c928d): a five-domain ladder
+    # with 120 m and 40 m LES nests failed the whole pre-warm on "inflow_
+    # perturbation ... requires nested=true", so no domain's kernels warmed.
+    if getattr(run, "inflow_perturbation", False):
+        common["inflow_perturbation"] = False
     if bool(getattr(run, "specified", False) or getattr(run, "nested", False)):
         extent = max(_NX, 2 * int(run.spec_bdy_width) + 4)
         return validate_run_config(replace(
@@ -444,10 +452,10 @@ def _synthetic_orographic_static(cfg, grid) -> dict:
     gwd_opt = int(getattr(cfg, "gwd_opt", 0) or 0)
     if not (topo_wind or gwd_opt):
         return {}
-    from woof.static.orographic import required_static_fields
+    from woof.static.orographic import drag_static_fields, gwdo_version_of
 
     static = {"HGT_M": np.zeros(grid, dtype=np.float32)}
-    for name in required_static_fields(topo_wind, gwd_opt):
+    for name in drag_static_fields(topo_wind, gwd_opt, gwdo_version_of(cfg)):
         static[name] = np.full(grid, _SYNTHETIC_OROGRAPHY_VALUE.get(name, 0.1), dtype=np.float32)
     return {"terrain_drag_static": static}
 

@@ -1,0 +1,16 @@
+{
+  "schema": "gpuwm-snow-lap-table-v1",
+  "units": "kg m-2 s-1",
+  "note": "Table fluxes for snicar_lap_opt=1 (dry and wet deposition held constant in space and time, the analogue of upstream's read-table switch). This packaged table is all zero; give snicar_lap_table a copy with your own values. initial_kg_m2 is mixed through the snowpack at the first step.",
+  "species": {
+    "bc_hydrophilic": {"dry": 0.0, "wet": 0.0, "initial_kg_m2": 0.0},
+    "bc_hydrophobic": {"dry": 0.0, "wet": 0.0, "initial_kg_m2": 0.0},
+    "oc_hydrophilic": {"dry": 0.0, "wet": 0.0, "initial_kg_m2": 0.0},
+    "oc_hydrophobic": {"dry": 0.0, "wet": 0.0, "initial_kg_m2": 0.0},
+    "dust1": {"dry": 0.0, "wet": 0.0, "initial_kg_m2": 0.0},
+    "dust2": {"dry": 0.0, "wet": 0.0, "initial_kg_m2": 0.0},
+    "dust3": {"dry": 0.0, "wet": 0.0, "initial_kg_m2": 0.0},
+    "dust4": {"dry": 0.0, "wet": 0.0, "initial_kg_m2": 0.0},
+    "dust5": {"dry": 0.0, "wet": 0.0, "initial_kg_m2": 0.0}
+  }
+}

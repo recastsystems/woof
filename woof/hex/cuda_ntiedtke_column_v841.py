@@ -136,7 +136,7 @@ def verify_ntiedtke_sources(root: str | Path) -> Mapping[str, str]:
     Returns the SHA-256 of the bytes this run executes.  A missing file is
     refused: the row cannot construct the scheme without it.
 
-    RETIRED 2026-10-10 as a gate (owner ruling; Refusals law): a hash that differs from the 2.8.0 bytes the row
+    RETIRED 2026-10-10 as a gate (Refusals law): a hash that differs from the 2.8.0 bytes the row
     was first measured on used to raise "another engine's scheme is a
     different, unmeasured row".  That named no breakage, only missing
     evidence, and it refused New Tiedtke -- the MPAS-A mesoscale_reference

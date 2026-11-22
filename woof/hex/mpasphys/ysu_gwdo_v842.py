@@ -4,7 +4,7 @@ Authority: physics_mmm/bl_gwdo.F90:20-649; physics_wrf/module_bl_gwdo.F:15-237;
 mpas_atmphys_driver_gwdo.F:285-552,555-689,692-834. These three files are
 SHA-identical to the v8.4.1 authority. The whole existing MPAS CUDA algorithm
 is reused, with strict GNU arithmetic corrections measured by the standalone
-pristine-Fortran oracle. WOOF and cuda_gwdo_v841 remain untouched.
+pristine-Fortran oracle. WOOF-ArWen and cuda_gwdo_v841 remain untouched.
 
 Carriers are resident RKIND float32 C [level,column], surface to top. Driver
 aliases (including dry hydrostatic pressures) follow MPAS, with sina=0/cosa=1,

@@ -14,7 +14,7 @@
 # (the partition handoff at every frame; rim/far at 22Z), and per the
 # registered AC-P4.2 rule those findings block the blessing.  The
 # findings section of docs/public/GRAYZONE-NEST.md is the status of
-# record; docs/superpowers/receipts/grayzone/P4-CAMPAIGN-20260804.md has
+# record; docs/internal/receipts/grayzone/P4-CAMPAIGN-20260804.md has
 # the numbers.
 #
 # WHY d02 AND ONLY d02 (the per-domain reading, P4 of the LES
@@ -24,7 +24,7 @@
 #     configuration the acceptance ladder scored -- SH vertical transport,
 #     horizontal Smagorinsky via km_opt = 4 -- and every gated rung
 #     1600/800/400/200/100 m landed inside its pre-registered Honnert
-#     (2011) band (docs/superpowers/receipts/grayzone/
+#     (2011) band (docs/internal/receipts/grayzone/
 #     PHASE1-SHINHONG-20260803.md).  At d02's own scale the ladder read
 #     subgrid TKE fraction ~0.83 at 800 m where every flat closure read
 #     ~0.35.

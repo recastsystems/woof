@@ -8,7 +8,7 @@ from fractions import Fraction
 import pytest
 
 from woof.hex.mpasphys.driver_v842 import (
-    CORRECTIONS_V842, SURFACE_PRECIPITATION_WINDOW, Backend, NativeDriverHooks, PhysicsDriver, PhysicsManager,
+    CORRECTIONS_V842, RP6_RESTART_GAP, SURFACE_PRECIPITATION_WINDOW, Backend, NativeDriverHooks, PhysicsDriver, PhysicsManager,
     SlotRegistry, resolve_namelist,
 )
 from woof.hex.mpasphys.forecast_v842 import split_physics_mode
@@ -85,22 +85,27 @@ def test_correct_mode_receipt_names_its_applied_findings_and_named_gaps():
     config = resolve_namelist(deck(mode='correct', config_pbl_interval='00:12:00'))
     assert config.mode == 'correct'
     # YSU suite: no MYNN finding is active.  RP3 is active (config_frac_seaice defaults true) but its slots
-    # run native-cpu, which can never implement it: a named gap, not a refusal (coordinator 2026-10-14).
+    # run native-cpu, which can never implement it: a named gap, not a refusal.
     assert config.corrections == {'RP6'}
+    owners = {finding: row['owners'] for finding, row in CORRECTIONS_V842.items()}
+    seaice = owners['RP3']['seaice']
+    sfclay = owners['RP3']['surface_layer']['sf_monin_obukhov_rev']
+    wsm6 = owners['WB5']['microphysics']
+    assert wsm6 == owners['WB3']['microphysics']['mp_wsm6']
     assert [(g.finding, g.slot, g.scheme, g.backend, g.owner) for g in config.gaps] == [
-        ('RP3', 'seaice', 'sf_noah', 'native-cpu', 'p18-seaice'),
-        ('RP3', 'surface_layer', 'sf_monin_obukhov_rev', 'native-cpu', 'p9-sfclay-mm5'),
-        ('WB3', 'microphysics', 'mp_wsm6', 'native-cpu', 'p2-wsm6'),
-        ('WB5', 'microphysics', 'mp_wsm6', 'native-cpu', 'p2-wsm6')]
+        ('RP3', 'seaice', 'sf_noah', 'native-cpu', seaice),
+        ('RP3', 'surface_layer', 'sf_monin_obukhov_rev', 'native-cpu', sfclay),
+        ('WB3', 'microphysics', 'mp_wsm6', 'native-cpu', wsm6),
+        ('WB5', 'microphysics', 'mp_wsm6', 'native-cpu', wsm6)]
     receipt = config.receipt()
     assert receipt['physics_mode'] == 'correct' and receipt['corrections'] == ['RP6']
     block = receipt['correct_mode']
     assert block['mode'] == 'correct' and block['applied'] == ['RP6'] and block['skipped'] == []
     assert [(g['finding'], g['slot'], g['reason'], g['owner']) for g in block['gaps']] == [
-        ('RP3', 'seaice', 'slot does not implement it', 'p18-seaice'),
-        ('RP3', 'surface_layer', 'slot does not implement it', 'p9-sfclay-mm5'),
-        ('WB3', 'microphysics', 'slot does not implement it', 'p2-wsm6'),
-        ('WB5', 'microphysics', 'slot does not implement it', 'p2-wsm6')]
+        ('RP3', 'seaice', 'slot does not implement it', seaice),
+        ('RP3', 'surface_layer', 'slot does not implement it', sfclay),
+        ('WB3', 'microphysics', 'slot does not implement it', wsm6),
+        ('WB5', 'microphysics', 'slot does not implement it', wsm6)]
     assert all('never implement' in g['note'] and g['breakage'] for g in block['gaps'])
     skipped = resolve_namelist(deck(mode='correct', skip='RP3,WB3,WB5', config_pbl_interval='00:12:00'))
     assert skipped.corrections == {'RP6'} and skipped.receipt()['correct_skip'] == ['RP3', 'WB3', 'WB5']
@@ -114,7 +119,9 @@ def test_gap_warning_is_loud_multiline_and_names_every_gap():
     assert lines[0].startswith('CORRECT MODE: named gaps') and 'WARNING' in lines[0]
     assert len(lines) == 2 + len(config.gaps) and all(line.startswith('CORRECT MODE:') for line in lines)
     for gap in config.gaps:
-        assert any(gap.finding in line and gap.slot in line and gap.owner in line for line in lines)
+        assert any(gap.finding in line and gap.slot in line for line in lines)
+        # The printed lines name the gap and its reason; the run record's row says which part of hex closes it.
+        assert gap.owner and not any(gap.owner in line or "owner" in line for line in lines)
     assert 'exact' in lines[-1]
     assert resolve_namelist(deck('convection_permitting')).gap_warning() is None
 
@@ -136,16 +143,17 @@ def declaring(**slots):
 def test_RP1_RP3_pristine_native_slots_are_named_gaps_not_refusals():
     config = resolve_namelist(deck('convection_permitting', mode='correct', skip='WB3'))
     # Native-cpu MYNN, sea ice and surface layer are pristine v8.4.2: RP1 and RP3 cannot be applied, so
-    # they are left out of the run whole and listed (coordinator 2026-10-14: default correct, never refuse).
+    # they are left out of the run whole and listed (correct is the default, and a gap is never a refusal).
     assert config.corrections == frozenset()
+    owners = {finding: row['owners'] for finding, row in CORRECTIONS_V842.items()}
     assert {(g.finding, g.slot): g.owner for g in config.gaps} == {
-        ('RP1', 'pbl'): 'p12-bl-mynn', ('RP7', 'pbl'): 'p12-bl-mynn', ('RP3', 'seaice'): 'p18-seaice',
-        ('RP3', 'surface_layer'): 'p10-sf-mynn'}
+        ('RP1', 'pbl'): owners['RP1']['pbl'], ('RP7', 'pbl'): owners['RP7']['pbl'],
+        ('RP3', 'seaice'): owners['RP3']['seaice'], ('RP3', 'surface_layer'): owners['RP3']['surface_layer']['sf_mynn']}
     assert all(g.reason == 'slot does not implement it' and g.backend == 'native-cpu' for g in config.gaps)
     driver, _, seen = driver_for(config, 360)           # runs: no refusal
     run_steps(driver, 360, 1)
     assert seen and all(call.corrections == frozenset() for call in seen)
-    # The published hex-cuda MYNN declares RP1 in its table descriptor (p12, 1f3d5730): the table
+    # The published hex-cuda MYNN declares RP1 in its table descriptor: the table
     # settlement applies it, so selecting the hex-cuda slot closes the gap.
     cuda_mynn = resolve_namelist(deck('convection_permitting', mode='correct', skip='RP3,WB3,RP7'),
                                  backends={'pbl': 'hex-cuda'})
@@ -301,10 +309,10 @@ def test_RP6_noahmp_is_a_named_gap_until_it_steps_by_dt_pbl():
                   config_pbl_interval='00:12:00', config_frac_seaice=False)
     config = resolve_namelist(noahmp)
     # Native Noah-MP steps by the model dt (noahmpinit.F:289), so the cadence cannot be applied to it: RP6 is
-    # left out whole (the run keeps native's every-step calls) and named, owned by the Noah-MP lane.
+    # left out whole (the run keeps native's every-step calls) and named, closed by the Noah-MP port.
     assert config.corrections == frozenset()
     assert [(g.finding, g.slot, g.scheme, g.owner) for g in config.gaps] == [
-        ('RP6', 'land_surface', 'sf_noahmp', 'p17-noahmp')]
+        ('RP6', 'land_surface', 'sf_noahmp', CORRECTIONS_V842['RP6']['owners']['land_surface'])]
     exact = resolve_namelist(noahmp.replace("config_physics_mode = 'correct'", "config_physics_mode = 'exact'"))
     sequences = []
     for each in (config, exact):
@@ -326,7 +334,8 @@ def test_RP6_native_file_restart_is_a_named_gap_not_a_refusal():
     config = resolve_namelist(restart)
     assert config.corrections == frozenset()
     assert [(g.finding, g.slot) for g in config.gaps] == [('RP6', 'restart')]
-    assert 'precipitation window' in config.gaps[0].reason and 'integrator' in config.gaps[0].owner
+    assert 'precipitation window' in config.gaps[0].reason
+    assert config.gaps[0].owner == RP6_RESTART_GAP['owner']
     cold = resolve_namelist(restart.replace('.true.', '.false.'))
     assert cold.corrections == {'RP6'} and cold.gaps == ()
 
@@ -356,10 +365,10 @@ def test_every_correction_names_its_breakage():
     # the findings that act on the ArWen route and the IAU and boundary doors ("hex_route", read by
     # woof.hex.correct_mode).  WB5 is on both: the hex-cuda WSM6 slot and the engine's WSM6.
     assert {k for k, row in CORRECTIONS_V842.items() if row['slots'] or k == 'RP4'} == {
-        'RP1', 'RP3', 'RP4', 'RP6', 'RP7', 'WB3', 'WB5'}
+        'RP1', 'RP3', 'RP4', 'RP6', 'RP7', 'RP8', 'WB3', 'WB5'}
     assert {k for k, row in CORRECTIONS_V842.items() if 'hex_route' in row} == {
         'WB4', 'WB5', 'IN1', 'IN2', 'IN3', 'IN4', 'IN5'}
-    assert set(CORRECTIONS_V842) == {'RP1', 'RP3', 'RP4', 'RP6', 'RP7', 'WB3', 'WB4', 'WB5',
+    assert set(CORRECTIONS_V842) == {'RP1', 'RP3', 'RP4', 'RP6', 'RP7', 'RP8', 'WB3', 'WB4', 'WB5',
                                      'IN1', 'IN2', 'IN3', 'IN4', 'IN5'}
     assert all(row['breakage'] for row in CORRECTIONS_V842.values())
     assert Backend.NATIVE_CPU.value == 'native-cpu'

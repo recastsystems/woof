@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 from typing import Any, Mapping
 
 from woof.certify.kernel_manifest import kernel_manifest, manifest_is_empty
@@ -255,8 +256,15 @@ def emit_run_capsule(outdir: str | Path, *, emission_site: str,
         path = None
     # Output work starts only after durable forecast output and its capsule.
     # Its pending receipt is independent of the physical run's verdict.
-    from woof.verification_visuals import finish_run
-    finish_run(outdir, sections=sections)
+    from woof.verification_visuals import finish_line, finish_run
+    line = finish_line(finish_run(outdir, sections=sections))
+    if line:
+        # One line, after the hook returned, so the hook itself still never
+        # writes to a stream; a closed stream cannot fail a finished run.
+        try:
+            print(line, file=sys.stderr, flush=True)
+        except (OSError, ValueError):
+            pass
     return path
 
 

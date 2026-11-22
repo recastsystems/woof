@@ -17,7 +17,7 @@ import time
 import numpy as np
 
 from capture import FIELDS, OUTPUT, SURFACE
-from generate import EXPECTED
+from generate import EXPECTED_BY_WRF
 
 HERE = Path(__file__).resolve().parent
 ENGINE_NAMES = {"TH": "theta", "PII": "pii", "AS": "as_", "GRAPNC": "graupelnc", "GRAPNCV": "graupelncv"}
@@ -44,7 +44,8 @@ def read_capture(path: Path, *, output=False):
     return dict(nx=nx,ny=ny,nz=nz,step=step,its=its,jts=jts,ccnty=ccnty,dt=float(dt)), fields, surface
 
 
-def replay(pin: Path, expected: Path, generated: Path, receipt: Path, *, debug=False, fast_compile=None):
+def replay(pin: Path, expected: Path, generated: Path, receipt: Path, *, debug=False, fast_compile=None,
+           wrf='4.7.1'):
     import cupy as cp
     from woof.core import ntu
     from woof.nvrtc_ptx_cache import compile_using_nvrtc
@@ -57,19 +58,22 @@ def replay(pin: Path, expected: Path, generated: Path, receipt: Path, *, debug=F
     if meta != outmeta:
         raise ValueError('native input/output capture metadata differ')
     kmax = ntu.kmax_for(meta['nz'])
-    source = ntu.module_source(kmax)
-    before, rest = source.split('// ---- BEGIN transcription (f2cu.py) ----\n', 1)
-    shipping, after = rest.split('// ---- END transcription ----\n', 1)
-    if digest(generated) != EXPECTED or shipping.strip() != generated.read_text().strip():
-        raise ValueError('replay must use the pinned transcription shipped in ntu.cu')
-    source = before + '// ---- BEGIN transcription (f2cu.py) ----\n' + generated.read_text() + '\n// ---- END transcription ----\n' + after
+    version = {'4.7.1': 'wrf_471', '4.8.0': 'wrf_480'}[wrf]
+    # The shipping composition is replayed as compiled.  A146 spells its
+    # literal divisions __fdiv_rn, so the block is no longer byte-equal to
+    # f2cu's output; tests/test_mp_generations.py holds the v4.7.1 -> v4.8.0
+    # change to the one f2cu makes.  The pinned transcription is checked and
+    # recorded beside the result.
+    source = ntu.module_source(kmax, version=version)
+    if digest(generated) != EXPECTED_BY_WRF[wrf]:
+        raise ValueError(f'{generated}: not the pinned WRF {wrf} transcription')
     options = ('-std=c++17','--ftz=false','--fmad=false','--prec-div=true','--prec-sqrt=true')
     if debug:
         options += ('--device-debug',)
     if fast_compile:
         options += (f'--Ofast-compile={fast_compile}',)
     started = time.monotonic()
-    image, _ = compile_using_nvrtc(source, options, filename='ntu-native471.cu')
+    image, _ = compile_using_nvrtc(source, options, filename=f'ntu-native{wrf.replace(".", "")}.cu')
     module = cp.cuda.function.Module()
     module.load(image.encode() if isinstance(image,str) else image)
     compile_seconds = time.monotonic()-started
@@ -108,7 +112,7 @@ def replay(pin: Path, expected: Path, generated: Path, receipt: Path, *, debug=F
         if different.any():
             ids=np.flatnonzero(different)[:12]
             rows[name]['first_differences']=[dict(index=int(i),native_word=int(truth.view(np.uint32).ravel()[i]),gpu_word=int(actual.view(np.uint32).ravel()[i])) for i in ids]
-    result = dict(input=str(pin),native_output=str(expected),input_sha256=digest(pin),native_output_sha256=digest(expected),
+    result = dict(wrf=wrf,ntu_version=version,input=str(pin),native_output=str(expected),input_sha256=digest(pin),native_output_sha256=digest(expected),
                   metadata=meta,generated_sha256=digest(generated),assembled_source_sha256=hashlib.sha256(source.encode()).hexdigest(),
                   compile_options=options,compile_seconds=compile_seconds,device_name=cp.cuda.runtime.getDeviceProperties(0)['name'].decode(),
                   gpu_stage_ms=float(cp.cuda.get_elapsed_time(start,end)),
@@ -140,6 +144,8 @@ if __name__ == '__main__':
         ap.add_argument(name,type=Path)
     ap.add_argument('--debug',action='store_true')
     ap.add_argument('--fast-compile',choices=('min','mid','max'))
+    ap.add_argument('--wrf',choices=tuple(EXPECTED_BY_WRF),default='4.7.1')
     args=ap.parse_args()
-    result=replay(args.input,args.native_output,args.generated,args.receipt,debug=args.debug,fast_compile=args.fast_compile)
+    result=replay(args.input,args.native_output,args.generated,args.receipt,debug=args.debug,fast_compile=args.fast_compile,
+                  wrf=args.wrf)
     raise SystemExit(0 if result['passed'] else 1)

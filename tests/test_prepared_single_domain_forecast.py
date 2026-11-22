@@ -4581,15 +4581,16 @@ def test_clock_defaults_refuse_a_config_they_cannot_read(tmp_path):
 
 
 def test_the_stability_abort_names_the_dominant_term_and_the_remedy():
-    """The abort explains the co-located term and the dt remedy."""
+    """The abort names WRF's vertical term, the geometric one, and the remedy."""
     run = SimpleNamespace(dt=60.0, dx=12_000.0, ztop=20_000.0)
     state = SimpleNamespace()
 
     tropical = runner._stability_diagnosis(
         {"u_max": 29.3, "w_max": 6.62, "horizontal_cfl": 0.1465,
-         "vertical_cfl": 12.4}, state, run)
+         "vertical_cfl": 12.4, "geometric_vertical_cfl": 30.5}, state, run)
     assert "VERTICAL Courant 12.40" in tropical
-    assert "co-located" in tropical
+    assert "eta-coordinate" in tropical
+    assert "geometric |w|*dt/dz 30.50" in tropical
     assert "REMEDY: retry with a lower dt" in tropical
     assert "time_step to about 15 s" in tropical
     assert "+22% wall time" in tropical
@@ -4601,6 +4602,56 @@ def test_the_stability_abort_names_the_dominant_term_and_the_remedy():
     assert "HORIZONTAL Courant 20.0" in horizontal
     assert "dx 12.000 km" in horizontal
     assert "REMEDY: retry with a lower dt" in horizontal
+
+    folded = runner._stability_diagnosis(
+        {"u_max": 30.0, "w_max": 1.0, "horizontal_cfl": 0.2,
+         "vertical_cfl": 0.3, "geometric_vertical_cfl": float("nan")},
+        state, run)
+    assert "collapsed or folded geopotential column" in folded
+
+
+def test_the_gate_grades_the_vertical_term_on_wrf_s_eta_courant_number():
+    """The San Joaquin valley fog night stopped at 13 h on terrain-following w.
+
+    HRRR 2025-01-06 00Z, 3 km, the MYNN suite as `woof domain` writes it:
+    the gate read the geometric |w|*dt/dz, 10.47 at the adaptive 24 s, off
+    -6.6 m/s of downslope flow in the 17 m lowest layer of a 0.33 Sierra
+    slope, which crosses no model level.  The gate now grades WRF's
+    max_vert_cfl (the fold the adaptive clock steers by) and keeps the
+    geometric number beside it.
+    """
+    from woof.core.dycore import stability_gate_failed
+
+    sample = {"u_max": 35.04, "w_max": 9.23, "th_max": 41.2,
+              "cfl": 10.472, "horizontal_cfl": 0.280,
+              "vertical_cfl": 10.472, "nan": False, "w_argmax": 164752}
+    before = stability_gate_failed(sample, max_cfl=10.0, max_w_ms=150.0)
+    assert before  # the 13 h stop, as it was
+
+    graded = runner._gate_vertical_courant(sample, (0.61, 0.28))
+    assert graded["geometric_vertical_cfl"] == 10.472
+    assert graded["vertical_cfl"] == 0.61
+    assert graded["cfl"] == 0.61
+    assert not stability_gate_failed(graded, max_cfl=10.0, max_w_ms=150.0)
+
+    # A vertical transport that has run away still stops the run.
+    runaway = runner._gate_vertical_courant(sample, (10.5, 0.28))
+    assert stability_gate_failed(runaway, max_cfl=10.0, max_w_ms=150.0)
+    # A horizontal one too: the larger term is graded.
+    fast = runner._gate_vertical_courant(
+        {**sample, "horizontal_cfl": 11.0}, (0.61, 0.28))
+    assert fast["cfl"] == 11.0
+    # A collapsed layer (non-finite geometric rate) still fails closed,
+    # and so does a non-finite WRF number.
+    folded = runner._gate_vertical_courant(
+        {**sample, "vertical_cfl": float("nan"), "cfl": float("nan")},
+        (0.61, 0.28))
+    assert stability_gate_failed(folded, max_cfl=10.0, max_w_ms=150.0)
+    blown = runner._gate_vertical_courant(sample, (float("nan"), 0.28))
+    assert stability_gate_failed(blown, max_cfl=10.0, max_w_ms=150.0)
+    # A record with no CFL (no cfg, or a non-finite field) is left as it was.
+    nan_record = {**sample, "cfl": None, "nan": True}
+    assert runner._gate_vertical_courant(nan_record, (0.1, 0.1))["cfl"] is None
 
 
 def test_the_materializer_accepts_the_wizard_s_own_advisory_fetch_table(

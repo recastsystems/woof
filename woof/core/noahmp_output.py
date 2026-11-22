@@ -260,6 +260,6 @@ def update(state,cfg):
     driver=state.physics
     if driver is None:return
     advance(driver.fields,dt=cfg.dt,minutes=cfg.noahmp_acc_dt,
-            elapsed_seconds=float(state.elapsed_seconds)-float(getattr(state,"domain_start_offset",0.0)),opt_run=cfg.opt_run,
+            elapsed_seconds=float(state.elapsed_seconds)-float(getattr(state,"domain_start_offset",0.0)),opt_run=__import__("woof.core.noahmp_runoff_split",fromlist=["carrier_of"]).carrier_of(cfg),
             itimestep=int(np.floor((float(state.elapsed_seconds)-float(getattr(state,"domain_start_offset",0.0)))/float(cfg.dt)+0.5))+1,
             stepwtd=getattr(driver,"stepwtd",1))

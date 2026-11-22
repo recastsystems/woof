@@ -32,7 +32,8 @@ def test_off_provider_uses_original_config_and_has_no_state_allocation():
 
 
 def test_spp_flags_are_bound_before_construction_without_changing_scheme_selection():
-    original = replace(config(), cu_physics=3, bl_pbl_physics=5,
+    # GF SPP is GFDRV's (WRF v4.8.0's GFL call carries no pattern).
+    original = replace(config(), cu_physics=3, cu_gf_version="wrf_461", bl_pbl_physics=5,
                        sf_sfclay_physics=5, sf_surface_physics=3)
     experiment = Experiment((Domain(original),))
     provider = StochasticModelProvider.from_mapping({"spp": {"conv": 1, "pbl": 1, "lsm": 1}})
@@ -62,7 +63,7 @@ def test_spp_parameter_map_roundtrips_and_reaches_exact_enabled_node_subset(monk
         "conv": {}, "pbl": {"stddev": .075}, "lsm": {"stddev": .15}}}
     assert EnsembleRequest.from_mapping({"members": 4, "stochastic": controls}).stochastic == controls
     provider = StochasticModelProvider.from_mapping(controls)
-    cfg = replace(config(), cu_physics=3, bl_pbl_physics=5, sf_sfclay_physics=5,
+    cfg = replace(config(), cu_physics=3, cu_gf_version="wrf_461", bl_pbl_physics=5, sf_sfclay_physics=5,
                   sf_surface_physics=3, num_soil_layers=9)
     exp = provider.configure_experiment(Experiment((Domain(cfg),)))
     called = []

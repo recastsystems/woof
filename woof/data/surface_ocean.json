@@ -1,10 +1,23 @@
 {
   "schema": "gpuwm-surface-ocean-v1",
-  "multiday_default": {
+  "statement": {
+    "0": "no ocean model (sf_ocean_physics = 0, WRF's default): sea surface temperature {sst}",
+    "1": "WRF slab mixed-layer ocean (sf_ocean_physics = 1), initial mixed layer {mixed_layer}",
+    "2": "WRF 3-D PWP mixed-layer ocean (sf_ocean_physics = 2), started from {start}",
+    "sst_input": "as the input gives it",
+    "sst_analysis": "from the {source} ocean analysis {analysis}",
+    "mixed_layer_depth": "{oml_hml0:g} m deep",
+    "mixed_layer_input": "from the input's H0ML field",
+    "start_analysis": "the {source} ocean analysis {analysis}",
+    "start_profile": "the configured ocean_z/ocean_t/ocean_s profile",
+    "start_woa18": "NOAA WOA18 2005-2017 monthly mixed-layer depth climatology (no ocean anomalies)",
+    "start_configured_uniform_mld": "a uniform configured mixed-layer depth"
+  },
+  "long_run_offer": {
     "minimum_run_seconds": 172800,
     "option": 2,
     "requires_surface_fluxes": true,
-    "initialization_fallback": "woa18",
+    "words": "this run is {hours:g} h long; over open sea, sf_ocean_physics = 2 adds WRF's 3-D PWP mixed-layer ocean (started from NOAA WOA18 climatology unless ocean_analysis names an ocean analysis). It is not the default: it changes the forecast from the first hour, and its one scored run had it on with no run off beside it",
     "qualification": "mixed_layer/QUALIFICATION.md"
   },
   "options": {

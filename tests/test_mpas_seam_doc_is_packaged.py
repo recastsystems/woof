@@ -94,7 +94,7 @@ def test_docs_is_a_declared_package_and_is_anchored() -> None:
     """``docs``, never ``docs*``, and the difference is 200+ files.
 
     The repository's ``docs/`` holds receipt trees that carry their own
-    ``.py`` (``docs/superpowers/receipts/...``).  An unanchored pattern
+    ``.py`` (``docs/internal/receipts/...``).  An unanchored pattern
     would make every one of those subdirectories a package of this
     wheel and ship the scripts inside them -- development record, in
     site-packages, under import names nobody declared.
@@ -110,7 +110,7 @@ def test_docs_is_a_declared_package_and_is_anchored() -> None:
     assert not any(pattern.startswith("docs") and pattern != "docs"
                    for pattern in find["include"]), (
         "packages.find includes a docs pattern wider than the anchored "
-        "`docs`; that sweeps docs/superpowers/receipts/**.py into the wheel")
+        "`docs`; that sweeps docs/internal/receipts/**.py into the wheel")
 
     packages = _declared_packages()
     assert "docs" in packages

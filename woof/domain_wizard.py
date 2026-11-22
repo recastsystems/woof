@@ -101,7 +101,8 @@ from woof.core.preflight import (CUDA_CONTEXT_BYTES,
                                   unknown_platform_note)
 from woof.cli_numbers import positive_float, positive_float_list, positive_int
 from woof.experiment import ExperimentConfig, build_experiment
-from woof.explain import explain_enabled, muted_warnings, warn
+from woof.explain import (each_warning_once, explain_enabled,
+                           muted_warnings, warn)
 from woof.fetch import parse_cycle
 from woof.physics_compat import (ASYMMETRIC_RADIATION_NOCTURNAL_ACK,
                                   CONSTANT_DOWNWARD_LONGWAVE_ACK,
@@ -740,6 +741,30 @@ def resolve_source(raw: str, *, cadence_h: int | None = None) -> str:
             f"cadence ({', '.join(planable_sources())}) need no --cadence")
     from woof.source_adapters import canonical_source_token
     return canonical_source_token(raw)
+
+
+def _cadence_minutes_interval(args) -> int | None:
+    """The sub-hourly boundary interval ``--cadence-minutes`` names, in seconds.
+
+    A whole number of hours is folded into ``--cadence`` (the same config
+    as before, byte for byte), so only a sub-hourly spacing comes back.
+
+    THE BREAKAGE THIS PREVENTS (Hex with Regional, 2026-10-29): a nest
+    under a hex parent could only be forced hourly, though the parent
+    writes every 15 minutes.  The hourly boundary faded a storm that moved
+    along the nest's south edge in at its 13:00 position from 12:00, and
+    the 1 km nest grew a 40-55 dBZ band in its edge rows.
+    """
+
+    minutes = getattr(args, "cadence_minutes", None)
+    if minutes is None:
+        return None
+    if getattr(args, "cadence", None) is not None:
+        raise ValueError("give --cadence HOURS or --cadence-minutes MINUTES, not both")
+    if minutes % 60 == 0:
+        args.cadence = minutes // 60
+        return None
+    return int(minutes) * 60
 
 
 def source_has_fetch_front_door(source: str) -> bool:
@@ -1785,7 +1810,10 @@ def _parse_point(raw: str) -> tuple[float, float]:
         raise ValueError("--point coordinates must be finite")
     if not -90.0 <= lat <= 90.0:
         raise ValueError(
-            f"--point latitude {lat:g} must lie within [-90, 90]")
+            f"--point latitude {lat:g} must lie within [-90, 90]"
+            + (f"; --point takes lat,lon, and read the other way round "
+               f"this is a valid point: did you mean --point {lon:g},{lat:g}?"
+               if -90.0 <= lon <= 90.0 else ""))
     if not -180.0 <= lon <= 180.0:
         if -360.0 <= lon <= 360.0:
             # float(): _wrap180 is array code (np.where) and returns a 0-d
@@ -1807,6 +1835,65 @@ def _parse_point(raw: str) -> tuple[float, float]:
                 f"--point longitude {lon:g} must lie within [-180, 180] "
                 "(or one wrap within [-360, 360])")
     return lat, lon
+
+
+#: A ``--point`` latitude this close to a pole is the pole: its longitude
+#: names no place there.
+POLE_POINT_LATITUDE = 89.5
+
+
+def swapped_point_refusal(lat: float, lon: float, *, source: str | None,
+                          option: str = "--point") -> str | None:
+    """Why ``lat, lon`` is most likely a lon,lat pair typed the wrong way round, or None.
+
+    Two cases are obvious enough to refuse:
+
+    * a point outside a regional source's grid that, read the other way
+      round, is inside it (``--point -97.5,35.2`` on HRRR);
+    * a point at a pole (latitude within :data:`POLE_POINT_LATITUDE`) given
+      a longitude other than 0: at the pole a longitude says nothing about
+      where the domain is, so the pair is nearly always ``lon,lat``.  A
+      domain truly centred on the pole is written ``lat,0``.
+
+    Anything else is left to the coverage and fit checks, which already
+    refuse a domain the source cannot force.
+
+    THE BREAKAGE THIS PREVENTS (3.0.3 candidate check, 2026-11-15):
+    ``woof domain --point -90,37.5`` (meant: 37.5 N, 90 W) exited 0 having
+    written a polar-stereographic domain centred on the South Pole with a
+    360-degree forcing box, and nothing it printed said the point was the
+    pole or that the two numbers looked swapped.
+    """
+
+    if not -90.0 <= lon <= 90.0:
+        return None
+    swap = f"{option} {lon:g},{lat:g}"
+    if abs(lat) >= POLE_POINT_LATITUDE and lon != 0.0:
+        pole = "South" if lat < 0 else "North"
+        return (f"{option} {lat:g},{lon:g} is at the {pole} Pole (latitude "
+                f"{lat:g}), where a longitude names no place, so latitude and "
+                f"longitude look swapped.  {option} takes lat,lon: did you "
+                f"mean {swap}?  For a domain centred on the pole itself, write "
+                f"{option} {math.copysign(90.0, lat):g},0")
+    if not source:
+        return None
+    from woof.source_adapters import source_coverage_window
+    from woof.source_coverage import points_outside
+
+    try:
+        window = source_coverage_window(source)
+    except (KeyError, ValueError):
+        return None
+    if window is None:
+        return None
+    if bool(points_outside(window, lat, lon)) and not bool(
+            points_outside(window, lon, lat)):
+        return (f"{option} {lat:g},{lon:g} (latitude {lat:g}, longitude "
+                f"{lon:g}) is outside {source}'s grid ({window.describe()}), "
+                f"and read the other way round it is inside it, so latitude "
+                f"and longitude look swapped.  {option} takes lat,lon: did "
+                f"you mean {swap}?")
+    return None
 
 
 @dataclass(frozen=True)
@@ -2154,6 +2241,32 @@ def _buffers_for_levels(values: tuple[float, ...] | None,
     return values
 
 
+def _warn_future_cycle(cycle: datetime, *, source: str, start_hour: int = 0,
+                       now: datetime | None = None) -> None:
+    """Say, when the config is written, that ``woof go`` will refuse its cycle.
+
+    The run refuses a cycle whose first hours are due more than a day ahead
+    (:func:`woof.source_readiness.future_start_refusal` names the breakage);
+    the wizard writes the config, which may be wanted ahead of time, and says
+    so here with the date, instead of letting the first sign be at launch.
+    """
+
+    from woof import fetch, source_posting, source_readiness
+
+    try:
+        if not (fetch.cycle_is_probeable(source)
+                and source_posting.posting(source).waited):
+            return
+        due = source_posting.expected_at(source, cycle, int(start_hour))
+    except (ValueError, KeyError):
+        return
+    ahead = source_readiness.future_start_refusal(
+        source, cycle, due,
+        now=source_readiness._utc_now() if now is None else now)
+    if ahead is not None:
+        warn("woof go will refuse this config as written: " + ahead)
+
+
 def _resolve_cycle(raw: str, *, source: str, hours: int,
                    start_hour: int = 0, **selection) -> datetime:
     """Parse ``--cycle``, resolving ``latest`` the way ``fetch`` does.
@@ -2170,7 +2283,9 @@ def _resolve_cycle(raw: str, *, source: str, hours: int,
     """
 
     if raw.strip().lower() != "latest":
-        return parse_cycle(raw, source)
+        cycle = parse_cycle(raw, source)
+        _warn_future_cycle(cycle, source=source, start_hour=start_hour)
+        return cycle
     # NO PER-SOURCE BRANCH HERE.  This door used to refuse era5 by name
     # ("a reanalysis with weeks of latency") and everything without a
     # fetch front door by another, so `latest` was a capability three
@@ -2850,6 +2965,13 @@ def _builtin_scalar(value):
     return None
 
 
+def _prepares_on_gfs_route(source) -> bool:
+    """The question `woof go --lake-ice` asks (woof.runplan)."""
+
+    from woof.runplan import prepares_on_gfs_route
+    return prepares_on_gfs_route(source)
+
+
 def _render_table(name: str, entries: dict, array_of_tables: bool = False,
                   comment: str | None = None) -> str:
     header = f"[[{name}]]" if array_of_tables else f"[{name}]"
@@ -3083,7 +3205,7 @@ def gray_zone_advisory(chain_km, shared: dict, les_below_m: float | None = None,
         "and selectable but EXPERIMENTAL and not WRF-verified. "
         "mix_isotropic = 1 is part of that recipe and not an optional "
         "extra: km_opt 2 and 3 with mix_isotropic = 0 (WRF's default; "
-        "left unset, WOOF auto-selects 1 where the criterion below "
+        "left unset, WOOF-ArWen auto-selects 1 where the criterion below "
         "fails, and says so) build "
         "the vertical exchange coefficient on the LAYER DEPTH and then "
         "hand it to the horizontal diffusion of w, and the reachable "
@@ -3249,7 +3371,7 @@ def cumulus_gray_zone_advisory(chain_km, cu_physics_by_domain
             "taper withdraws the parameterized contribution as the grid "
             "resolves convection, so this is the scheme answering the "
             "gray zone rather than double-counting it -- but no "
-            "WOOF-versus-WRF trajectory receipt backs GF yet "
+            "WOOF-ArWen-versus-WRF trajectory receipt backs GF yet "
             "(implemented-unverified), so verify convective placement "
             "against observations before trusting it there.")
     below = [(dx, cu) for dx, cu in active
@@ -4154,7 +4276,7 @@ def render_config(*, name: str, start_time: datetime, hours: int,
             f"{float(recommended_time_step) * 2:g} s\n"
             "# the 5 s/km convention would give at this dx.  The "
             "stability gate uses the\n"
-            "# maximum co-located vertical |w|/layer-thickness; "
+            "# eta-coordinate vertical Courant number WRF's w_damp reads; "
             "tropical convection\n"
             "# destabilised a measured 12 km Mercator domain at 60 s and "
             "was comfortably\n"
@@ -4244,6 +4366,17 @@ def render_config(*, name: str, start_time: datetime, hours: int,
             "fetch", fetch_hints,
             comment="Advisory data-acquisition hints (validated, not "
                     "executed); keys mirror `woof fetch` flags."))
+        if _prepares_on_gfs_route(fetch_hints.get("source")):
+            # The GFS route's lake-ice choice, written where a user reads
+            # it: this file has no [case_data], the only table that carried
+            # the switch before (door item 7).
+            parts.append(_render_table(
+                "ingest", {"gfs_lake_ice": "observed"},
+                comment="Lake ice: \"observed\" freezes the lakes the IMS "
+                        "daily analysis (NSIDC) sees frozen, fetched at "
+                        "preparation only when a domain has lake cells; "
+                        "\"wps\" keeps the forcing's ice and fetches "
+                        "nothing (or woof go --lake-ice wps)."))
     else:
         # NO [fetch] TABLE, DELIBERATELY.  The table is validated at every
         # config load against the sources `woof fetch` can actually
@@ -4429,7 +4562,7 @@ def les_domain_indices(chain_km, below_m: float | None) -> list[int]:
 
     Every real-data domain at or below ``below_m``, the root included: a
     root this fine is the top grid of a run fed by specified boundaries
-    (the hex add-nest's single WOOF grid, an API single grid), which used
+    (the hex add-nest's single WOOF-ArWen grid, an API single grid), which used
     to keep the suite's 1-D PBL at LES spacing because the rule skipped
     index 0.
     """
@@ -4502,7 +4635,7 @@ def with_les_closure(text: str, below_m: float | None,
     the handoff it was built for.  Measured: on the shipped 250 m child
     the resolved-turbulence profile reached its plateau inside the domain
     in 4 of 4 afternoon frames with it on and 1 of 4 with it off
-    (docs/superpowers/receipts/les/inflow-generator/PILOT-ON-2026-08-04.md,
+    (docs/internal/receipts/les/inflow-generator/PILOT-ON-2026-08-04.md,
     G4 REDUCED), for wall time inside run-to-run noise (468.0 s against
     466.9 s, PROOFS-2026-08-04.md).  An LES nest under an LES parent is
     left off: the parent's resolved eddies are its inflow turbulence.
@@ -5222,7 +5355,15 @@ def fit_ladder(*, ladder: str | None = None, free_bytes: int, hours: int,
                 history_interval_s=history_interval_s,
                 nest_history_interval_s=nest_history_interval_s,
                 physics_mix=physics_mix, clock=clock)
-            exp = experiment_from_text(text, source=f"<candidate {label}>")
+            # Muted: a candidate is a size the fit loop is trying, not the
+            # file the reader gets.  The emitted file goes through the same
+            # loader before it is written, and its warnings print there.
+            # THE BREAKAGE THIS PREVENTS (3.0.0 artefact, 2026-11-10):
+            # `woof domain --card 32gb --ladder 12-3` on a Noah-MP suite
+            # printed the "beyond the 360000-column measured width" warning
+            # once per size tried, 27 to 42 lines for one written file.
+            with muted_warnings():
+                exp = experiment_from_text(text, source=f"<candidate {label}>")
         check_fit_cancelled(cancelled)
         # Every PHASE, not just the forecast.  Sizing a domain against the
         # forecast alone is what let this wizard hand a user a config that
@@ -6894,6 +7035,18 @@ def _domain_target_hardware(args, sizing_budget=None):
 
 def domain_main(args, *, sizing_budget: SizingBudget | None = None,
                 memory: dict | None = None) -> int:
+    """``woof domain``: :func:`_domain_main`, each warning sentence printed once.
+
+    The emitted file is loaded to be written and again by the handed-off
+    ``woof check``; both loads raise the same loader warnings.
+    """
+
+    with each_warning_once():
+        return _domain_main(args, sizing_budget=sizing_budget, memory=memory)
+
+
+def _domain_main(args, *, sizing_budget: SizingBudget | None = None,
+                memory: dict | None = None) -> int:
     """``woof domain``: fit, write and check one configuration.
 
     ``memory``, when given, receives :func:`fit_memory`'s record for the
@@ -6925,8 +7078,18 @@ def domain_main(args, *, sizing_budget: SizingBudget | None = None,
                          "--spacing-km); without a target there is no domain to fit")
     from woof.source_adapters import source_for_cycle
     args.source = source_for_cycle(args.source, getattr(args, "cycle", None))
-    args.source = resolve_source(args.source,
-                                 cadence_h=getattr(args, "cadence", None))
+    cadence_seconds = _cadence_minutes_interval(args)
+    args.source = resolve_source(
+        args.source, cadence_h=(getattr(args, "cadence", None)
+                                if cadence_seconds is None
+                                else cadence_seconds / 3600))
+    if cadence_seconds is not None and (
+            get_source_adapter(args.source).forcing_interval_seconds is not None
+            or source_has_fetch_front_door(args.source)):
+        raise ValueError(
+            f"--cadence-minutes {args.cadence_minutes}: {args.source} publishes on its own "
+            "cadence and its fetch reads whole hours; --cadence-minutes is for a source "
+            "whose spacing is the files it is handed (hex-global)")
     _keyless_default_source(args)
     nz = getattr(args, "nz", None)
     tiles = getattr(args, "tiles", None)
@@ -6937,6 +7100,9 @@ def domain_main(args, *, sizing_budget: SizingBudget | None = None,
     polygon_path = getattr(args, "polygon", None)
     if polygon_path is None:
         lat, lon = _parse_point(args.point)
+        swapped = swapped_point_refusal(lat, lon, source=args.source)
+        if swapped is not None:
+            raise ValueError(swapped)
         if getattr(args, "buffer_km", None) is not None:
             raise ValueError("--buffer-km requires --polygon")
     else:
@@ -7068,6 +7234,8 @@ def domain_main(args, *, sizing_budget: SizingBudget | None = None,
         if forcing_interval_seconds is not None and forcing_interval_seconds != requested_interval:
             raise ValueError("--cadence differs from the supplied input spacing. Use that spacing or omit --cadence.")
         forcing_interval_seconds = requested_interval
+    if cadence_seconds is not None:
+        forcing_interval_seconds = cadence_seconds
     if forcing_interval_seconds is not None:
         print(f"forcing: native inputs supply {forcing_interval_seconds:g} s cadence "
               f"and {forcing_intervals} retained boundary interval(s)")
@@ -7434,7 +7602,9 @@ def domain_main(args, *, sizing_budget: SizingBudget | None = None,
         interval = get_source_adapter(args.source).forcing_interval_seconds
         if interval is not None and interval % 3600 == 0:
             cadence = int(interval / 3600)
-    if forcing_interval_seconds is not None:
+    if forcing_interval_seconds is not None and forcing_interval_seconds % 3600 == 0:
+        # A sub-hourly interval (--cadence-minutes) belongs to a source
+        # with no download, so it names no whole-hour fetch spacing.
         cadence = int(forcing_interval_seconds / 3600)
     data_dir = (Path(args.data_dir) if args.data_dir
                 else out.parent / "data" / name)
@@ -8426,6 +8596,10 @@ def register_cli(subparsers) -> None:
                         help="explicit ERA5 product; default reanalysis has no member axis")
     parser.add_argument("--era5-provider", choices=("cds", "arco"), default=None,
                         help="ERA5 provider (default: cds when a Copernicus CDS key is present, otherwise the keyless arco store); ensemble_members requires CDS")
+    parser.add_argument("--cadence-minutes", type=positive_int, default=None, metavar="MINUTES",
+                        help="boundary spacing in minutes, for a source that declares no cadence of its "
+                             "own (hex-global: a hex parent's history frames, e.g. 15); a whole number "
+                             "of hours is the same as --cadence")
     parser.add_argument("--cadence", type=positive_int, default=None, metavar="HOURS",
                         help="boundary spacing in whole hours, validated against the selected product; "
                              "required for a source that declares no cadence of its own "
@@ -8472,7 +8646,7 @@ def register_cli(subparsers) -> None:
                         help="arithmetic of every domain whose terrain "
                              "smoother is WPS's default smth-desmth_special "
                              "x1: wps-float32 reproduces geogrid.exe's "
-                             "HGT_M exactly; default float64, WOOF's own "
+                             "HGT_M exactly; default float64, WOOF-ArWen's own "
                              "smoother. Every other smoother always runs "
                              "WPS's float32")
     parser.add_argument("--geog-root", type=Path, default=None,

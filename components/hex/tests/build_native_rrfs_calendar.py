@@ -17,7 +17,7 @@ BUILD_PREFIX = shlex.split(os.environ.get('HEX_NATIVE_BUILD_PREFIX', ''))  # the
 
 
 def build(destination: Path) -> Path:
-    reference = Path(os.environ.get('RRFS_MPAS_REF') or Path(os.environ.get('MPAS_LANES', '.')) / 'ref/rrfs/MPAS-Model-rrfs')
+    reference = Path(os.environ.get('RRFS_MPAS_REF') or Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/rrfs/MPAS-Model-rrfs')
     destination.mkdir(parents=True, exist_ok=True)
     esmf = destination/'esmf'
     if esmf.exists():

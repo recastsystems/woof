@@ -1,6 +1,6 @@
 """The publish-time platform-tag check refuses a wheel older hosts cannot install.
 
-THE BREAKAGE (verify-final-hex QA H3, 2026-10-12): the 0.4.0 candidate wheel
+THE BREAKAGE (a release review of 0.4.0, 2026-10-12): a 0.4.0 build's wheel
 was tagged ``manylinux_2_35_x86_64`` because it was built on a glibc 2.35+
 host, so pip on glibc 2.28-2.34 hosts skipped it and fell back to an sdist
 build that needs cargo and an engine checkout.  ``tools/check_wheel_platform.py``
@@ -131,3 +131,18 @@ def test_publish_builds_in_manylinux_2_28_repairs_and_checks_before_upload():
     assert last < text.index("pypa/gh-action-pypi-publish")
     for helper in ("hex_contract_hostprep", "hex_obs_scorecard", "gpuwm-hex-netcdf-copy", "hex_gpmetis"):
         assert f"--require-libexec {helper}" in text, helper
+
+
+def test_publish_stamps_the_repaired_wheel_with_one_fixed_date():
+    """THE BREAKAGE THIS PREVENTS: two release builds of one commit gave wheels equal in every RECORD entry and
+    different in sha256, because the repair step stamped each zip member with the build's clock, so a rebuilt
+    wheel could not be told from another build by its hash."""
+    if not WORKFLOW.is_file():
+        pytest.skip("publish.yml is outside this tree (sdist install)")
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    dates = [line.split(":", 1)[1].strip().strip('"') for line in lines if line.startswith("  WHEEL_DATE_EPOCH:")]
+    assert len(dates) == 1 and dates[0].isdigit(), "one fixed date in the workflow's own env, not the clock"
+    assert int(dates[0]) >= 315532800, "a zip member cannot carry a date before 1980"
+    repairs = [line.strip() for line in lines if "auditwheel repair --plat" in line]
+    assert repairs == ['SOURCE_DATE_EPOCH="${WHEEL_DATE_EPOCH}" auditwheel repair --plat "${MANYLINUX_POLICY}" '
+                       '--wheel-dir dist raw/*.whl'], repairs

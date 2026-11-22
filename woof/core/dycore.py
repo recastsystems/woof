@@ -3010,7 +3010,7 @@ def _prepare_small_step_init_launch(state: DomainState, cfg: RunConfig,
     periodic.  The uv kernel builds WRF's ``muu``/``muus`` inline and
     ``calc_mu_uv`` picks the boundary face's off-domain neighbour from
     ``periodic_x``/``periodic_y`` (module_big_step_utilities_em.F:59-115),
-    so the flag has to reach the kernel; WOOF's spelling of "not periodic"
+    so the flag has to reach the kernel; WOOF-ArWen's spelling of "not periodic"
     is ``_boundary_x``/``_boundary_y`` (open, specified, or nested), the same
     predicate ``slow_pgf`` and the advection launchers already pass.
     """

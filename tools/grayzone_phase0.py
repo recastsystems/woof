@@ -1,6 +1,6 @@
 """Phase 0 of the SASE gray-zone campaign: baseline, bands, actuation probe.
 
-Registered by docs/superpowers/specs/2026-08-02-sase-grayzone-campaign.md
+Registered by docs/internal/specs/2026-08-02-sase-grayzone-campaign.md
 (approved 2026-08-03).  This runner drives the committed
 instrument -- ``woof.verify.cases.cbl_dry.partition_run`` -- and appends
 one JSON receipt per run to a JSONL ledger; the ``score`` subcommand
@@ -29,7 +29,7 @@ from pathlib import Path
 # never be minted from a different checkout than the one committed.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-DEFAULT_LEDGER = Path("docs/superpowers/receipts/grayzone/"
+DEFAULT_LEDGER = Path("docs/internal/receipts/grayzone/"
                       "phase0_runs.jsonl")
 
 

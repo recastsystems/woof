@@ -82,13 +82,6 @@ def test_window_paths_are_found_by_valid_time_and_a_gap_is_refused(tmp_path):
         "20261001T2000Z"]
 
 
-def test_window_slots_are_priced_in_the_admission():
-    from woof.da import cycle_admission as ca
-
-    assert (ca.RADAR_TTEN_HELD_BYTES_PER_POINT
-            + 3 * ca.RADAR_TTEN_EXTRA_SLOT_HELD_BYTES_PER_POINT) == 24
-
-
 # ---------------------------------------------------------------- on the card
 
 def _fixture(cp):

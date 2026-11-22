@@ -620,7 +620,7 @@ def era5_combined_name(provider: str | None = None) -> str:
     if name is None:
         raise ValueError(
             f"era5_provider = {provider!r} publishes no ERA5 combined file, "
-            "so no [case_data].forcing name can be derived for it. WOOF's "
+            "so no [case_data].forcing name can be derived for it. WOOF-ArWen's "
             f"ERA5 providers are {sorted(ERA5_COMBINED_NAMES)}; select one "
             "of those with --era5-provider, or omit the flag for the CDS "
             "default.")
@@ -1262,7 +1262,7 @@ def nomads_reach_refusal(source: str, cycle: datetime, hour: int,
             f"serves it (HTTP {error.code} for f{hour:03d}).\n"
             "  What to do: fetch a cycle inside NOMADS' rolling window "
             f"-- about {NOMADS_RETENTION_DAYS} days -- or use "
-            "--source hrrr, whose S3 archive this WOOF reads directly.",
+            "--source hrrr, whose S3 archive this WOOF-ArWen reads directly.",
             "  Why: cycle completeness is probed against the AWS S3 "
             "archive, which holds years, while the GFS/GDAS download is "
             "the NOMADS grib-filter crop, which holds days.  A cycle in "
@@ -1890,6 +1890,9 @@ def cycle_publication_check(source: str, cycle: datetime, last_hour: int, *,
     if not cycle_is_probeable(source):
         return PublicationCheck("unprobeable")  # A keyed job API has no public object to HEAD.
     options = dict(cadence=cadence, start_hour=start_hour, member=member, source_parameters=source_parameters)
+    gap = fetch_endpoints.layout_refusal(source, cycle, now=now, pinned=transport)
+    if gap is not None:
+        return PublicationCheck("not-published", gap)
     ladder = fetch_endpoints.serving_ladder(source, cycle=cycle, now=now, pinned=transport)
     unheard: list[str] = []
     for endpoint in ladder:
@@ -2436,10 +2439,24 @@ def _posting_loop(source: str, cycle: datetime, args, *, leads,
         member=(plan.member if plan is not None
                 else getattr(args, "member", None)),
         transport=transport, plan=plan, hours=int(args.hours))
-    return fetch_as_posted.PostingLoop(
+    # A cycle no declared layout serves is refused before any wait
+    # (fetch_endpoints.layout_refusal names the breakage: door item 11).
+    gap = readiness.layout_refusal(window, now=None)
+    if gap is not None:
+        raise ValueError(gap)
+    loop = fetch_as_posted.PostingLoop(
         window, args.out,
         late_after_minutes=getattr(args, "late_after_minutes", None),
         wait_timeout_minutes=getattr(args, "wait_timeout_minutes", None))
+    # A cycle whose start is days ahead is refused before any wait, naming
+    # its date (readiness.MAX_START_WAIT names the breakage).
+    if not getattr(args, "wait_for_cycle", False):
+        ahead = readiness.future_start_refusal(
+            source, cycle, readiness.start_due(loop.needs),
+            now=fetch_as_posted.now_utc())
+        if ahead is not None:
+            raise ValueError(ahead)
+    return loop
 
 
 def readiness_for_fetch(args, *, no_probe: bool | None = None,
@@ -4475,6 +4492,11 @@ def _fetch_gfs_fullfile_locked(*, cycle: datetime, hours: tuple[int, ...],
         beyond = [hour for hour in hours if hour > GDAS_MAX_FORECAST_HOUR]
         if beyond:
             raise ValueError(gdas_capability_refusal(beyond[0]))
+    # A cycle no declared layout serves is refused by name before any
+    # host is asked (fetch_endpoints.layout_refusal: door item 11).
+    gap = fetch_endpoints.layout_refusal(source, cycle, pinned=pinned_host)
+    if gap is not None:
+        raise ValueError(gap)
     if top_pressure_pa is not None and all_levels:
         raise ValueError(
             "--p-top-pa names the model top the ladder must reach and "
@@ -5782,7 +5804,7 @@ def _rw_fetch_hrrr(*, binary: Path, cycle: datetime, hour: int, kind: str,
     """One HRRR product through the Rust backbone; returns its record.
 
     The backbone names each object after the URL it came from, so the
-    atmosphere lands under the name WOOF already uses and only the soil
+    atmosphere lands under the name WOOF-ArWen already uses and only the soil
     product -- carved out of ``wrfprs`` -- needs renaming afterwards.
 
     ``retries`` is how many more times a transfer the network cut off is
@@ -6373,7 +6395,7 @@ def _fetch_hrrr_locked(*, cycle: datetime, hours: tuple[int, ...],
     identity rather than by file size.
 
     ``transport_fallback`` lists further hosts to try, in order, when
-    the chosen one publishes an index whose inventory this WOOF does
+    the chosen one publishes an index whose inventory this WOOF-ArWen does
     not recognise.  The two hosts do **not** publish identical index
     vocabularies -- see ``download_hrrr_native_subset.FIELD_ALIASES`` --
     and a host that has genuinely changed something is a reason to move
@@ -6728,7 +6750,7 @@ def _fetch_hrrr_locked(*, cycle: datetime, hours: tuple[int, ...],
                             stale, progress, f"hrrr {label} index")
                     progress(
                         f"fetch hrrr {label}: {host} publishes an index "
-                        f"this WOOF does not recognise ({error}); "
+                        f"this WOOF-ArWen does not recognise ({error}); "
                         f"falling back to {remaining[0]}")
                     continue
                 bars[bar_kinds[kind]] = bar
@@ -8882,7 +8904,8 @@ def _window_posted(window, check) -> bool:
     try:
         check(unheard.append)
     except RuntimeError:
-        if readiness.retention_refusal(window, now=None) is not None:
+        if (readiness.retention_refusal(window, now=None) is not None
+                or readiness.layout_refusal(window, now=None) is not None):
             raise
         return False
     if unheard:
@@ -9078,6 +9101,10 @@ FETCH_HINT_ROWS = key_rows(
            "how far past its scheduled time a lead may be before the run "
            "stops with exit 75; absent takes the source table's posting "
            "late_after_minutes"),
+    KeyRow("wait_for_cycle", "boolean", False,
+           "wait for a cycle whose first hours are due more than 24 h from "
+           "now (`woof fetch --wait-for-cycle`); false refuses such a "
+           "cycle, naming its date, since it is most often a typo"),
     KeyRow("runtime_surface", "string", None,
            "comma-separated runtime surface fields (e.g. 'VEGFRA') the "
            "start must read from the cycle itself; absent, a field the "
@@ -9433,7 +9460,7 @@ def source_argument(value: str) -> str:
     except ValueError as error:
         raise _argparse.ArgumentTypeError(str(error)) from error
     raise _argparse.ArgumentTypeError(
-        f"--source {value}: no fetch route in this WOOF")
+        f"--source {value}: no fetch route in this WOOF-ArWen")
 
 
 def register_cli(subparsers) -> None:
@@ -9612,6 +9639,11 @@ def register_cli(subparsers) -> None:
         help="a cap on the whole window, for every source: exit 75 if the "
              "window is not all in by then, keeping the fetched prefix")
     parser.add_argument(
+        "--wait-for-cycle", action="store_true", dest="wait_for_cycle",
+        help="wait for a cycle whose first hours are due more than 24 h "
+             "from now; without it such a cycle is refused (exit 2) with "
+             "its date and the wait, since it is most often a typo")
+    parser.add_argument(
         "--readiness", action="store_true",
         help="print gpuwm.readiness.v1 for this window on stdout and fetch "
              "nothing: exit 0 ready (or nothing to probe), 75 not yet "
@@ -9723,7 +9755,7 @@ def register_cli(subparsers) -> None:
     parser.add_argument(
         "--accept-inventory-change", action="store_true",
         help="proceed when the live provider inventory yields a "
-             "different record count than this WOOF was certified "
+             "different record count than this WOOF-ArWen was certified "
              "against.  Without it such a mismatch is a refusal naming "
              "both counts; with it the live count becomes the bar and "
              "the fetch manifest records the acceptance")

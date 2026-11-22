@@ -12,14 +12,14 @@ calls the engine's generic MPAS column physics entry and its new renderer
 pieces, which earlier engines do not have.
 
 **In one paragraph.** 0.3.3 was the MPAS-Atmosphere dynamical core on the GPU,
-running WOOF's physics. 0.4 is the whole of MPAS-A v8.4.2 on the GPU: the
+running WOOF-ArWen's physics. 0.4 is the whole of MPAS-A v8.4.2 on the GPU: the
 dycore now gives the same bits as native MPAS, both MPAS physics suites are
 ported scheme by scheme, and one 24-hour forecast with every physics scheme on
 the GPU matches native MPAS in every field hex writes. Initialization, static
 fields, IAU, limited-area boundaries, streams, restart and diagnostics are
 ported too, each checked against native before it landed. Matching exactly
 found real defects in native MPAS; correct mode, the default, fixes five of
-them. WOOF's physics stays the default, and the release adds a one-command
+them. WOOF-ArWen's physics stays the default, and the release adds a one-command
 global forecast, an experimental storm-following region and RRFS-MPAS running
 end to end.
 
@@ -86,7 +86,7 @@ every slot on native MPAS Fortran, the referee.
   105 million values hex does not write yet; they are counted, not hidden.
 - **Every other scheme:** Kessler, WSM6, Kain-Fritsch, Tiedtke, New Tiedtke,
   the revised MM5 surface layer, YSU, NOAA GSL's UGWP orographic drag and
-  non-stationary gravity waves (US Government code by the project's ruling;
+  non-stationary gravity waves (treated as US Government code;
   NOTICE section 8), Noah-MP (with its urban switch; private
   builds only, see below), the ocean
   mixed layer and CAM radiation are each bitwise against native on real inputs
@@ -142,7 +142,7 @@ those defects:
 
 - **Reach it:** nothing to set. `--physics-mode exact` reproduces native MPAS
   bit for bit; `--physics-correct-skip ID` leaves one fix out for an A/B arm.
-- **Outside the MPAS suites:** on the default WOOF physics route correct
+- **Outside the MPAS suites:** on the default ArWen physics route correct
   mode applies the corrections the installed engine carries (WB4, New
   Tiedtke's dry-mass coupling; WB5, WSM6's surface integral); with
   `--iau-route native` it applies the IAU fixes IN1-IN3; the boundary door
@@ -206,7 +206,7 @@ used only for scoring. Circles: the 3 km interior of each region; the run
 started in one and moved five times, keeping the storm inside.
 
 - **What it is:** a 3 km region about 450 km in radius that moves with a storm
-  inside a 48 km global mesh, on WOOF physics and the MPAS-exact dycore.
+  inside a 48 km global mesh, on ArWen physics and the MPAS-exact dycore.
 - **Proven:** three tropical cyclones, 48 hours and five moves each, on one
   card. The storm stayed inside the 3 km region at every hourly output; mass
   and tracers held to within 1e-10 at each move; a restart across a move
@@ -216,9 +216,11 @@ started in one and moved five times, keeping the storm inside.
   Guide: [Moving nests](../moving-nest.md).
 - **The balance fix is the default.** Those three runs used the remap before
   it, and at 2 of the 15 moves the short-term shock went over its limit
-  (1.5004 and 1.81 against 1.5). On `woof hex moving check` the fix brings
-  the worst post-move jolt from 16.2 to 1.01 on a card with local time
-  stepping and from 21.4 to 1.04 on the CPU (ordinary integrator); see
+  (1.5004 and 1.81 against 1.5). On 0.6.2, `woof hex moving check --lts`
+  brings the worst post-move jolt from 12.97 to 1.014 on its gentle case and
+  from 152.8 to 1.029 on its steep case (an RTX 4090 and an RTX 5070 Ti print
+  the same numbers), and `--device cpu` brings the gentle case from 19.3 to
+  1.04 (ordinary integrator); the first measurement is in
   [the jolt report](../moving-jolt-report.md).
 - **MPAS physics moves too.** A case whose physics is an MPAS-A v8.4.2 suite
   carries the suite's own state across each move, so convection, boundary
@@ -263,7 +265,7 @@ CUDA ports ship in 0.4, as US Government code (`NOTICE` sections 8 and 9).
 ![48-hour global rain](../img/0.4/04-products-global-24h-precip-f048.png)
 
 *Map.* Rain and snow during the second day of a 30 km global forecast, one of
-426 maps the door drew from that run.
+426 maps the door rendered from that run.
 
 - **Reach it:** nothing extra. `woof hex forecast` ends by drawing the
   standard set into `<out>/products`. The drawing runs as its own CPU-only
@@ -425,11 +427,11 @@ shallow switch the engine was handed.
 **Two-card memory.** Same-host hashing is bounded, so the two-card Philippines
 default no longer runs out of host memory.
 
-## RRFS v2 preset (WOOF physics, RRFS-shaped)
+## RRFS v2 preset (ArWen physics, RRFS-shaped)
 
 `woof preset run rrfs-v2-hex-tempo` (in gpuwm 2.9.0) now finds its runner in
 the installed woof hex, so it no longer needs a source checkout. It runs
-WOOF physics shaped after RRFS v2 and is labelled RRFS-shaped, not
+ArWen physics shaped after RRFS v2 and is labelled RRFS-shaped, not
 RRFS-matched (RRFS-MPAS itself is above). With gpuwm 2.9.0, whose
 `rw_mpas_init` writes the suite soil geometry (RUC's nine soil levels) and the
 TEMPO aerosols, `woof preset prepare rrfs-v2-hex-tempo` builds the preset's
@@ -445,7 +447,7 @@ soil geometry is refused by name at preparation.
   v5.0 only with `--licence-opt-in ucar-noahmp`, from a native library built
   with the same opt-in (`woof hex physics-resources build --licence-opt-in
   ucar-noahmp`); no default runs it, and the Noah-MP hex runs by default is
-  the WOOF suite's WRF-lineage v4.x (WRF public-domain notice, not
+  the WOOF-ArWen suite's WRF-lineage v4.x (WRF public-domain notice, not
   MPAS-bitwise).
 - On the RRFS stage, UGWP drag (no port for the fork's driver yet), NSSL
   two-moment microphysics and smoke/dust (ported, not wired into the
@@ -460,7 +462,7 @@ soil geometry is refused by name at preparation.
   layers. An engine whose YSU and New Tiedtke identities are
   `ysu-wrf-v4.8.0-entrainment-courant-v2` and
   `new-tiedtke-wrf461-cumastrn-donor-bound-v2` bounds both, and
-  `woof hex global` then runs the WOOF arm at the mesh's own step. woof
+  `woof hex global` then runs the WOOF-ArWen arm at the mesh's own step. woof
   2.9.0, which this release requires, has neither, so on it every door's
   default step with YSU is capped at 300 s (`woof hex global` and a bare
   `woof hex forecast` alike); an explicit `--dt` runs as given.

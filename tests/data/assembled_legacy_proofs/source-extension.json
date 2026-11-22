@@ -1,7 +1,7 @@
 {
   "schema": "measured-legacy-source-extension-v1",
   "baseline": "cd336e62d6e6b6312c9636e0fdfff84801909b6a",
-  "measured_tip": "d67185fb551b20583d3eb2a586a532cbb8e11bbe",
+  "measured_tip": "5f81efef03ffe754ea0878035df4515e45031c63",
   "sources": {
     "woof/core/acoustic.py": {
       "before": {
@@ -29,8 +29,8 @@
         "sha256": "d4cc20c6a23c94f169228d19937724bb678b51b4e597495af09a1672ce8c263b"
       },
       "after": {
-        "bytes": 280252,
-        "sha256": "2f2353222250b4f9916a4101238b1aea7b814599976bc7877fc391c62195c5bd"
+        "bytes": 280258,
+        "sha256": "79aef78728d6284f8d891ea0c26615d9a2220d76cf0075035613ef3e330152de"
       }
     },
     "woof/core/kernels/__init__.py": {
@@ -39,8 +39,8 @@
         "sha256": "e44a76e72880e6cbacee4a3cf299ab7e1a0b418e737355b3b64bfd60358b67cc"
       },
       "after": {
-        "bytes": 93921,
-        "sha256": "ba29e1bfbb473f654a32181c399ba13f689e359271a2d59350b61acb29629024"
+        "bytes": 95392,
+        "sha256": "69f483367162051eb2c2cd7a8e3d355005ada73f647db53f953648cd47d80c51"
       }
     },
     "woof/wrf_exact.py": {
@@ -142,7 +142,7 @@
       178128
     ],
     "strict_differing_words": 0,
-    "source": "replays on an RTX 5090 by lane/opus-tests 3f3246aaa41 (fast and strict, base 2.8.9 vs tip)"
+    "source": "replays on an RTX 5090 at 3f3246aaa41 (fast and strict, base 2.8.9 vs tip)"
   },
   "loader_fold_replay": {
     "receipt": "loader-fold-source-replay.json",
@@ -152,7 +152,7 @@
   },
   "loader_slimming_replay": {
     "receipt": "slimming-loader-source-replay.json",
-    "sha256": "c564f7946ec8dcebe9151aa081e0f04e6b4afb397c50260eaac517423b986265"
+    "sha256": "4a9334918db99b5a3b9d18d6c69e0c14ed9033878204f8198fccdc1eebc65f51"
   },
   "module_sources": {
     "acoustic": {

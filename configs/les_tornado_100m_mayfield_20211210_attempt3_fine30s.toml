@@ -555,7 +555,7 @@ mix_upper_bound = 0.1
 isfflx = 1
 # P3 inflow seeding, pilot amplitude, fixed committed seed.  Settings are the
 # pilot ON arm verbatim from
-# docs/superpowers/receipts/les/inflow-generator/les.km3.p3.on-7h.toml:166-169.
+# docs/internal/receipts/les/inflow-generator/les.km3.p3.on-7h.toml:166-169.
 # The generator is opt-in and OFF by default; the D90 fetch meter runs on the
 # output and the scored footprint is the fetch-clean interior only.
 inflow_perturbation = true

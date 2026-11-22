@@ -29,13 +29,13 @@ def main():
             raise ValueError("the native reference receipt does not prove successful completion")
     for run in (default_run, strict_run):
         if not run["completed"] or run["step_count"] != 7200 or run["final_time_seconds"] != 3600:
-            raise ValueError("the WOOF receipt does not prove the complete native window")
+            raise ValueError("the WOOF-ArWen receipt does not prove the complete native window")
     arms = (("WRF original", original["frames"][-1]["reference"], original["reference_integral"]),
             ("WRF corrected", corrected["frames"][-1]["reference"], corrected["reference_integral"]),
-            ("WOOF default", original["frames"][-1]["candidate"], original["candidate_integral"]),
-            ("WOOF strict control, earlier source", strict["frames"][-1]["candidate"], strict["candidate_integral"]))
-    text = ["The complete coupled ideal case runs end to end under ordinary WOOF arithmetic.\n",
-            f"Compiled WRF original and corrected references each completed 3600 seconds. WOOF default completed 7200 steps in {default_run['wall_seconds']:.3f} seconds with 31 Rust-written histories. The separate strict control also completed 7200 steps. Evidence: `evidence/ideal/reference-o2-final-receipt.json`, `reference-corrected-final-receipt.json`, `{args.default_run}`, `arwen-strict-full-receipt.json`.\n",
+            ("WOOF-ArWen default", original["frames"][-1]["candidate"], original["candidate_integral"]),
+            ("WOOF-ArWen strict control, earlier source", strict["frames"][-1]["candidate"], strict["candidate_integral"]))
+    text = ["The complete coupled ideal case runs end to end under ordinary WOOF-ArWen arithmetic.\n",
+            f"Compiled WRF original and corrected references each completed 3600 seconds. WOOF-ArWen default completed 7200 steps in {default_run['wall_seconds']:.3f} seconds with 31 Rust-written histories. The separate strict control also completed 7200 steps. Evidence: `evidence/ideal/reference-o2-final-receipt.json`, `reference-corrected-final-receipt.json`, `{args.default_run}`, `arwen-strict-full-receipt.json`.\n",
             "| Arm | Final fire area (m2) | Perimeter (m) | Sensible heat (TJ) | Latent heat (TJ) | Maximum upward velocity (m/s) |",
             "|---|---:|---:|---:|---:|---:|"]
     for label, frame, integral in arms:
@@ -46,21 +46,21 @@ def main():
                                       ("corrected WRF", corrected, args.corrected_comparison)):
         final = document["frames"][-1]
         pct = 100 * final["area_difference_m2"] / final["reference"]["fire_area_m2"]
-        text.append(f"Against {label}, default WOOF final area differs by {pct:+.4f}%, mean perimeter distance is {final['perimeter_midpoint_mean_distance_m']:.6f} m, sampled Hausdorff distance is {final['perimeter_sampled_hausdorff_m']:.6f} m, and burned-cell intersection over union is {final['burned_cell_iou']:.6f}. Evidence: `evidence/ideal/{filename}`.\n")
+        text.append(f"Against {label}, default WOOF-ArWen final area differs by {pct:+.4f}%, mean perimeter distance is {final['perimeter_midpoint_mean_distance_m']:.6f} m, sampled Hausdorff distance is {final['perimeter_sampled_hausdorff_m']:.6f} m, and burned-cell intersection over union is {final['burned_cell_iou']:.6f}. Evidence: `evidence/ideal/{filename}`.\n")
     final = corrected["frames"][-1]["differences"]
-    text.extend(["\n| Default WOOF versus corrected WRF | Final RMSE |", "|---|---:|"])
+    text.extend(["\n| Default WOOF-ArWen versus corrected WRF | Final RMSE |", "|---|---:|"])
     for name, unit in (("T", "K"), ("U", "m/s"), ("V", "m/s"), ("W", "m/s"), ("QVAPOR", "kg/kg"), ("P", "Pa")):
         text.append(f"| {name} | {final[name]['rmse']:.9g} {unit} |")
     dp = original["frames"][0]["differences"]["P"]["rmse"]
     sp = strict["frames"][0]["differences"]["P"]["rmse"]
-    text.append(f"\nAll compared initial prognostic and fire words match native WRF's first history frame. Default diagnostic pressure differs with initial RMSE {dp:.9g} Pa. The retained earlier-source arithmetic diagnostic has initial RMSE {sp:.9g} Pa; its paired ordinary run is preserved separately. The full coupled atmosphere is not word-identical. WOOF evolves dry potential temperature; native WRF retains `use_theta_m=1`. These numerical formulations and the declared source corrections must remain distinct from routine-level parity. Evidence: the initial/final field grades in the original/default and original/strict comparison JSON files.\n")
+    text.append(f"\nAll compared initial prognostic and fire words match native WRF's first history frame. Default diagnostic pressure differs with initial RMSE {dp:.9g} Pa. The retained earlier-source arithmetic diagnostic has initial RMSE {sp:.9g} Pa; its paired ordinary run is preserved separately. The full coupled atmosphere is not word-identical. WOOF-ArWen evolves dry potential temperature; native WRF retains `use_theta_m=1`. These numerical formulations and the declared source corrections must remain distinct from routine-level parity. Evidence: the initial/final field grades in the original/default and original/strict comparison JSON files.\n")
     text.extend(["\n| Arm | Dry air mass change (kg) | Water vapor mass change (kg) | Mean potential temperature change (K) |",
                  "|---|---:|---:|---:|"])
     for label, _, integral in arms:
         text.append(f"| {label} | {integral['dry_air_mass_change_kg']:.3f} | {integral['vapor_mass_change_kg']:.3f} | {integral['theta_change_k']:.9g} |")
     vapor_delta = corrected["candidate_integral"]["vapor_mass_change_kg"] - corrected["reference_integral"]["vapor_mass_change_kg"]
     initial_vapor = corrected["frames"][0]["reference"]["water_vapor_mass_kg"]
-    text.append(f"\nAll stored fields and aggregate values are finite. The domain has open atmospheric boundaries, so these mass changes are not closed-domain conservation errors. Default WOOF's net vapor change differs from corrected WRF by {vapor_delta:.3f} kg, or {100 * vapor_delta / initial_vapor:.6f}% of the initial vapor mass. Net vapor change diverges after 30 minutes. The earlier-source strict control also retains a net vapor difference; it is not a same-source full-model comparison with the newly qualified default run. This remains an atmospheric qualification limit, and the comparison does not separate every cause. Evidence: the integral and profile sections of the original/default, corrected/default and original/strict comparison JSON files.\n")
+    text.append(f"\nAll stored fields and aggregate values are finite. The domain has open atmospheric boundaries, so these mass changes are not closed-domain conservation errors. Default WOOF-ArWen's net vapor change differs from corrected WRF by {vapor_delta:.3f} kg, or {100 * vapor_delta / initial_vapor:.6f}% of the initial vapor mass. Net vapor change diverges after 30 minutes. The earlier-source strict control also retains a net vapor difference; it is not a same-source full-model comparison with the newly qualified default run. This remains an atmospheric qualification limit, and the comparison does not separate every cause. Evidence: the integral and profile sections of the original/default, corrected/default and original/strict comparison JSON files.\n")
     text.append("\nThe copied native reference corrects the one-step-ahead fire clock. Source and executable hashes, exact compiler/link commands and unchanged-library reuse are recorded in `evidence/ideal/SFIRE_CORRECTIONS.json`, `SFIRE_CORRECTIONS.patch`, `incremental-build-receipt.json`, and the corrected final receipt. Original source, inputs and binaries remain preserved.\n")
     text.append("\nAnalysis-only charts, CSV, captions and numeric/hash QA are in `verification-results/sfire-2026-10-02/phase2/`. No weather-field map was drawn with matplotlib. Observed fire perimeters remain the skill reference; this ideal comparison does not establish real-fire forecast skill.\n")
     provenance = default_run.get("source_provenance")

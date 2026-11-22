@@ -781,6 +781,30 @@ def test_every_cumulus_option_in_the_registry_is_on_the_page():
             f"it reads: {enumeration}")
 
 
+def test_the_measured_composition_numbers_are_the_receipt_s():
+    """The two claims of the "As measured" list nothing else pinned.
+
+    MEASURED DRIFT (3.0.2): the RCON speed guard was retired and the
+    receipt regenerated, and the page still said mp_physics = 29 was
+    refused at the forecast door.  The attempt count in the paragraph
+    above the list read 524371 beside a list that said 582653.  The
+    totals inside the list are held by
+    test_composition_overview_and_revised_mm5_counts_match_the_receipt;
+    this holds the attempt count and the hold sentence to the receipt.
+    """
+    walk = _walk()
+    claim = f"makes {walk['totals']['tried']} physics admission attempts"
+    prose = _prose(_page()).replace("**", "")
+    assert claim in prose, (
+        f"docs/public/PHYSICS.md does not say {claim!r}; its attempt count "
+        "has drifted from physics-composition-walk.json")
+    # RCON is the one value the page ever named as held.  The walk now
+    # accepts it, so the page may not say the run refuses it.
+    assert walk["per_axis"]["mp_physics"]["29"]["accepted"] > 0
+    assert "refused at the forecast door" not in prose
+    assert "one named hold" not in prose
+
+
 def test_mynn_is_still_implemented_unverified_in_the_registry():
     """Naming a composition is not evidence; the rung must not have moved."""
     components = _registry()["components"]

@@ -80,6 +80,15 @@ def _rank_hooks(execution, request, comm):
     return None
 
 
+def _mirror_ranks(session):
+    """Each joined host's first rank (the rank its leader runs), from the run's host plan."""
+    plan = getattr(session, 'plan', None)
+    if plan is None or len(session.hosts) < 2:
+        return None
+    firsts = [plan.local_ranks(host) for host in range(1, len(session.hosts))]
+    return [ranks[0] for ranks in firsts if ranks] or None
+
+
 def _run_rank(rank, request, local, comm, output_comm, halo_links, devices_here, holder=None):
     """One rank's forecast on this process's card: the thread executor's ``operation`` for one rank."""
     import cupy as cp
@@ -92,6 +101,10 @@ def _run_rank(rank, request, local, comm, output_comm, halo_links, devices_here,
     execution.analysis_receipt = request['analysis_receipt']
     execution.last_step = request.get('steps')
     execution.output_comm = output_comm
+    execution.multihost_connect = request.get('multihost_connect')
+    execution.multihost_rendezvous = None if holder is None else holder.get('rendezvous')
+    execution.multihost_mirror_ranks = None if holder is None else holder.get('mirror_ranks')
+    execution.multihost_mirror = bool(holder is not None and holder.get('mirror_leader'))
     device = devices_here[rank]
     from ..device_share import rank_process_card
     with rank_process_card(device, int((request.get('card_ranks') or {}).get(rank, 1)),
@@ -213,7 +226,8 @@ def run_process_ranks(*, arguments, config, layout, streams, start, stop, dt, st
                   streams=streams, start=start, stop=stop, dt=dt, steps=steps, out=out, devices=list(devices),
                   numerics=numerics.mode(), moving=moving_state, global_layout=layout,
                   analysis_receipt=analysis_receipt, timeout=timeout, halo=halo, nccl_uid=nccl_uid, hosts=hosts,
-                  card_ranks=card_ranks, card_share_dir=str(Path(job) / 'card-share'))
+                  card_ranks=card_ranks, card_share_dir=str(Path(job) / 'card-share'),
+                  multihost_connect=session.connect_spec() if joined else None)
     began = time.perf_counter()
     group.start()
     receipt.update(rank_processes=[dict(rank=rank, pid=process.pid) for rank, process in group.processes.items()],
@@ -244,7 +258,11 @@ def run_process_ranks(*, arguments, config, layout, streams, start, stop, dt, st
     halo_links = ({peer: (group.halo_sockets[peer], group.halo_flags.pop(peer)) for peer in neighbours[0]}
                   if halo == 'process' else {})
 
-    rank0 = {'group': group}
+    rank0 = {'group': group, 'rendezvous': None if (session is None or joined) else session.rendezvous,
+             # Several hosts: rank 0 mirrors each seal's manifest to every joined host's first rank, which is the
+             # leader here (checkpoint_shards_v842.send_mirror / receive_mirror).
+             'mirror_ranks': _mirror_ranks(session) if (session is not None and not joined) else None,
+             'mirror_leader': joined}
 
     def stop_all(reason):
         checks = getattr(rank0.get('execution'), 'deferred_checks', None)
@@ -351,6 +369,7 @@ def _exchange_host_receipts(session, out, local_ranks, records, failure, codes, 
                                           receipts=receipts, failed=None if failure is None else str(failure),
                                           exit_codes={str(k): v for k, v in codes.items()},
                                           host_receipt=session.receipt()))
+            session._finished = True
         except Exception as error:   # rank 0 has stopped; its own error names why
             receipt['host_receipt_send_error'] = str(error)
         return records

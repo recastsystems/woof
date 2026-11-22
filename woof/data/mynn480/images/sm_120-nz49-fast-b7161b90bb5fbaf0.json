@@ -1,0 +1,21 @@
+{
+  "source_sha256": "b7161b90bb5fbaf0d9d23528830995fcb9ed8de74edc4891bd78bc26d84eceb1",
+  "image_sha256": "e631548b62212e351cc13898ce02ae308940df5f4d4643ee30dad6b9f45ef3ec",
+  "mode": "fast",
+  "nz": 49,
+  "arch": "sm_120",
+  "command": [
+    "nvcc",
+    "--cubin",
+    "-std=c++17",
+    "-arch=sm_120",
+    "--ftz=false",
+    "--fmad=true",
+    "--prec-div=true",
+    "--prec-sqrt=true",
+    "--split-compile=4",
+    "sm_120-nz49-fast-b7161b90bb5fbaf0.cu",
+    "-o",
+    "sm_120-nz49-fast-b7161b90bb5fbaf0.cubin"
+  ]
+}

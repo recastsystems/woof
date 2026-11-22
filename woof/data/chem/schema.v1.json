@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "gpuwm.chem.schema.v1",
-  "title": "WOOF chem table v1: species rows, sets, sources and output diagnostics",
+  "title": "WOOF-ArWen chem table v1: species rows, sets, sources and output diagnostics",
   "description": "Every file under gpuwm/data/chem/{species,sets,sources,diagnostics}/ validates against one definition here, chosen by its 'schema' member. Adding a species, a set, an emission or boundary source or a table diagnostic is a new row or file; no code path names a species. Unknown members are refused everywhere (additionalProperties false) except inside the 'optics' and 'mp_coupling' objects, whose keys the owning process defines. Loader: gpuwm.chem_table.",
   "definitions": {
     "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,23}$"},

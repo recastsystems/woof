@@ -1,4 +1,4 @@
-"""The numerics knob (owner ruling 2026-10-16: strict numerics is opt-in, never the default).
+"""The numerics knob (strict numerics is opt-in, never the default).
 
 CPU only.  The battery runs strict (tests/conftest.py); these tests clear that and check the door default,
 the option mapping, the one-mode-per-process refusal and the proof harness's appended flag.

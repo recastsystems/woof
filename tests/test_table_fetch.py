@@ -925,7 +925,7 @@ def test_a_server_that_withholds_the_body_is_a_refusal_within_the_timeout(
         release.set()
         server.shutdown()
         server.server_close()
-    # 1 s stall window, the client retries with backoff: about 7 s on a development machine.
+    # 1 s stall window, the client retries with backoff: about 7 s on a shared test host.
     assert clock.monotonic() - started < 30
     message = str(excinfo.value)
     assert "stalled" in message, message

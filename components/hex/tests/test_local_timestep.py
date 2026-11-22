@@ -778,3 +778,20 @@ def test_a_regional_driver_counts_its_padding_in_the_mesh_check():
     assert "padded" in str(caught.value)
     assert "4 cells and 3 edges" in str(caught.value)
 
+
+
+def test_the_damping_override_takes_every_keyword_the_acoustic_loop_passes():
+    """THE BREAKAGE (hex 0.6.1; fork jacobbieker/woof PR 447): the v8.4.1 acoustic loop calls
+    ``horizontal.divergence_damping_3d(..., native_stored_inverse=True)``, and under --local-timestep that
+    method is the LocalTimestepAttachment's override, which lacked the keyword: every --local-timestep run
+    stopped at step 0 with a TypeError."""
+    import inspect
+
+    from woof.hex.cuda_driver_lts import LocalTimestepAttachment
+    from woof.hex.cuda_horizontal import CudaHorizontal
+
+    def keywords(function):
+        return {name for name, parameter in inspect.signature(function).parameters.items()
+                if parameter.kind is inspect.Parameter.KEYWORD_ONLY and not name.startswith("_")}
+
+    assert keywords(CudaHorizontal.divergence_damping_3d) <= keywords(LocalTimestepAttachment.divergence_damping_3d)

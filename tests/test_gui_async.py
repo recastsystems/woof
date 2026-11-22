@@ -1355,7 +1355,7 @@ def test_a_forecast_too_big_for_the_card_is_held_at_once_even_behind_others(queu
 
 def test_another_owners_line_holds_the_card_and_ours_is_taken_and_handed_over(queued, tmp_path):
     server, runner, card, _ = queued
-    owner = tmp_path / "gpu-mutex" / "OWNER"
+    owner = tmp_path / "card-queue" / "OWNER"
     owner.parent.mkdir()
     (owner.parent / "OWNER.lock").write_text("", encoding="utf-8")
     owner.write_text(f"desk-gui 2026-09-26T00:00:00Z pid {os.getpid()} bounded 60 min\n", encoding="utf-8")
@@ -1397,7 +1397,7 @@ def _wrapper_runner(jobs_root):
 
 
 def _owner_queue(tmp_path, runner):
-    owner = tmp_path / "gpu-mutex" / "OWNER"
+    owner = tmp_path / "card-queue" / "OWNER"
     owner.parent.mkdir()
     owner.write_text("", encoding="utf-8")
     server = build_server(tmp_path / "runs", port=0, runner=runner, token="t" * 43)

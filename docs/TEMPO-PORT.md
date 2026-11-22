@@ -246,3 +246,54 @@ word for word.
    interface), MPAS column order.
 7. **Optional features** (not used by RRFS v2): ML cloud number, reflectivity
    from melting. Port them after the default path is in the engine.
+
+## TEMPO v3.2.5 generation (upstream latest-as-default, 2026-11-09)
+
+Since 2026-11-08 the latest upstream release of each scheme is
+the default, and the bitwise pins stay selectable. For TEMPO:
+
+- `tempo_version = "v3.2.5"` (NCAR/TEMPO c62699f, released 2026-10-06) is the
+  default: `woof/core/kernels/tempo325/`. It carries every change since
+  9adf9ef, including hail-hyperaware (`tempo_hailhyperaware`, on by default as
+  upstream and the RRFS fork have it), the ice-sedimentation sub-step fix,
+  the Koop `delta_aw` fix, the `pbg_rci` volume fix, the `pni_inu` aerosol
+  sink, `roverrv = rdry/rv` and `is_first_step` on every column.
+- `tempo_version = "v3.0.3"` (9adf9ef, the RRFS v2 pin) is
+  `woof/core/kernels/tempo/`, unchanged byte for byte, and compiles with the
+  options it always had. RRFS bitwise proofs name it.
+- v3.2.5 reads `final_weight` in `sum_tendencies` where it may be unset
+  (main.F90:1752-1755). The port defines it as 1 (no scaling); the referee
+  (`tools/tempo_ref/oracle/build_reference_v325.sh`) carries the same one
+  line and is labelled patched.
+- The v3.2.5 init is the v3.0.3 Rust init plus `roverrv = rdry/rv`
+  (`tempo_runtime.with_v325_parameters`): TEMPO's own v3.2.5 tempo_init dump
+  differs from its v3.0.3 dump in that one record of 249, on the same tables.
+- Column oracle, 127 built columns in three sets (6,763,008 words): the host
+  build and the GPU runtime under strict numerics are both 0 words different
+  from the patched native v3.2.5 Fortran, free-running and replayed; the
+  hail split is active in 2,270 of the 6,216 column-steps.
+
+## Fast numerics for v3.2.5 (woof.core.tempo_fast, 2026-11-09)
+
+A fast-numerics process (the default) runs TEMPO v3.2.5 as binary32 with a tiled work area. A strict process
+(`GPUWM_NUMERICS=strict` or `GPUWM_WRF_EXACT=1`) compiles `kernels/tempo325` exactly as before, and the pinned
+v3.0.3 is never transformed.
+
+- **Why:** the default ran the strict column with contraction allowed: binary64 throughout (1/64 rate on GeForce
+  and RTX PRO cards), the glibc-word libm, and a per-column work area 40 to 80 kB long, so every warp access touched
+  32 separate lines. On the 3 km HRRR recipe (Iowa 92x92x50, RTX 4090) a TEMPO call took 18.8 ms, against
+  3.7 ms for a Thompson mp=28 call, and the step ran about 2x Thompson's. A clock64 segment profile of the binary32
+  column put 70 % of the time in work-area traffic (zeroing alone was 19 %) and 8 % in the process rates.
+- **What changes:** one checked source transform of the same headers, with no second copy of the physics:
+  - `double` becomes `float` and every literal becomes a binary32 literal;
+  - the blob is converted to binary32, and a table value that overflows is refused by name;
+  - exp, log, log10 and pow use CUDA's binary32 intrinsics (the maths hex's fast TEMPO uses);
+  - the work area and column state are tiled (32 columns per tile, 128-byte level stride), reached through a
+    view shifted by the lane. The tiling alone leaves every word unchanged.
+  - The pointer tables are cached per pointer set (the three pageable copies per call waited for queued kernels).
+  - `WOOF_TEMPO_FAST_FLOAT=0` keeps the binary64 column in a fast process.
+- **Proof:** strict column oracle vs patched native v3.2.5: 0 of 6,763,008 words different, free and replay.
+  Fast words change by design. On the HRRR recipe at +1 h against MRMS, fast and binary64 score the same: FSS at
+  27 km for 20 and 35 dBZ is 0.610/0.499 vs 0.605/0.489, and T2 RMSE is 2.17 vs 2.18 K.
+- **Speed:** one TEMPO call takes 18.8 ms -> 5.5 ms. On the step, fast-step (10th-percentile) time is about
+  29.7 ms vs 26.0 ms for Thompson mp=28, i.e. 1.14x; it was 50.7 ms before (2.0x).

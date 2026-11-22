@@ -409,7 +409,7 @@ def test_noahmp_slice_matches_the_current_wrf_authority(
     revised/classic MM5 surface layers and PBL-off with every represented
     surface layer, while vertical_diffusion_2 retires the km_opt=4/PBL-off
     rail.  The 96 remaining lsm4 refusals are exactly 72 WRF-fatal pairing
-    rows and 24 WOOF structural surface-layer-off rows.
+    rows and 24 WOOF-ArWen structural surface-layer-off rows.
 
     Re-pinned for the LES lane, 2026-08-02: every count below is EXACTLY
     1.5x its previous value -- rows 792 -> 1188, rejected 360 -> 540, the

@@ -130,6 +130,9 @@ class MetemInitialization:
         return bundle.cache_reader.metadata
 
 
+from woof.metem_door import metgrid_run_reads_lai12m  # noqa: E402  (the door owns it; see there)
+
+
 def metgrid_soil(case, cfg, *, fractional_seaice):
     """Bind the actual WPS soil coordinates to the existing soil remapper."""
     from woof.config import soil_layer_count
@@ -139,11 +142,29 @@ def metgrid_soil(case, cfg, *, fractional_seaice):
     from woof.static.build import deep_soil_temperature_at_terrain
 
     static = dict(case.statics)
+    reads_lai12m = metgrid_run_reads_lai12m(cfg)
     required = ('LANDSEA', 'SKINTEMP', 'LANDMASK', 'LU_INDEX', 'SCT_DOM',
-                'SOILTEMP', 'GREENFRAC', 'LAI12M', 'SNOALB')
+                'SOILTEMP', 'GREENFRAC', 'SNOALB') + (('LAI12M',) if reads_lai12m else ())
     missing = sorted(set(required)-set(static))
     if missing:
-        raise ValueError(f'{case.path.name}: land-surface initialization needs {missing}; retain these metgrid/geogrid fields')
+        why = (' (rdlai2d = .true. makes the land model read the monthly LAI12M field; '
+               'with rdlai2d = .false. it takes leaf area from VEGPARM.TBL)'
+               if missing == ['LAI12M'] else '')
+        raise ValueError(f'{case.path.name}: land-surface initialization needs {missing}{why}; retain these metgrid/geogrid fields')
+    if 'LAI12M' not in static:
+        # WPS output without LAI12M (metgrid before V3.6, or a GEOGRID.TBL
+        # that does not interpolate it), on a run that does not read it.
+        # real.exe leaves grid%lai12m zero-initialised and its
+        # monthly_interp_to_date (module_initialize_real.F, the LAI12M call
+        # beside GREENFRAC and ALBEDO12M) writes LAI = 0 to wrfinput; Noah
+        # and RUC with rdlai2d = .false. then take leaf area from VEGPARM.TBL
+        # (LAIMIN/LAIMAX) at every call.  Native WRF 4.7.1 on the WRF
+        # tutorial's January 2000 met_em (metgrid V3.5.1): wrfinput_d01 LAI
+        # is 0.0 at every cell.  The same zero field here keeps the start
+        # identical to it.
+        static['LAI12M'] = np.zeros_like(np.asarray(static['GREENFRAC']))
+        print(f'met_em: {case.path.name} carries no LAI12M; rdlai2d is off, so leaf area comes from '
+              'VEGPARM.TBL as in WRF (the start writes LAI = 0, as real.exe does).', flush=True)
     for name in ('LU_INDEX', 'SCT_DOM'):
         if not np.equal(static[name], np.rint(static[name])).all():
             raise ValueError(f'{name} must contain integer land/soil category identities')
@@ -255,14 +276,14 @@ def _ladder_wrf_auto(run, argument, *, requested_e_vert=None, cpu_bridge=None):
 
 
 def _ladder_native(run, argument, *, requested_e_vert=None, cpu_bridge=None):
-    """The certified WOOF profile, resampled to the requested e_vert."""
+    """The certified WOOF-ArWen profile, resampled to the requested e_vert."""
     if argument:
         raise ValueError("vertical grid selector 'native' takes no argument")
     from woof.core.grid import resample_eta_levels
     from woof.native_wrf_contract import CERTIFIED_ETA_LEVELS
     e_vert = requested_e_vert or run.experiment.root.run.nz + 1
     eta = resample_eta_levels(CERTIFIED_ETA_LEVELS, e_vert - 1)
-    return (eta, 'explicitly selected WOOF native eta profile resampled to e_vert',
+    return (eta, 'explicitly selected WOOF-ArWen native eta profile resampled to e_vert',
             {'algorithm': 'ArWen-native-profile', 'e_vert': e_vert})
 
 
@@ -727,12 +748,44 @@ def prepare_metem_run(run, directory, *, run_seconds=None, preprocess_backend=No
 DOOR = 'woof run --met-em'
 
 
+def announce_ocean(run, run_seconds=None):
+    """The plan states the ocean (door item 6): a WRF namelist with no
+    sf_ocean_physics runs none, as WRF does, and a long run hears the offer."""
+    from woof.surface_ocean import domains_ocean_lines
+    for line in domains_ocean_lines((dc.run for dc in run.experiment.domains),
+                                    prefix=f'{DOOR}: ocean: ', run_seconds=run_seconds):
+        print(line, flush=True)
+
+
+def lake_plan_lines(run, *, restart=None):
+    """What each domain's lakes will start from, for this door's plan review.
+
+    Each domain's first met_em file holds its lake mask (``LU_INDEX ==
+    ISLAKE``, what ``initialize_landuse`` makes the run's ``lakemask``), so
+    with ``lake_state_source = "auto"`` each line is the run's own decision
+    on that domain's lake cells
+    (:func:`woof.ingest.lake_state.input_plan_sentences`).  The resolved
+    run is read as ``woof.wrfinput_forecast.lake_plan_lines`` reads its
+    own: a stand-in with no domains or no files has nothing to plan.
+    """
+    from woof.ingest.lake_state import input_plan_sentences
+    experiment = getattr(run, 'experiment', None)
+    if not getattr(experiment, 'domains', None):
+        return []
+    paths = getattr(run, 'paths', None)
+    if restart is None and not paths:
+        return []
+    return input_plan_sentences(experiment, {gid: files[0] for gid, files in (paths or {}).items()},
+                                latitude='XLAT_M', longitude='XLONG_M', restart=restart)
+
+
 def run_metem_forecast(directory, outdir, *, run_seconds=None, restart=None,
                        io_mode='history', health_debug=False, gpu_uuid=None,
                        exclusive_gpu=True, rrtmg_variant=None, vertical_grid=None,
                        render_products=None, render_dir=None, progress_options=None,
                        relaunched=False, vertical_levels=None, allow_shared_gpu=False,
-                       output_owner=None, ensemble_request=None):
+                       output_owner=None, ensemble_request=None,
+                       lake_state=None, lake_state_path=None):
     import os
     import subprocess
     import sys
@@ -745,7 +798,11 @@ def run_metem_forecast(directory, outdir, *, run_seconds=None, restart=None,
     request = request_for_inputs(override=ensemble_request)
     from woof.ensemble.calibration_admission import refuse_native_random
     refuse_native_random(directory)
-    run = resolve_metem_run(directory, rrtmg_variant=rrtmg_variant)
+    run = resolve_metem_run(directory, rrtmg_variant=rrtmg_variant,
+                            lake_state=lake_state, lake_state_path=lake_state_path)
+    lake_state_note = getattr(run, 'lake_state_note', None)
+    if lake_state_note is not None and not relaunched:
+        print(f'{DOOR}: {lake_state_note}.', flush=True)
     # PLAN REVIEW, and it happens HERE.  Both of these used to fire inside
     # the spawned worker, after select_gpu, after the GPU file lock and
     # after outdir.mkdir: a refusal raised once the run had started.  The
@@ -763,6 +820,19 @@ def run_metem_forecast(directory, outdir, *, run_seconds=None, restart=None,
     # and outdir.mkdir, so a met_em carrying a field this build cannot
     # transport was refused once the run had started.
     check_analyzed_scalar_capabilities(run)
+    if not relaunched:
+        announce_ocean(run, run_seconds)
+        # What the lakes will start from, at plan review (defect 5 of the
+        # 2026-11-12 runner list); the forecast prints what it got.  A
+        # --lake-state forcing or ROW choice already printed its own line
+        # above and gets no second one.  An explicit auto gets this one
+        # too: the flag's line names no source, and this one says which
+        # source this domain's lakes are asked of, or that none is.  The
+        # met_em files hold the lake mask, so the line is the run's own
+        # decision on each domain's lake cells, not a condition.
+        if lake_state_note is None or lake_state == 'auto':
+            for line in lake_plan_lines(run, restart=restart):
+                print(f'{DOOR}: {line}', flush=True)
     from woof.tables import _ensure_for_load as ensure
     ensure(run.experiment)
     # Plan review, and before the card: a refused --outdir used to be
@@ -787,6 +857,8 @@ def run_metem_forecast(directory, outdir, *, run_seconds=None, restart=None,
                        '--outdir',str(outdir),'--io-mode',io_mode,'--_worker',
                        '--_output-owner',output_claim.token]
             if rrtmg_variant is not None: command += ['--rrtmg-variant',rrtmg_variant]
+            if lake_state is not None: command += ['--lake-state',lake_state]
+            if lake_state_path is not None: command += ['--lake-state-path',str(Path(lake_state_path).resolve())]
             if vertical_grid is not None: command += ['--vertical-grid',vertical_grid]
             if vertical_levels is not None: command += ['--vertical-levels',str(int(vertical_levels))]
             if run_seconds is not None: command += ['--run-seconds',str(run_seconds)]
@@ -857,6 +929,8 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--met-em',type=Path,required=True)
     parser.add_argument('--rrtmg-variant',choices=('rrtmg_legacy','rte-rrtmgp'),default=None)
+    from woof.ingest.lake_state import add_lake_state_arguments
+    add_lake_state_arguments(parser)
     parser.add_argument('--vertical-grid',metavar='SELECTOR',
         help='vertical ladder selector: '+', '.join(METEM_VERTICAL_LADDERS)+
              '. The explicit ladder is spelled explicit:PATH, a TOML file carrying an '
@@ -909,6 +983,7 @@ def main(argv=None):
             progress_options=ProgressOptions.from_args(args),relaunched=args._worker,
             vertical_levels=args.vertical_levels,allow_shared_gpu=args.allow_shared_gpu,
             output_owner=args._output_owner,
+            lake_state=args.lake_state,lake_state_path=args.lake_state_path,
             **({} if request is None else {"ensemble_request": request.receipt()}))
     except (ValueError,OSError) as error:
         print(f'{DOOR}: {error}',file=sys.stderr)

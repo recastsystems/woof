@@ -6,7 +6,7 @@ in a minimal test environment.  Every returned array is float64 and finite;
 masked or missing values are refusals, not silently filled samples.
 
 Gridded field VALUES come out of :mod:`woof.netcdf_bridge` -- ``rw_netcdf``,
-WOOF's Rust decoder -- and never out of a Python NetCDF library.  Pulling a
+WOOF-ArWen's Rust decoder -- and never out of a Python NetCDF library.  Pulling a
 plane out of a forecast history file is decode work whoever wrote the file,
 and a second decoder on this door would mean a spectral receipt could disagree
 with the renderer and the field verifier about what the model wrote, with

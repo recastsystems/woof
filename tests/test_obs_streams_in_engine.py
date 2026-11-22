@@ -1,7 +1,7 @@
 """The observation modules the engine's own data assimilation uses live in the engine.
 
 THE BREAKAGE THIS PREVENTS.  Through 2.9.0's first rounds, ``woof.da.obs_point``,
-``woof.local_da_fetch`` and ``woof.local_da_observations`` imported
+``gpuwm.local_da_fetch`` and ``gpuwm.local_da_observations`` imported
 ``woof.globe`` (woof global) for the neutral observation table, two column
 operators, the stream registry and five front-door rows.  Without woof global a
 neutral table was refused, every registered stream was reported unavailable, and

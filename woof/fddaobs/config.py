@@ -2,7 +2,19 @@
 import math
 
 
-def validate(c):
+def validate_settings(c):
+    """The observation-FDDA law on settings alone, asked by both doors.
+
+    ``validate`` (the run door, through ``validate_run_config``) calls this,
+    and plan review (``woof.physics_registry.validate_physics_plan``) calls
+    it on the settings a plan resolves.  The prepared-tree route offers
+    ``obs_nudge_opt`` and ``max_obs`` as per-domain parameters; plan review
+    carried none of this and called 158 reachable plans with
+    ``obs_nudge_opt = 1`` and the default ``max_obs = 0`` launchable, which
+    the run then refused: a zero capacity holds no observation, so the run
+    would claim observation nudging and nudge nothing.  The grid question
+    (``map_proj``) stays in ``validate``: a plan has no grid yet.
+    """
     if type(c.obs_nudge_opt) is not int or c.obs_nudge_opt not in (0, 1):
         raise ValueError("obs_nudge_opt must be 0 or 1 (WRF observation FDDA)")
     if not c.obs_nudge_opt:
@@ -28,5 +40,9 @@ def validate(c):
             raise ValueError(f"{key} must be finite and nonnegative")
     if c.obs_idynin and c.obs_dtramp == 0:
         raise ValueError("WRF observation dynamic initialization divides by obs_dtramp; use a nonzero ramp")
-    if c.map_proj not in (1, 2, 3):
+
+
+def validate(c):
+    validate_settings(c)
+    if c.obs_nudge_opt and c.map_proj not in (1, 2, 3):
         raise ValueError("observation FDDA requires a regional WRF Lambert, polar or Mercator grid")

@@ -1,15 +1,15 @@
 {
   "schema": "measured-slimming-loader-source-replay-v1",
-  "base": "93a5e7e3162c869ba6ce23cbb096ac0b40a9d04b",
-  "tip": "d67185fb551b20583d3eb2a586a532cbb8e11bbe",
+  "base": "dc3753350b907007cefa558b69095efde070d3c7",
+  "tip": "5f81efef03ffe754ea0878035df4515e45031c63",
   "source": "woof/core/kernels/__init__.py",
   "before": {
-    "bytes": 87765,
-    "sha256": "fe91bb0c1657f5cc53d91ce6378911481d6ca919b47a96a1af37fab2a6d1da78"
+    "bytes": 94037,
+    "sha256": "172c1e61edce2fd7f9cc948636fed13aaa9e870452a1d98a060573554c7d19ff"
   },
   "after": {
-    "bytes": 93921,
-    "sha256": "ba29e1bfbb473f654a32181c399ba13f689e359271a2d59350b61acb29629024"
+    "bytes": 95392,
+    "sha256": "69f483367162051eb2c2cd7a8e3d355005ada73f647db53f953648cd47d80c51"
   },
   "generator": "tools/assembled_legacy_replay.py",
   "generator_sha256": "b53ef8e66b860b442b18e2a587419fd119f9518aa1d6300b425d4b4fb8fc6788",
@@ -40,22 +40,22 @@
     }
   },
   "artifacts": {
-    "base-coordinate/source-audit.json": "c0b54ba44cfad07738a3195708a97088b74577f460490929e6bfcc72ac255714",
-    "base-coordinate/direct-native-proof.json": "36890bb9165d37a36341579e4edf89b39c68a96bc50aaba9aa2d5bb030c90ea8",
-    "tip-coordinate/source-audit.json": "bc6ad2d5feb96bec4369aff3a4ccea495c51bb5fadf2927fc7d70afb612cc0d8",
-    "tip-coordinate/direct-native-proof.json": "94cba6fdff5946f903b3fba2e4780013024bb0068b6187003eb54fa195953094",
-    "base-drivers/source-audit.json": "239a55cd36e6302421bfe146b9cbc8dab665c5d0cb50f8ce2bc03c9d2b41709b",
+    "base-coordinate/source-audit.json": "f1eac44ce612e97fc9a60432eae75729f0698307fb49af806d805d7c1dede6fb",
+    "base-coordinate/direct-native-proof.json": "2990ff0d788dde0ff6db1472d20e76cd0b50b7e9fd4a8c0900e7a08ce73a6653",
+    "tip-coordinate/source-audit.json": "851cb421915db20e2224902cfc7905794b615a8001603f82ab189696a283f987",
+    "tip-coordinate/direct-native-proof.json": "21ba615dacadb4dea6db04d156d861a60e033dbaab136f5a48f5dcf43f373f23",
+    "base-drivers/source-audit.json": "7bc9c13069b112670ceffa5ab670c9a8808bf3fb4fb3c44e56d890a581e2782d",
     "base-drivers/horizontal-driver.json": "288b85f5f4358a06076c7d4914974c3460ca05f076a7c899d188ba55ed4bca35",
     "base-drivers/vertical-driver.json": "319920fe2bd369712434eff1cb677fa5305cb4a7a71d46bef6853d052cb31348",
     "base-drivers/km-mutations.json": "0ad75f053859694b81d88c13f8be3c0c59237ddf0783448d51e279e5c9684ffd",
-    "tip-drivers/source-audit.json": "6c845533f875f08393f6839c66b9159f32dd4d152ce8246322ed0c311673db77",
+    "tip-drivers/source-audit.json": "ade012e390865e1e1fdb349716e6b03ecbefec71ca2ec735fb88f89b23f14a72",
     "tip-drivers/horizontal-driver.json": "288b85f5f4358a06076c7d4914974c3460ca05f076a7c899d188ba55ed4bca35",
     "tip-drivers/vertical-driver.json": "319920fe2bd369712434eff1cb677fa5305cb4a7a71d46bef6853d052cb31348",
     "tip-drivers/km-mutations.json": "0ad75f053859694b81d88c13f8be3c0c59237ddf0783448d51e279e5c9684ffd",
-    "base-acoustic/source-audit.json": "6a6998f3923a27c753a26d781038a1a507730b0acf3471d916a4e623d81b14a8",
-    "base-acoustic/acoustic-published-default-proof.json": "202337296a883ca358fbd80bb848c10a5e844c98579629836d736918efdd1a04",
-    "tip-acoustic/source-audit.json": "82d66cb00aaf62b33b6c9fc2d2d001a23a22cb2798aaf10dfc9bc1cb5e04de62",
-    "tip-acoustic/acoustic-published-default-proof.json": "9c3d9e6bf274028429e2804e0cc81561539db5d41659276a038e83539bef38c0"
+    "base-acoustic/source-audit.json": "cb6bb081d723a0f3ba02a7d427832f199e847ae2a70a4e21ea46d12356d78e5a",
+    "base-acoustic/acoustic-published-default-proof.json": "6a1043e98767831afa47e79c5f300f2184f588b9d692783a0dccd2e82a0f24a6",
+    "tip-acoustic/source-audit.json": "d17304b1a5e0c539a4f302c5611646553923fb9fe821859339617d7c0d35b0ee",
+    "tip-acoustic/acoustic-published-default-proof.json": "9cc846de1a90c155b9e98f5aa50992664e70788f3c9a7c15d683cabcb78dffc3"
   },
   "ysu_comment_transition": {
     "before": "cf74efe50f9613ad69fe41a052bd3867fb057a34c0a6adc3a8cd656cc1159686",
@@ -70,7 +70,7 @@
     ],
     "nvrtc_version": [
       13,
-      2
+      4
     ],
     "cupy_version": "14.2.0",
     "module_source_sha256": {
@@ -115,17 +115,5 @@
     "default_acoustic_diffusion_route": false
   },
   "ysu_compiled_source_sha256": "cf74efe50f9613ad69fe41a052bd3867fb057a34c0a6adc3a8cd656cc1159686",
-  "moved_sources": {
-    "woof/nvrtc_ptx_cache.py": {
-      "sealed": {
-        "bytes": 14069,
-        "sha256": "5929748d63f633f1dcb26c281e52664a41b0e47203b45aecb762cd84bd6833c9"
-      },
-      "after": {
-        "bytes": 14289,
-        "sha256": "1a4c12c807669f593e43c541d1f0c4c3adf9873d51ab06a7d26b827c145a1797"
-      }
-    }
-  },
   "pin_changes": []
 }

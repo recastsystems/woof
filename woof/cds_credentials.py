@@ -142,7 +142,7 @@ def inspect() -> dict:
     except OSError as error:
         report["problem"] = "unreadable"
         report["remedy"] = (f"The credential file {path} cannot be read ({type(error).__name__}). "
-                            "Make it readable by the account that runs WOOF, or save the key again "
+                            "Make it readable by the account that runs WOOF-ArWen, or save the key again "
                             "from the CDS key panel.")
     env_key = os.environ.get("CDSAPI_KEY")
     env_url = os.environ.get("CDSAPI_URL")
@@ -160,8 +160,8 @@ def inspect() -> dict:
             report["url_shape"] = "retired-v2" if _retired(url) else "invalid"
     where = (f"{path} (chosen by CDSAPI_RC)" if override is not None
              else f"{path} (the .cdsapirc in the home folder {home} of the process that fetches)")
-    panel = "Save the key from the CDS key panel in WOOF's terminal (Settings, CDS key), which writes this file correctly"
-    then_panel = "save it from the CDS key panel in WOOF's terminal (Settings, CDS key), which writes this file correctly"
+    panel = "Save the key from the CDS key panel in WOOF-ArWen's terminal (Settings, CDS key), which writes this file correctly"
+    then_panel = "save it from the CDS key panel in WOOF-ArWen's terminal (Settings, CDS key), which writes this file correctly"
     if report["problem"] is None and not report["exists"] and (env_key is None or env_url is None):
         if env_key is not None:
             report["problem"] = "no-url"
@@ -265,7 +265,7 @@ def client_refusal(error: BaseException, *, credential_context: str | None = Non
     raised = f"{type(error).__name__}: {message[0][:300]}" if message else type(error).__name__
     remedy = report["remedy"] or (
         "The file and its lines look usable, so the client itself failed to start: reinstall "
-        "cdsapi>=0.7.7 and ecmwf-datastores-client in this WOOF Python environment.")
+        "cdsapi>=0.7.7 and ecmwf-datastores-client in this WOOF-ArWen Python environment.")
     return (f"Cannot initialize the CDS client: cdsapi raised {raised}. {evidence(report)} "
             f"Next: {remedy} No key value is logged.")
 
@@ -340,7 +340,7 @@ def acquisition_readiness() -> dict:
         source = "missing"
     problems = []
     if not client_available:
-        problems.append("Install cdsapi>=0.7.7 in the selected computer's WOOF Python environment.")
+        problems.append("Install cdsapi>=0.7.7 in the selected computer's WOOF-ArWen Python environment.")
     if not configured:
         problems.append("Configure CDS credentials on the selected computer in ~/.cdsapirc, "
                         "or choose its private credential file with CDSAPI_RC. "
@@ -409,7 +409,7 @@ def save(request: dict) -> dict:
         raise ValueError("Credential input must be an object.")
     current = status()
     if not current["editable"]:
-        raise ValueError("CDS credentials are overridden by environment variables. Change those variables and reopen WOOF.")
+        raise ValueError("CDS credentials are overridden by environment variables. Change those variables and reopen WOOF-ArWen.")
     path = _path()
     prior = _profile(path)
     key = request.get("key", "")

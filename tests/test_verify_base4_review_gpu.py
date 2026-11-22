@@ -14,7 +14,7 @@ pytestmark = [requires_gpu, pytest.mark.gpu]
 
 
 def _physical_cfg():
-    from test_da_nested_forecast_gpu import _parent_run
+    from idealised_parent_fixture import _parent_run
     return dataclasses.replace(_parent_run(), **{name: 0 for name in (
         "mp_physics", "ra_lw_physics", "ra_sw_physics", "bl_pbl_physics",
         "sf_sfclay_physics", "sf_surface_physics", "cu_physics")})
@@ -44,7 +44,7 @@ def test_strict_iau_real_step_keeps_dynamics_increments():
     if os.environ.get("GPUWM_WRF_EXACT") != "1":
         pytest.skip("strict process")
     import cupy as cp
-    from test_da_nested_forecast_gpu import _build_parent_state
+    from idealised_parent_fixture import _build_parent_state
     from woof.core.dycore import step
     from woof.da.iau import IauForcing, IauNode, box_density, attach
     cfg = _physical_cfg()
@@ -68,7 +68,7 @@ def test_ordinary_cold_start_writes_real_reflectivity_artifact(tmp_path):
     from datetime import datetime
     import cupy as cp
     import netCDF4
-    from test_da_nested_forecast_gpu import _build_parent_state
+    from idealised_parent_fixture import _build_parent_state
     from woof.core.physics import initialize_physics
     from woof.static.lambert import LambertGrid
     from woof.runtime import write_case_output
@@ -99,7 +99,7 @@ def test_native_ensemble_tick_zero_writes_real_reflectivity_artifacts(tmp_path):
         pytest.skip("the complete multi-member forecast graph is default-mode only")
     import cupy as cp
     import netCDF4
-    from test_da_nested_forecast_gpu import _parent_run, _experiment, _wire
+    from idealised_parent_fixture import _parent_run, _experiment, _wire
     from woof.ensemble.native_forecast import run_initialized_native_ensemble
     from woof.ensemble.prepared_batch import native_prepared_eligibility
     from woof.io.wrfout import WrfoutWriter, state_frame
@@ -157,7 +157,7 @@ def test_offline_child_tick_zero_writes_real_reflectivity_artifact(tmp_path):
     from datetime import datetime
     import cupy as cp
     import netCDF4
-    from test_da_nested_forecast_gpu import _build_parent_state
+    from idealised_parent_fixture import _build_parent_state
     from woof.core.physics import initialize_physics
     from woof.static.lambert import LambertGrid
     from woof.runtime import _global_wrf_attrs
@@ -270,7 +270,7 @@ def test_strict_physics_producers_leave_map_division_to_fold(producer):
 def test_real_engine_full_field_hash_receipt():
     """A real terrain integration, with every serialized field hashed."""
     import cupy as cp
-    from test_da_nested_forecast_gpu import _parent_run, _build_parent_state
+    from idealised_parent_fixture import _parent_run, _build_parent_state
     from woof.core.dycore import step
     from woof.core.device_inventory import state_array_shapes
     cfg = _physical_cfg()

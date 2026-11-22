@@ -128,6 +128,7 @@ fn sample_canvas_request(product: &str, title: &str, colorbar: bool) -> MapRende
         projected_place_labels: Vec::new(),
         projected_points: Vec::new(),
         projected_lines: Vec::new(),
+        contour_fills: Vec::new(),
         contours: Vec::new(),
         wind_barbs: Vec::new(),
         wind_streamlines: Vec::new(),
@@ -183,6 +184,47 @@ fn render_image_emits_rgba_canvas_without_png_decode_in_callers() {
         .filter(|px| px.0 != [255, 255, 255, 255])
         .count();
     assert!(non_white > 1000, "image should contain rendered content");
+}
+
+#[test]
+fn a_contour_fill_shades_only_where_its_field_reaches_the_first_band() {
+    let base = sample_canvas_request("mucape", "MUCAPE", false);
+    let plain = render_image(&base).unwrap();
+    let fill = |values: Vec<f32>| ContourFillLayer {
+        data: values,
+        levels: vec![75.0, 150.0],
+        colors: vec![Color::rgba(0, 0, 0, 89), Color::rgba(0, 0, 0, 128)],
+    };
+    let cells = base.field.values.len();
+
+    // Nothing at or above the first band: the picture is byte-identical.
+    let mut below = base.clone();
+    below.contour_fills = vec![fill(vec![10.0; cells])];
+    assert_eq!(render_image(&below).unwrap().as_raw(), plain.as_raw());
+
+    // Everywhere above it: map pixels darken, none brighten, chrome is untouched.
+    let mut above = base.clone();
+    above.contour_fills = vec![fill(vec![200.0; cells])];
+    let shaded = render_image(&above).unwrap();
+    let mut darker = 0usize;
+    for (a, b) in plain.pixels().zip(shaded.pixels()) {
+        let (sum_a, sum_b) = (a.0[..3].iter().map(|&v| v as u32).sum::<u32>(),
+                              b.0[..3].iter().map(|&v| v as u32).sum::<u32>());
+        assert!(sum_b <= sum_a, "a black fill never brightens a pixel");
+        darker += usize::from(sum_b < sum_a);
+    }
+    assert!(darker > 1000, "the fill should shade the map ({darker} pixels darker)");
+
+    // A malformed layer (colour count differs from the thresholds) draws nothing.
+    let mut malformed = base.clone();
+    malformed.contour_fills = vec![ContourFillLayer { colors: vec![Color::rgba(0, 0, 0, 89)],
+                                                      ..fill(vec![200.0; cells]) }];
+    assert_eq!(render_image(&malformed).unwrap().as_raw(), plain.as_raw());
+
+    // A fill whose data does not match the grid is refused like a contour.
+    let mut wrong = base.clone();
+    wrong.contour_fills = vec![fill(vec![200.0; cells + 1])];
+    assert!(render_image(&wrong).is_err());
 }
 
 #[test]

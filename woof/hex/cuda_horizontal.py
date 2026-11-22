@@ -28,6 +28,7 @@ import numpy as np
 
 from .cuda_backend import DeviceMesh, KernelCache, require_cuda
 from .cuda_fp32 import CUDA_FTZ_HELPERS
+from .native_powf import CUDA_NATIVE_POWF
 
 
 CUDA_HORIZONTAL_EVIDENCE = "cuda-horizontal-f32-implemented-unverified-whole-step"
@@ -909,6 +910,16 @@ extern "C" __global__ void divergence_damping_f32(
 """
 
 
+
+# mixing_scaling_f32 evaluates meshScalingDel2/Del4 = 1/((d1+d2)/2)**0.25 and **0.75 in RKIND
+# (mpas_atm_core.F atm_compute_mesh_scaling); gfortran calls GNU libm powf there. CUDA's powf differs from
+# it in the last bit for some densities, and on a variable-resolution mesh that moves every mixed edge
+# (storm box 2024-05-21 15Z against native 44c0849 strict: 986,078 history words differ after one step; 0
+# with config_h_ScaleWithMesh false on both sides). Only that kernel calls powf on mean_density; the other
+# kernels compile from _CUDA_SOURCE unchanged.
+_SCALING_GNU_SOURCE = CUDA_NATIVE_POWF + _CUDA_SOURCE.replace(
+    "powf(mean_density,", "mpas_native_powf_positive(mean_density,")
+
 class CudaHorizontal:
     """Cached float32 RawKernel launcher over one resident :class:`DeviceMesh`."""
 
@@ -949,11 +960,18 @@ class CudaHorizontal:
     def _kernel(self, name: str) -> Any:
         kernel = self._kernels.get(name)
         if kernel is None:
-            kernel = self.kernel_cache.raw_kernel(
-                name,
-                _CUDA_SOURCE,
-                module_key="hexcore.cuda_horizontal",
-            )
+            if name == "mixing_scaling_f32":
+                kernel = self.kernel_cache.raw_kernel(
+                    name,
+                    _SCALING_GNU_SOURCE,
+                    module_key="hexcore.cuda_horizontal_gnu_scaling",
+                )
+            else:
+                kernel = self.kernel_cache.raw_kernel(
+                    name,
+                    _CUDA_SOURCE,
+                    module_key="hexcore.cuda_horizontal",
+                )
             self._kernels[name] = kernel
         return kernel
 

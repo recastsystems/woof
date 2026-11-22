@@ -230,13 +230,27 @@ def test_tables_genparm_values():
     assert t.czil == 0.1 and t.lvcoef == 0.5
 
 
+def _layer_frh2o(soil, soil_type, params):
+    """frh2o on each start layer's own REAL temperature and moisture.
+
+    real.exe blends the column in float32, so a uniform ingest column is not
+    exactly uniform on every Noah layer; each layer is partitioned from what
+    it holds.
+    """
+    out = np.empty_like(np.asarray(soil.liquid_moisture, dtype=np.float64))
+    for k in range(out.shape[0]):
+        t = float(soil.soil_temperature[k, 0, 0])
+        m = float(soil.soil_moisture[k, 0, 0])
+        _, guess, bx, smcmax, psisat = _lsminit_first_guess(t, m, soil_type, params)
+        out[k] = noah_frh2o(t, m, guess, smcmax, bx, psisat)
+    return out.astype(np.asarray(soil.liquid_moisture).dtype)
+
+
 def test_lsminit_partitions_subfreezing_ingest_column_via_frh2o(params):
     tslb, smois, soil_type = 268.15, 0.30, 6
     soil = _ingest_soil_column(tslb, smois, soil_type)
-    _, guess, bx, smcmax, psisat = _lsminit_first_guess(
-        tslb, smois, soil_type, params)
-    expected = noah_frh2o(tslb, smois, guess, smcmax, bx, psisat)
-    np.testing.assert_array_equal(soil.liquid_moisture, expected)
+    np.testing.assert_array_equal(soil.liquid_moisture,
+                                  _layer_frh2o(soil, soil_type, params))
     assert np.all(soil.liquid_moisture < soil.soil_moisture)
 
 
@@ -264,9 +278,9 @@ def test_lsminit_floors_first_guess_before_clip_and_frh2o(params):
         tslb, smois, soil_type, params)
     assert raw < 0.02
     assert guess == 0.02
-    expected = noah_frh2o(tslb, smois, guess, smcmax, bx, psisat)
     soil = _ingest_soil_column(tslb, smois, soil_type)
-    np.testing.assert_array_equal(soil.liquid_moisture, expected)
+    np.testing.assert_array_equal(soil.liquid_moisture,
+                                  _layer_frh2o(soil, soil_type, params))
 
 
 @requires_bundle

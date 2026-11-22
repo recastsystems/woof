@@ -41,6 +41,19 @@ geopotential above the height ramp. Moisture is unchanged unless `gq` is
 nonzero. `guv`, `gt`, and `gph`, when supplied, are separate inverse-second
 coefficients; otherwise each uses `1 / relaxation_seconds`.
 
+The relaxation is an explicit update applied once per model step, as in
+WRF. Every coefficient, times the time step, times the steps a tendency is
+held by `fgdt`, must stay at or below 1. A larger value pushes the state past
+the analysis on each refresh and the run blows up or fills with grid-scale
+noise, so it is refused when the configuration loads
+(`NUDGING_STEP_STRENGTH`), with the largest admissible coefficient named.
+WRF's usual 3e-4 s^-1 with a 45 s step and `fgdt = 0` gives 0.0135.
+
+The PBL defaults differ by door. This table defaults
+`if_no_pbl_nudging_uv/t/ph/q = 1` (no nudging inside the live boundary
+layer); an imported WRF namelist takes WRF's Registry default 0 (nudging
+inside it), as WRF does.
+
 The root is selected by the top-level table. Nests require explicit
 `[nudging.domain.2]` tables, using their actual grid IDs. Unselected nests
 remain unnudged. Use `mode = "grid"` for grid nudging; it selects the WRF

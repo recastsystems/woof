@@ -35,7 +35,7 @@ from typing import Iterable
 
 import pytest
 
-# Kernel numerics for the battery (owner ruling 2026-10-16: fast is the door default, strict is the opt-in).
+# Kernel numerics for the battery (fast is the door default, strict is the opt-in).
 # The battery's compile-option, oracle and replay tests pin the strict route, the one that is bitwise to
 # native MPAS, so the battery names strict, and so does every subprocess it starts.  Tests of the fast
 # default select it themselves (test_numerics.py).
@@ -45,15 +45,44 @@ os.environ["GPUWM_NUMERICS"] = "strict"
 
 ROOT = Path(__file__).resolve().parents[1]
 
+import importlib.util
 import sys
 
-if str(ROOT / "src") not in sys.path:
-    sys.path.insert(0, str(ROOT / "src"))
+# This tree's own src comes first, in this process and in every subprocess a test starts.
+# THE BREAKAGE THIS PREVENTS: an installed woof hex (0.4.x in a shared venv) shadowed the tree's hexcore, and
+# tests that start `python -m woof.hex.ad.record` (or any `-m hexcore...`) in a subprocess could not find the
+# package at all, because sys.path does not travel to a child; test_ad_record_cpu.py failed 5 times on that alone.
+_SRC = str(ROOT / "src")
+while _SRC in sys.path:
+    sys.path.remove(_SRC)
+sys.path.insert(0, _SRC)
+_inherited = [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p and p != _SRC]
+os.environ["PYTHONPATH"] = os.pathsep.join([_SRC, *_inherited])
+
+# The engine this tree declares must be the one installed.
+# THE BREAKAGE THIS PREVENTS: run on an interpreter with no woof, or an older gpuwm 2.9.12 build without
+# woof.backend / woof.hip_backend / woof.gpu_smi, 308 door tests failed on ModuleNotFoundError and hid the
+# failures that are real.  One refusal that names the fix replaces those hundreds of tracebacks.
+_MISSING_ENGINE = [name for name in ("woof", "woof.backend", "woof.hip_backend", "woof.gpu_smi")
+                   if importlib.util.find_spec(name.split(".")[0]) is None
+                   or importlib.util.find_spec(name) is None]
+if _MISSING_ENGINE:
+    raise pytest.UsageError(
+        f"this interpreter ({sys.executable}) lacks {', '.join(_MISSING_ENGINE)}: it does not carry the woof "
+        "engine this tree declares in pyproject.toml.  Build the test environment with "
+        "`sh tools/battery/test_env.sh <venv-dir>` and run pytest with <venv-dir>/bin/python")
 
 # The x4 runner in the layout this tree runs in (tests/_layout.py).
 from _layout import RUNNER_PATH  # noqa: E402
 
-from woof.hex.device_admission import native_device_floor_bytes
+import woof.hex  # noqa: E402
+
+if Path(woof.hex.__file__).resolve().parent != (ROOT / ".." / ".." / "woof" / "hex").resolve():
+    raise pytest.UsageError(
+        f"hexcore resolves to {Path(woof.hex.__file__).resolve().parent}, not this tree's src/hexcore: an "
+        "installed woof hex is shadowing the code under test")
+
+from woof.hex.device_admission import native_device_floor_bytes  # noqa: E402
 
 #: Free device memory the x4.163842 full-physics tier requires: the same
 #: measured floor the driver admits on (the merged-tip x4 peak plus the

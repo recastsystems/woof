@@ -71,7 +71,8 @@ pub use render::{
     render_to_png_profile as profile_render_to_png,
 };
 pub use request::{
-    ChromeScale, Color, ColorScale, ContourLayer, ContourLinePattern, ContourStyle,
+    ChromeScale, Color, ColorScale, ContourFillLayer, ContourLayer, ContourLinePattern,
+    ContourStyle,
     DiscreteColorScale, DomainFrame, DomainFrameSource, ExtendMode, Field2D, GeographicClipBounds,
     GridShape, InverseRasterProjection, LatLonGrid, MapRenderRequest, ProductKey, ProductMaturity,
     ProductSemanticFlag, ProductSemantics, ProjectedDomain, ProjectedExtent,
@@ -101,12 +102,12 @@ pub use crate::colormap::{
     densify_discrete_scale,
 };
 use crate::overlay::{
-    BarbOverlay, ContourOverlay, InverseProjectedGrid, MapExtent, ProjectedGrid,
-    ProjectedPlaceLabelOverlay, ProjectedPointOverlay as RenderProjectedPointOverlay,
+    BarbOverlay, ContourFillOverlay, ContourOverlay, InverseProjectedGrid, MapExtent,
+    ProjectedGrid, ProjectedPlaceLabelOverlay, ProjectedPointOverlay as RenderProjectedPointOverlay,
     ProjectedPolygon, ProjectedPolyline,
 };
 use crate::render::{
-    RenderOpts, center_horizontal_canvas_content, crop_canvas_whitespace,
+    RenderOpts, center_horizontal_canvas_content_on_rows, crop_canvas_whitespace,
     encode_rgba_png_profile_with_options, render_to_image as native_render_to_image, render_to_png,
     trim_vertical_canvas_whitespace,
 };
@@ -201,6 +202,41 @@ fn themed_label_ink(theme: theme::PresentationTheme, requested: Rgba) -> Rgba {
 /// header or the bar (the plan places them), and, when the grid's aspect
 /// was clamped, not clearing the band past the grid: that band shows
 /// basemap, never blank canvas.
+/// The render-side form of one [`ContourFillLayer`]: its thresholds as band
+/// edges, each band its own (translucent) colour, the top band open-ended,
+/// clear below the first threshold.  `None` for a layer with no bands, a
+/// colour count that differs from the threshold count, or thresholds that
+/// are not finite and strictly increasing: such a layer draws nothing.
+fn contour_fill_overlay(layer: &ContourFillLayer, ny: usize, nx: usize) -> Option<ContourFillOverlay> {
+    let top = f64::from(f32::MAX);
+    if layer.levels.is_empty()
+        || layer.levels.len() != layer.colors.len()
+        || layer.levels.iter().any(|level| !level.is_finite() || *level >= top)
+        || layer.levels.windows(2).any(|pair| pair[0] >= pair[1])
+    {
+        return None;
+    }
+    let colors: Vec<Rgba> = layer.colors.iter().map(|&color| color.into()).collect();
+    let mut levels = layer.levels.clone();
+    levels.push(top);
+    Some(ContourFillOverlay {
+        data: layer.data.iter().map(|&value| value as f64).collect(),
+        ny,
+        nx,
+        cmap: LeveledColormap {
+            levels,
+            colors: colors.clone(),
+            legend_levels: Vec::new(),
+            legend_colors: Vec::new(),
+            under_color: None,
+            over_color: colors.last().copied(),
+            mask_below: None,
+            categories: false,
+            equal_bands: false,
+        },
+    })
+}
+
 fn planned_domain_frame(frame: Option<DomainFrame>, width: u32, height: u32) -> Option<DomainFrame> {
     let Some(plan) = layout_plan::canvas_plan_for(width, height) else {
         return frame;
@@ -660,9 +696,13 @@ impl RustRenderer {
                         cropped
                     }
                     Some(_) => {
-                        let (centered, shift_x) = center_horizontal_canvas_content(
+                        // Centred on the plot rows (map and colour bar), not on the header text, so
+                        // every time of a product puts its map in the same place whatever its header says.
+                        let plot_rows = centring_rows(image_timing.map_y, image_timing.map_h);
+                        let (centered, shift_x) = center_horizontal_canvas_content_on_rows(
                             &image,
                             opts.presentation.canvas_background,
+                            plot_rows,
                         );
                         moved_x += shift_x;
                         centered
@@ -1217,6 +1257,11 @@ fn with_render_state_profile_with_style<T>(
                 major_width: layer.major_width,
             });
         }
+        let contour_fills = request
+            .contour_fills
+            .iter()
+            .filter_map(|layer| contour_fill_overlay(layer, shape.ny, shape.nx))
+            .collect::<Vec<_>>();
         let contour_prep_ms = contour_start.elapsed().as_millis();
 
         let barb_start = Instant::now();
@@ -1328,6 +1373,7 @@ fn with_render_state_profile_with_style<T>(
             projected_place_labels,
             projected_points,
             projected_lines,
+            contour_fills,
             contours,
             barbs,
             streamlines,
@@ -1443,6 +1489,16 @@ fn validate_request(request: &MapRenderRequest) -> Result<(), RustwxRenderError>
                 layer: "projected_domain",
                 expected,
                 actual: domain.x.len(),
+            });
+        }
+    }
+
+    for layer in &request.contour_fills {
+        if layer.data.len() != expected {
+            return Err(RustwxRenderError::LayerShapeMismatch {
+                layer: "contour_fill",
+                expected,
+                actual: layer.data.len(),
             });
         }
     }
@@ -1594,3 +1650,28 @@ pub fn draw_right_text_line_with_factor(
 
 #[cfg(test)]
 mod tests;
+
+/// gpuwm addition (VENDOR.md): the rows a domain-framed panel is centred on -- the middle half of its plot
+/// rectangle, None when it has no height.  Not the whole rectangle: its top rows can hold the header's subtitle line
+/// (a hex core zoom at 1400 x 1000 has its rectangle from row 64 and subtitle ink down to row 71), and centred on
+/// rows that reach the subtitle, a frame between hours still moved its map 23 px against the hourly frames (gpuwm-hex
+/// 0.4.14 products door drawing one frame per call, render proof run 2026-11-10).
+fn centring_rows(map_y: u32, map_h: u32) -> Option<(u32, u32)> {
+    (map_h > 0).then(|| {
+        let quarter = map_h / 4;
+        (map_y.saturating_add(quarter), map_y.saturating_add(map_h - quarter))
+    })
+}
+
+#[cfg(test)]
+mod centring_rows_tests {
+    use super::centring_rows;
+
+    #[test]
+    fn centring_rows_stay_clear_of_the_subtitle() {
+        // Measured on a hex core zoom: plot rectangle rows 64..982, subtitle ink down to row 71, map frame from 94.
+        let (top, bottom) = centring_rows(64, 918).unwrap();
+        assert!(top > 71 && top < bottom && bottom <= 982, "{top}..{bottom}");
+        assert_eq!(centring_rows(10, 0), None);
+    }
+}

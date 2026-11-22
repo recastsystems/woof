@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import os
+from woof.hex import card_queue
 import subprocess
 import sys
 
@@ -9,7 +10,7 @@ import sys
 def main():
     root = Path(__file__).resolve().parents[1]
     lane = root.parents[1]
-    physical = os.environ.get("GPU_MUTEX_CARDS", "")
+    physical = card_queue.get(card_queue.CARDS)
     visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     if not physical.isdecimal() or not visible or "," in visible:
         raise ValueError("device checks need an explicit single-card mutex grant; unqueued GPU use is refused")

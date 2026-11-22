@@ -1217,13 +1217,43 @@ __device__ void d_srt(const float *par, const float *zsoil, float pddum,
     }
 }
 
-template<int INF, int RUN>
+// Zhang et al. (2022, WRR 58, e2021WR030573) wetland scheme, part 1: the
+// saturated fraction from first-layer relative saturation (their Eq. 7)
+// replaces the water-table FSAT of the saturation-fraction runoffs (their
+// Eqs. 4-6; Noah-MP v4 OPT_RUN 1, 2 and 5).  Re-implemented from the published
+// description, not bitwise to upstream; WET=0 instantiations are the unchanged
+// v4 code.  The clamp to [0, FSATMX] is ours (a fraction); the paper states none.
+__device__ __forceinline__ float wetland_fsat(float fsatmx, float sh2o1,
+                                              float smcwlt1, float smcref1)
+{
+    float span = FSUB(smcref1, smcwlt1);
+    if (!(span > K_ZERO)) return K_ZERO;
+    float rel = FDIV(FSUB(sh2o1, smcwlt1), span);
+    rel = f_min(K_ONE, f_max(K_ZERO, rel));
+    return FMUL(fsatmx, rel);
+}
+
+// OPT_RUN 3 partition (see d_soilwater): Schaake's runoff and infiltration
+// of the land tile, area-weighted by (1 - FSAT), plus the FSAT share of the
+// input as runoff that the caller moves into the store (Eq. 9).
+__device__ __forceinline__ void wetland_split3(float qinsur, float fsat,
+                                               float *pddum, float *runsrf)
+{
+    if (!(qinsur > K_ZERO)) return;
+    float keep = FSUB(K_ONE, fsat);
+    *pddum = FMUL(*pddum, keep);
+    *runsrf = FADD(FMUL(*runsrf, keep), FMUL(qinsur, fsat));
+}
+
+template<int INF, int RUN, int WET=0>
 __device__ void d_soilwater(const float *par, int urban, float dt,
                             const float *zsoil, const float *dz, float qinsur,
                             float qseva, const float *etrani, const float *sice,
                             float *sh2o, float *smc, float *runsub,
                             float *runsrf_o, float *qdrain_o, float *wcnd_o,
-                            float *fcrmax_o, float *zwt, int infdv, int tdrn, const float *tile, float tdfrac, float dx, float *qtldrn, float*smcwtd,float*deeprech)
+                            float *fcrmax_o, float *zwt, int infdv, int tdrn, const float *tile, float tdfrac, float dx, float *qtldrn, float*smcwtd,float*deeprech,
+                            float wet_smcref1=0.0f, int wet_open=0, float *wet_out=nullptr,
+                            float wet_fsatmx3=0.0f)
 {
     float runsrf = K_ZERO;                                           // :7318
     float pddum = K_ZERO;                                            // :7319
@@ -1262,13 +1292,55 @@ __device__ void d_soilwater(const float *par, int urban, float dt,
     if (RUN == 1 || RUN == 2 || RUN==5) {
         float fff=RUN==1?FDIV(par[P_BEXP],3.0f):2.0f;
         float fsat=RUN==5?FMUL(par[W_P_STRIDE],glibc_expf(FMUL(-3.0f,f_max(f_neg(*zwt),0.0f)))):FMUL(par[W_P_STRIDE],glibc_expf(FMUL(FMUL(-0.5f,fff),*zwt)));
+        if (WET) fsat = wetland_fsat(par[W_P_STRIDE], sh2o[0], par[P_SMCWLT], wet_smcref1);
         if(qinsur>K_ZERO) {
             runsrf=FMUL(qinsur,FADD(FMUL(FSUB(K_ONE,fcr[0]),fsat),fcr[0]));
             pddum=FSUB(qinsur,runsrf);
         }
+        if (WET) {
+            // Zhang 2022 Eq. 9: the FSAT share of the surface input fills the
+            // wetland store (mm/s).  It is already inside RUNSRF above, so the
+            // soil column's own budget is unchanged; the caller moves it from
+            // runoff into the store.
+            wet_out[0] = fsat;
+            wet_out[1] = qinsur > K_ZERO ? FMUL(FMUL(qinsur, fsat), W_K_1000) : K_ZERO;
+        }
+    }
+    // OPT_RUN 3 (Schaake 1996 infiltration excess) with the wetland scheme.
+    // Zhang 2022 Eq. 7 needs no water table: FSAT comes from first-layer
+    // wetness alone.  Their Eqs. 4-5 split the surface input into the FSAT
+    // share (saturated area: runoff, which Eq. 9 sends into the store) and
+    // the (1 - FSAT) share that meets the land runoff scheme.  Under OPT_RUN
+    // 3 that land scheme is Schaake's: the (1 - FSAT) tile gets the same input
+    // per unit area, its runoff and infiltration are Schaake's, and both are
+    // area-weighted to the grid (as Eq. 11 weights the land tiles' fluxes).
+    // So RUNSRF = (1-FSAT)*R_schaake + FSAT*QINSUR and the soil infiltration
+    // is (1-FSAT)*I_schaake; their sum is QINSUR.  FSAT = 0 is the v4 code.
+    // Our derivation for OPT_RUN 3 from the paper's structure (the paper
+    // ran TOPMODEL/MMF only); see docs/noahmp/PROVENANCE-clean-wetland.md.
+    float wet_fsat3 = K_ZERO;
+    if (WET && RUN == 3) {
+        // OPT_RUN 3 has no FSATMX tail of its own: the static map rides the
+        // wetland tail (column()).
+        wet_fsat3 = wetland_fsat(wet_fsatmx3, sh2o[0], par[P_SMCWLT], wet_smcref1);
+        wet_out[0] = wet_fsat3;
+        wet_out[1] = qinsur > K_ZERO ? FMUL(FMUL(qinsur, wet_fsat3), W_K_1000) : K_ZERO;
+    }
+    // Zhang 2022 Eq. 11 weights the land tiles' soil evaporation and
+    // transpiration by (1 - FSAT) while open water covers FSAT; the soil
+    // extraction is weighted the same way so the column water budget closes.
+    float wet_etrani[NSOIL];
+    const float *etrani_use = etrani;
+    float qseva_use = qseva;
+    if (WET && wet_open && (RUN == 1 || RUN == 2 || RUN == 3 || RUN == 5)) {
+        float keep = FSUB(K_ONE, wet_out[0]);
+        for (int k = 0; k < NSOIL; ++k) wet_etrani[k] = FMUL(etrani[k], keep);
+        etrani_use = wet_etrani;
+        qseva_use = FMUL(qseva, keep);
     }
     if (RUN == 3) {
         d_infil(par, dt, zsoil, sh2o, sice, sicemax, qinsur, &pddum, &runsrf);
+        if (WET) wetland_split3(qinsur, wet_fsat3, &pddum, &runsrf);
     } else if (RUN == 4) {
         // Native BATS saturation and complete drainage coupling, L:7399-7413.
         float smctot=K_ZERO, dztot=K_ZERO;
@@ -1303,6 +1375,7 @@ __device__ void d_soilwater(const float *par, int urban, float dt,
         if (qinsur > K_ZERO && RUN == 3) {                                       // :7457
             d_infil(par, dtfine, zsoil, sh2o, sice, sicemax, qinsur,
                     &pddum, &runsrf);
+            if (WET) wetland_split3(qinsur, wet_fsat3, &pddum, &runsrf);
         }
         if(qinsur>K_ZERO && RUN == 6)
             vic(par,dtfine,smc,zsoil,qinsur,&runsrf,&pddum);
@@ -1311,7 +1384,7 @@ __device__ void d_soilwater(const float *par, int urban, float dt,
         if(qinsur>K_ZERO && RUN==8)
             dynamic_vic(par,dtfine,smc,sh2o,sice,sicemax,zsoil,qinsur,facc,pddum,runsrf,infdv);
         // SRT reads SMC, not SH2O, under OPT_INF == 1.
-        d_srt<INF,RUN>(par, zsoil, pddum, etrani, qseva, smc, fcr, sh2o, sicemax, fcrmax,
+        d_srt<INF,RUN>(par, zsoil, pddum, etrani_use, qseva_use, smc, fcr, sh2o, sicemax, fcrmax,
               rhstt, ai, bi, ci, &qdrain, wcnd_o, *zwt,*smcwtd);
         float wplus = RUN==5?d_sstep5(par,dtfine,dz,zsoil,*zwt,smcwtd,&qdrain,deeprech,sice,sh2o,ai,bi,ci,rhstt,smc):d_sstep(par, dtfine, dz, sice, sh2o, ai, bi, ci,
                               rhstt, smc);
@@ -1364,7 +1437,162 @@ __device__ void d_soilwater(const float *par, int urban, float dt,
     *fcrmax_o = fcrmax;
 }
 
-template<int INF, int RUN>
+// ---------------------------------------------------------------------------
+// Snow compaction option 2 (opt_snow_compact=2): overburden C_bd(T_air, p_sfc).
+// Re-implemented from published descriptions, not bitwise to upstream.
+// Abolafia-Rosenzweig, He, Chen & Barlage (2024), JAMES 16, e2023MS003869,
+// doi:10.1029/2023MS003869 (CC BY), Section 2.4: Eq. 11
+//   C_bd = -0.00069503 * T_air + 0.20606699  (T_air in K),
+// Eq. 12 pressure-binned lower constraint C_bd,min = 0.019 (psfc < 80 kPa),
+// 0.018 (80 <= psfc < 85 kPa), 0.017 (psfc >= 85 kPa), and the upper
+// constraint 0.0315 stated in the same section.  Eq. 12 is printed with
+// min(); the text ("variable lower constraints", "C_bd,min") and Figure 2
+// make the bins floors, so they are applied with max.  No NCAR/noahmp or
+// other UCAR-licensed source was read.  compact_cbd and snowwater_cbd are
+// the imported COMPACT and SNOWWATER of noahmp_water.cu with exactly one
+// change each (SN_K_C2 -> cbd; compact -> compact_cbd), checked by
+// tests/test_noahmp_snow_compaction.py.  Option 1 never reaches them.
+// ---------------------------------------------------------------------------
+__constant__ unsigned int C_AR24_F32[8] = {
+    0xBA3632ACu, /* -0.00069503  Eq. 11 slope [m3/kg/K]   */
+    0x3E53033Au, /*  0.20606699  Eq. 11 intercept [m3/kg] */
+    0x479C4000u, /*  80000.0     Eq. 12 bin edge [Pa]     */
+    0x47A60400u, /*  85000.0     Eq. 12 bin edge [Pa]     */
+    0x3C9BA5E3u, /*  0.019       C_bd,min, psfc < 80 kPa  */
+    0x3C9374BCu, /*  0.018       C_bd,min, 80-85 kPa      */
+    0x3C8B4396u, /*  0.017       C_bd,min, psfc >= 85 kPa */
+    0x3D010625u, /*  0.0315      upper constraint         */
+};
+__device__ float ar24_cbd(float tair, float psfc)
+{
+    float cbd = FADD(FMUL(__uint_as_float(C_AR24_F32[0]), tair),
+                     __uint_as_float(C_AR24_F32[1]));
+    float floor_ = psfc < __uint_as_float(C_AR24_F32[2]) ? __uint_as_float(C_AR24_F32[4])
+                 : psfc < __uint_as_float(C_AR24_F32[3]) ? __uint_as_float(C_AR24_F32[5])
+                 : __uint_as_float(C_AR24_F32[6]);
+    return f_min(f_max(cbd, floor_), __uint_as_float(C_AR24_F32[7]));
+}
+
+__device__ void compact_cbd(Col *c, float dt, const int *imelt, const float *ficeold,
+                            float cbd)
+{
+    float fice[NSNOW];
+    float burden = SN_K_ZERO;
+
+    for (int j = c->isnow + 1; j <= 0; ++j) {
+        int k = j + NSNOW - 1;
+        float wx = FADD(SNICE(j), SNLIQ(j));
+        fice[k] = FDIV(SNICE(j), wx);
+        float voidf = FSUB(SN_K_ONE,
+            FDIV(FADD(FDIV(SNICE(j), SN_K_DENICE), FDIV(SNLIQ(j), SN_K_DENH2O)), DZSNSO(j)));
+
+        if (voidf > SN_K_P001 && SNICE(j) > SN_K_P1) {
+            float bi = FDIV(SNICE(j), DZSNSO(j));
+            float td = f_max(SN_K_ZERO, FSUB(SN_K_TFRZ, STC(j)));
+            float dexpf = glibc_expf(FMUL(-SN_K_C4, td));
+
+            float ddz1 = FMUL(-SN_K_C3, dexpf);
+            if (bi > SN_K_DM)
+                ddz1 = FMUL(ddz1, glibc_expf(FMUL(SN_K_NEG46EM3, FSUB(bi, SN_K_DM))));
+
+            if (SNLIQ(j) > FMUL(SN_K_P01, DZSNSO(j)))
+                ddz1 = FMUL(ddz1, SN_K_C5);
+
+            float ddz2 = FDIV(FMUL(-FADD(burden, FMUL(SN_K_HALF, wx)),
+                                   glibc_expf(FSUB(FMUL(SN_K_NEG008, td), FMUL(cbd, bi)))),
+                              SN_K_ETA0);
+
+            float ddz3;
+            if (imelt[k] == 1) {
+                ddz3 = f_max(SN_K_ZERO, FDIV(FSUB(ficeold[k], fice[k]),
+                                          f_max(SN_K_1EM6, ficeold[k])));
+                ddz3 = FDIV(-ddz3, dt);
+            } else {
+                ddz3 = SN_K_ZERO;
+            }
+
+            float pdzdtc = FMUL(FADD(FADD(ddz1, ddz2), ddz3), dt);
+            pdzdtc = f_max(SN_K_NEGHALF, pdzdtc);
+
+            DZSNSO(j) = FMUL(DZSNSO(j), FADD(SN_K_ONE, pdzdtc));
+            DZSNSO(j) = f_max(DZSNSO(j), FADD(FDIV(SNICE(j), SN_K_DENICE),
+                                              FDIV(SNLIQ(j), SN_K_DENH2O)));
+            // C.He: constrain snow density to 50~500 kg/m3
+            DZSNSO(j) = f_min(f_max(DZSNSO(j), FDIV(FADD(SNICE(j), SNLIQ(j)), SN_K_500)),
+                              FDIV(FADD(SNICE(j), SNLIQ(j)), SN_K_50));
+        }
+
+        burden = FADD(burden, wx);
+    }
+}
+
+__device__ void snowwater_cbd(Col *c, float dt, const float *zsoil,
+                          const int *imelt, const float *ficeold,
+                          float sfctmp, float snowhin, float qsnow,
+                          float qsnfro, float qsnsub, float qrain,
+                          float ssi, float snow_ret_fac,
+                          float *qsnbot, float *snoflow,
+                          float *ponding1, float *ponding2, float cbd)
+{
+    *snoflow = SN_K_ZERO;
+    *ponding1 = SN_K_ZERO;
+    *ponding2 = SN_K_ZERO;
+
+    snowfall(c, dt, qsnow, snowhin, sfctmp);
+
+    // MB: do each if block separately
+    if (c->isnow < 0) compact_cbd(c, dt, imelt, ficeold, cbd);
+    if (c->isnow < 0) combine(c, ponding1, ponding2);
+    if (c->isnow < 0) divide(c);
+
+    *qsnbot = snowh2o(c, dt, qsnfro, qsnsub, qrain, ssi, snow_ret_fac,
+                      ponding1, ponding2);
+
+    // set empty snow layers to zero
+    for (int iz = -NSNOW + 1; iz <= c->isnow; ++iz) {
+        SNICE(iz) = SN_K_ZERO;
+        SNLIQ(iz) = SN_K_ZERO;
+        STC(iz) = SN_K_ZERO;
+        DZSNSO(iz) = SN_K_ZERO;
+        ZSNSO(iz) = SN_K_ZERO;
+    }
+
+    // equilibrium state of snow in the glacier region
+    if (c->sneqv > SN_K_5000) {
+        float bdsnow = FDIV(SNICE(0), DZSNSO(0));
+        *snoflow = FSUB(c->sneqv, SN_K_5000);
+        SNICE(0) = FSUB(SNICE(0), *snoflow);
+        DZSNSO(0) = FSUB(DZSNSO(0), FDIV(*snoflow, bdsnow));
+        *snoflow = FDIV(*snoflow, dt);
+    }
+
+    // sum up snow mass for layered snow
+    if (c->isnow < 0) {
+        c->sneqv = SN_K_ZERO;
+        for (int iz = c->isnow + 1; iz <= 0; ++iz)
+            c->sneqv = FADD(FADD(c->sneqv, SNICE(iz)), SNLIQ(iz));
+    }
+
+    // Reset ZSNSO and layer thickness DZSNSO
+    for (int iz = c->isnow + 1; iz <= 0; ++iz) DZSNSO(iz) = -DZSNSO(iz);
+
+    DZSNSO(1) = zsoil[0];
+    for (int iz = 2; iz <= NSOIL; ++iz) DZSNSO(iz) = FSUB(zsoil[iz - 1], zsoil[iz - 2]);
+
+    ZSNSO(c->isnow + 1) = DZSNSO(c->isnow + 1);
+    for (int iz = c->isnow + 2; iz <= NSOIL; ++iz)
+        ZSNSO(iz) = FADD(ZSNSO(iz - 1), DZSNSO(iz));
+
+    for (int iz = c->isnow + 1; iz <= NSOIL; ++iz) DZSNSO(iz) = -DZSNSO(iz);
+
+    // C.He: update SNOWH for multi-layer snow
+    if (c->isnow < 0) {
+        c->snowh = SN_K_ZERO;
+        for (int iz = c->isnow + 1; iz <= 0; ++iz)
+            c->snowh = FADD(c->snowh, DZSNSO(iz));
+    }
+}
+template<int INF, int RUN, int WET=0>
 __device__ void d_water(const float *par, int urban, int nroot, int ist,
                         Col *c, float *smc,
                         const int *imelt, const float *ficeold,
@@ -1376,7 +1604,10 @@ __device__ void d_water(const float *par, int urban, int nroot, int ist,
                         float snowhin, float ponding,
                         float canliq, float canice, float tv, float wslake,
                         float acc_qinsur, float acc_qseva, float *acc_etrani,
-                        float *o, float *zwt, float *wa, float *wt, int infdv, int soil_steps, int calculate_soil, int tdrn, const float *tile, float tdfrac, float dx, const float*irrpar, const float*irrin, float*irrout,float*smcwtd,float*deeprech,float*rech,const float*smceq)
+                        float *o, float *zwt, float *wa, float *wt, int infdv, int soil_steps, int calculate_soil, int tdrn, const float *tile, float tdfrac, float dx, const float*irrpar, const float*irrin, float*irrout,float*smcwtd,float*deeprech,float*rech,const float*smceq,
+                        int compaction, float psfc,
+                        float wet_smcref1=0.0f, int wet_open=0, float *wet_out=nullptr,
+                        float wet_fsatmx3=0.0f)
 {
     float etrani[NSOIL];
     for (int k = 0; k < NSOIL; ++k) etrani[k] = K_ZERO;               // :6107
@@ -1410,6 +1641,12 @@ __device__ void d_water(const float *par, int urban, int nroot, int ist,
     float qsdew = FSUB(qdew, qsnfro);                                // :6136
 
     float qsnbot, ponding1, ponding2;
+    if (compaction == 2)   // opt_snow_compact=2, published-description C_bd
+        snowwater_cbd(c, dt, zsoil, imelt, ficeold, sfctmp, snowhin, qsnow,
+                      qsnfro, qsnsub, qrain, par[P_SSI], par[P_SRF],
+                      &qsnbot, &snoflow, &ponding1, &ponding2,
+                      ar24_cbd(sfctmp, psfc));
+    else
     snowwater(c, dt, zsoil, imelt, ficeold, sfctmp, snowhin, qsnow,
               qsnfro, qsnsub, qrain, par[P_SSI], par[P_SRF],
               &qsnbot, &snoflow, &ponding1, &ponding2);              // :6138
@@ -1486,9 +1723,10 @@ __device__ void d_water(const float *par, int urban, int nroot, int ist,
         // reads them: 6235 and 6252-6254 are inside the ELSE.
     } else {                                                         // :6213
         float qdrain, wcnd[NSOIL], fcrmax;
-        d_soilwater<INF,RUN>(par, urban, dt_soil, zsoil, dz, qinsur_avg, qseva_avg,
+        d_soilwater<INF,RUN,WET>(par, urban, dt_soil, zsoil, dz, qinsur_avg, qseva_avg,
                     etrani_avg, c->sice, c->sh2o, smc, &runsub,
-                    &runsrf, &qdrain, wcnd, &fcrmax, zwt, infdv, tdrn, tile, tdfrac, dx, &qtldrn,smcwtd,deeprech);                // :6214
+                    &runsrf, &qdrain, wcnd, &fcrmax, zwt, infdv, tdrn, tile, tdfrac, dx, &qtldrn,smcwtd,deeprech,
+                    wet_smcref1, wet_open, wet_out, wet_fsatmx3);   // :6214
         soldrain = FMUL(qdrain, dt_soil);  // qdrain mm/s -> mm per LSM step
 
         if (RUN == 1) {
@@ -1533,20 +1771,29 @@ __device__ void d_water(const float *par, int urban, int nroot, int ist,
     o[O_SOILDRAIN] = soldrain;
 }
 
-template<int INF, int RUN>
+template<int INF, int RUN, int WET=0>
 __device__ void column(const float *par, const float *fin,
                                    const int *iin, float *fout, int *iout,
-                                   int n, int infdv, int soil_steps, int calculate_soil, int tdrn, int irrigation)
+                                   int n, int infdv, int soil_steps, int calculate_soil, int tdrn, int irrigation,
+                                   int compaction)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= n) return;
 
     int base_tail=RUN==5?5:RUN==8?3:RUN>=6?8:RUN<=2?6:0;
     int in_gw=RUN==5?9:RUN<=2?3:0,out_gw=RUN==5?5:RUN<=2?3:0;
-    const float *p = par + (size_t) tid * (W_P_STRIDE+base_tail+(tdrn?15:0)+(irrigation?35:0));
-    const float *x = fin + (size_t) tid * (W_IN_STRIDE+in_gw+(tdrn?3:0)+(irrigation?5:0));
+    const int p_used=W_P_STRIDE+base_tail+(tdrn?15:0)+(irrigation?35:0);
+    const int x_used=W_IN_STRIDE+in_gw+(tdrn?3:0)+(irrigation?5:0)+(compaction==2?1:0);
+    const int q_used=W_OUT_STRIDE+out_gw+(tdrn?1:0)+(irrigation?4:0);
+    // Wetland tails ride after every other tail: par +1 (SMCREF layer 1),
+    // fin +1 (open-water flag), fout +2 (FSAT, store inflow mm/s).
+    // OPT_RUN 3 has no FSATMX tail, so its wetland tail also carries the
+    // static FSATMX map (par +2: SMCREF layer 1, FSATMX).
+    const float *p = par + (size_t) tid * (p_used+(WET?(RUN==3?2:1):0));
+    const float *x = fin + (size_t) tid * (x_used+(WET?1:0));
     const int   *ip = iin + (size_t) tid * W_INT_STRIDE;
-    float *q = fout + (size_t) tid * (W_OUT_STRIDE+out_gw+(tdrn?1:0)+(irrigation?4:0));
+    float *q = fout + (size_t) tid * (q_used+(WET?2:0));
+    float wet_out[2] = {K_ZERO, K_ZERO};
 
     Col col;
     col_load(&col, x, ip[0]);
@@ -1562,7 +1809,7 @@ __device__ void column(const float *par, const float *fin,
     if(RUN<=2) {zwt=x[W_IN_STRIDE];wa=x[W_IN_STRIDE+1];wt=x[W_IN_STRIDE+2];}
     const float *tx=x+W_IN_STRIDE+in_gw;
     if(tdrn && RUN>2)zwt=tx[2];
-    d_water<INF,RUN>(p, ip[1], ip[2], ip[3], &col, smc, ip + 6, x + W_FICEOLD,
+    d_water<INF,RUN,WET>(p, ip[1], ip[2], ip[3], &col, smc, ip + 6, x + W_FICEOLD,
             x + W_ZSOIL, x + W_BTRANI,
             x[W_DT], x[W_FCEV], x[W_FCTR], x[W_ELAI], x[W_ESAI], x[W_FVEG],
             x[W_BDFALL], ip[4], ip[5], x[W_SFCTMP], x[W_QVAP], x[W_QDEW],
@@ -1571,7 +1818,11 @@ __device__ void column(const float *par, const float *fin,
             x[W_ACC_QINSUR], x[W_ACC_QSEVA], acc_etrani, q, &zwt, &wa, &wt, infdv, soil_steps, calculate_soil, tdrn, tdrn?p+W_P_STRIDE+base_tail:nullptr, tdrn?tx[0]:0.0f, tdrn?tx[1]:0.0f,
             irrigation?p+W_P_STRIDE+base_tail+(tdrn?15:0):nullptr,
             irrigation?x+W_IN_STRIDE+in_gw+(tdrn?3:0):nullptr,
-            irrigation?q+W_OUT_STRIDE+out_gw+(tdrn?1:0):nullptr,&smcwtd,&deeprech,&rech,RUN==5?x+W_IN_STRIDE+5:nullptr);
+            irrigation?q+W_OUT_STRIDE+out_gw+(tdrn?1:0):nullptr,&smcwtd,&deeprech,&rech,RUN==5?x+W_IN_STRIDE+5:nullptr,
+            compaction, compaction==2?x[W_IN_STRIDE+in_gw+(tdrn?3:0)+(irrigation?5:0)]:0.0f,
+            WET?p[p_used]:0.0f, WET?(x[x_used]!=K_ZERO):0, wet_out,
+            (WET && RUN==3)?p[p_used+1]:0.0f);
+    if (WET) { q[q_used] = wet_out[0]; q[q_used+1] = wet_out[1]; }
     if(RUN==5){q[W_OUT_STRIDE]=zwt;q[W_OUT_STRIDE+1]=wa;q[W_OUT_STRIDE+2]=smcwtd;q[W_OUT_STRIDE+3]=deeprech;q[W_OUT_STRIDE+4]=rech;}
     if(RUN<=2) {q[W_OUT_STRIDE]=zwt;q[W_OUT_STRIDE+1]=wa;q[W_OUT_STRIDE+2]=wt;}
 
@@ -1581,25 +1832,44 @@ __device__ void column(const float *par, const float *fin,
 }
 
 extern "C" __global__ void k_water_selected(const float *par,const float *fin,
-    const int *iin,float *fout,int *iout,int n,int inf,int run,int infdv,int soil_steps,int calculate_soil,int tdrn,int irrigation) {
+    const int *iin,float *fout,int *iout,int n,int inf,int run,int infdv,int soil_steps,int calculate_soil,int tdrn,int irrigation,int compaction) {
     if(inf==1) {
-        if(run==1)noahmp_water_options::column<1,1>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==2)noahmp_water_options::column<1,2>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==3)noahmp_water_options::column<1,3>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==5)noahmp_water_options::column<1,5>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==6)noahmp_water_options::column<1,6>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==7)noahmp_water_options::column<1,7>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==8)noahmp_water_options::column<1,8>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else noahmp_water_options::column<1,4>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
+        if(run==1)noahmp_water_options::column<1,1>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==2)noahmp_water_options::column<1,2>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==3)noahmp_water_options::column<1,3>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==5)noahmp_water_options::column<1,5>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==6)noahmp_water_options::column<1,6>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==7)noahmp_water_options::column<1,7>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==8)noahmp_water_options::column<1,8>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else noahmp_water_options::column<1,4>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
     } else {
-        if(run==1)noahmp_water_options::column<2,1>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==2)noahmp_water_options::column<2,2>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==3)noahmp_water_options::column<2,3>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==5)noahmp_water_options::column<2,5>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==6)noahmp_water_options::column<2,6>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==7)noahmp_water_options::column<2,7>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else if(run==8)noahmp_water_options::column<2,8>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
-        else noahmp_water_options::column<2,4>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation);
+        if(run==1)noahmp_water_options::column<2,1>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==2)noahmp_water_options::column<2,2>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==3)noahmp_water_options::column<2,3>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==5)noahmp_water_options::column<2,5>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==6)noahmp_water_options::column<2,6>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==7)noahmp_water_options::column<2,7>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else if(run==8)noahmp_water_options::column<2,8>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+        else noahmp_water_options::column<2,4>(par,fin,iin,fout,iout,n,infdv,soil_steps,calculate_soil,tdrn,irrigation,compaction);
+    }
+}
+
+// Zhang et al. (2022) wetland option: the saturation-fraction runoffs
+// (OPT_RUN 1, 2, 5) and the default Schaake runoff (OPT_RUN 3), native
+// single-step soil (no SOILTSTEP cadence).
+extern "C" __global__ void k_water_wetland(const float *par,const float *fin,
+    const int *iin,float *fout,int *iout,int n,int inf,int run,int tdrn,int irrigation,int compaction) {
+    using namespace noahmp_water_options;
+    if(inf==1) {
+        if(run==1)column<1,1,1>(par,fin,iin,fout,iout,n,0,1,1,tdrn,irrigation,compaction);
+        else if(run==2)column<1,2,1>(par,fin,iin,fout,iout,n,0,1,1,tdrn,irrigation,compaction);
+        else if(run==3)column<1,3,1>(par,fin,iin,fout,iout,n,0,1,1,tdrn,irrigation,compaction);
+        else column<1,5,1>(par,fin,iin,fout,iout,n,0,1,1,tdrn,irrigation,compaction);
+    } else {
+        if(run==1)column<2,1,1>(par,fin,iin,fout,iout,n,0,1,1,tdrn,irrigation,compaction);
+        else if(run==2)column<2,2,1>(par,fin,iin,fout,iout,n,0,1,1,tdrn,irrigation,compaction);
+        else if(run==3)column<2,3,1>(par,fin,iin,fout,iout,n,0,1,1,tdrn,irrigation,compaction);
+        else column<2,5,1>(par,fin,iin,fout,iout,n,0,1,1,tdrn,irrigation,compaction);
     }
 }
 

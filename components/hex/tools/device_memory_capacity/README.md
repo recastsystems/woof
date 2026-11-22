@@ -106,7 +106,7 @@ from woof.hex.device_admission import KNOWN_CARDS, model_for_card
 model_for_card(KNOWN_CARDS["10gib-68sm"]).required_bytes(40_962)
 ```
 
-The pair in the command above is the **2026-08-24 arm**, measured at WOOF
+The pair in the command above is the **2026-08-24 arm**, measured at WOOF-ArWen
 seam pin `0d04db712` after the Grell-Freitas local-memory frame cut
 (`evidence/gf-pin-move-measured-20260824/`); pass it only to reproduce an
 08-24-era projection. The tool's own refusal text lists every arm it knows

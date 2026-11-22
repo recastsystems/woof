@@ -8,7 +8,7 @@ Usage (from the tree root, or with woof hex installed)::
     PYTHONPATH=src python tools/both_routes_gate.py --plan        # print every command, run nothing
 
 THE BREAKAGE THIS PREVENTS: a capability that works on one physics route and is refused, silently dropped or
-broken on the other. Before this leg existed the WOOF route carried every capability and the MPAS-physics route
+broken on the other. Before this leg existed the WOOF-ArWen route carried every capability and the MPAS-physics route
 lost them one at a time without a red anywhere: limited-area runs died in the terrain coupling, rosters went to
 the wrong route, chemistry and trigger nests were dropped without a word, frames were published only at the end,
 restart did not equal the straight run, and multi-card needed a native kit that no longer ships.
@@ -393,7 +393,7 @@ def warm_seconds_per_forecast_hour(folder: Path) -> dict | None:
     """Wall seconds per forecast hour between the first and last history frame after f000 (file times).
 
     f000 is written before the first step, so the interval from f001 on carries no start-up; each route writes
-    one history file per frame (history.* on the MPAS route, cuda-history.* on the WOOF route). None when fewer
+    one history file per frame (history.* on the MPAS route, cuda-history.* on the WOOF-ArWen route). None when fewer
     than three frames exist (no warm interval)."""
     from datetime import datetime
 
@@ -515,7 +515,7 @@ def find_key(value: Any, key: str) -> Any:
 
 
 def step_seconds(work: Path) -> float | None:
-    """Median seconds per step after the first: the MPAS route's per-step stages, or the WOOF route's receipt."""
+    """Median seconds per step after the first: the MPAS route's per-step stages, or the WOOF-ArWen route's receipt."""
     for path in sorted(work.rglob("native-runtime-timings.json")):
         try:
             stages = json.loads(path.read_text(encoding="utf-8"))["stages"]

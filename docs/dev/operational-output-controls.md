@@ -95,7 +95,7 @@ ties, reset timestamps left untouched by the source, and its speed-maximum
 U/V reset quirk. Means/std slots hold raw sums until the closing step,
 then the routine divides them in place; history does not finalize or reset
 them. All 48 fields and both counters survive restart and tile transport.
-WOOF checkpoint continuation restores the absolute forecast clock and window
+WOOF-ArWen checkpoint continuation restores the absolute forecast clock and window
 arrays. The replay API also exposes the native restart flag and restart-relative
 clock; native WRF restart-file interchange is not claimed.
 

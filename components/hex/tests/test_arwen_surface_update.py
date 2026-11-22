@@ -125,7 +125,7 @@ def test_series_discovery_coverage_and_clock(inputs):
 
 def test_month_boundary_device_words_and_restart(inputs):
     if os.environ.get("S2S_SURFACE_GPU") != "1":
-        pytest.skip("requires GPU mutex and S2S_SURFACE_GPU=1")
+        pytest.skip("requires a CUDA card to itself and S2S_SURFACE_GPU=1")
     import cupy as cp
     from woof.hex.arwen_surface_update import ArwenSurfaceUpdate
     start, series, init, library = inputs

@@ -71,6 +71,12 @@ tests/test_battery_list_census.py
 # its required license and NOTICE texts in the Python distribution.
 tests/test_licence_notices_ship.py
 
+# The licence scan reads every file a public distribution can carry for
+# NC/ND/GPL/UCAR-no-sale licence markers; it imports nothing, so no import
+# edge can select it. Unconditional, so a data file under a restricted
+# licence cannot ride into a wheel on an unrelated change.
+tests/test_shipped_licence_scan.py
+
 # Byte-level repository hygiene.  `.gitattributes` sets `* -text`, so an
 # LF-to-CRLF rewrite is a real byte change in files the product hashes for
 # identity.  Task #168 rewrote thirteen files that way and the stage-1

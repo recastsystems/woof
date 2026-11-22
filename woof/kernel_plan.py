@@ -447,6 +447,14 @@ def _install(plan_dir: str | Path | None, tag_text: str | None) -> bool:
             options = effective_options(options)
             if isinstance(source, str):
                 filename = program_name(source, filename)
+        if isinstance(source, str):
+            # CuPy has already appended -ftz=true here, and the subnormal hook
+            # only removes it at _NVRTCProgram.compile, below this funnel. A
+            # pool worker has no such hook: it compiled a marked (urban) unit
+            # with its subnormals flushed, and the parent stored that image
+            # under the retaining request's cache key (3.0.0 passes 1 to 7 R6:
+            # the urban wrf_471 water balance saw subnormal rain as zero).
+            options = _retain_subnormals(source, options)
         if log_stream is not None or jitify or not isinstance(source, str):
             if capturing:
                 raise _Captured()
@@ -682,12 +690,27 @@ def _process_compiler_identity(arch):
         return None
 
 
+def _retain_subnormals(source, options):
+    """Final options of a unit marked to keep IEEE subnormals; any other unit's options unchanged.
+
+    The pool's processes and a saved plan's warm-ups compile exactly the options they are handed.
+    """
+    try:
+        from woof.cuda_subnormals import effective_options as retain
+    except ModuleNotFoundError as error:
+        if error.name != "woof.cuda_subnormals":
+            raise
+        return tuple(options)
+    return retain(source, options) if isinstance(source, str) else tuple(options)
+
+
 def _submit_compile(arguments, arch, record, *, key=None):
     """Submit identical final options to the isolated compiler processes."""
     from woof.kernel_aot import effective_options
     from woof.kernel_compile_worker import compile_request
 
-    arguments = dict(arguments, options=list(effective_options(arguments["options"])))
+    arguments = dict(arguments, options=list(_retain_subnormals(
+        arguments["source"], effective_options(arguments["options"]))))
     with _lock:
         if key is not None and key in _flight:
             return _flight[key]
@@ -1046,7 +1069,7 @@ def compiler_pool(workers: int) -> concurrent.futures.ProcessPoolExecutor:
     """The spawn NVRTC compile pool, its workers bound to this process's life.
 
     THE BREAKAGE (2026-10-29 08:17-08:21Z; woof hex fix/hex-compile-worker-lifetime,
-    this file is its twin): compile workers of runs that had ended -- here a WOOF kernel
+    this file is its twin): compile workers of runs that had ended -- here a WOOF-ArWen kernel
     prewarm whose process was stopped by a signal (signal_report re-delivers it at the default
     action, so no exit hook runs) -- held memory until killed by PID; with hex's OOM-killed
     forecasts 62.5 GB in all, and the OOM killer took release containers and lanes.  Each worker

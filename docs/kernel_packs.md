@@ -9,7 +9,7 @@ source, numerical options, target architecture, request metadata and image
 digest. A miss uses the ordinary compiler.
 
 The codec is the same `gpuwm.kernel-pack/v1` contract used by hex. Both CuPy's
-cached module route, WOOF's direct NVRTC route and the final NVRTC funnel use it. Template symbol
+cached module route, WOOF-ArWen's direct NVRTC route and the final NVRTC funnel use it. Template symbol
 aliases are restored on load. Strict and fast recipes remain separate, even
 when they are built in one pool whose environment defaults to fast.
 `GPUWM_WRF_EXACT=1` also normalizes its arithmetic controls before direct-cache,

@@ -1,14 +1,14 @@
 # WRF reference manifests
 
 A matched-run comparison is a claim about two binaries on one case. The
-[certification capsule](../DETERMINISM.md) witnesses the WOOF side. These
+[certification capsule](../DETERMINISM.md) witnesses the WOOF-ArWen side. These
 manifests are the other side: which WRF executable produced the reference
 stream, from which build recipe, under which namelists, and with which output
 bytes.
 
 Each manifest is a `gpuwm.wrf-reference-manifest/v1` document validating
 against [`manifest.schema.json`](manifest.schema.json), named by the SHA-256 of
-the WOOF configuration it is the counterpart of. Identity, not a case name:
+the WOOF-ArWen configuration it is the counterpart of. Identity, not a case name:
 two configurations that differ by one byte get two manifests, and a manifest
 cannot drift onto a configuration it was not measured against.
 

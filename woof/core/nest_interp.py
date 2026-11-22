@@ -965,7 +965,7 @@ def smoother(cfld, reg: NestRegistration, *, smooth_option: int, scratch):
     Dispatch exactly as ``SUBROUTINE smoother``: 0 is a no-op, 1 is
     ``sm121`` (:3864-3935, one 1-2-1 pass), 2 is ``smdsm`` (:3937-4014,
     a +0.50 smoothing pass then a -0.52 de-smoothing pass).  The caller
-    owns the ``feedback == 0 -> RETURN`` guard (:3823) because WOOF's
+    owns the ``feedback == 0 -> RETURN`` guard (:3823) because WOOF-ArWen's
     coupler, not a namelist read, knows the feedback setting.
 
     Each pass is two launches per the dataflow both Fortran routines

@@ -3,7 +3,11 @@
 The default on CUDA hosts; an explicit CPU reference remains in moving_vertical.
 CPU-only remapping with hidden devices never imports CuPy.
 Each target/interface thread visits CSR donors in their stored order, matching
-NumPy bincount's additions. No atomics, reassociation, or fused multiply-adds.
+NumPy bincount's additions. No atomics or reassociation. Under strict numerics
+there are no fused multiply-adds either, and the device words equal the CPU
+reference's; fast numerics (the default) contracts the cumulative and layer
+kernels' multiply-adds, while the interface kernel (rounded intrinsics) and the
+device profiles keep their words in both modes.
 The geometry belongs to one immutable HeightConservativeMap; its device copy
 is retained for that map's lifetime. Dynamic products are uploaded per call.
 """

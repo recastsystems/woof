@@ -20,8 +20,8 @@ cd /path/to/WRF-4.7.1
 ./compile -j 8 em_real > native-build.log 2>&1
 cd /path/to/real-case
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
-export WOOF_CAPTURE_DIR="$PWD/captures"
-mkdir -p "$WOOF_CAPTURE_DIR"
+export GPUWM_CAPTURE_DIR="$PWD/captures"
+mkdir -p "$GPUWM_CAPTURE_DIR"
 mpirun --mca btl self,tcp --mca pml ob1 -np 8 --bind-to core \
   /path/to/WRF-4.7.1/main/wrf.exe > native-tcp.log 2>&1
 ```

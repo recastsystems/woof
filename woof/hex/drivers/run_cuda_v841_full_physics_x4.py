@@ -106,7 +106,7 @@ NOMINAL_DX_M = np.float32(25_000.0)
 EXPECTED_ARWEN_P_TOP_PA_F32 = np.float32(1_159.38818359375)
 EXPECTED_TOP_PRESSURE_RANGE_PA = (592.24884, 1_233.00952, 1_342.08362)
 # Both floors come from the ONE admission surface, re-fitted at the merged
-# tip 2026-08-26 (ruling, 2026-08-26) from the measured affine row --
+# tip 2026-08-26 from the measured affine row --
 # woof.hex.device_admission.FLOOR_DERIVATION is the derivation of record.
 # They replace the asserted ``24 GiB`` / ``22 GiB`` pair, which stood 1.2x
 # above the measured 20,446 MiB x4 peak and, scaled linearly per mesh,
@@ -254,9 +254,9 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     "src/hexcore/snapshot_transfer.py": "7064e74719933894c9d92dbfe06190b404801cd72ecc5e4fe2447b66124c5efb",
     "src/hexcore/history_ready.py": "287840b7ece3cb97185340f3e161c997bbfd9a11233ff5da4198cca42e1f9523",
     "src/hexcore/history_writer.py": "570c9124745a8d8325a35c11da17e58036bfcf2e3117a5be502dec196a9905f0",
-    "src/hexcore/cuda_arwen_helper_scope_v2.py": "641e8b77427a7c2f8eff374daa37e09a034fc45271d1dac67c3e39d03e3814e9",
+    "src/hexcore/cuda_arwen_helper_scope_v2.py": "03f122b7835a92536c52218713744bd1bfc0385cf88ac102a3295fe3f9ae9c4e",
     "src/hexcore/radiation_source_sets.json": "4fdb41a8102a0c4891771ed476d2eb7cf870e89a66c1a2dd4a92b8cd42dac802",
-    "src/hexcore/data/profiles/engine-helper-sets.v1.json": "2e7e727e78357bcd847100dea32450467e08359a01d374eb1a6619e851a61ca6",
+    "src/hexcore/data/profiles/engine-helper-sets.v1.json": "b82f00a5c8382372f250073a67992bc2b23f93797107522a8a1d8e70931e24c5",
     # Native upper damping: Rust and CUDA match compiled source blocks.
     "src/hexcore/native/upper_damping.rs": "5483b2c1e7da45317ffe4213c5879b583070d9e28d591ec52a9c697a052e81f1",
     "src/hexcore/upper_damping_v841.py": "947f477d5f56b41d95fb5a0b92adb21d68be95b5fac19ba524181cb373710860",
@@ -311,7 +311,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # manifest JSON round trip at every coupling launch.  No kernel, launch or operand changed;
     # 2 h the storm LTS forecast 0 of 1,167,818,735 words differ (HEX-HOST-BOUND-2026-10-27).
     "src/hexcore/cuda_physics_v841.py": (
-        "8140553c0bec161af26c5c4f66ff8a54f1f18762810d36460cf447996ee64b44"
+        "d2299191244cdcccf52a4052cc2b2d7cd2ccbaa139ea59a7eef112138b1a7cb7"
     ),
     # Re-frozen during the 12 GiB capacity work: the dynamics subcycle stopped
     # copying a scalar block nothing writes, stopped taking a private image of
@@ -355,7 +355,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # Re-frozen 2026-08-26 for the convection ruling: the per-component
     # physics cadence table reports ``convection: None`` when no cumulus
     # scheme is selected instead of calling float() on it.  MEASURED
-    # (the proving RTX 5070 Ti): the first convection-off arm bound clean,
+    # (an RTX 5070 Ti): the first convection-off arm bound clean,
     # admitted its timestep, built its sealed constructor and died inside
     # composite step 0 with "float() argument must be a string or a real
     # number, not 'NoneType'", surfacing as "composite step at 0.0 s was
@@ -408,7 +408,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # pairs on conus12km and the published 30 km mesh
     # (evidence/hex-startup-20261005/).  The x4 full-physics proof and the
     # regional class mints did not re-run; their records are carried.
-    # Re-frozen 2026-10-10 (certificate gates retired, owner ruling): _validate_config no longer refuses
+    # Re-frozen 2026-10-10 (certificate gates retired): _validate_config no longer refuses
     # config_scalar_advection=False, config_positive_definite=True (which
     # runs the FCT branch, as native does) or apvm=0 for want of a native
     # ruler; the split-three refusal names the missing code path; and a
@@ -454,17 +454,17 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # carry is active from the second step (SG2, class A, MPAS behaviour, no
     # switch).  Dry runs launch neither kernel.  This file is byte-identical to
     # correct/storm-growth 312cf586; the digest is that branch's.
-    # Re-frozen 2026-10-14 (release 0.4.0, lane H1, on integrate/hex-mpas): the
+    # Re-frozen 2026-10-14 (release 0.4.0): the
     # integrate line's cuda_driver.py with the forecast-batch host mesh rows
     # above and the SG2 producer series merged in.  Re-run against this digest:
     # the dry derecho cap450 identity (fixed step 30 min, active LTS 1 h) and
     # the ArWen physics-on exact identity in the lane receipt, and G1/G2.
     # Re-derived 2026-10-14 (H1 merged onto the H7 merge): H1's file plus the
-    # 0.4.0 release scrub of one comment line (an owner ruling in place of a
+    # 0.4.0 release scrub of one comment line (a decision in place of a
     # person).  No code line differs from the copy the H1 identities above
     # ran on.  No card run for this merge.
     "src/hexcore/cuda_driver.py": (
-        "f453eee1152aa33392b09ecfde1d16ee33ec53cf17d754ecd076736088630fea"
+        "6e9362bfe5c530368a27c68cbf4a723d34c5f92f5d1420e79f942ee59e6643b9"
     ),
     # THE BREAKAGE THIS PREVENTS: cuda_driver.py now executes host
     # preparation through woof.hex.prep_cache.  Unpinned, an edit to the key
@@ -487,7 +487,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # functions of the code object and package, so every key is the same; no
     # array computation moved.  Re-ran: tests/test_prep_cache.py.
     "src/hexcore/prep_cache.py": (
-        "9e2014bee45c4e42e16b7afe5e8c7f6df5ef1ebf2f62a6269c01692aa6cc095e"
+        "38e6bbbfdeceb117468ad6d577dabfc281cbba137633bcdf59e99e04fe9a9092"
     ),
     # THE BREAKAGE THIS PREVENTS: the same lane that re-froze cuda_driver.py
     # also changed ``recover_state`` -- it gained ``include_pressure`` and
@@ -566,16 +566,16 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # x4 proof passes mpas_defaults.X4_RECORDED_SCHEDULE explicitly, so the
     # recorded configuration is unchanged.
     "src/hexcore/config_v841.py": (
-        "1cee9d6702785a4226805ab133aa7e7112ac6fcdb234cf3eef44a87e2c3a2933"
+        "bdcf59df14ae57b587eb58654d891978b2c972dce56b45c068299af06938ff0e"
     ),
     # Order-2 admission depends on both the keyed certificate selector and
     # its table. Moving either without this pin would change the admitted
     # schedule while a frozen-source receipt still named the older config.
     # Re-frozen 2026-10-10: the certificate table is a record
     # (step_anchor_record), no longer a gate.
-    "src/hexcore/step_anchors.py": "13f8bf3361b3fc5c25805d05d48e3c59841050e3d372c03c96f1498133399b72",
+    "src/hexcore/step_anchors.py": "8c91f50ea56df0eff70589e5423de42f41a371994647d641eff06aa9500807a0",
     "src/hexcore/data/dycore-step-anchors.v1.json": "f9a102a3f4fd848e95bf9fabe5a5ccd0579ba01de739de9e7da8e4ed7930e62d",
-    # New pin (convection ruling, 2026-08-26): the frozen config ADMITS
+    # New pin (the convection rule by spacing): the frozen config ADMITS
     # config_convection_scheme from this module and the frozen timestep
     # registry keys on the selection it produces, so the pinned config's
     # meaning depends on these bytes -- the same reason dt_admission.py is
@@ -608,8 +608,12 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # The x4 proof names cu_grell_freitas explicitly, so its configuration
     # does not pass through the changed branch; uniform meshes are decided
     # byte-identically (tests/test_convection_admission_variable_mesh.py).
+    # Re-frozen 2026-11-17: comments and two text constants reworded (the New
+    # Tiedtke rule's text, which receipts carry as ntiedtke_ruling, and the coarse
+    # band's decision text).  Text only: the file's AST is identical once those two
+    # string constants are normalised.
     "src/hexcore/convection_admission.py": (
-        "33372d55a763e50428d3742af895d19c9ff8c000ef7814ee52ac757554e602f0"
+        "cad0d80621e3101e12e2e07c409a196d477352bfe7b0df1097ba693eaa835690"
     ),
     # THE BREAKAGE THIS PREVENTS: config_v841.validate() now ADMITS the
     # model timestep from this module, so the pinned config's meaning
@@ -632,7 +636,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # called from "every step" to "never" and that is part of what an
     # anchor's forecasts measured.  Every existing row keeps its evidence
     # and its meaning; a convection-off run can no longer read one.  Two
-    # convection-off rows were then EARNED on the proving RTX 5070 Ti at 20 s and 5 s
+    # convection-off rows were then EARNED on an RTX 5070 Ti at 20 s and 5 s
     # (evidence/convection-off-20260826/), and the 5 s Grell-Freitas row's
     # open attribution was retired against them: with the closure never
     # called the same timestep still reaches |w| max 93.96 against its
@@ -682,7 +686,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # and one comment only, measured inert by AST; no number, branch or name
     # moved.
     "src/hexcore/dt_admission.py": (
-        "77abfa300cf131704d56914011771993ee4574b489f6a4b54d32a8f742b17d20"
+        "f4be4df0d09b297f68ec68fd5a48e5532231fb43461ab4f82b3308fcf5d499e4"
     ),
     # New pin (surface/PBL cadence, 2026-08-26): this module decides
     # config_bldt_seconds, a knob the frozen timestep registry keys on, so
@@ -755,7 +759,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # exactly that subclass, and the receipt names the row.  The default
     # (GF and convection-off) paths are unchanged; _ADAPTER_AUTHORITY and
     # every contract digest are unchanged.
-    # Re-frozen 2026-10-10 (engine pin retired as a forecast gate, owner ruling): _verify_checkout_root no longer
+    # Re-frozen 2026-10-10 (engine pin retired as a forecast gate): _verify_checkout_root no longer
     # raises on an engine whose sixteen seam files, contract surface or
     # composed glacier unit differ from the pinned engine's; it returns the
     # tree's identity as found (engine_pin.identity_of) and the pin mapping
@@ -782,14 +786,14 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # both correct/mpas-water-budget's physics.mode plumbing and
     # correct/storm-growth's SG2 producer (lagged_heating_v841: stage in
     # finish_step, publish in commit_step, carried in restart state).
-    # Re-frozen 2026-10-14 (release 0.4.0, lane H1): correct mode on an engine
+    # Re-frozen 2026-10-14 (release 0.4.0): correct mode on an engine
     # whose column batch takes no mode keywords is a named gap, not a refusal:
     # the seam is built without the keywords and the receipt names WB4/WB5 as
     # gaps (_engine_correct_mode, _engine_kwargs).  Exact mode builds the seam
     # with the keywords of before.  No card run against this pin.
     # Re-derived 2026-10-14 (H1 merged onto the H7 merge): H1's file plus the
     # 0.4.0 release scrub of two docstring lines in _verify_checkout_root (an
-    # owner ruling and a host's hardware in place of names).  No code line
+    # decision and a host's hardware in place of names).  No code line
     # differs from H1's copy.  No card run for this merge.
     # Re-frozen 2026-10-17: shared GPU surface kernels now update the ArWen
     # columns from a covering series; daily GFS words and unchanged C12
@@ -800,15 +804,19 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # Re-frozen 2026-11-06 (hex 0.4.14, ArWen-route waves on several ranks): the backend keeps the
     # lowest level's moist air density beside the LES winds only when a wave binding is attached
     # (wave_rho_air); with waves off (this proof) it stores None and nothing else moved. No card run.
+    # Re-frozen 2026-11-09 (NSSL two-moment picked over the ArWen suite): the frame-0 reflectivity view takes
+    # rho_dry and carries alt = 1/rho_dry for NSSL's diagnostic; the view is built at step 0 for the history
+    # frame only and writes nothing the step reads, so this proof's steps are unmoved. No card run of this proof.
+    # The value below is the file as merged into hex 0.5.0 (that branch's change on the 0.5.0 text).
     "src/hexcore/cuda_arwen_physics_v841.py": (
-        "23de7db623fba0fae2c9ad92d26b99b47475edd28f8b72bfa6e3e317503aa2c0"
+        "19af656ad8df9924ac81459ce7b0eeb8b68ee1a0c680446ace9aec127a269821"
     ),
     # New pin 2026-10-05: the New Tiedtke row's seam (the frozen column-batch
     # class subclassed, driver built at cu_physics=16, raw cumulus momentum
     # added to du/dv as native todynamics does).  Executes only when the
     # constructor selects ntiedtke.
     "src/hexcore/cuda_ntiedtke_column_v841.py": (
-        "6be7219b39c2e0f9732342631c0ab27c438ea6126ea9faf97b45c6c22080c2ea"
+        "eff1bae9f5399163a8617d8fe819c70ea948841f50ffa10773b6460ded5442d9"
     ),
     "src/hexcore/cuda_seam_snapshot_v841.py": (
         "a05fdda5ef82b0d77b1af63d4354953660f3d5b80470d7915bb647f41d191019"
@@ -823,7 +831,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # (woof.hex.rkind_libm; float64 evaluation is a byte no-op).  Every
     # affected proof re-runs against this digest.
     "src/hexcore/mixing.py": (
-        "1fd749a6c2a8599acf9bac7b2fc9764c0cb8ceb428be50b19a4e93e3a094d554"
+        "025a09079f180ed38529bb329c32b60abe43351d576d99ceaaf3bba355f679be"
     ),
     # Re-frozen for the regional CPU authority lane: the
     # deformation-weight halo guard now CYCLES exactly as native
@@ -856,7 +864,7 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
         "e6bad617c0a1e8dc3672eab985ac80d0c9885dc5381e38497d070f7714d985b7"
     ),
     "src/hexcore/cuda_horizontal.py": (
-        "f94137176db65d24df0d9ff1d491c278d6c835bb08cd76dc43c5cfcbf323a345"
+        "97b3ec1656518db03bccfe14c4fbf562dd7a407994ca31c8e2d4462943881b9c"
     ),
     "src/hexcore/cuda_horizontal_v841.py": (
         "1a5fae3d6055a710de7d7ce216dddb9bee7c2e4ee72cf4e6a959e2401dfe0cb7"
@@ -881,8 +889,12 @@ EXECUTION_SOURCE_PINS: dict[str, str | None] = {
     # keys retain dimensions. CUDA source expressions did not change.
     # This is the current execution identity, not a re-mint of archived x4
     # or regional forecast evidence. Device requalification remains pending.
+    # Re-frozen 2026-11-20 for hex 0.6.2: the regional target-density check of
+    # the recorder fix (no float word, a broadcast kept-cell mask) and fork jacobbieker/woof PRs 216 and 224 (no
+    # host wait; the hoisted FCT kernels settle on regional meshes) in one file.  Device requalification
+    # of the regional routes is the release's proving runs.
     "src/hexcore/cuda_transport_v841.py": (
-        "5bf88077aeb7f63f66c83d997ec9a1e4af8f1d9e64ce19741efa63cfd1addb87"
+        "30c8082b6bb7e92fb76d5d0049e8ee045fd090da3bc8fc47db781d82b1fa422e"
     ),
     # THE BREAKAGE THESE TWO PREVENT, found by the NVRTC reciprocal-rewrite
     # lane (the NVRTC reciprocal-rewrite defect): a pinned translation unit does not compile its own file.
@@ -958,13 +970,13 @@ KNOWN_CONTRACT_PINS = MappingProxyType(
             "b334506b289c6f002a2660e6c7796361e39372f6652b8e60268c1400900ab9ec"
         ),
         "coupling_contract_sha256": (
-            "3266241aea0d2481093bf7f1ed7617ca83301937dc89fa2229a6dcf30de11b69"
+            "63bee3eb7619876e423005401a4389f23563776dd94067c23667ece61e6567d5"
         ),
         "coupling_kernel_sha256": (
             "fb0aa7da49c1a5e7f5d6bacce6503214d1e550b9a60c4faaaeff237e2d719e4b"
         ),
         "adapter_contract_sha256": (
-            "dca5e7e7c299cf0c0e2e3cd216d3665f1277c3ff3b459033d168431400089702"
+            "977298d4130706e32999afe112d034b325c832b2839569422e6a1e41692af6a1"
         ),
         "arwen_contract_surface_sha256": ARWEN_CONTRACT_SURFACE_SHA256,
         "arwen_glacier_composed_tu_sha256": ARWEN_GLACIER_COMPOSED_TU_SHA256,
@@ -1624,7 +1636,7 @@ def measure_execution_sources() -> dict[str, Any]:
 
     The FORECAST's call, in place of :func:`require_frozen_execution_sources`.
 
-    RETIRED 2026-10-10 as a forecast gate (owner ruling; Gate law, Refusals law): a forecast used to refuse with
+    RETIRED 2026-10-10 as a forecast gate (Gate law, Refusals law): a forecast used to refuse with
     "frozen execution source changed for <file>: <digest> != <digest>"
     whenever any of this port's own modules differed from the digest
     ``EXECUTION_SOURCE_PINS`` carries.  Two digests name no breakage; they
@@ -1901,7 +1913,7 @@ def load_f000_initialized_surface_diagnostics(
         "receipt": {
             "source": "exact hash-pinned official x4.163842 init fields",
             "policy": (
-                "F000 snapshot-only replacement of frozen WOOF pre-first-call "
+                "F000 snapshot-only replacement of frozen WOOF-ArWen pre-first-call "
                 "exact +0 optional diagnostic placeholders"
             ),
             "fields": {
@@ -4749,7 +4761,7 @@ def require_snapshot_receipt_surface_execution(
     nested = snapshot_receipt.get("arwen_v2_surface_execution")
     if not isinstance(nested, Mapping):
         raise ValueError(
-            f"baseline diagnostic {label} lacks nested WOOF surface execution"
+            f"baseline diagnostic {label} lacks nested WOOF-ArWen surface execution"
         )
     return require_arwen_v2_surface_execution(
         nested, executed=(step > 0), label=f"baseline diagnostic {label}"
@@ -5046,7 +5058,7 @@ def _execute_full_proof(
             restored_f030["atmosphere"],
         ),
         "backend": require_fingerprint_identity(
-            "F030 restored WOOF backend",
+            "F030 restored WOOF-ArWen backend",
             checkpoint.backend_fingerprint,
             restored_f030["backend"],
         ),
@@ -5063,7 +5075,7 @@ def _execute_full_proof(
             worker["step16"]["atmosphere"],
         ),
         "backend": require_fingerprint_identity(
-            "first resumed step 16 WOOF backend",
+            "first resumed step 16 WOOF-ArWen backend",
             baseline_step16_fingerprints["backend"],
             worker["step16"]["backend"],
         ),
@@ -5082,7 +5094,7 @@ def _execute_full_proof(
             restored_f001_atmosphere,
         ),
         "backend": require_fingerprint_identity(
-            "F030 restart continuation F001 WOOF backend",
+            "F030 restart continuation F001 WOOF-ArWen backend",
             baseline_f001_backend,
             restored_f001_backend,
         ),
@@ -5227,7 +5239,7 @@ def _spawn_restart_worker(
     if not isinstance(results, Mapping) or results.get("schema") != RESTART_WORKER_SCHEMA:
         raise RuntimeError("restart worker returned an unrecognized payload schema")
     if results.get("arwen_commit") != ARWEN_COMMIT:
-        raise RuntimeError("restart worker executed against a different WOOF commit")
+        raise RuntimeError("restart worker executed against a different WOOF-ArWen commit")
     if results.get("fresh_process") is not True:
         raise RuntimeError("restart worker did not attest fresh-process execution")
     required = {
@@ -5268,7 +5280,7 @@ def _execute_restart_worker(input_path: Path, output_path: Path) -> int:
     if not isinstance(job, Mapping) or job.get("schema") != RESTART_WORKER_SCHEMA:
         raise RuntimeError("restart worker input schema mismatch")
     if job.get("arwen_commit") != ARWEN_COMMIT:
-        raise RuntimeError("restart worker input WOOF commit mismatch")
+        raise RuntimeError("restart worker input WOOF-ArWen commit mismatch")
     checkpoint = job["checkpoint"]
     if not isinstance(checkpoint, HostDriverCheckpoint):
         raise TypeError("restart worker requires a HostDriverCheckpoint payload")
@@ -5284,7 +5296,7 @@ def _execute_restart_worker(input_path: Path, output_path: Path) -> int:
             "baseline arm to mint a checkpoint that carries the pair."
         )
     paths = {role: Path(value) for role, value in dict(job["authority_paths"]).items()}
-    arwen_checkout = _plain_absolute(Path(job["arwen_checkout"]), "WOOF checkout")
+    arwen_checkout = _plain_absolute(Path(job["arwen_checkout"]), "WOOF-ArWen checkout")
     # Source pins verify first: the checkout guard imports the manifest from a
     # pinned module, so that module's bytes are proven before its constants
     # are trusted.
@@ -5329,7 +5341,7 @@ def _execute_restart_worker(input_path: Path, output_path: Path) -> int:
         restored_f030["atmosphere"],
     )
     require_fingerprint_identity(
-        "F030 restored WOOF backend (fresh restart process)",
+        "F030 restored WOOF-ArWen backend (fresh restart process)",
         checkpoint.backend_fingerprint,
         restored_f030["backend"],
     )
@@ -5511,7 +5523,7 @@ def verify_arwen_checkout_git(
             text=True,
         )
         if completed.stderr:
-            raise RuntimeError(f"WOOF git command wrote stderr: {completed.stderr!r}")
+            raise RuntimeError(f"WOOF-ArWen git command wrote stderr: {completed.stderr!r}")
         return completed.stdout.strip() if strip else completed.stdout
 
     head: str | None = None
@@ -5528,7 +5540,7 @@ def verify_arwen_checkout_git(
             "status", "--porcelain=v1", "-z", "--untracked-files=all", strip=False
         )
         if top != root:
-            raise RuntimeError("WOOF checkout is not the exact requested Git root")
+            raise RuntimeError("WOOF-ArWen checkout is not the exact requested Git root")
 
         expect_rename_origin = False
         for entry in status.split("\0"):
@@ -5556,7 +5568,7 @@ def verify_arwen_checkout_git(
         target = root / relative
         if not target.is_file():
             raise RuntimeError(
-                f"{relative} is missing from the WOOF checkout {root} â€” the "
+                f"{relative} is missing from the WOOF-ArWen checkout {root} â€” the "
                 "seam's executed source moved; re-prove before running"
             )
         actual = sha256_file(target)
@@ -5576,7 +5588,7 @@ def verify_arwen_checkout_git(
     # keeps the refusal, because its receipt is a claim about a commit.
     if dirty_manifest and require_committed:
         raise RuntimeError(
-            f"{dirty_manifest[0]} is dirty in the WOOF checkout â€” its bytes "
+            f"{dirty_manifest[0]} is dirty in the WOOF-ArWen checkout â€” its bytes "
             "cannot be provenanced to any commit; commit or restore it, then "
             "re-prove before running"
         )
@@ -5636,7 +5648,7 @@ def resolve_arwen_checkout(requested: Path | str | None) -> Path:
                 "--arwen-checkout <a woof clone at the pinned tag>"
             )
         requested = installed
-    checkout = _plain_absolute(requested, "WOOF checkout")
+    checkout = _plain_absolute(requested, "WOOF-ArWen checkout")
     if not checkout.is_dir():
         raise FileNotFoundError(checkout)
     return checkout
@@ -5731,7 +5743,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             != _arwen_seam_identity(arwen_git_before)
         ):
             raise RuntimeError(
-                "source, authority, or WOOF seam bytes changed during preflight"
+                "source, authority, or WOOF-ArWen seam bytes changed during preflight"
             )
         print(
             json.dumps(
@@ -5794,7 +5806,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         != _arwen_seam_identity(arwen_git_before)
     ):
         raise RuntimeError(
-            "source, authority, or WOOF seam bytes changed during execution"
+            "source, authority, or WOOF-ArWen seam bytes changed during execution"
         )
     payload = {
         "schema": SCHEMA,

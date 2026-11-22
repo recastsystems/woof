@@ -1,7 +1,7 @@
 """The GFS preparation's bulk host passes run on host threads with byte-identical results.
 
 Breakage it prevents: ``woof.gfs_direct`` at PREPARING_INITIALIZE_ALL_TIMES held one core at
-98-101 % for 70-190 s per 3 km nest while 200+ cores sat idle (ml-probs T1 on V8X, 2026-10-27).
+98-101 % for 70-190 s per 3 km nest while 200+ cores sat idle (ml-probs T1 on a rented 8-card box, 2026-10-27).
 Profiled: the decoded-lead reads, the snapshot's defensive field copy, the decoded-array and GRIB
 hashes and the CPU mixed-phase RH conversion were serial passes (woof/ingest/host_parallel.py).
 Each test holds the threaded result to the serial one bit for bit.

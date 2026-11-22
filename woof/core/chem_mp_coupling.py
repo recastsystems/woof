@@ -6,7 +6,7 @@ anywhere under ``chem/``).  The public coupling is NOAA GSL's: with
 ``merra2_aerosol_aware`` the RRFS Thompson driver overwrites its water- and
 ice-friendly aerosol numbers from binned aerosol mass every call, through
 ``get_niwfa`` (ccpp-physics ``physics/MP/Thompson/mp_thompson.F90:1025-1068``,
-Apache-2.0).  WOOF ports that routine and says so; the kernel is
+Apache-2.0).  WOOF-ArWen ports that routine and says so; the kernel is
 ``woof/core/kernels/chem_mp_coupling.cu``.
 
 WHAT IS DATA.  Each participating species row carries an ``mp_coupling``
@@ -26,12 +26,12 @@ native units become kg/kg by a factor derived from the row, never from its
 name: ``ug kg-1`` rows multiply by 1e-9; ``ppmv`` rows by
 ``1e-6 * molar_mass_g_mol / 28.966`` (``mwdry``, share/module_model_constants.F:34),
 the same conversion sum_pm_gocart applies to sulfate (module_gocart_aerosols.F:
-100).  That conversion is WOOF's: GSL is handed MERRA-2 kg/kg directly.
+100).  That conversion is WOOF-ArWen's: GSL is handed MERRA-2 kg/kg directly.
 
 WHEN.  After every chem step (DESIGN 3, step 10), so the next microphysics
 call reads numbers diagnosed from the species it will act beside.  GSL
 diagnoses at the start of each microphysics call instead; between the two
-points WOOF's ``nwfa``/``nifa`` are advected as the scalars they are, the
+points WOOF-ArWen's ``nwfa``/``nifa`` are advected as the scalars they are, the
 species beside them, so the two differ by one step of transport of each.
 Thompson's own activation sinks do not feed back into species mass, as in
 GSL's coupling.

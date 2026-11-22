@@ -132,13 +132,13 @@ GSL rho_phy is p/(Rd*T), wrapper.F90:889, not WRF-Chem moist rho.
 For production kg-to-ug/kg-dry mass identity, injection uses dryrho as its
 denominator. The transcribed conv/add/clamp association is unchanged;
 oracle tests use the explicitly supplied Fortran rho. This density choice
-is a WOOF addition and needs the integrated mass-ledger test on a node.
+is a WOOF-ArWen addition and needs the integrated mass-ledger test on a node.
 The cached ebu output carries coef scaling, restored through the source's 1e-4 floor before the next call (wrapper.F90:365-370,552-556). Below that floor, reuse loses flux exactly as GSL does.
 The 5000 clamp can discard source mass, and changes to an existing tracer
 below the 0 clamp also affect the net emitted diagnostic. Conservation
 tests apply where neither clamp clips the prescribed emission.
 
-EBU_IN is the GSL scalar input name, used as a WOOF 2-D diagnostic.
+EBU_IN is the GSL scalar input name, used as a WOOF-ArWen 2-D diagnostic.
 WRF Registry's ebu_in at line 421 is a container; its PM2.5 mass field is
 ebu_in_pm25 at line 433. This lane does not claim a WRF scalar smoke output
 of that spelling. FRP_MEAN follows GSL's coefficient-scaled diagnostic at :620, retaining the MW-to-W-to-MW rounding association. The plume input at :451-455 separately uses the previous coefficient, a type-4 sc_factor and an FRP cap; the plume lane must retain that behavior.

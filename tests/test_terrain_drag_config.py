@@ -230,6 +230,27 @@ def test_topo_wind_and_gwd_opt_translate_per_domain(tmp_path):
     assert [d.run.gwd_opt for d in exp.domains] == [3, 0]
 
 
+def test_wrf480_gwd_keys_translate_and_refuse(tmp_path):
+    """WRF v4.8.0's gwd_dx_factor / gwd_if_nonhyd reach gwdo_version
+    "wrf_480"; inert without gwd_opt = 1; a non-positive factor refused."""
+    text, _ = _import(tmp_path, _ysu(_with(dynamics=(
+        " gwd_opt = 1, 0,\n gwd_dx_factor = 1.5, 2.,\n"
+        " gwd_if_nonhyd = .false., .true.,\n"))))
+    raw = tomllib.loads(text)
+    assert (raw["shared"]["gwd_dx_factor"],
+            raw["shared"]["gwd_if_nonhyd"]) == (1.5, False)
+    exp = build_experiment(raw, source="test")
+    run = exp.domains[0].run
+    assert (run.gwdo_version, run.gwd_dx_factor, run.gwd_if_nonhyd) == (
+        "wrf_480", 1.5, False)
+    text, _ = _import(tmp_path, _ysu(_with(dynamics=(
+        " gwd_opt = 3, 0,\n gwd_dx_factor = 1.5, 2.,\n"))))
+    assert "gwd_dx_factor" not in tomllib.loads(text)["shared"]
+    with pytest.raises(ValueError, match="gwd_dx_factor"):
+        _import(tmp_path, _ysu(_with(dynamics=(
+            " gwd_opt = 1, 0,\n gwd_dx_factor = 0., 2.,\n"))))
+
+
 def test_the_v3_physics_placement_of_gwd_opt_imports(tmp_path):
     text, _ = _import(tmp_path, _with(physics=" gwd_opt = 1, 0,\n"))
     assert tomllib.loads(text)["shared"]["gwd_opt"] == 1
@@ -420,12 +441,15 @@ def test_standalone_static_command_builds_the_requested_drag_fields(
         assert len(built.files) == 21 and "VAR_SSO" in built.files
 
 
-@pytest.mark.parametrize("topo, gwd, resident_planes, directional_planes", [
-    (0, 0, 0, 0), (1, 0, 2, 0), (2, 0, 2, 0),
-    (0, 1, 10, 8), (0, 3, 20, 16), (1, 3, 22, 16),
+# gwd_opt = 1 under WRF v4.8.0 (the default gwdo_version) holds ELVMAX
+# beside the ten statistics; under "wrf_471" it holds the ten.
+@pytest.mark.parametrize("topo, gwd, resident_planes, directional_planes, version", [
+    (0, 0, 0, 0, "wrf_480"), (1, 0, 2, 0, "wrf_480"), (2, 0, 2, 0, "wrf_480"),
+    (0, 1, 11, 8, "wrf_480"), (0, 1, 10, 8, "wrf_471"),
+    (0, 3, 20, 16, "wrf_480"), (1, 3, 22, 16, "wrf_480"),
 ])
 def test_terrain_drag_has_resident_workspace_and_kernel_memory_prices(
-        topo, gwd, resident_planes, directional_planes):
+        topo, gwd, resident_planes, directional_planes, version):
     from woof.core import preflight as pf
     from woof.core.physics_inventory import (
         terrain_drag_array_shapes, terrain_drag_transient_shapes)
@@ -433,7 +457,7 @@ def test_terrain_drag_has_resident_workspace_and_kernel_memory_prices(
     from datetime import datetime, timezone
 
     cfg = _cfg(bl_pbl_physics=1, sf_sfclay_physics=1,
-               topo_wind=topo, gwd_opt=gwd)
+               topo_wind=topo, gwd_opt=gwd, gwdo_version=version)
     resident = terrain_drag_array_shapes(cfg)
     assert len(resident) == resident_planes
     assert all(shape == (cfg.ny, cfg.nx) for shape in resident.values())
@@ -453,6 +477,8 @@ def test_terrain_drag_has_resident_workspace_and_kernel_memory_prices(
             2, cfg.nz, cfg.ny, cfg.nx)
     modules = pf.domain_kernel_modules(dc, prices_refl=False)
     assert ("terrain_drag_composed" in modules) is bool(topo or gwd)
+    assert ("terrain_drag_gwdo480_composed" in modules) is (
+        gwd == 1 and version == "wrf_480")
     assert pf.CHAINED_TRANSLATION_UNIT_FRAMES[
         "terrain_drag_composed"].max_local_size_bytes == 1184
     if not topo and not gwd:

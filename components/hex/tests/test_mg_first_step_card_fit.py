@@ -1,7 +1,7 @@
 """card_fit: a profile with one whole run in a regime is shaped below it by its plain suite's curve.
 
 THE BREAKAGE (mesh-gen-fast, RTX 4090, 2026-10-29): the hrrr-like-aerosol default had one one-card run
-(286,530 cells, 44,989 MiB on a 96 GB card) and below it the plan used device_admission's WOOF slope (~49 KB per
+(286,530 cells, 44,989 MiB on a 96 GB card) and below it the plan used device_admission's WOOF-ArWen slope (~49 KB per
 cell), which left a ~33 GiB intercept: 40,000 cells required 37,094 MiB, 60,000 required 38,300 and 124,855
 required 41,960.5, so no custom mesh worth running was admitted on a 24 GB card.
 """

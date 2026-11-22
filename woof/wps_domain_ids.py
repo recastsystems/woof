@@ -1,4 +1,4 @@
-"""Bind stable WOOF grid IDs to compact, standard Fortran WPS slots.
+"""Bind stable WOOF-ArWen grid IDs to compact, standard Fortran WPS slots.
 
 WPS arrays and parent_id contain slots 1..max_dom.  An optional versioned
 Fortran comment binds those slots to stable IDs; ordinary contiguous files

@@ -18,7 +18,8 @@ def test_default_history_publishes_land_memory(tmp_path):
     layout=SimpleNamespace(root=root,fields=fields)
     write_default_streams(layout,tmp_path/'streams.atmosphere',history_minutes=60)
     members=(tmp_path/'stream_list.atmosphere.output').read_text().splitlines()
-    assert {f.name for f in LAND_FIELDS} <= set(members)
+    from woof.hex.cycle.land_state import DEFAULT_HISTORY_FIELDS
+    assert set(DEFAULT_HISTORY_FIELDS) <= set(members)
 
 
 def test_pool_input_request_reads_marked_diagnostic_memory():

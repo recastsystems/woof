@@ -2,7 +2,7 @@
 
 Breakage: a 3 km hex region from GFS f348 (valid 13 days ahead) started the scorecard watcher, which slept in the
 leased forecast command's process tree for 75 min until it was killed by PID; the run's products step waited
-behind it (box L, 2026-10-24, INVENTORY F-SCORE-LEASE). Now a run whose frames are all in the future starts no
+behind it (2026-10-24). Now a run whose frames are all in the future starts no
 watcher and says when to score, and a watcher never sleeps for a future frame.
 """
 import json

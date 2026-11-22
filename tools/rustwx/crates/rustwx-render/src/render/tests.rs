@@ -63,6 +63,7 @@ fn sample_projected_opts() -> RenderOpts {
         projected_place_labels: Vec::new(),
         projected_points: Vec::new(),
         projected_lines: Vec::new(),
+        contour_fills: Vec::new(),
         contours: Vec::new(),
         barbs: Vec::new(),
         streamlines: Vec::new(),
@@ -986,6 +987,37 @@ fn trim_vertical_canvas_whitespace_crops_outer_blank_rows() {
     // Content starts at row 3 and the pass keeps a 2-row pad, so exactly
     // one row came off the top -- the offset the plot rect follows.
     assert_eq!(crop_top, 1);
+}
+
+#[test]
+fn centring_on_the_plot_rows_ignores_header_width() {
+    // WOOF run_de0c75975bb17140 (2026-11-10): a quarter-hour frame's header ("+001:15 | Valid 12/18 13:15Z") is
+    // longer than the hourly one's ("F001 | Valid 12/18 13Z"); centred on all the ink, its map moved 23 px further
+    // and a 15-minute animation jumped.  Centred on the plot rows, both maps land in the same columns.
+    let bg = RenderPresentation::for_mode(ProductVisualMode::FilledMeteorology).canvas_background;
+    let frame = |header_from: u32| {
+        let mut img = RgbaImage::from_pixel(100, 20, bg.to_image_rgba());
+        for x in header_from..70 {
+            img.put_pixel(x, 2, Rgba::BLACK.to_image_rgba());
+        }
+        for y in 8..18 {
+            for x in 40..80 {
+                img.put_pixel(x, y, Rgba::BLACK.to_image_rgba());
+            }
+        }
+        img
+    };
+    let map_left = |img: &RgbaImage| (0..img.width()).find(|&x| !pixel_matches_background(*img.get_pixel(x, 12), bg));
+    let (hourly, a) = center_horizontal_canvas_content_on_rows(&frame(30), bg, Some((8, 18)));
+    let (quarter, b) = center_horizontal_canvas_content_on_rows(&frame(10), bg, Some((8, 18)));
+    assert_eq!(a, b, "the same shift whatever the header");
+    assert_eq!(map_left(&hourly), map_left(&quarter));
+    assert_eq!(map_left(&hourly), Some(30), "the plot rows are centred");
+    // Every inked pixel stays on the canvas: a header reaching the left edge limits the move.
+    let mut wide = frame(0);
+    wide.put_pixel(0, 2, Rgba::BLACK.to_image_rgba());
+    let (_, c) = center_horizontal_canvas_content_on_rows(&wide, bg, Some((8, 18)));
+    assert_eq!(c, -0, "no room on the left: the canvas is not moved left past its ink");
 }
 
 #[test]

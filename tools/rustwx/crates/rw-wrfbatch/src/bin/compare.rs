@@ -135,6 +135,269 @@ struct ReferenceSpec {
     /// An isobaric product can live in another published file family.
     pressure_file_product: &'static str,
     pressure_file_names: fn(u8, u16) -> Vec<String>,
+    /// Isobaric planes built from the model's OWN levels instead of its
+    /// post-processor's pressure-level messages ([`OwnLevels`]); `None`
+    /// draws the published isobaric message, product against product.
+    own_levels: Option<OwnLevels>,
+}
+
+/// Where a reference's own model levels live and how an isobaric plane is
+/// built from them: in each column, linear in ln p between the last level
+/// at or below the pressure and the first level above it.  A column whose
+/// lowest level is already above the pressure (the level is under ground)
+/// is left missing, never extrapolated.
+///
+/// WHAT BREAKAGE THIS PREVENTS (gate law): a DA environment sheet judged a
+/// run's 850 hPa jet edge against HRRR's UPP `wrfprs` 850 mb wind, which is
+/// about 4.5x smoother at the grid scale than HRRR's own hybrid levels, so
+/// the difference panel drew a +3 to +11 kt razor along the Hudson that was
+/// mostly the reference's smoothing (members' own-level edge p99 1.16x
+/// HRRR's on its own levels; 1.4-1.6x against the UPP field).
+#[derive(Clone, Copy)]
+struct OwnLevels {
+    /// The model's file product that carries the levels.
+    file_product: &'static str,
+    file_names: fn(u8, u16) -> Vec<String>,
+    /// GRIB2 level type of the levels (105: hybrid).
+    level_type: u8,
+    /// The levels used, bottom up, first to last inclusive.
+    first: u16,
+    last: u16,
+    /// What the reference panel's subtitle says the plane was built from.
+    message: &'static str,
+}
+
+/// Pressure on the model levels: GRIB2 0.3.0 (PRES), in Pa.
+const OWN_LEVEL_PRESSURE: (u8, u8, &str) = (3, 0, "PRES");
+
+/// The published GRIB2 parameter (category, number, NCEP short name) of a
+/// field an own-level reference can build at a pressure; anything else is
+/// refused by name rather than drawn from another file.
+fn own_level_parameter(field: CanonicalField) -> Option<(u8, u8, &'static str, &'static str)> {
+    match field {
+        CanonicalField::UWind => Some((2, 2, "UGRD", "m/s")),
+        CanonicalField::VWind => Some((2, 3, "VGRD", "m/s")),
+        CanonicalField::Temperature => Some((0, 0, "TMP", "K")),
+        CanonicalField::SpecificHumidity => Some((1, 0, "SPFH", "kg/kg")),
+        _ => None,
+    }
+}
+
+/// The own-level recipe of a product's reference plane: the pressure (hPa),
+/// the component parameters, and whether the plane is their speed.
+struct OwnLevelRecipe {
+    pressure_hpa: u16,
+    components: Vec<(u8, u8, &'static str, &'static str)>,
+    speed: bool,
+}
+
+fn own_level_recipe(plane: ReferencePlane) -> Option<OwnLevelRecipe> {
+    let isobaric = |selector: FieldSelector| match selector.vertical {
+        rustwx_core::VerticalSelector::IsobaricHpa(hpa) => {
+            own_level_parameter(selector.field).map(|parameter| (hpa, parameter))
+        }
+        _ => None,
+    };
+    match plane {
+        ReferencePlane::Selector(selector) => isobaric(selector).map(|(hpa, parameter)| OwnLevelRecipe {
+            pressure_hpa: hpa,
+            components: vec![parameter],
+            speed: false,
+        }),
+        ReferencePlane::Speed(u, v) => {
+            let ((hu, pu), (hv, pv)) = (isobaric(u)?, isobaric(v)?);
+            (hu == hv).then(|| OwnLevelRecipe { pressure_hpa: hu, components: vec![pu, pv], speed: true })
+        }
+        _ => None,
+    }
+}
+
+/// Whether a reference draws this product: an own-level row builds the
+/// isobaric products its recipe covers and draws every non-isobaric one
+/// from its published files; a plain row draws the whole table.
+fn reference_serves(reference: &ReferenceSpec, product: &ProductSpec) -> bool {
+    reference.own_levels.is_none()
+        || !product_is_isobaric(product)
+        || own_level_recipe(product.reference).is_some()
+}
+
+fn product_is_isobaric(product: &ProductSpec) -> bool {
+    matches!(
+        product.run,
+        RunPlane::Selector(FieldSelector { vertical: rustwx_core::VerticalSelector::IsobaricHpa(_), .. })
+            | RunPlane::SelectorSpeed(FieldSelector { vertical: rustwx_core::VerticalSelector::IsobaricHpa(_), .. }, _)
+    )
+}
+
+/// What the reference panel says it drew: the published message, or for an
+/// own-level plane the levels it was built from.
+fn plane_message(reference: &ReferenceSpec, product: &ProductSpec) -> &'static str {
+    match reference.own_levels {
+        Some(levels) if product_is_isobaric(product) => levels.message,
+        _ => product.reference_message,
+    }
+}
+
+/// `VAR:N hybrid level` inventory patterns for an own-level fetch.  The
+/// level is matched as a substring of the inventory line, so `1 hybrid
+/// level` also takes 11, 21, ...; the extra records are ignored on decode.
+fn own_level_patterns(levels: &OwnLevels, recipe: &OwnLevelRecipe) -> Vec<String> {
+    let mut names = vec![OWN_LEVEL_PRESSURE.2];
+    names.extend(recipe.components.iter().map(|component| component.2));
+    let mut patterns = Vec::new();
+    for name in names {
+        for level in levels.first..=levels.last {
+            patterns.push(format!("{name}:{level} hybrid level"));
+        }
+    }
+    patterns
+}
+
+/// One field on every own level, bottom up, decoded from the file.
+fn own_level_stack(
+    grib: &Grib2File,
+    levels: &OwnLevels,
+    (category, number, name, units): (u8, u8, &'static str, &'static str),
+    lead: u16,
+) -> Result<Vec<ReferenceField>, String> {
+    (levels.first..=levels.last)
+        .map(|level| {
+            let key = RawKey {
+                discipline: 0,
+                category,
+                number,
+                level_type: levels.level_type,
+                level_value: f64::from(level),
+                second_type: 255,
+                second_value: 0.0,
+                stat: None,
+                units,
+                factor: 1.0,
+                offset: 0.0,
+            };
+            raw_field(grib, &key, lead)?
+                .ok_or_else(|| format!("the own-level file has no {name} on level {level} at f{lead:03}"))
+        })
+        .collect()
+}
+
+/// The value at `target` (ln p) in one column, linear in ln p between the
+/// last level at or below the pressure and the first level above it; NaN
+/// when the pressure is under the lowest level or above the highest.
+fn interpolate_ln_p(ln_p: &[f64], values: &[f64], target: f64) -> f64 {
+    for k in 0..ln_p.len().saturating_sub(1) {
+        let (a, b) = (ln_p[k], ln_p[k + 1]);
+        if a >= target && b < target {
+            let weight = (a - target) / (a - b);
+            return values[k] + weight * (values[k + 1] - values[k]);
+        }
+    }
+    f64::NAN
+}
+
+/// An isobaric reference plane built from the reference's own levels.
+fn own_level_field(
+    grib: &Grib2File,
+    levels: &OwnLevels,
+    recipe: &OwnLevelRecipe,
+    lead: u16,
+) -> Result<ReferenceField, String> {
+    let pressure = own_level_stack(
+        grib,
+        levels,
+        (OWN_LEVEL_PRESSURE.0, OWN_LEVEL_PRESSURE.1, OWN_LEVEL_PRESSURE.2, "Pa"),
+        lead,
+    )?;
+    let stacks = recipe
+        .components
+        .iter()
+        .map(|component| own_level_stack(grib, levels, *component, lead))
+        .collect::<Result<Vec<_>, String>>()?;
+    let first = &pressure[0];
+    let points = first.values.len();
+    if pressure.iter().chain(stacks.iter().flatten()).any(|field| field.values.len() != points) {
+        return Err("the own-level fields are not on one grid".into());
+    }
+    let target = (f64::from(recipe.pressure_hpa) * 100.0).ln();
+    let columns: Vec<f32> = {
+        use rayon::prelude::*;
+        (0..points)
+            .into_par_iter()
+            .map(|point| {
+                let ln_p: Vec<f64> = pressure.iter().map(|level| f64::from(level.values[point]).ln()).collect();
+                let at = |stack: &Vec<ReferenceField>| {
+                    let column: Vec<f64> = stack.iter().map(|level| f64::from(level.values[point])).collect();
+                    interpolate_ln_p(&ln_p, &column, target)
+                };
+                let value = if recipe.speed {
+                    at(&stacks[0]).hypot(at(&stacks[1]))
+                } else {
+                    at(&stacks[0])
+                };
+                if value.is_finite() { value as f32 } else { f32::NAN }
+            })
+            .collect()
+    };
+    Ok(ReferenceField {
+        values: columns,
+        units: recipe.components[0].3.to_string(),
+        lat: first.lat.clone(),
+        lon: first.lon.clone(),
+        ny: first.ny,
+        nx: first.nx,
+    })
+}
+
+/// Load the own-level file for one product, verified, with the patterns
+/// that product needs.
+fn load_own_levels(
+    args: &Args,
+    reference: &ReferenceSpec,
+    levels: &OwnLevels,
+    recipe: &OwnLevelRecipe,
+    date: &str,
+    hour: u8,
+    lead: u16,
+) -> Result<ReferenceFile, String> {
+    let spec = ReferenceSpec {
+        file_product: levels.file_product,
+        file_names: levels.file_names,
+        ..reference.clone()
+    };
+    load_reference_with(args, &spec, date, hour, lead, own_level_patterns(levels, recipe))
+        .and_then(|file| verify_reference(&file, date, hour, lead).map(|()| file))
+}
+
+/// The reference plane for one product: built from the reference's own
+/// levels when its row says so and the product is isobaric (the file it
+/// came from is returned with it), otherwise decoded from `file`.
+/// `Ok(Err(reason))` is a skip; `Err` a failure.
+fn product_reference_plane(
+    args: &Args,
+    reference: &ReferenceSpec,
+    spec: &ProductSpec,
+    date: &str,
+    hour: u8,
+    lead: u16,
+) -> Result<Option<Result<(ReferenceFile, ReferenceField), String>>, String> {
+    let Some(levels) = reference.own_levels.as_ref().filter(|_| product_is_isobaric(spec)) else {
+        return Ok(None);
+    };
+    let Some(recipe) = own_level_recipe(spec.reference) else {
+        return Ok(Some(Err(format!(
+            "{} builds isobaric planes from {} on its own levels only; {} has no own-level recipe \
+             (draw it against the published-message row)",
+            reference.label,
+            ["UGRD", "VGRD", "TMP", "SPFH"].join("/"),
+            spec.title
+        ))));
+    };
+    let file = load_own_levels(args, reference, levels, &recipe, date, hour, lead)?;
+    let field = match own_level_field(&file.grib, levels, &recipe, lead) {
+        Ok(field) => field,
+        Err(reason) => return Ok(Some(Err(format!("{}: {reason}", reference.label)))),
+    };
+    Ok(Some(Ok((file, field))))
 }
 
 fn reference_specs() -> Vec<ReferenceSpec> {
@@ -160,6 +423,38 @@ fn reference_specs() -> Vec<ReferenceSpec> {
             pressure_file_names: |hour, lead| {
                 vec![format!("hrrr.t{hour:02}z.wrfprsf{lead:02}.grib2")]
             },
+            own_levels: None,
+        },
+        // HRRR with its isobaric planes built from its own hybrid levels
+        // 1-25 (`wrfnat`), linear in ln p; every other product is HRRR's own
+        // published message, as on the row above.
+        ReferenceSpec {
+            name: "hrrr-nat",
+            label: "HRRR own levels",
+            model: ModelId::Hrrr,
+            file_product: "sfc",
+            sources: &[SourceId::Aws],
+            source_label: "NOAA HRRR, noaa-hrrr-bdp-pds",
+            file_names: |cycle_hour, lead| {
+                ["wrfsfc", "wrfprs"]
+                    .iter()
+                    .map(|product| format!("hrrr.t{cycle_hour:02}z.{product}f{lead:02}.grib2"))
+                    .collect()
+            },
+            bucket_directory: |date| format!("hrrr.{date}/conus"),
+            horizon: |cycle_hour| if cycle_hour % 6 == 0 { 48 } else { 18 },
+            pressure_file_product: "prs",
+            pressure_file_names: |hour, lead| {
+                vec![format!("hrrr.t{hour:02}z.wrfprsf{lead:02}.grib2")]
+            },
+            own_levels: Some(OwnLevels {
+                file_product: "nat",
+                file_names: |hour, lead| vec![format!("hrrr.t{hour:02}z.wrfnatf{lead:02}.grib2")],
+                level_type: 105,
+                first: 1,
+                last: 25,
+                message: "hybrid 1-25, ln p",
+            }),
         },
         ReferenceSpec {
             name: "rrfs",
@@ -182,6 +477,7 @@ fn reference_specs() -> Vec<ReferenceSpec> {
                     "rrfs.t{hour:02}z.prslev.3km.f{lead:03}.conus.grib2"
                 )]
             },
+            own_levels: None,
         },
     ]
 }
@@ -1316,7 +1612,7 @@ pub(crate) fn main() -> ExitCode {
         Ok(Invocation::ListProducts) => {
             for spec in reference_specs() {
                 println!("REFERENCE\t{}\t{}", spec.name, spec.label);
-                for product in product_specs() {
+                for product in product_specs().iter().filter(|product| reference_serves(&spec, product)) {
                     println!("CAPABILITY\t{}\t{}\tforecast", spec.name, product.name);
                 }
             }
@@ -1588,6 +1884,18 @@ fn load_reference(
     cycle_hour: u8,
     lead: u16,
 ) -> Result<ReferenceFile, String> {
+    load_reference_with(args, spec, date, cycle_hour, lead, inventory_patterns())
+}
+
+/// [`load_reference`] with the inventory patterns of the subset to fetch.
+fn load_reference_with(
+    args: &Args,
+    spec: &ReferenceSpec,
+    date: &str,
+    cycle_hour: u8,
+    lead: u16,
+    patterns: Vec<String>,
+) -> Result<ReferenceFile, String> {
     let file_names = (spec.file_names)(cycle_hour, lead);
     let file_name = file_names
         .first()
@@ -1636,7 +1944,6 @@ fn load_reference(
             }
         }
     }
-    let patterns = inventory_patterns();
     let cache_dir = args
         .reference_cache
         .clone()
@@ -2696,7 +3003,7 @@ fn write_sheet(
             left: format!(
                 "{} | {}{}",
                 times.reference_subtitle(),
-                spec.reference_message,
+                plane_message(reference, spec),
                 station_label(reference_overlays.as_ref()),
             ),
             right: format!("source: {}", reference.source_label),
@@ -2792,7 +3099,7 @@ fn write_sheet(
         "reference": reference.name,
         "reference_file": reference_file.file_name,
         "reference_origin": reference_file.origin,
-        "reference_message": spec.reference_message,
+        "reference_message": plane_message(reference, spec),
         "run_plane": match spec.run {
             RunPlane::Selector(_) | RunPlane::Named { .. } => "the run's stored product plane",
             RunPlane::SelectorSpeed(..) => "speed from the run's two stored component planes",
@@ -3062,26 +3369,34 @@ fn resolve_references(
                     (reference.horizon)(hour)
                 )));
             }
-            let file = load_product_reference(args, reference, spec, &date, hour, lead)?;
-            let field = match reference_field(&file.grib, spec.reference, lead)? {
-                Ok(field) => field,
-                Err(reason) => return Ok(Err(format!("{}: {reason}", reference.label))),
+            let (file, field) = match product_reference_plane(args, reference, spec, &date, hour, lead)? {
+                Some(Ok(built)) => built,
+                Some(Err(reason)) => return Ok(Err(reason)),
+                None => {
+                    let file = load_product_reference(args, reference, spec, &date, hour, lead)?;
+                    let field = match reference_field(&file.grib, spec.reference, lead)? {
+                        Ok(field) => field,
+                        Err(reason) => return Ok(Err(format!("{}: {reason}", reference.label))),
+                    };
+                    (file, field)
+                }
             };
             println!(
                 "SOURCE\t{}\t{date}\t{hour:02}\tf{lead:03}\t{}",
                 reference.name, file.origin
             );
+            let message = plane_message(reference, spec);
             let subtitle = format!(
                 "{} | {} | {}",
                 times.reference_subtitle(),
                 file.file_name,
-                spec.reference_message
+                message
             );
             let receipt = serde_json::json!({
                 "name": name, "label": reference.label, "kind": "forecast",
                 "cycle": times.reference_cycle.to_rfc3339(), "forecast_hour": lead,
                 "valid": times.valid.to_rfc3339(), "file": file.file_name, "origin": file.origin,
-                "message": spec.reference_message, "units": field.units,
+                "message": message, "units": field.units,
             });
             (
                 reference.label.to_string(),
@@ -3732,22 +4047,32 @@ fn run(mut args: Args) -> Result<(), String> {
                 let initial_file = reference_file.as_ref().expect("single forecast file");
                 let fallback_file;
                 let mut product_file = initial_file;
-                let mut extracted = reference_field(&product_file.grib, spec.reference, lead)?;
-                if extracted.is_err()
-                    && matches!(
-                        spec.run,
-                        RunPlane::Selector(FieldSelector { vertical: rustwx_core::VerticalSelector::IsobaricHpa(_), .. }) | RunPlane::SelectorSpeed(FieldSelector { vertical: rustwx_core::VerticalSelector::IsobaricHpa(_), .. }, _)
-                    )
-                    && args.reference_file.is_none()
-                {
-                    fallback_file =
-                        load_product_reference(&args, reference, spec, &date, cycle_hour, lead)?;
-                    product_file = &fallback_file;
-                    extracted = reference_field(&product_file.grib, spec.reference, lead)?;
-                    println!(
-                        "SOURCE\t{}\t{date}\t{cycle_hour:02}\tf{lead:03}\t{}",
-                        reference.name, product_file.origin
-                    );
+                let mut extracted;
+                match product_reference_plane(&args, reference, spec, &date, cycle_hour, lead)? {
+                    // An own-level row's isobaric plane, built from its levels.
+                    Some(Ok((file, field))) => {
+                        fallback_file = file;
+                        product_file = &fallback_file;
+                        extracted = Ok(field);
+                        println!(
+                            "SOURCE\t{}\t{date}\t{cycle_hour:02}\tf{lead:03}\t{}",
+                            reference.name, product_file.origin
+                        );
+                    }
+                    Some(Err(reason)) => return Ok(Err(reason)),
+                    None => {
+                        extracted = reference_field(&product_file.grib, spec.reference, lead)?;
+                        if extracted.is_err() && product_is_isobaric(spec) && args.reference_file.is_none() {
+                            fallback_file =
+                                load_product_reference(&args, reference, spec, &date, cycle_hour, lead)?;
+                            product_file = &fallback_file;
+                            extracted = reference_field(&product_file.grib, spec.reference, lead)?;
+                            println!(
+                                "SOURCE\t{}\t{date}\t{cycle_hour:02}\tf{lead:03}\t{}",
+                                reference.name, product_file.origin
+                            );
+                        }
+                    }
                 }
                 let reference_plane = match extracted {
                     Ok(field) => field,
@@ -4002,14 +4327,28 @@ fn import_options(specs: &[ProductSpec]) -> WrfProcessOptions {
     // Snow planes are computed diagnostics, rather than raw WRF variables.
     // Admit only the requested snow planes alongside the existing import plan;
     // enabling every diagnostic would make a comparison compute unrelated fields.
-    let snow_names: Vec<String> = specs.iter().filter_map(|spec| {
+    let mut computed_names: Vec<String> = specs.iter().filter_map(|spec| {
         rw_wrfbatch::snowfall::PRODUCTS.iter()
             .find(|(slug, _)| *slug == spec.slug)
             .map(|(slug, _)| (*slug).to_string())
     }).collect();
-    if !snow_names.is_empty() {
+    // A named run plane that is not a raw WRF variable (mlcape, sbcape,
+    // srh_0_1km, ...) is a computed diagnostic: admit exactly those planes,
+    // the same way. WHAT BREAKAGE THIS PREVENTS (gate law): with diagnostics
+    // off, `--products mlcape` skipped every frame with "the frame's store
+    // carries no mlcape", so no CAPE sheet against HRRR's own CAPE 90-0 mb
+    // was ever drawn (DA environment sheets carried it as a named gap).
+    computed_names.extend(specs.iter().filter_map(|spec| match spec.run {
+        RunPlane::Named { raw, variable }
+            if !rw_wrfbatch::wrf_process::RAW_EXTRA_CATALOG.contains(&raw) =>
+        {
+            Some(variable.to_string())
+        }
+        _ => None,
+    }));
+    if !computed_names.is_empty() {
         let mut required = options.planned_store_fields();
-        required.extend(snow_names);
+        required.extend(computed_names);
         options.diagnostics = true;
         options.required_fields = Some(required);
     }
@@ -4745,6 +5084,68 @@ mod tests {
         for invalid in ["", "hrrr,", "hrrr,unknown"] {
             assert!(reference_names(invalid).is_err(), "{invalid:?}");
         }
+    }
+
+    /// Linear in ln p between the last level at or below the pressure and
+    /// the first above it; missing under ground and above the top level.
+    #[test]
+    fn own_levels_interpolate_linear_in_ln_p_and_never_extrapolate() {
+        let ln_p: Vec<f64> = [100_000.0_f64, 90_000.0, 80_000.0, 70_000.0].iter().map(|p| p.ln()).collect();
+        let values = [0.0, 10.0, 20.0, 30.0];
+        let at = interpolate_ln_p(&ln_p, &values, 85_000.0_f64.ln());
+        let weight = (90_000.0_f64.ln() - 85_000.0_f64.ln()) / (90_000.0_f64.ln() - 80_000.0_f64.ln());
+        assert!((at - (10.0 + 10.0 * weight)).abs() < 1e-12, "{at}");
+        assert!((interpolate_ln_p(&ln_p, &values, 90_000.0_f64.ln()) - 10.0).abs() < 1e-12);
+        let high_ground: Vec<f64> = [80_000.0_f64, 70_000.0].iter().map(|p| p.ln()).collect();
+        assert!(interpolate_ln_p(&high_ground, &[1.0, 2.0], 85_000.0_f64.ln()).is_nan());
+        assert!(interpolate_ln_p(&ln_p, &values, 60_000.0_f64.ln()).is_nan());
+    }
+
+    /// The own-level HRRR row: wrfnat hybrid 1-25 for the isobaric planes it
+    /// can build, HRRR's own published messages for everything else, and a
+    /// named refusal for an isobaric product it has no recipe for.
+    #[test]
+    fn hrrr_own_level_row_builds_850_wind_from_wrfnat_and_keeps_the_published_rows() {
+        let rows = reference_specs();
+        let nat = rows.iter().find(|row| row.name == "hrrr-nat").expect("hrrr-nat row");
+        let upp = rows.iter().find(|row| row.name == "hrrr").expect("hrrr row");
+        assert!(upp.own_levels.is_none());
+        let levels = nat.own_levels.expect("own levels");
+        assert_eq!((levels.file_names)(9, 0), vec!["hrrr.t09z.wrfnatf00.grib2"]);
+        assert_eq!((levels.level_type, levels.first, levels.last), (105, 1, 25));
+        assert_eq!((nat.file_names)(9, 0), (upp.file_names)(9, 0));
+        let products = product_specs();
+        let product = |name: &str| products.iter().find(|spec| spec.name == name).expect(name);
+        let wind = product("850mb_wind_speed");
+        let recipe = own_level_recipe(wind.reference).expect("850 wind recipe");
+        assert_eq!(recipe.pressure_hpa, 850);
+        assert!(recipe.speed);
+        assert_eq!(recipe.components.iter().map(|c| c.2).collect::<Vec<_>>(), vec!["UGRD", "VGRD"]);
+        let patterns = own_level_patterns(&levels, &recipe);
+        assert_eq!(patterns.len(), 75);
+        assert!(patterns.contains(&"PRES:1 hybrid level".to_string()));
+        assert!(patterns.contains(&"VGRD:25 hybrid level".to_string()));
+        assert_eq!(plane_message(nat, wind), "hybrid 1-25, ln p");
+        assert_eq!(plane_message(upp, wind), "UGRD, VGRD 850 mb");
+        for name in ["850mb_wind_speed", "850mb_temperature", "mlcape", "td2m"] {
+            assert!(reference_serves(nat, product(name)), "{name}");
+        }
+        assert!(!reference_serves(nat, product("850mb_rh")));
+        assert!(products.iter().all(|spec| reference_serves(upp, spec)));
+        assert_eq!(plane_message(nat, product("mlcape")), "CAPE, 90-0 mb AGL");
+    }
+
+    /// A computed named diagnostic (mlcape) is admitted to the import: the
+    /// run's store carries it, so the CAPE sheet is drawn, not skipped.
+    #[test]
+    fn named_cape_products_admit_their_diagnostic() {
+        let specs: Vec<ProductSpec> = product_specs().into_iter().filter(|spec| spec.name == "mlcape").collect();
+        let options = import_options(&specs);
+        assert!(options.diagnostics);
+        assert!(options.required_fields.as_ref().expect("scoped").iter().any(|name| name == "mlcape"));
+        let raw: Vec<ProductSpec> = product_specs().into_iter().filter(|spec| matches!(spec.run, RunPlane::Named { raw: "SWDOWN", .. })).collect();
+        assert!(!raw.is_empty());
+        assert!(!import_options(&raw).diagnostics, "a raw WRF variable needs no diagnostic pass");
     }
 
     #[test]

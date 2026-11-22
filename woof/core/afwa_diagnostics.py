@@ -139,6 +139,10 @@ def capture_microphysics_theta(state,cfg,theta):
     or disabled (module_big_step_utilities_em.F:5688-5776)."""
     if getattr(cfg,'afwa_diag_opt',0) and bad_check_due(state,cfg):
         state.existing_scratch('afwa_theta')[...]=theta
+    # WRF v4.8.0 dynamic lightning reads the same post-scheme TH.
+    if getattr(cfg,'dyn_lightning_option',0):
+        from woof.core.dyn_lightning import capture_theta
+        capture_theta(state,cfg,theta)
 
 def restore_theta_ring(state,cfg,slices):
     """WRF never dispatches microphysics on the specified/nested ring.

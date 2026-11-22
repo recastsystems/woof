@@ -5,7 +5,7 @@ usage: native_rank_identity.py OUT.json REFERENCE_RUN_DIR OTHER_RUN_DIR...
 Compares every float variable of every tracer.*.nc present in all runs.
 """
 import os as _hex_os
-_hex_os.environ["WOOF_HEX_NUMERICS"] = "strict"  # a bitwise proof against native MPAS runs strict numerics (owner ruling 2026-10-16: fast is the default, strict the opt-in)
+_hex_os.environ["WOOF_HEX_NUMERICS"] = "strict"  # a bitwise proof against native MPAS runs strict numerics (fast is the default, strict the opt-in)
 import hashlib, json, sys
 from pathlib import Path
 import numpy as np

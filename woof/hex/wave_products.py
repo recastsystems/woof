@@ -28,7 +28,8 @@ def render_workdir(forecast_dir):
     """The render scratch folder, as a resolved path.
 
     THE BREAKAGE THIS FIXES (hex 0.4.14): woof's NativeIO.load resolves each array path and requires it inside the
-    folder it was given, which it does not resolve.  Under an output path with a symlink in it (a test host's and the
+    folder it was given, which it does not resolve. Under an output path with a symlink in it (a scratch directory
+    on a mounted data disk) every wave map failed with "prepared arrays must be .bin
     files inside the prepared folder", after the forecast had finished (the door's products stage exited 2).
     """
     import tempfile

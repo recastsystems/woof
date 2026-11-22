@@ -75,20 +75,28 @@ def keps_source() -> str:
     return module_source("keps")
 
 
-def load_keps_module(source: str | None = None, *, nz: int | None = None):
-    """Use the shared loader for normal calls and the planted control."""
+def load_keps_module(source: str | None = None, *, nz: int | None = None,
+                     down_sign: bool = False):
+    """Use the shared loader for normal calls and the planted control.
+
+    ``down_sign`` is correct-mode ML1 (RunConfig.pbl_boulac_down_sign): the
+    module is compiled with ``BOULAC_DOWN_SIGN``.  Off, the image and options
+    are exactly those before the key existed."""
     import cupy as cp
+    from woof.core.boulac import BOULAC_DOWN_SIGN_DEFINE
     from woof.core.kernels import load_module, load_module_int_defines
     from woof.wrf_exact import ENABLED
     # A runtime depth is specialized once and cached per device. Keep the
     # original generic image and options for word-exact native replay.
     specialize = nz is not None and not ENABLED
+    defines = (((("KEPS_NZ", int(nz)),) if specialize else ())
+               + (BOULAC_DOWN_SIGN_DEFINE if down_sign else ()))
     if source is None:
-        if specialize:
-            return load_module_int_defines("keps", (("KEPS_NZ", int(nz)),))
+        if defines:
+            return load_module_int_defines("keps", defines)
         return load_module("keps")
     from woof.certify.kernel_manifest import record_module
-    options = MODULE_OPTIONS + ((f"-DKEPS_NZ={int(nz)}",) if specialize else ())
+    options = MODULE_OPTIONS + tuple(f"-D{key}={value}" for key, value in defines)
     module = cp.RawModule(code=source, options=options)
     record_module(MODULE_KEY, source=source, options=options, module=module)
     return module
@@ -115,8 +123,11 @@ def _check(name, array, shape):
 
 def keps_step(inputs, state, *, dt: float, itimestep: int,
               cp_air: float = KEPS_CP, g: float = KEPS_G,
-              source: str | None = None) -> dict:
+              source: str | None = None, down_sign: bool = False) -> dict:
     """Run one ``keps`` call over every column.
+
+    ``down_sign`` is correct-mode ML1 (RunConfig.pbl_boulac_down_sign), the
+    BouLac downward length's constant-theta sign; off is WRF's arithmetic.
 
     ``inputs`` holds :data:`KEPS_MASS_INPUTS` ``(nz, ny, nx)``, ``p8w``
     ``(nz+1, ny, nx)`` and :data:`KEPS_SURFACE_INPUTS` ``(ny, nx)``, float32,
@@ -157,7 +168,7 @@ def keps_step(inputs, state, *, dt: float, itimestep: int,
     sms = int(device.attributes["MultiProcessorCount"])
     tile = keps_tile_threads(columns, sms)
     ws = cp.empty(keps_workspace_floats(nz, tile), dtype=cp.float32)
-    kernel = load_keps_module(source, nz=nz).get_function("keps_columns")
+    kernel = load_keps_module(source, nz=nz, down_sign=down_sign).get_function("keps_columns")
     kernel((tile // KEPS_BLOCK,), (KEPS_BLOCK,), (
         *(inputs[name] for name in KEPS_MASS_INPUTS), inputs["p8w"],
         *(inputs[name] for name in KEPS_SURFACE_INPUTS),

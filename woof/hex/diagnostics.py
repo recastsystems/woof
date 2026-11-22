@@ -51,7 +51,7 @@ def edge_signs_on_vertices(mesh: object) -> FloatArray:
     edges = _mesh_array(mesh, "edgesOnVertex").astype(np.int64, copy=False)
     vertices = _mesh_array(mesh, "verticesOnEdge").astype(np.int64, copy=False)
     # Whole-array form of the per-vertex, per-slot loop (the same 1.0 / -1.0 / 0.0 words). THE COST THIS
-    # REMOVES (RRFS hrrrv5 mv3km, V6000, 2026-10-28): the Python loop ran ~0.5 s per dycore build for 413k
+    # REMOVES (RRFS hrrrv5 mv3km, RTX PRO 6000, 2026-10-28): the Python loop ran ~0.5 s per dycore build for 413k
     # vertices on one core (about 5 s on NOAA's conus3km).  An edge index outside verticesOnEdge raises
     # IndexError, as the loop did.
     active = edges >= 0

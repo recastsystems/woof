@@ -98,6 +98,23 @@ def synthetic_frames() -> dict[str, int]:
     return frames
 
 
+def _composed_only(recorded):
+    """The recorded keys a default Noah-MP run still prices from the composed
+    rows.  From 2.9.14 every Noah-MP option set steps the resident route
+    (noahmp_surface_device.device_route), whose selected images are priced
+    from noahmp_selected_frames.READINGS; those keys are checked there."""
+    from woof.core.noahmp_selected_frames import READINGS
+    selected = {key for _name, key, _identity, _frame in READINGS}
+    return {k: v for k, v in recorded.frames.items() if k not in selected}
+
+
+def _selected_priced(frames):
+    from woof.core.noahmp_selected_frames import selected_frames
+    for key, frame in selected_frames()[0].items():
+        # Never priced below the selected image's reading.
+        assert frames[key] >= frame, key
+
+
 @pytest.fixture
 def row():
     return kfr.ComposedUnitFrameRecording(
@@ -417,8 +434,9 @@ def test_a_recorded_platform_is_recognised_from_its_own_fingerprint(recorded):
 def test_a_present_card_on_a_recorded_platform_is_priced_from_its_row(recorded, present):
     exp = experiment()
     frames = pf.kernel_local_frame_bytes(exp, profile=present)
-    for key, frame in recorded.frames.items():
+    for key, frame in _composed_only(recorded).items():
         assert frames[key] == frame
+    _selected_priced(frames)
     widest = max(frames.values())
     assert widest == 8192, "the synthetic slab frame must be the widest"
     assert pf.kernel_local_memory_bytes(exp, profile=present) == (
@@ -465,8 +483,9 @@ def test_another_platform_is_priced_from_the_ceiling_and_says_so(recorded, prese
     exp = experiment()
     other = replace(present, name="OTHER GPU", compile_platform=("99", "0.0.2"))
     frames = pf.kernel_local_frame_bytes(exp, profile=other)
-    for key, frame in recorded.frames.items():
+    for key, frame in _composed_only(recorded).items():
         assert frames[key] == frame, "one row: the ceiling IS the row"
+    _selected_priced(frames)
     estimate = pf.estimate_experiment(exp, profile=other)
     assert estimate.local_memory_profile is other, "the card asked about, untouched"
     assert pf.kernel_local_memory_bytes(exp, profile=other) == other.reservation_bytes(8192)
@@ -490,8 +509,9 @@ def test_another_platform_is_priced_from_the_ceiling_and_says_so(recorded, prese
     assert "recorded platforms sm_99/0.0.1, sm_98/0.0.1" in pf.non_pool_basis(other, exp)
     # The card whose platform IS recorded still gets its own row, not the
     # ceiling: the exact reading is preferred whenever there is one.
-    assert pf.kernel_local_frame_bytes(exp, profile=present)["noahmp_water"] == (
-        recorded.frames["noahmp_water"])
+    from woof.core.noahmp_selected_frames import selected_frames
+    assert pf.kernel_local_frame_bytes(exp, profile=present)["noahmp_water"] == max(
+        recorded.frames["noahmp_water"], selected_frames()[0]["noahmp_water"])
     assert ("measured on this card's compile platform sm_99/0.0.1"
             in pf.non_pool_basis(present, exp))
 
@@ -535,8 +555,9 @@ def test_this_machine_unread_is_priced_on_the_reference_profile_and_says_so(reco
     exp = experiment()
     monkeypatch.setenv("GPUWM_NO_LOCAL_GPU", "1")
     frames = pf.kernel_local_frame_bytes(exp)
-    for key, frame in recorded.frames.items():
+    for key, frame in _composed_only(recorded).items():
         assert frames[key] == frame
+    _selected_priced(frames)
     reference = pf.MEASURED_LOCAL_MEMORY_PROFILE
     assert pf.kernel_local_memory_bytes(exp) == reference.reservation_bytes(8192)
     assert pf.non_pool_device_bytes(exp) == pf.non_pool_device_bytes(exp, profile=reference)
@@ -724,9 +745,10 @@ def test_the_basis_sentence_says_whether_noahmp_frames_were_measured_on_this_car
     assert "measured on this card (" in measured
     # The device and the reading date are the basis; the host the reading
     # was taken on is recorded on the row but is not user-facing text.
-    assert measured.endswith(
-        "Noah-MP local frames measured on this card's compile platform "
-        "sm_99/0.0.1 (SYNTHETIC TEST GPU, read 2026-01-01)")
+    # The composed clause, then (2.9.14, resident route) the selected one.
+    assert ("Noah-MP local frames measured on this card's compile platform "
+            "sm_99/0.0.1 (SYNTHETIC TEST GPU, read 2026-01-01); selected "
+            "Noah-MP frames priced from") in measured
     # Scheme 2 on the same card: no Noah-MP clause at all, and no
     # experiment means the profile half alone, exactly as before.
     assert "Noah-MP" not in pf.non_pool_basis(present, experiment(lsm=2))

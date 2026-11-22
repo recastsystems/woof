@@ -51,7 +51,7 @@ figures and exact commands are in the lane report, separate from disposable
 simulation inputs and outputs. One case establishes this implementation's
 runtime proof; it does not establish general forecast skill. Rust ASOS verification
 at hours 1, 3 and 6 scored 208, 208 and 187 paired stations. Raw 2 m
-temperature RMSE was 2.106, 2.002 and 2.432 K for WOOF, versus 2.425,
+temperature RMSE was 2.106, 2.002 and 2.432 K for WOOF-ArWen, versus 2.425,
 1.964 and 2.277 K for native WRF. No precipitation observation score is claimed.
 
 The 2026-11-02 retime uses two retained strict WRF 4.7.1 tile packets,

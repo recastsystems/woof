@@ -8,7 +8,7 @@ from generate_port import generate
 
 
 def literals(path):
-    wanted={'_SUPPORT','_SCHEME_SOURCE','_ENTRY','_DRIVER','ARGUMENTS','SOURCE_HASHES',
+    wanted={'_SUPPORT','_SCHEME_SOURCE','_ENTRY','_DRIVER','ARGUMENTS','SOURCE_HASHES','UPSTREAM_SOURCE_HASHES',
             'AUTHORITY_LABEL','AUTHORITY_PATCH_SHA256'}
     return {target.id:ast.literal_eval(node.value)
             for node in ast.parse(path.read_text()).body if isinstance(node,ast.Assign)

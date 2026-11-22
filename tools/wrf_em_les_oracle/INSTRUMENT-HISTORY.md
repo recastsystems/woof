@@ -9,7 +9,7 @@ auditable rather than asserted.
 definitions -- z_i as the total-flux minimum, w* from the prescribed Q_s, the
 0.1-0.7 z_i fit band, the 1:int(0.7*nz) index band for the resolved fraction,
 the fnm/fnp SGS flux, the final-30-minute window, the Parseval-checked
-spectrum -- were authored against the WOOF case source and validated on the
+spectrum -- were authored against the WOOF-ArWen case source and validated on the
 stock `em_les` smoke run, which completed before the first matched run.
 
 **Changed after seeing `match_km3_100m` output:**
@@ -18,14 +18,14 @@ stock `em_les` smoke run, which completed before the first matched run.
    value it actually produced, which was exactly **1.0**. Under a diagnostic
    Smagorinsky closure there is no prognostic SGS TKE, so that ratio has no
    denominator; 1.0 was an absent-denominator artifact claiming "100 %
-   resolved". WOOF's own case module makes the same call for the same reason.
+   resolved". WOOF-ArWen's own case module makes the same call for the same reason.
    This removes a number, it does not improve one.
-2. Added a `final_sample` block. WOOF's committed receipt entries
+2. Added a `final_sample` block. WOOF-ArWen's committed receipt entries
    (`wth_res_max_over_qs`, `resolved_fraction_ml`, `tke_res_max`) are computed
    from the **last sample**, while this scorer's primary values are
    30-minute-window averages. Comparing one against the other would have been
    comparing an average with an instantaneous value. Both conventions are now
-   emitted and the comparator selects per metric to match WOOF's convention.
+   emitted and the comparator selects per metric to match WOOF-ArWen's convention.
 3. `e_sgs_ml_mean` reports null under `km_opt=3` for the same reason as (1).
 
 **Not changed after seeing output:** every band, window, level and fit range.
@@ -109,7 +109,7 @@ this lane came out of one version of that file.
 **Also written after the data, and declared:** `reduce_moist_one.py`. It
 imports `reduce_moist` from `same_instrument_moist.py` -- committed before
 any moist run existed -- and applies it to a single side's npz, so the WRF
-arm's resolved fractions come from exactly the routine the WOOF comparison
+arm's resolved fractions come from exactly the routine the WOOF-ArWen comparison
 will use rather than from a second implementation that could quietly differ.
 It defines no metric and cuts no band; it is an entry point.
 

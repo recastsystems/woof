@@ -2,12 +2,12 @@
   "schema": "arwen.case-catalog.v1",
   "catalog": {
     "id": "synthetic-format-demo",
-    "title": "WOOF case-catalog authoring example (synthetic)",
+    "title": "WOOF-ArWen case-catalog authoring example (synthetic)",
     "version": "1",
     "description": "Two format-only entries. Replace with independently documented historical cases; do not invent source availability or physics evidence.",
     "provenance": [
       {
-        "author": "Example format supplied with WOOF",
+        "author": "Example format supplied with WOOF-ArWen",
         "kind": "synthetic-schema-example",
         "notes": "No historical facts or performance recommendations are asserted."
       }

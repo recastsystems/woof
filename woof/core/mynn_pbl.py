@@ -446,8 +446,15 @@ def mynn_scale_aware(dx: object, pblh: object) -> tuple[np.ndarray, np.ndarray]:
 
 def _boulac_length(
     zw: np.ndarray, dz: np.ndarray, qtke: np.ndarray, theta: np.ndarray,
+    boulac_down_sign: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Direct single-column translation of WRF ``boulac_length``."""
+    """Direct single-column translation of WRF ``boulac_length``.
+
+    ``boulac_down_sign`` is correct-mode ML1: the downward search's
+    constant-theta (linear) branch divides by ``beta*(theta(iz) -
+    theta(izz))``, the bbb -> 0 limit of its quadratic branch, as NCAR/
+    MYNN-EDMF 399f50f (PR 94) does; WRF v4.6.1 has the opposite sign.
+    """
 
     nz = dz.size
     dlu = np.empty(nz, dtype=np.float32)
@@ -517,8 +524,9 @@ def _boulac_length(
                             )), F(0.0))
                             tl = F(F(base + F(np.sqrt(radical))) / bbb / beta)
                         elif theta[izz] != theta[iz]:
-                            tl = F(F(qtke[iz] - zdo_sup)
-                                   / F(beta * F(theta[izz] - theta[iz])))
+                            drop = (F(theta[iz] - theta[izz]) if boulac_down_sign
+                                    else F(theta[izz] - theta[iz]))
+                            tl = F(F(qtke[iz] - zdo_sup) / F(beta * drop))
                         else:
                             tl = F(0.0)
                         dld[iz] = F(zzz - dzt + tl)
@@ -555,6 +563,7 @@ def _mym_length_column(
     fltv: np.float32,
     zi: np.float32,
     psig_bl: np.float32,
+    boulac_down_sign: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Single-column WRF ``mym_length`` CASE(1), ``module_bl_mynn.F:1999-2098``.
 
@@ -612,7 +621,7 @@ def _mym_length_column(
         k += 1
     elt = min(max(F(F(0.23) * elt / vsc_sum), F(8.0)), F(400.0))
     vsc = _powf(F(GTR * elt * max(F(fltv), F(0.0))), ONETHIRD)
-    _, elblavg = _boulac_length(zw, dz, qtke, thetaw)
+    _, elblavg = _boulac_length(zw, dz, qtke, thetaw, boulac_down_sign)
     el = np.empty(nz, dtype=np.float32)
     el[0] = F(0.0)
     for k in range(1, nz):
@@ -741,8 +750,12 @@ def _mym_length_local_column(
 
 def mynn_mixlength_default(
     values: Mapping[str, object], *, bl_mynn_mixlength: int = 1,
+    boulac_down_sign: bool = False,
 ) -> dict[str, np.ndarray]:
-    """Translate WRF ``mym_length`` options 1 (nonlocal) and 2 (local)."""
+    """Translate WRF ``mym_length`` options 1 (nonlocal) and 2 (local).
+
+    ``boulac_down_sign`` is correct-mode ML1 (:func:`_boulac_length`).
+    """
 
     if type(bl_mynn_mixlength) is not int or bl_mynn_mixlength not in (1, 2):
         raise ValueError("MYNN mixing length requires bl_mynn_mixlength=1 or 2")
@@ -800,6 +813,7 @@ def mynn_mixlength_default(
             columns["edmf_w"][column], columns["edmf_a"][column],
             F(scalars["rmo"][column]), F(scalars["fltv"][column]),
             F(scalars["zi"][column]), F(scalars["psig_bl"][column]),
+            boulac_down_sign,
         )
         el_out[column] = el
         qkw_out[column] = qkw
@@ -881,6 +895,7 @@ def mynn_initialize_default(
     initialize_qke: bool = True,
     bl_mynn_mixlength: int = 1,
     spp_pbl: int = 0,
+    boulac_down_sign: bool = False,
 ) -> dict[str, np.ndarray]:
     """Translate WRF ``mym_initialize`` (``module_bl_mynn.F:1514-1674``).
 
@@ -1016,7 +1031,7 @@ def mynn_initialize_default(
             else:
                 el, qkw = _mym_length_column(
                     dz, zw, u, v, qke, dtv, theta, edmf_w, edmf_a,
-                    rmo, F(0.0), zi, psig_bl,
+                    rmo, F(0.0), zi, psig_bl, boulac_down_sign,
                 )
             for k in range(1, nz):
                 elq = F(el[k] * qkw[k])
@@ -2143,6 +2158,7 @@ def _tendency_solve(
     nz: int,
     onoff: np.float32,
     mixscalars: bool = False,
+    surface_density_tv: bool = False,
 ) -> dict[str, np.ndarray]:
     """The per-column body of ``mynn_tendencies``.
 
@@ -2214,7 +2230,12 @@ def _tendency_solve(
         rhoz = np.empty(nz + 1, dtype=np.float32)
         khdz = np.empty(nz + 1, dtype=np.float32)
         kmdz = np.empty(nz + 1, dtype=np.float32)
-        rhosfc = F(psfc / F(RD * F(tk[0] + F(P608 * qv[0]))))
+        if surface_density_tv:
+            # Referee of mynn_fixes_v61 edit A2 (correct-mode MY1;
+            # NCAR/MYNN-EDMF eb5029c): psfc/(r_d*tk(kts)*(one+p608*qv(kts))).
+            rhosfc = F(psfc / F(F(RD * tk[0]) * F(F(1.0) + F(P608 * qv[0]))))
+        else:
+            rhosfc = F(psfc / F(RD * F(tk[0] + F(P608 * qv[0]))))
         dtz[0] = F(delt / dz[0])
         rhoz[0] = rho[0]
         rhoinv[0] = F(F(1.0) / rho[0])
@@ -2574,8 +2595,14 @@ def mynn_tendencies_default(
     flag_qnifa: bool = False,
     flag_qnbca: bool = False,
     flag_ozone: bool = False,
+    surface_density_tv: bool = False,
 ) -> dict[str, np.ndarray]:
     """Translate WRF ``mynn_tendencies`` with the mass flux admitted.
+
+    ``surface_density_tv`` is the referee of ``mynn_fixes_v61`` edit A2
+    (correct-mode MY1): the surface density from the virtual temperature
+    (NCAR/MYNN-EDMF eb5029c) instead of WRF v4.6.1's
+    ``psfc/(r_d*(tk + p608*qv))``.  Off (the default) is WRF's referee.
 
     Same routine as :func:`mynn_tendencies_nomf` and the same admitted option
     identity except that ``s_aw*``, ``sd_aw*``, ``sub_*`` and ``det_*`` may be
@@ -2652,7 +2679,8 @@ def mynn_tendencies_default(
                 raise ValueError(f"{name} must have shape (ncol,nz+1)")
             interfaces[name] = array
     return _tendency_solve(columns, interfaces, scalars, ncol, nz, onoff,
-                           mixscalars=(bl_mynn_mixscalars == 1))
+                           mixscalars=(bl_mynn_mixscalars == 1),
+                           surface_density_tv=surface_density_tv)
 
 
 __all__ = [

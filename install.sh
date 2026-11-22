@@ -30,7 +30,8 @@
 #   4. stages the externalized Thompson tables with `woof fetch-tables`
 #      (downloads only what is absent -- ~243 MiB from a checkout --
 #      SHA-256 verified before install; a no-op when already staged;
-#      skip with --no-fetch-tables or WOOF_INSTALL_NO_FETCH_TABLES=1);
+#      skip with --no-fetch-tables or WOOF_INSTALL_NO_FETCH_TABLES=1); it runs
+#      after step 6, because it downloads through tools/rustwx's rw_fetch;
 #   5. builds the vendored Rust GRIB bridges offline in
 #      tools/grib1_bridge;
 #   6. builds the vendored production render engine offline in
@@ -590,25 +591,6 @@ if ! install_python_packages; then
         || fail "pip could not install woof into .venv (see its output above)"
 fi
 
-# ------------------------------------------------------- externalized tables
-# The two largest Thompson tables ship as GitHub release assets rather
-# than in the wheel (freezeH2O.dat, 243 MiB, is not in git either);
-# fetch-tables downloads only what is absent and verifies SHA-256
-# against the packaged pins before installing.
-if [ "$NO_FETCH_TABLES" = 1 ]; then
-    say "skipping the externalized table fetch (--no-fetch-tables);"
-    say "woof doctor prints the exact fetch command while they are missing"
-else
-    say "staging the externalized Thompson tables (downloads only what"
-    say "is absent -- ~243 MiB from a checkout; SHA-256 verified)"
-    .venv/bin/woof fetch-tables
-    # The default mixed-layer ocean's 12 WOA18 MLD months (~85 MB), staged
-    # now so no forecast reads NCEI at start.  Not fatal here: a forecast
-    # still fetches its month on a miss, and doctor names the gap.
-    say "staging the WOA18 ocean mixed-layer climatology (~85 MB)"
-    .venv/bin/woof fetch-tables --ocean --ocean-only || say "WOA18 ocean climatology not staged yet; re-run: woof fetch-tables --ocean"
-fi
-
 # ------------------------------------------------------- offline Rust build
 say "building the vendored Rust GRIB bridges (offline, locked)"
 ( cd tools/grib1_bridge && cargo build --release --locked --offline )
@@ -627,6 +609,31 @@ else
         say "for GPU rendering: sudo apt-get install -y libvulkan1 (dnf: vulkan-loader)"
     fi
 fi
+# ------------------------------------------------------- externalized tables
+# The two largest Thompson tables ship as GitHub release assets rather
+# than in the wheel (freezeH2O.dat, 243 MiB, is not in git either);
+# fetch-tables downloads only what is absent and verifies SHA-256
+# against the packaged pins before installing.
+# (Recast WOOF 1.1.7) after the render engine: fetch-tables downloads through tools/rustwx's rw_fetch.
+# THE BREAKAGE: run before the Rust build, a fresh clone's `bash install.sh` stopped here with "rw_fetch is
+# missing" (exit 2) and built none of the native tools.
+if [ "$NO_FETCH_TABLES" = 1 ]; then
+    say "skipping the externalized table fetch (--no-fetch-tables);"
+    say "woof doctor prints the exact fetch command while they are missing"
+elif [ "$NO_RENDER" = 1 ]; then
+    say "skipping the externalized table fetch: it downloads through tools/rustwx's"
+    say "rw_fetch, which --no-render does not build; run woof fetch-bridges, then woof fetch-tables"
+else
+    say "staging the externalized Thompson tables (downloads only what"
+    say "is absent -- ~243 MiB from a checkout; SHA-256 verified)"
+    .venv/bin/woof fetch-tables
+    # The default mixed-layer ocean's 12 WOA18 MLD months (~85 MB), staged
+    # now so no forecast reads NCEI at start.  Not fatal here: a forecast
+    # still fetches its month on a miss, and doctor names the gap.
+    say "staging the WOA18 ocean mixed-layer climatology (~85 MB)"
+    .venv/bin/woof fetch-tables --ocean --ocean-only || say "WOA18 ocean climatology not staged yet; re-run: woof fetch-tables --ocean"
+fi
+
 say "building the regular-grid Zarr reader (offline, locked)"
 ( cd tools/zarr_bridge && cargo build --release --locked --offline )
 # The optional Icechunk output store writer; its crates are vendored with rustwx.

@@ -181,7 +181,7 @@ def recover_supplied_soil(path, raw, attributes, *, source_directory=None):
     directory = canonical_path(source_directory if source_directory is not None else supplied_path.parent)
     path = canonical_path(supplied_path)
     remedy = ("Keep the matching first met_em file and its producing Vtable beside the WRF inputs, "
-              "or pass --soil-source DIR for their original directory. WOOF will recover the "
+              "or pass --soil-source DIR for their original directory. WOOF-ArWen will recover the "
               "source layers automatically. Alternatively initialize directly from the source "
               "model through native preparation. The final four WRF layers cannot identify "
               "the source layer amounts on their own.")

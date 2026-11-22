@@ -128,4 +128,4 @@ wps_namelist = "era5_regional_demo.namelist.wps"
 geog_root = "${GPUWM_CASE_DATA_ROOT}/WPS_GEOG"
 sfcp_to_sfcp = true
 output_domain = 1
-output_title = "WOOF ERA5 regional demo"
+output_title = "WOOF-ArWen ERA5 regional demo"

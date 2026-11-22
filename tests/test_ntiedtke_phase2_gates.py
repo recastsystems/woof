@@ -178,7 +178,7 @@ def test_new_tiedtke_consumes_the_advective_forcing_pair():
 
     WRF's cumulus driver pre-folds RTHRATEN + RTHBLTEN into RTHFTEN at
     module_cumulus_driver.F:867 for G3SCHEME and NTIEDTKESCHEME ONLY. GF
-    is not in that list and sums the three lanes itself, so WOOF's dycore
+    is not in that list and sums the three lanes itself, so WOOF-ArWen's dycore
     exports PURE ADVECTION. The fold belongs in the New Tiedtke ADAPTER --
     moving the export double-counts radiative and PBL heating for GF and
     moves run_myj, the baseline every intensity number is graded against.
@@ -447,6 +447,20 @@ def test_the_prepared_cache_identity_needs_no_scheme_entry():
     # (woof.wind_table.drop_inert_config).
     from woof.wind_table import drop_inert_config
     drop_inert_config(expected_run)
+    # 3.0.0: the WRF 4.8.0 keys whose scheme is off (dynamic lightning,
+    # gwd_opt = 1, Shin-Hong, the MYNN-SFC roughness keys) and the TEMPO
+    # generation leave the identity, by the document's rule
+    # (woof.experiment).  The MYNN v6.1 switch is correct-mode MY1 since
+    # 3.0.3 and leaves with the correction keys below.
+    from woof.core.dyn_lightning import drop_default_dyn_lightning
+    drop_default_dyn_lightning(expected_run)
+    for name in ("gwdo_version", "gwd_dx_factor", "gwd_if_nonhyd",
+                 "shinhong_version", "shinhong_nonlocal_flux",
+                 "shinhong_scu_mixing", "shinhong_ke_dissipation",
+                 "sf_mynn_sfcflux_land", "sf_mynn_sfcflux_water", "shalwater_z0",
+                 "tempo_version", "tempo_hailhyperaware"):
+        expected_run.pop(name)
+
     neutral = {"surface_energy_diag": False, "cycling": False,
                "aercu_opt": 0, "aercu_fct": 1.0,
                "ruc_irrigation": "wrf_461", "ruc_qvg_cold_start": "wrf",
@@ -532,7 +546,11 @@ def test_the_prepared_cache_identity_needs_no_scheme_entry():
     # Under New Tiedtke its WB4 key is read, so the default (on) is bound.
     wb4 = ({"ntiedtke_dry_mass_coupling": True}
            if correct_mode.CORRECT_KEYS_DEFAULT else {})
-    assert new_scheme["run"] == {**expected_run, "cu_physics": 16, **wb4}
+    # cu_physics = 3's generation (GFL by default since 3.0.0) leaves an
+    # identity whose cumulus is not Grell-Freitas.
+    assert new_scheme["run"] == {**{k: v for k, v in expected_run.items()
+                                    if k != "cu_gf_version"},
+                                 "cu_physics": 16, **wb4}
     assert compare(cached, new_scheme) == (
         [], ["run.cu_physics"] + (["run.ntiedtke_dry_mass_coupling"] if wb4 else []))
     # A selected-field or per-scheme serializer cannot drop unrelated
@@ -637,7 +655,8 @@ def test_no_scheme_whitelist_restates_the_scheme_set():
         ("config.py", "if cfg.kf_edrates and cfg.cu_physics not in (11, 99):"),
         # These two paths only implement the native CU99 batch and leave
         # other schemes on the ordinary, fully admitted forecast runner.
-        ("ensemble/batch_physics.py", "if cfg.cu_physics not in (0, 99) or cfg.sf_urban_physics or getattr(cfg, \"sf_surface_mosaic\", 0) or driver.terrain_drag is not None:"),
+        # (WRF-480 L07 wrapped it to add the kim_tofd VAR producer refusal.)
+        ("ensemble/batch_physics.py", "if (cfg.cu_physics not in (0, 99) or cfg.sf_urban_physics or getattr(cfg, \"sf_surface_mosaic\", 0)"),
         ("ensemble/prepared_component_reservation.py", "if cfg.cu_physics not in (0, 99):"),
         # The same exact-chain ring, now also kept for do_avgflx_em (the
         # averaged-flux path reads the same sumflux ring); still no scheme gate.

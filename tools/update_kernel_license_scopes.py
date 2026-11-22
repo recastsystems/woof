@@ -52,6 +52,9 @@ FDLIBM_FILES: tuple[str, ...] = (
     # TEMPO's device log10 (tempo_device_log10) is FDLIBM's binary64
     # e_log10.c line for line; shipped in 2.8.9 unlisted, below the top level.
     "tempo/tempo_common.cuh",
+    # The TEMPO v3.2.5 generation (tempo_version = "v3.2.5") carries the same
+    # tempo_device_log10 (e_log10.c), copied from tempo/tempo_common.cuh.
+    "tempo325/tempo_common.cuh",
     # The Rust libm transcription's log1p (log1p.rs, from s_log1p.c) and
     # glibc's s_log1pf.c (plm_log1p, plm_log1pf); the root NOTICE gives the
     # file its own paragraph and its header carries the Sun notices.

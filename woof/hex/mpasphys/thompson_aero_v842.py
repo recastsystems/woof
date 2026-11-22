@@ -2,9 +2,9 @@
 """MPAS-A v8.4.2 aerosol optics and aerosol microphysics driver slice.
 
 ``gt_aod`` ports the complete module_mp_thompson_aerosols.F:23-210.
-The aerosol state is supplied by MPAS initialization (i6), in number/kg.
+The aerosol state is supplied by MPAS initialization, in number/kg.
 These launchers do not synthesize an aerosol profile or register an incomplete
-microphysics backend. The shared ``mp_thompson`` core belongs to p3-thompson.
+microphysics backend. The shared ``mp_thompson`` core lives in the Thompson port.
 
 Optics and permutation helpers use C-contiguous (column, level) buffers.
 The full microphysics driver follows p3's C-contiguous (level, column)

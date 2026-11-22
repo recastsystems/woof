@@ -10,6 +10,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import subprocess
 import time
@@ -63,7 +64,7 @@ def main():
     parser.add_argument('--arithmetic', choices=('default', 'strict'), default='default')
     parser.add_argument('--root', type=Path, default=Path(os.environ.get('HEX_OPERATIONAL_ROOT', 'operational-arm')))
     args = parser.parse_args()
-    grant = [v for v in os.environ.get('GPU_MUTEX_CARDS', '').replace(',', ' ').split() if v]
+    grant = [v for v in card_queue.granted() if v]
     if len(grant) != args.cards:
         raise ValueError('timed forecast must run under an exact whole-card queue grant')
     case = json.loads(args.case.read_text())

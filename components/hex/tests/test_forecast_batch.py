@@ -48,11 +48,11 @@ def test_roster_refuses_shared_destinations_and_door_modes(tmp_path):
 
 
 def test_cards_pair_the_grant_with_the_visible_devices():
-    assert granted_cards({"GPU_MUTEX_CARDS": "2,3", "CUDA_VISIBLE_DEVICES": "GPU-a,GPU-b"}) == [("2", "GPU-a"), ("3", "GPU-b")]
+    assert granted_cards({"CARD_QUEUE_CARDS": "2,3", "CUDA_VISIBLE_DEVICES": "GPU-a,GPU-b"}) == [("2", "GPU-a"), ("3", "GPU-b")]
     assert granted_cards({"CUDA_VISIBLE_DEVICES": "1"}) == [("1", "1")]
     assert granted_cards({}) == [("0", "0")]
     with pytest.raises(BatchRefusal):
-        granted_cards({"GPU_MUTEX_CARDS": "2,3", "CUDA_VISIBLE_DEVICES": "GPU-a"})
+        granted_cards({"CARD_QUEUE_CARDS": "2,3", "CUDA_VISIBLE_DEVICES": "GPU-a"})
 
 
 def test_every_member_runs_once_and_reports_its_own_result(tmp_path, monkeypatch):
@@ -64,7 +64,7 @@ def test_every_member_runs_once_and_reports_its_own_result(tmp_path, monkeypatch
     receipt_path = tmp_path / "batch-receipt.json"
     src = Path(forecast_batch.__file__).resolve().parents[1]
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(src), os.environ.get("PYTHONPATH", "")]))
-    monkeypatch.setenv("GPU_MUTEX_CARDS", "5,6")
+    monkeypatch.setenv("CARD_QUEUE_CARDS", "5,6")
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-x,GPU-y")
     rc = forecast_batch.run_batch(roster, receipt_path)
     receipt = json.loads(receipt_path.read_text())
@@ -208,7 +208,7 @@ def _fake_worker(tmp_path):
         "    os.makedirs(os.path.dirname(job['result']), exist_ok=True)\n"
         "    open(job['result'], 'w').write(json.dumps({'returncode': 0, 'batch': True}))\n"
         "    print(json.dumps({'run_id': job['run_id'], 'returncode': 0, 'began_unix': began,\n"
-        "                      'wall_seconds': time.time() - began, 'card_env': os.environ['GPU_MUTEX_CARDS']}),\n"
+        "                      'wall_seconds': time.time() - began, 'card_env': os.environ['CARD_QUEUE_CARDS']}),\n"
         "          flush=True)\n")
     return path
 
@@ -225,7 +225,7 @@ def _fake_release(tmp_path, returncode):
 
 
 def _run_fake_batch(tmp_path, monkeypatch, members, cards, per_card, release=0, **roster):
-    """run_batch with stand-in slot processes and a stand-in queue release (None: no GPU_MUTEX_RELEASE)."""
+    """run_batch with stand-in slot processes and a stand-in queue release (None: no CARD_QUEUE_RELEASE)."""
 
     worker = _fake_worker(tmp_path)
     monkeypatch.setattr(forecast_batch, "_worker_command", lambda: [sys.executable, str(worker)])
@@ -235,7 +235,7 @@ def _run_fake_batch(tmp_path, monkeypatch, members, cards, per_card, release=0, 
     else:
         script, log = _fake_release(tmp_path, release)
         monkeypatch.setattr(forecast_batch, "_release_argv", lambda card: [sys.executable, str(script), str(card)])
-    monkeypatch.setenv("GPU_MUTEX_CARDS", ",".join(cards))
+    monkeypatch.setenv("CARD_QUEUE_CARDS", ",".join(cards))
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", ",".join(f"GPU-{card}" for card in cards))
     receipt_path = tmp_path / "batch-receipt.json"
     rc = forecast_batch.run_batch(_roster(tmp_path, members, workers_per_card=per_card, **roster), receipt_path)
@@ -266,7 +266,7 @@ def test_without_the_queue_helper_nothing_is_released(tmp_path, monkeypatch):
     members = [_member(tmp_path, "long", sleep=1.0)] + [_member(tmp_path, f"m{i}", sleep=0.1) for i in range(3)]
     rc, receipt, calls = _run_fake_batch(tmp_path, monkeypatch, members, ["0", "1"], 1, release=None)
     assert rc == 0 and calls == [] and receipt["released_cards"] == []
-    assert receipt["card_release"].startswith("off: GPU_MUTEX_RELEASE is not set")
+    assert receipt["card_release"].startswith("off: CARD_QUEUE_RELEASE is not set")
 
 
 def test_the_roster_can_keep_every_card_to_the_end(tmp_path, monkeypatch):

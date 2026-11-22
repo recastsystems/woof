@@ -60,6 +60,9 @@ pub struct GwdFields {
     pub con: Vec<f64>,
     pub oa: [Vec<f64>; 4],
     pub ol: [Vec<f64>; 4],
+    /// Maximum sub-grid elevation per cell (m MSL), MPAS-Model PR #1408 `elvmax` (the KIM drag's
+    /// `omax`). Empty unless the kim2026 recipe ran; the v8.4.2 recipe never writes it.
+    pub elvmax: Vec<f64>,
     /// Dominant land mask per cell over the box, as MPAS's `hlanduse`.
     pub hlanduse: Vec<u8>,
     /// Cells whose variance was replaced by the mean of their neighbours.
@@ -729,6 +732,7 @@ pub fn compute(
         con,
         oa,
         ol,
+        elvmax: Vec::new(),
         hlanduse,
         smoothed_cells: smoothed,
         smooth_skipped_boundary_cells,

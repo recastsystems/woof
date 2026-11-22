@@ -845,7 +845,7 @@ fn verify_integrity(method: &str, value_b64: &str, payload: &[u8]) -> Option<boo
 }
 
 fn download(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut response = agent.get(url).call().map_err(|e| err(format!("GET {url}: {e}")))?;
+    let mut response = rw_http::get(agent, url).map_err(|e| err(format!("GET {url}: {e}")))?;
     let status = response.status().as_u16();
     if !(200..300).contains(&status) {
         return Err(err(format!("GET {url} answered HTTP {status}")));

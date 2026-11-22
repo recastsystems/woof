@@ -131,14 +131,15 @@ def physics_driver_required(cfg: RunConfig) -> bool:
 
 def terrain_drag_array_shapes(cfg: RunConfig) -> dict[str, tuple[int, ...]]:
     """TerrainDrag's domain-sized coefficients and statistics, held on GPU."""
-    from woof.static.orographic import GWD_FIELDS
+    from woof.static.orographic import gwd_fields, gwdo_version_of
 
     shape = (int(cfg.ny), int(cfg.nx))
     shapes = {}
     if int(getattr(cfg, "topo_wind", 0) or 0):
         shapes.update({f"terrain_drag/{name}": shape
                        for name in ("ctopo", "ctopo2")})
-    for name in GWD_FIELDS.get(int(getattr(cfg, "gwd_opt", 0) or 0), ()):
+    for name in gwd_fields(int(getattr(cfg, "gwd_opt", 0) or 0),
+                           gwdo_version_of(cfg)):
         shapes[f"terrain_drag/gwd/{name}"] = shape
     return shapes
 

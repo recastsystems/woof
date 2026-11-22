@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import sys
 import threading
@@ -65,7 +66,7 @@ def tree_cpu_seconds(*, clock=time.monotonic):
 
 def _cpu_attrs(attrs, phase, t_mono):
     """Every live begin/end carries attrs.cpu_s, its process tree's CPU seconds at that moment, so each stage's
-    cores = CPU / wall (owner ruling 2026-10-16: no stage on one CPU thread while cards or cores wait). Read here, not at
+    cores = CPU / wall (no stage on one CPU thread while cards or cores wait). Read here, not at
     append time, because hex holds early events until its run folder exists and replays them with their own
     clocks. ``tree_cpu_seconds`` reads /proc (live descendants and reaped children); off Linux, or with an engine
     without woof.timeline.parallelism, it falls back to os.times(). No device sync, no profiler."""
@@ -108,7 +109,7 @@ def configure(root):
 
 def card_index():
     # CUDA's visible ordinal zero is not necessarily the rental's card zero.
-    value = (os.environ.get("WOOF_CARD") or os.environ.get("GPU_MUTEX_CARDS", "").split(",")[0]
+    value = (os.environ.get("WOOF_CARD") or card_queue.get(card_queue.CARDS).split(",")[0]
              or os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")[0])
     return int(value) if value.isdecimal() else None
 

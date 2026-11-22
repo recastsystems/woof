@@ -2,7 +2,7 @@
 
 The transcribed scheme gives every thread one contiguous scratch slab, so a
 warp reading ``a[k]`` touches 32 different cache lines (32-way scatter).
-WOOF's GF measured the same placement at 2-6x slower than an interleaved
+WOOF-ArWen's GF measured the same placement at 2-6x slower than an interleaved
 one (woof/core/kernels/gf.cu, GFWS_LANES). Here every float/integer array
 pointer in the scheme becomes a lane pointer whose element ``i`` lives at
 ``p + i*GF_LANES``: element ``e`` of lane ``t`` in a 128-column slab sits at

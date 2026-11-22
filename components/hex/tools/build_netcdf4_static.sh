@@ -44,10 +44,41 @@ export SOURCE_DATE_EPOCH=1738886400
 deps="$work/deps"
 jobs=${CARGO_BUILD_JOBS:-${MAX_JOBS:-8}}
 cd "$work"
-fetch() { curl -fsSL -o "$2" "$1"; echo "$3  $2" | sha256sum -c -; }
-fetch "${GPUWM_CI_ZLIB_URL:-https://zlib.net/fossils/zlib-$zlib_version.tar.gz}" zlib.tar.gz "$zlib_sha256"
-fetch "https://github.com/HDFGroup/hdf5/releases/download/hdf5_$hdf5_version/hdf5-$hdf5_version.tar.gz" hdf5.tar.gz "$hdf5_sha256"
-fetch "https://downloads.unidata.ucar.edu/netcdf-c/$netcdf_version/netcdf-c-$netcdf_version.tar.gz" netcdf.tar.gz "$netcdf_sha256"
+# Each source comes from the first URL whose bytes are the pinned SHA-256; a URL is tried three times.
+# THE BREAKAGE THIS PREVENTS (the release runs of 0.6.0 and 0.6.1, 2026-11-17 01:31:35Z and 2026-11-19
+# 00:57:42Z): zlib.net answered the release build's request with a success status and bytes that were not
+# zlib-1.3.1.tar.gz ("zlib.tar.gz: FAILED"), 15 to 20 minutes after the dry run on the same URL got the
+# file, and both release runs needed a rerun.  zlib.net is one server, and the old fetch kept neither the
+# bytes nor what they were.  The first URL is upstream's own GitHub release asset (the same bytes, served
+# from the network the build runs in); zlib.net's fossils folder, which keeps every released version at a
+# fixed path, is the second.  A URL that gives other bytes is reported with its size, sum and first bytes,
+# and the build stops only when no URL gives the pinned bytes.
+fetch() {
+  local out=$1 sum=$2 url try got rc
+  shift 2
+  for url in "$@"; do
+    for try in 1 2 3; do
+      rc=0
+      curl -fsSL -o "$out" "$url" || rc=$?
+      if [ "$rc" -eq 0 ]; then
+        got=$(sha256sum "$out" | cut -c1-64)
+        if [ "$got" = "$sum" ]; then echo "$out: OK ($url)"; return 0; fi
+        echo "$out: $url (try $try) gave $(wc -c <"$out") bytes, sha256 $got, not the pinned $sum;" \
+             "first bytes: $(head -c 160 "$out" | tr -c '[:print:]' '.')" >&2
+      else
+        echo "$out: $url (try $try): curl exit $rc" >&2
+      fi
+      sleep $((5 * try))
+    done
+  done
+  echo "$out: FAILED: no URL gave the pinned sha256 $sum" >&2
+  return 1
+}
+fetch zlib.tar.gz "$zlib_sha256" ${GPUWM_CI_ZLIB_URL:+"$GPUWM_CI_ZLIB_URL"} \
+  "https://github.com/madler/zlib/releases/download/v$zlib_version/zlib-$zlib_version.tar.gz" \
+  "https://zlib.net/fossils/zlib-$zlib_version.tar.gz"
+fetch hdf5.tar.gz "$hdf5_sha256" "https://github.com/HDFGroup/hdf5/releases/download/hdf5_$hdf5_version/hdf5-$hdf5_version.tar.gz"
+fetch netcdf.tar.gz "$netcdf_sha256" "https://downloads.unidata.ucar.edu/netcdf-c/$netcdf_version/netcdf-c-$netcdf_version.tar.gz"
 tar -xzf zlib.tar.gz && tar -xzf hdf5.tar.gz && tar -xzf netcdf.tar.gz
 log() { "$@" >"$work/step.log" 2>&1 || { tail -40 "$work/step.log"; exit 1; }; }
 (cd "zlib-$zlib_version" && CFLAGS="-O2 -fPIC" log ./configure --static --prefix="$deps" && log make -j"$jobs" && log make install)

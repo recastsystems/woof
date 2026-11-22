@@ -153,6 +153,8 @@ fn usage() -> String {
         \x20                 arithmetic and USGS landuse_30s (RKIND=binary32).\n\
          --topo-data      GTOPO30 or GMTED2010; applies to --native-gwd-static.\n\
          --gwd-cell-scaling  positive effective-diameter factor; native default 1.0.\n\
+         --gwd-recipe     v842 (MPAS-A v8.4.2, default) or kim2026 (MPAS PR #1408: revised\n\
+        \x20                 OA/OL, 4x4-pixel minimum box, scaling default 2.0, elvmax for KIM drag).\n\
          --gwd-only       write only the ten native GWD fields as an init overlay.\n\
          --terrain-only   write the exact terrain and operator overlay for the vertical\n\
         \x20                 authority; only the terrain archive is read, no runnable static\n\
@@ -363,14 +365,21 @@ pub fn run(argv: Vec<std::ffi::OsString>) -> ExitCode {
     // statistics unless it asks for native ones by name.
     let native_gwd_requested = argv.iter().any(|a| a == "--native-gwd-static")
         || (namelist.is_some() && !argv.iter().any(|a| a == "--no-gwd"));
-    let native_gwd = if native_gwd_requested {
-        let scaling = match value(&argv, "--gwd-cell-scaling").unwrap_or_else(|| "1.0".into()).parse::<f32>() {
+    // --gwd-recipe v842 (default, MPAS-A v8.4.2) | kim2026 (MPAS PR #1408: adds elvmax, the KIM drag's omax).
+    let gwd_recipe = match rw_mpas::native_gwd::GwdRecipe::parse(
+        &value(&argv, "--gwd-recipe").unwrap_or_else(|| "v842".into())) {
+        Ok(r) => r,
+        Err(e) => { eprintln!("{e}"); return ExitCode::from(2); }
+    };
+    let native_gwd = if native_gwd_requested || gwd_recipe != rw_mpas::native_gwd::GwdRecipe::V842 {
+        let scaling = match value(&argv, "--gwd-cell-scaling").map(|v| v.parse::<f32>())
+            .unwrap_or(Ok(gwd_recipe.default_cell_scaling())) {
             Ok(v) => v,
             Err(e) => { eprintln!("--gwd-cell-scaling: {e}"); return ExitCode::from(2); }
         };
         match rw_mpas::native_gwd::NativeGwdConfig::under(&geog,
             &value(&argv, "--topo-data").unwrap_or_else(|| "GMTED2010".into()), scaling) {
-            Ok(cfg) => Some(cfg),
+            Ok(mut cfg) => { cfg.recipe = gwd_recipe; Some(cfg) }
             Err(e) => { eprintln!("{e}"); return ExitCode::from(2); }
         }
     } else { None };
@@ -490,14 +499,14 @@ pub fn run(argv: Vec<std::ffi::OsString>) -> ExitCode {
         let topo_data = if cfg.geog.terrain == geog.join("topo_30s") {
             "GTOPO30"
         } else { "GMTED2010" };
-        let scaling = cfg.native_gwd.as_ref().map_or(1.0, |gwd| gwd.cell_scaling);
+        let scaling = cfg.native_gwd.as_ref().map_or(gwd_recipe.default_cell_scaling(), |gwd| gwd.cell_scaling);
         let scaling = match value(&argv, "--gwd-cell-scaling").map(|v| v.parse::<f32>()) {
             Some(Ok(v)) => v,
             Some(Err(e)) => {eprintln!("--gwd-cell-scaling: {e}"); return ExitCode::from(2);}
             None => scaling,
         };
         cfg.native_gwd = match rw_mpas::native_gwd::NativeGwdConfig::under(&geog, topo_data, scaling) {
-            Ok(gwd) => Some(gwd),
+            Ok(mut gwd) => { gwd.recipe = gwd_recipe; Some(gwd) }
             Err(e) => {eprintln!("{e}"); return ExitCode::from(2);}
         };
     } else if !cfg.stages.gwd { cfg.native_gwd = None; }

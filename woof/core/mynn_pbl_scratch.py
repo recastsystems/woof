@@ -522,6 +522,11 @@ def mynn_pbl_scratch_shapes(chunk: int, nz: int, *,
         shapes[slot] = (count * chunk * (nz + 1),)
     for slot, (count, _names) in _COLUMN_GROUPS.items():
         shapes[slot] = (count * chunk,)
+    if bl_mynn_version == "wrf_480":
+        from woof.core.mynn480_gpu import scratch_shapes as scratch_shapes_480
+        shapes = {slot: shapes[slot] for slot in
+                  (SLOT_STAGE_LAYER, SLOT_STAGE_DX, SLOT_ZERO_COLUMN)}
+        shapes.update(scratch_shapes_480(chunk, nz))
     if bl_mynn_version == "wrf_471":
         from woof.core.mynn471_gpu import scratch_shapes
         # The 4.7.1 monolithic column owns its internal workspace. Keep
@@ -745,7 +750,15 @@ def probe_mynn_card(device: int | None = None) -> dict | None:
     compile.  A CPU-only box (where ``woof domain`` prices this scheme)
     takes the ``None`` road and runs the shipped default; only the
     derivation's own ``None`` road answers with the floor.
+
+    ``GPUWM_NO_LOCAL_GPU`` answers ``None`` before CuPy is asked
+    (:mod:`woof.local_gpu`): measured 2026-11-12 on a 16 GB node with the
+    variable set, this probe still opened the card and read 7.27 GB free.
     """
+    from woof.local_gpu import no_local_gpu
+
+    if no_local_gpu():
+        return None
     try:
         import cupy as cp
 

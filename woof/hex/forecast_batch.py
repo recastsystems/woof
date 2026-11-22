@@ -34,7 +34,7 @@ The tail (fewer members queued than live slots) is spread evenly over the
 cards instead of going to whichever slots free first, and a card whose
 slots have all ended while another card still works is handed back to the
 box queue at once, through the per-card release command the queue exports
-to a granted command as GPU_MUTEX_RELEASE (``$GPU_MUTEX_RELEASE CARD``).
+to a granted command as CARD_QUEUE_RELEASE (``$CARD_QUEUE_RELEASE CARD``; ``woof.hex.card_queue``).
 THE BREAKAGE BOTH PREVENT (a rented 4-card host, 2026-10-14, a free
 ensemble batch of 31 members on 4 cards x 3 slots): card 2's three slots finished their second
 members first (01:46:02-01:46:40Z) and took three of the last eight, which
@@ -49,7 +49,7 @@ Roster (JSON):
    "members": [{"run_id": "mem001", "argv": [door forecast flags, --init/--out/--scratch included],
                 "log": ".../forecast.log", "result": ".../result.json"}, ...]}
 
-Cards: GPU_MUTEX_CARDS (the box queue's grant, physical indices) paired with
+Cards: CARD_QUEUE_CARDS (the box queue's grant, physical indices) paired with
 CUDA_VISIBLE_DEVICES (the same cards, as the queue exports them).
 """
 from __future__ import annotations
@@ -57,6 +57,7 @@ from __future__ import annotations
 from collections import deque
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import statistics
 import subprocess
@@ -170,9 +171,9 @@ def granted_cards(environ=None):
 
     environ = os.environ if environ is None else environ
     visible = [item for item in environ.get("CUDA_VISIBLE_DEVICES", "").replace(" ", "").split(",") if item]
-    granted = [item for item in environ.get("GPU_MUTEX_CARDS", "").replace(" ", "").split(",") if item]
+    granted = [item for item in card_queue.get(card_queue.CARDS, "", environ).replace(" ", "").split(",") if item]
     if granted and visible and len(granted) != len(visible):
-        raise BatchRefusal(f"GPU_MUTEX_CARDS {granted} and CUDA_VISIBLE_DEVICES {visible} name different counts")
+        raise BatchRefusal(f"CARD_QUEUE_CARDS {granted} and CUDA_VISIBLE_DEVICES {visible} name different counts")
     if not visible:
         visible = granted or ["0"]
     if not granted:
@@ -306,10 +307,10 @@ def _worker_command():
 
 
 def _release_argv(card):
-    """The box queue's per-card release, ``$GPU_MUTEX_RELEASE CARD`` (the queue exports it to a granted command and
+    """The box queue's per-card release, ``$CARD_QUEUE_RELEASE CARD`` (the queue exports it to a granted command and
     withholds it from a nested step of a larger grant), or None when there is none."""
 
-    command = os.environ.get("GPU_MUTEX_RELEASE")
+    command = card_queue.get(card_queue.RELEASE)
     return [command, str(card)] if command else None
 
 
@@ -345,7 +346,7 @@ def run_batch(roster_path, receipt_path):
     if not roster.get("release_idle_cards", True):
         release = "off: the roster sets release_idle_cards false"
     elif _release_argv(cards[0][0]) is None:
-        release = ("off: GPU_MUTEX_RELEASE is not set (not under a box queue grant, a nested step of a larger "
+        release = ("off: CARD_QUEUE_RELEASE is not set (not under a box queue grant, a nested step of a larger "
                    "grant, or a queue without a per-card release); every card drops when the batch exits")
     else:
         release = "on"
@@ -445,8 +446,8 @@ def run_batch(roster_path, receipt_path):
     for card, visible in cards:
         for slot in range(per_card):
             name = f"card{card}.w{slot}"
-            env = dict(os.environ, CUDA_VISIBLE_DEVICES=visible, GPU_MUTEX_CARDS=str(card),
-                       WOOF_CARD=str(card), HEX_BATCH_WORKER=name)
+            env = card_queue.put(dict(os.environ, CUDA_VISIBLE_DEVICES=visible, WOOF_CARD=str(card),
+                                      HEX_BATCH_WORKER=name), card_queue.CARDS, str(card))
             # Several members share this card: each hands its pool's unused
             # blocks back at macro boundaries (fullstep_lts_forecast_v841,
             # WOOF_HEX_RELEASE_POOL) instead of holding its transients' peak.

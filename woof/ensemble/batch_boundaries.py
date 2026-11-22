@@ -160,13 +160,19 @@ class MemberBoundaryTables:
                                     wrf_real=bool(cfg.nested), timescale_s=original.relax_timescale_seconds(cfg))
         for name, value in zip(("weights:fcx", "weights:gcx"), weights):
             _copy_host(storage.arrays[name], value)
+        ring_ledgers = [{} for _ in boundaries]
         if not cfg.nested and set(fields) & original._HYDROMETEOR_RING_FIELDS:
             # Each member's ring serves its hydrometeors held as a single
-            # run's are (lateral_bc._held_host_sides), the same bytes.
+            # run's are (lateral_bc._held_host_sides), the same bytes; what
+            # each member's ring is fed is kept for the run record.
             radius = original.ring_cell_radius(cfg)
             for interval in range(len(times)):
                 for member, source in enumerate(boundaries):
-                    held = original._held_host_sides(source.intervals[interval], radius)
+                    held_interval = source.intervals[interval]
+                    held, served = original._held_host_sides_served(held_interval, radius)
+                    if served is not None:
+                        ring_ledgers[member][(float(held_interval.start_seconds),
+                                              float(held_interval.end_seconds))] = served
                     for (name, side, item), table in held.items():
                         _copy_host(storage.arrays[_table_key(interval, name, side, item)][member], table)
                     _finish_host_copies(storage, array_module)
@@ -177,11 +183,21 @@ class MemberBoundaryTables:
         result.topology, result.cfg = topology, deepcopy(cfg)
         result.width, result.dt, result.spec_exp = width, dt, spec_exp
         result.seam_sides = tuple(first.seam_sides)
+        result.ring_ledgers = tuple(ring_ledgers)
         result._evaluated_key = None
         result._views = {}
         result._view_owners = {}
         result._view_cache = {}
         return result
+
+    def hydrometeor_receipt(self, member_ids, *, through_seconds=None):
+        """The run record's ``lateral_boundary_hydrometeors`` block for the
+        members (:func:`woof.ingest.lateral_bc.ensemble_hydrometeor_ring_receipt`),
+        ``member_ids`` in pack order."""
+        ledgers = getattr(self, "ring_ledgers", None) or ({},) * self.members
+        return original.ensemble_hydrometeor_ring_receipt(
+            self.cfg, self.fields, dict(zip(member_ids, ledgers)),
+            through_seconds=through_seconds)
 
     def select(self, clock):
         """Select at solve entry, retaining the clock's post-increment DTBC."""

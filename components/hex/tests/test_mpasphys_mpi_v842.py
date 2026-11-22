@@ -363,9 +363,11 @@ def test_background_copies_native_soil_and_all_species_without_dummy():
     from woof.hex.jedi_contract import BACKGROUND_FIELDS
     dims = dict(nCells=4, nEdges=6, nVertices=5, nVertLevels=2, nSoilLevels=4, num_scalars=3)
     rows, data = [], {}
-    for name in BACKGROUND_FIELDS:
+    from woof.hex.cycle.land_state import LAND_FIELDS
+    native_fields = tuple(dict.fromkeys((*BACKGROUND_FIELDS, *(f.name for f in LAND_FIELDS if f.required))))
+    for name in native_fields:
         entity = 'nEdges' if name == 'u' else 'nCells'
-        leading = ('num_scalars', 'nVertLevels') if name == 'scalars' else ('nSoilLevels',) if name in ('smois', 'tslb') else ()
+        leading = ('num_scalars', 'nVertLevels') if name == 'scalars' else ('nSoilLevels',) if name in ('smois', 'sh2o', 'tslb') else ()
         dimensions = [*leading, entity]
         shape = [dims[d] + int(d == entity) for d in dimensions]
         rows.append(dict(name=name, pool='pool', pool_name=name, dimensions=dimensions,
@@ -381,6 +383,35 @@ def test_background_copies_native_soil_and_all_species_without_dummy():
     data['rho'][0] = np.nan
     with pytest.raises(ValueError, match='non-finite'):
         background_fields(session, SimpleNamespace(fields=rows, dimensions=dims), ('qv', 'qc', 'tke'))
+
+
+def test_background_leaves_out_pbl_height_the_scheme_has_not_set_yet():
+    """THE BREAKAGE THIS PREVENTS (hex 0.5.0 both-routes matrix, 2026-11-09): --jedi-background on a cold start
+    stopped at its first frame on every MPAS suite, because HPBL is still its allocation default there."""
+    from woof.hex.jedi_contract import BACKGROUND_FIELDS
+    from woof.hex.cycle.land_state import LAND_FIELDS
+    dims = dict(nCells=4, nEdges=6, nVertices=5, nVertLevels=2, nSoilLevels=4, num_scalars=3)
+    rows, data = [], {}
+    for name in (*dict.fromkeys((*BACKGROUND_FIELDS, *(f.name for f in LAND_FIELDS if f.required))), 'hpbl'):
+        entity = 'nEdges' if name == 'u' else 'nCells'
+        leading = (('num_scalars', 'nVertLevels') if name == 'scalars'
+                   else ('nSoilLevels',) if name in ('smois', 'sh2o', 'tslb') else ())
+        dimensions = [*leading, entity]
+        shape = [dims[d] + int(d == entity) for d in dimensions]
+        rows.append(dict(name=name, pool='pool', pool_name=name, dimensions=dimensions,
+                         components=['qv', 'qc', 'tke'] if name == 'scalars' else []))
+        data[name] = np.arange(np.prod(shape), dtype=np.float32).reshape(shape) + np.float32(1)
+    session = SimpleNamespace(native=SimpleNamespace(get_field=lambda pool, name: data[name]))
+    layout = SimpleNamespace(fields=rows, dimensions=dims)
+    data['hpbl'] = np.zeros(5, np.float32)                       # cold start: the PBL scheme has not run
+    fields, provenance = background_fields(session, layout, ('qv', 'qc', 'tke'))
+    assert 'pblh' not in fields and 'pblh' not in provenance and fields['smois'].shape == (4, 4)
+    data['hpbl'] = np.array([310, 505, 1200, 80, 0], np.float32)   # set by the scheme (the last word is the dummy)
+    fields, provenance = background_fields(session, layout, ('qv', 'qc', 'tke'))
+    assert fields['pblh'].tolist() == [310, 505, 1200, 80] and 'HPBL' in provenance['pblh']
+    data['hpbl'] = np.array([310, 0, 1200, 80, 0], np.float32)     # set in part: still refused
+    with pytest.raises(ValueError, match='lacks positive scheme-owned HPBL'):
+        background_fields(session, layout, ('qv', 'qc', 'tke'))
 
 
 def test_rank_resume_continues_the_carried_clock_flags_and_owned_accumulators():
@@ -426,3 +457,51 @@ def test_rank_resume_continues_the_carried_clock_flags_and_owned_accumulators():
              for p in parts]
     sealed = moving.assemble_continuation(ranks, parts)
     np.testing.assert_array_equal(sealed['output_accumulators']['prec_acc_nc'], np.r_[sums[:4], 0])
+
+
+def test_rank_background_gathers_every_word_the_installed_writer_reads(monkeypatch, tmp_path):
+    """Two ranks write the background a writer reading words beyond BACKGROUND_FIELDS asks for (allon-1 2026-11-13:
+    the private stream's writer reads hpbl and zgrid; the rank gather took the public list and ended rc 2 with
+    "boundary did not assemble ('diag_physics', 'hpbl', 1)")."""
+    from woof.hex.mpasphys import cycling_v842, features_v842
+    parts = partitions()
+    dims = dict(nCells=4, nEdges=4, nVertices=4, nVertLevelsP1=2)
+    rows = [dict(name='hpbl', pool='diag_physics', pool_name='hpbl', kind='real', dimensions=['nCells'], shape=[5],
+                 nlevels=1, components=[]),
+            dict(name='zgrid', pool='mesh', pool_name='zgrid', kind='real', dimensions=['nVertLevelsP1', 'nCells'],
+                 shape=[2, 5], nlevels=1, components=[])]
+    layout = SimpleNamespace(fields=rows, dimensions=dims, configs={})
+    truth = {'hpbl': np.arange(4, dtype=np.float32) + 100, 'zgrid': np.arange(8, dtype=np.float32).reshape(2, 4)}
+
+    def writer(session, layout, names):   # a writer installed in place of the public one, as the private stream's is
+        return {name: np.asarray(session.native.get_field(pool, name))[..., :4]
+                for pool, name in (('diag_physics', 'hpbl'), ('mesh', 'zgrid'))}, {}
+    monkeypatch.setattr(cycling_v842, 'background_fields', writer)
+    written = {}
+
+    def write(arguments, session, layout, names, *, step, dt, out):
+        written.update(cycling_v842.background_fields(session, layout, names)[0])
+        return SimpleNamespace(path='bg.nc', receipt_path='bg.json', sha256='0')
+    monkeypatch.setattr(features_v842, 'write_background', write)
+
+    def local(part):   # this rank's local words: owned first, then halo, then the native dummy
+        ids = part.cell_l2g
+        return {'hpbl': np.append(truth['hpbl'][ids], np.float32(-1)),
+                'zgrid': np.concatenate((truth['zgrid'][:, ids], np.full((2, 1), -1, np.float32)), axis=1)}
+    pools = [local(part) for part in parts]
+
+    class TwoRanks:   # rank 0's view of a two-rank gather; rank 1's words are its own pool's
+        def Get_rank(self): return 0
+        def bcast(self, value, root=0): return value
+        def gather(self, value, root=0):
+            names = [next(n for n, words in pools[0].items() if words is item) for item in value]
+            return [value, [pools[1][name] for name in names]]
+    comm = TwoRanks()
+    execution = SimpleNamespace(comm=comm, rank=0, partitions=parts, inputs=None)
+    cycling = features_v842.MpiCycling(SimpleNamespace(jedi_background=True, history_every_minutes=None),
+                                       layout, execution)
+    session = SimpleNamespace(native=SimpleNamespace(get_field=lambda pool, name: pools[0][name]))
+    cycling.output(step=4, steps=4, dt=15.0, session=session, layout=layout, names=(), out=tmp_path)
+    np.testing.assert_array_equal(written['hpbl'], truth['hpbl'])
+    np.testing.assert_array_equal(written['zgrid'], truth['zgrid'])
+    assert cycling.backgrounds[0]['path'] == 'bg.nc'

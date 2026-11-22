@@ -414,7 +414,7 @@ def boundaries_one_state_at_a_time(cfg, *, seeds=(20_260_731, 20_260_732),
     at 672x672x49 is two un-stepped full-physics domains -- MEASURED 15.8 GB
     of device allocation before the second one finishes building, and an
     OutOfMemoryError on a 24 GB card that has room for the forecast itself.
-    :class:`woof.ingest.lateral_bc.StateBoundaryFrames` is WOOF's own
+    :class:`woof.ingest.lateral_bc.StateBoundaryFrames` is WOOF-ArWen's own
     accumulator for exactly this: it keeps only the four ``spec_bdy_width``
     perimeter frames and lets the caller drop the state at once, and its
     docstring pins that the result is element-for-element what the
@@ -485,7 +485,7 @@ def _cadence_counts(state_or_scalars) -> dict:
 
 def resident_leg(cfg, nsteps: int, *, poison=None, poison_step=None,
                  boundaries=None) -> dict:
-    """The control: one resident domain, WOOF's ordinary ``dycore.step``."""
+    """The control: one resident domain, WOOF-ArWen's ordinary ``dycore.step``."""
     import cupy as cp
     from woof.core.dycore import step as dycore_step
 
@@ -552,7 +552,7 @@ def streamed_leg(cfg, nsteps: int, tile_nx: int, tile_ny: int, *,
                  fixed: bool = False, trace_truth: bool = True) -> dict:
     """The subject: the domain in pinned host RAM, one tile at a time.
 
-    ``fixed=False`` is what WOOF ships: the observers read ``state``.
+    ``fixed=False`` is what WOOF-ArWen ships: the observers read ``state``.
     ``fixed=True`` routes the same reduction through the streamed stepper,
     which is the proposed fix and the negative control for it -- the poison
     below MUST be missed with ``fixed=False`` and MUST be caught with
@@ -892,7 +892,7 @@ def fold_gate(nx: int = 96, ny: int = 96, nz: int = 24, tile: int = 24,
     ``a skipped tile``    read the record after ``begin_sweep`` with tiles
                           missing -- must REFUSE, because a stale record
                           folded in with current ones looks healthy.
-    ``the corpse``        the same run read the way WOOF shipped it, off the
+    ``the corpse``        the same run read the way WOOF-ArWen shipped it, off the
                           DomainState, must DISAGREE -- otherwise this whole
                           module is testing nothing.
     """

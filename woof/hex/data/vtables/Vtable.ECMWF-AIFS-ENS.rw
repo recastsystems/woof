@@ -20,6 +20,7 @@ Param| Type |Level1|Level2| Name     | Units   | Description                    
  172 |  1   |      |      | LANDSEA  | 0/1 Flag| Land/Sea flag                            |  2  |  0  |  0  |  1  |
  141 |  1   |   0  |      | SNOW_EC  | m       |                                          |  0  |  1  | 254 |  1  |
      |  1   |   0  |      | SNOW     | kg m-2  | Water equivalent of accumulated snow     |     |     |     |     |
+  65 |  1   |   0  |      | SNOW     | kg m-2  | Snow water equivalent (GFS WEASD donor)  |  0  |  1  | 13  |  1  |
   31 |  1   |   0  |      | SEAICE   | fraction| Sea-ice area fraction                    | 10  |  2  |  0  |  1  |
  139 | 112  |   0  |   1  | ST000007 | K       | T of 0-7 cm ground layer                 |  2  |  3  | 18  | 151 |
  170 | 112  |   1  |   2  | ST007028 | K       | T of 7-28 cm ground layer                |  2  |  3  | 18  | 151 |
@@ -53,3 +54,9 @@ Param| Type |Level1|Level2| Name     | Units   | Description                    
 #  geopotential z (0-3-4 on level 100) and no gh, so the row above selects it as
 #  GEOPT and the writer derives HGT = GEOPT / 9.81 (met_intermediate hgt_from_geopt).
 #  Measured on the 2026-10-23 12Z enfo-cf/pf indexes, 2026-10-24.
+# Snow donor: ECMWF open data published no sd before the 2025-11-20 12Z run, and AIFS
+# publishes none; those rows add the same cycle's GFS WEASD (0-1-13, surface, kg m-2)
+# as a snow_donor input, decoded here straight to SNOW on its own GFS grid (the init
+# reads SNOW unmasked, record by record). Not doubled: the ncep-gfs doubling is a
+# map-source rule of GFS files, and the GRIB2 unit is already kg m-2. A file never
+# carries both: the IFS rows stop taking the donor when their own sd begins.

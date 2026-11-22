@@ -5,9 +5,9 @@ v4.6.1 per-case capture (gf-shallow-levels.csv / gf-shallow-surface.csv, 18
 cases) with fzu PINNED from that capture, exactly as the CPU suite pins it.
 
 WHY IT IS PINNED, AND WHAT CHANGED AT 2.7.0.  Through 2.6.5 gfk_tgamma was
-WOOF's earlier gamma, which returned glibc 2.39's tgammaf words, so the
+WOOF-ArWen's earlier gamma, which returned glibc 2.39's tgammaf words, so the
 kernel and this gate could run the chain unpinned, the notch past the CPU
-suite.  That gamma is replaced, and gfk_tgamma is now WOOF's own
+suite.  That gamma is replaced, and gfk_tgamma is now WOOF-ArWen's own
 CORRECTLY ROUNDED gamma,
 which glibc's is not on 39.44 per cent of [0.25, 36].  The shallow arm is
 the worst-exposed one: beta = 2.5 makes all three gamma calls live, and the

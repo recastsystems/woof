@@ -7,7 +7,7 @@ No network kernel is involved, so a failure localizes to one helper.
 Three kinds of assertion, in increasing strength:
 
 * HARD IDENTITY GATES.  ``thompson_aa_droplet_bin(100.0e6) == 65`` and
-  ``thompson_aa_in_bin(1000.0) == 27`` are the exact constants WOOF's
+  ``thompson_aa_in_bin(1000.0) == 27`` are the exact constants WOOF-ArWen's
   model-validated mp=8 kernels hardcode (thompson.cu:3933 and :3936).  If the
   generalized nc-driven formulas do not reproduce them, they are wrong in a
   way that would ALSO have broken mp=8 had the kernels been shared.
@@ -34,7 +34,7 @@ Three kinds of assertion, in increasing strength:
   reuses the first stays finite, stays stable and is grossly wrong wherever
   the :1834-1838 droplet-size clamp engages.  That is a property of the
   Fortran source, so it is asserted as one -- against what WRF DOES, not
-  against what any current WOOF kernel happens to do.
+  against what any current WOOF-ArWen kernel happens to do.
 
 TOLERANCE POLICY NOTE, per the port spec's validation plan: ``activ_ncloud``
 selects a NEAREST 10 K temperature bin and INT-truncated aerosol/updraft
@@ -542,7 +542,7 @@ def test_nu_c_reduces_to_the_mp8_frozen_shape_parameter():
 
 
 def test_gamma_ratios_are_the_series_values_not_the_mp8_literals():
-    """Record, do not repair, WOOF's pre-existing mp=8 gamma deviation.
+    """Record, do not repair, WOOF-ArWen's pre-existing mp=8 gamma deviation.
 
     thompson.cu hardcodes 2730.0f at :882, :999, :4005, :4128, :4680 and
     272.0f at :888 and :1006, where WRF's REAL(4) WGAMMA actually yields
@@ -621,7 +621,7 @@ def test_droplet_bin_matches_the_host_contract_and_saturates():
 
 
 def test_in_bin_spans_the_whole_freezeh2o_axis():
-    """idx_IN != 0 is an entire table axis WOOF's mp=8 port never reads."""
+    """idx_IN != 0 is an entire table axis WOOF-ArWen's mp=8 port never reads."""
     import cupy as cp
     from woof.core.thompson_aerosol_launch import probe_in_bin
 

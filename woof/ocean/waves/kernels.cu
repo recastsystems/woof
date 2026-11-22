@@ -222,90 +222,9 @@ extern "C" __global__ void source_integrate(float* e,const float* freq,const flo
   __syncthreads();if(t==0)clock=fminf(interval,clock+step);__syncthreads();
  }
 }
-__device__ float sample(const float* e,int base,int nf,int nd,float fi,float di){
- int f=(int)floorf(fi),d=(int)floorf(di);float a=fi-f,b=di-d;
- return (1-a)*((1-b)*e[base+f*nd+wrap(d,nd)]+b*e[base+f*nd+wrap(d+1,nd)])+
- a*((1-b)*e[base+(f+1)*nd+wrap(d,nd)]+b*e[base+(f+1)*nd+wrap(d+1,nd)]);
-}
-__device__ void scatter(float* out,const float* freq,const float* df,int base,int nd,
- float fi,float di,float q){
- int f=(int)floorf(fi),d=(int)floorf(di);float a=fi-f,b=di-d,da=2*PI/nd;
- for(int j=0;j<2;j++)for(int l=0;l<2;l++){
- int ff=f+j,dd=wrap(d+l,nd);float w=(j?a:1-a)*(l?b:1-b);
- atomicAdd(out+base+ff*nd+dd,q*w*(2*PI*freq[ff])/(df[ff]*da));
- }
-}
-__device__ float donor_limit(const float* e,const float* freq,const float* df,int base,int nd,
- float fi,float di,float dt){
- int f=(int)floorf(fi),d=(int)floorf(di);float a=fi-f,b=di-d,lim=1e30f;
- for(int j=0;j<2;j++)for(int l=0;l<2;l++){
-  float w=(j?a:1-a)*(l?b:1-b);if(w<=1e-8f)continue;
-  int ff=f+j,dd=wrap(d+l,nd);
-  lim=fminf(lim,.2f*e[base+ff*nd+dd]*df[ff]*(2*PI/nd)/(2*PI*freq[ff]*w*dt));
- }return lim;
-}
-__device__ void dia_bin(int z,const float* e,float* rate,const float* freq,
- const float* df,const float* depth,const float* m,int nc,int nf,int nd,float logq,float dt,bool limited,float* diagonal=nullptr){
- int ns=nf*nd,n=nc*ns;if(z>=n)return;
- int d=z%nd,f=(z/nd)%nf,c=z/ns;if(depth[c]<=0)return;
- float fp=f+logf(1.25f)/logq,fm=f+logf(.75f)/logq;
- if(fm<0 || fp>=nf-1)return;
- // Interpolation linear in physical frequency preserves action and energy.
- int ip=(int)fp,im=(int)fm;
- fp=ip+(1.25f*freq[f]-freq[ip])/(freq[ip+1]-freq[ip]);
- fm=im+(.75f*freq[f]-freq[im])/(freq[im+1]-freq[im]);
- float en=e[z],f0=freq[f],sig=2*PI*f0;
- float kd=fmaxf(.5f,.75f*m[c*10+2]*depth[c]);
- float dep=1+5.5f/kd*(1-5.f/6.f*kd)*expf(-1.25f*kd);
- for(int mirror=-1;mirror<=1;mirror+=2){
-  float dp=d+mirror*11.48f/360*nd,dm=d-mirror*33.56f/360*nd;
-  float ep=sample(e,c*ns,nf,nd,fp,dp),em=sample(e,c*ns,nf,nd,fm,dm);
-  float coeff=DIA_COEFFICIENT/powf(G,4.f)*powf(f0,11.f)*dep;
-  float ap=1/powf(1.25f,4.f),am=1/powf(.75f,4.f),ac=1/powf(.9375f,4.f);
-  float transfer=coeff*(en*en*(ep*ap+em*am)-2*en*ep*em*ac);
-  float action=transfer*df[f]*(2*PI/nd)/sig;
-  // Limit a whole resonant exchange, never its individual legs. This avoids
-  // withdrawing action from an empty interpolation donor and keeps both
-  // discrete action and variance invariants under the positivity remedy.
-  if(limited && action>=0){action=fminf(action,.2f*en*df[f]*(2*PI/nd)/(2*sig*dt));}
-  else if(limited){float available=fminf(donor_limit(e,freq,df,c*ns,nd,fp,dp,dt),donor_limit(e,freq,df,c*ns,nd,fm,dm,dt));action=-fminf(-action,available);}
-  atomicAdd(rate+z,-2*action*sig/(df[f]*(2*PI/nd)));
-  scatter(rate,freq,df,c*ns,nd,fp,dp,action);
-  scatter(rate,freq,df,c*ns,nd,fm,dm,action);
-  if(diagonal){
-   // Differentiate this same discrete quartet, including interpolation and
-   // deposition weights. HJ99 source integration uses the diagonal of the
-   // TOTAL source Jacobian, not separately capped source operators.
-   atomicAdd(diagonal+z,-2*coeff*(2*en*(ep*ap+em*am)-2*ep*em*ac));
-   float locations[2]={fp,fm},angles[2]={dp,dm};
-   float derivative[2]={coeff*(en*en*ap-2*en*em*ac),coeff*(en*en*am-2*en*ep*ac)};
-   for(int leg=0;leg<2;leg++){
-    int ff=(int)floorf(locations[leg]),dd=(int)floorf(angles[leg]);
-    float fa=locations[leg]-ff,da=angles[leg]-dd;
-    for(int j=0;j<2;j++)for(int l=0;l<2;l++){
-     float weight=(j?fa:1-fa)*(l?da:1-da);int dest=c*ns+(ff+j)*nd+wrap(dd+l,nd);
-     atomicAdd(diagonal+dest,derivative[leg]*weight*weight*df[f]*freq[ff+j]/(f0*df[ff+j]));
-    }
-   }
-  }
- }
-}
-extern "C" __global__ void dia(const float* e,float* rate,const float* freq,
- const float* df,const float* depth,const float* m,int nc,int nf,int nd,float logq,float dt){
- dia_bin(blockIdx.x*blockDim.x+threadIdx.x,e,rate,freq,df,depth,m,nc,nf,nd,logq,dt,true);
-}
-// Diagnostic source at the captured state, without finite-step donor clipping.
-// It is never applied to the prognostic spectrum.
-extern "C" __global__ void dia_unlimited(const float* e,float* rate,const float* freq,
- const float* df,const float* depth,const float* m,int nc,int nf,int nd,float logq){
- dia_bin(blockIdx.x*blockDim.x+threadIdx.x,e,rate,freq,df,depth,m,nc,nf,nd,logq,0,false);
-}
-// Original analytic derivative of Hasselmann et al. 1985 eq 5.5, evaluated
-// with the source itself. Used by the joint semi-implicit source update.
-extern "C" __global__ void wave_dia_rates(const float* e,float* rate,float* diagonal,
- const float* freq,const float* df,const float* depth,const float* m,int nc,int nf,int nd,float logq){
- dia_bin(blockIdx.x*blockDim.x+threadIdx.x,e,rate,freq,df,depth,m,nc,nf,nd,logq,0,false,diagonal);
-}
+// The DIA quartet exchange (Hasselmann et al. 1985 eq 5.5, the joint diagonal of its Jacobian, the whole-
+// exchange limiter) lives in ordered.cu as a fixed-order gather. Its float atomicAdd scatter made two
+// identical runs differ (gpuwm-hex 0.4.14, 2026-11-06); dia_apply below applies the rate it returns.
 extern "C" __global__ void dia_apply(float* e,const float* rate,float* limiter,
  int nc,int nf,int nd,float dt){
  int c=blockIdx.x,t=threadIdx.x,ns=nf*nd;__shared__ float sh[128];

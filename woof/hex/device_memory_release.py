@@ -81,7 +81,7 @@ that names the knob.  On a card the process has to itself none of this
 happens.  Breakage it prevents: a kernel launch failing with
 CUDA_ERROR_OUT_OF_MEMORY inside a physics scheme, with nothing to retry, when
 a co-tenant took the store's memory between steps (seen with a co-tenant
-job on the proving host, 2026-10-15).
+job on one host, 2026-10-15).
 
 BIT-IDENTITY
 ------------

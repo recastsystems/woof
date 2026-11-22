@@ -1692,6 +1692,46 @@ def test_public_wrapper_rejects_mismatched_or_incomplete_physics_receipt():
             wrong_bits, requested_profile=MORRISON_PROFILE_ID)
 
 
+def test_public_wrapper_holds_correct_mode_morrison_nc_to_its_ndcnst_rule():
+    """WOOF 2026-11-02 run_a7dd82ef12cad0e4: member m0009-morrison-myj.
+
+    The 2.9.7 producer receipts correct-mode (HN1) Morrison nc as the
+    NDCNST droplet number; the consumer refused that receipt as missing
+    cold-start evidence after a finished preparation.  It now accepts
+    exactly that evidence, and only that.
+    """
+
+    from woof.ingest.handover_numbers import closure_active
+    if not closure_active(None):
+        pytest.skip("exact mode: Morrison nc is the allocation zero")
+    complete = {
+        "physics": {
+            "schema": "gpuwm-prepared-physics-profile-v1",
+            "profile": MORRISON_PROFILE_ID,
+            "hrrr_initialization": _cold_start_receipt(MORRISON_PROFILE_ID),
+        },
+    }
+    fields = complete["physics"]["hrrr_initialization"][
+        "state_source_absent_fields"]
+    assert fields["nc"] == {"ndcnst_droplet_number": True,
+                            "all_finite_above_zero": True}
+    assert prepare._validated_physics_receipt(
+        complete, requested_profile=MORRISON_PROFILE_ID) \
+        == complete["physics"]
+
+    for evidence in (
+            {"ndcnst_droplet_number": True, "all_finite_above_zero": False},
+            {"ndcnst_droplet_number": True},
+            {"expected_float32": 0.0, "expected_uint32_bits": 0,
+             "all_exact_expected": True}):
+        broken = json.loads(json.dumps(complete))
+        broken["physics"]["hrrr_initialization"][
+            "state_source_absent_fields"]["nc"] = evidence
+        with pytest.raises(RuntimeError, match="cold-start evidence"):
+            prepare._validated_physics_receipt(
+                broken, requested_profile=MORRISON_PROFILE_ID)
+
+
 def test_public_wrapper_holds_thompson_numbers_to_the_seed_rule():
     """nr and ni carry real.exe's seed evidence (A99, A110), every leg."""
 

@@ -17,7 +17,7 @@
 #   licenses/LICENSE-PyART-Argonne-BSD-3-Clause.txt and in the port's own
 #   tree at tools/region_global_dealias/PYART-LICENSE.txt.
 # ======================================================================
-"""The region-global dealiasing engine: WOOF's Rust crate behind the seam.
+"""The region-global dealiasing engine: WOOF-ArWen's Rust crate behind the seam.
 
 :mod:`woof.obs.dealias` said it in its own docstring -- ``dealias_sweep``
 was written against exactly what crosses the ingest seam "so that when the
@@ -27,7 +27,7 @@ that call.
 What it drives
 --------------
 ``region-global-dealias`` (`FahrenheitResearch/region-global-dealias
-<https://github.com/FahrenheitResearch/region-global-dealias>`_) is WOOF's
+<https://github.com/FahrenheitResearch/region-global-dealias>`_) is WOOF-ArWen's
 Rust port of Py-ART's ``dealias_region_based`` (Helmus & Collis 2016), which
 is itself the Jing & Wiener (1993) region method with a dynamic network
 reduction over the region graph.  The crate is vendored verbatim under
@@ -51,7 +51,7 @@ process would mean writing 48 MB to disk and reading it back per volume to
 avoid a data copy the library route does not make at all.  The crate already
 exports the C ABI this needs (``region_global_dealias.h``, ``bw_dealias`` and
 ``bw_dealias_rift_v1``), so the library route is also the one that requires
-no wrapper crate around WOOF's code: woof calls his exported symbols
+no wrapper crate around WOOF-ArWen's code: woof calls his exported symbols
 directly.
 
 The ABI handshake is :func:`bw_abi_version`, checked against

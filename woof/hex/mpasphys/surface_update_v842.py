@@ -22,6 +22,8 @@ RADIATION_FIELDS = tuple(
     for band in ("sw", "lw") for direction in ("dn", "up")
     for location in ("b", "t") for clear in ("", "c")
 )
+#: The ``unit`` a run record's ``surface_service`` block names: the MPAS surface-update service this module ports.
+SERVICE_UNIT = "mpas-surface-update"
 CUDA_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false",
                 "--prec-div=true", "--prec-sqrt=true")
 
@@ -522,7 +524,7 @@ class NativeSurfaceService:
 
     def receipt(self):
         """mpas_atmphys_manager.F:231-253; mpas_atmphys_driver.F:209-365."""
-        return dict(unit='p25-surface-update', backend='hex-cuda',
+        return dict(unit=SERVICE_UNIT, backend='hex-cuda',
                     module_sha256=self.module_sha256, process_count=1,
                     executed=any(self.executions.values()), operations=dict(self.executions),
                     precipitation_owner=dict(rainc='surface-service', rainnc='native-microphysics'))

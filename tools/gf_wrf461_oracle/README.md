@@ -280,9 +280,9 @@ All on gfortran 13.3.0 / glibc 2.39, at -O0:
   re-measuring.
 
   **THAT PARAGRAPH IS HISTORY AND ITS CONCLUSION IS WITHDRAWN.**  Matching
-  `tgammaf` bit for bit means reproducing its rounding errors, and WOOF no
+  `tgammaf` bit for bit means reproducing its rounding errors, and WOOF-ArWen no
   longer does: its earlier gamma, which returned glibc's words, was replaced
-  at 2.7.0 and **must not be brought back**.  WOOF's gamma is now correctly
+  at 2.7.0 and **must not be brought back**.  WOOF-ArWen's gamma is now correctly
   rounded -- right where glibc is wrong on 39.44 per cent of [0.25, 36] --
   and the resulting divergence from WRF is a documented deliberate one:
   read `docs/gf_gamma_known_delta.md` before touching anything in this
@@ -565,7 +565,7 @@ none of it is visible from either cloud model.
   **0**, so the capture is the defined answer everywhere and the divergence is
   recorded, not exercised.
 * **The chem arm.**  `module_cu_gf_ctrans.F` is pinned for the record but not
-  compiled; WOOF has no chemistry.
+  compiled; WOOF-ArWen has no chemistry.
 * **`WRF_DFI_RADAR = 1` cap suppression.**  Not built.
 * **`spp_conv = 1`.**  The stochastic-perturbation arm is passed as present
   but off.  Note that `pattern_spp_conv` is declared `(ims:ime, kms:kme,

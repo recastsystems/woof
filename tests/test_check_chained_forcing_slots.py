@@ -10,6 +10,7 @@ gates disagreed about one card.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -50,4 +51,10 @@ def test_check_admits_full_hrrr_on_one_96gb_card_as_go_does():
     assert "fits the 93.92 GiB budget" in chained.stdout
     whole = _check({"WOOF_CHAINED_PREP": "0"})
     assert whole.returncode != 0, whole.stdout
-    assert "EXCEEDS the 93.92 GiB budget" in whole.stdout
+    # The walked MYNN width does not fit, so the whole schedule is priced at
+    # the narrowest width, as the run door prices it (door item 3); the
+    # allocation-estimate leg still fails, so the check still refuses.
+    assert "priced at the narrowest MYNN column width" in whole.stdout
+    # The leg is named for the platform's budget (wddm on Windows, vram
+    # elsewhere); the Windows-only spelling failed this test on Linux.
+    assert re.search(r"alloc_estimate_le_(wddm|vram)_budget: FAIL", whole.stdout), whole.stdout

@@ -1,0 +1,48 @@
+&time_control
+ run_days = 0, run_hours = 0, run_minutes = 0, run_seconds = 120,
+ start_year = 2024, start_month = 05, start_day = 25, start_hour = 18, start_minute = 00, start_second = 00,
+ end_year = 2024, end_month = 05, end_day = 25, end_hour = 18, end_minute = 02, end_second = 00,
+ interval_seconds = 3600,
+ input_from_file = .true.,
+ history_interval_s = 12,
+ frames_per_outfile = 1000,
+ restart = .false.,
+ io_form_history = 2, io_form_restart = 2, io_form_input = 2, io_form_boundary = 2,
+ debug_level = 0,
+/
+&domains
+ time_step = 12, time_step_fract_num = 0, time_step_fract_den = 1,
+ max_dom = 1, e_we = 151, e_sn = 151, e_vert = 50,
+ p_top_requested = 5000, num_metgrid_levels = 34, num_metgrid_soil_levels = 4,
+ dx = 3000, dy = 3000, grid_id = 1, parent_id = 0,
+ i_parent_start = 1, j_parent_start = 1, parent_grid_ratio = 1, parent_time_step_ratio = 1,
+ feedback = 0, smooth_option = 0, use_adaptive_time_step = .false.,
+/
+&physics
+ mp_physics = 1,
+ ra_lw_physics = 0, ra_sw_physics = 0, radt = 0,
+ sf_sfclay_physics = 0, sf_surface_physics = 0, bl_pbl_physics = 0, bldt = 0,
+ cu_physics = 0, cudt = 0,
+ isfflx = 0, ifsnow = 0, icloud = 0,
+ surface_input_source = 1, num_soil_layers = 4, sf_urban_physics = 0,
+ do_radar_ref = 0,
+/
+&fdda
+/
+&dynamics
+ use_theta_m = 0, hybrid_opt = 2, etac = 0.2, rk_ord = 3,
+ h_mom_adv_order = 5, v_mom_adv_order = 3, h_sca_adv_order = 5, v_sca_adv_order = 3,
+ momentum_adv_opt = 1, moist_adv_opt = 1, scalar_adv_opt = 1,
+ non_hydrostatic = .true., top_lid = .false.,
+ diff_opt = 2, km_opt = 4, mix_full_fields = .true., diff_6th_opt = 0,
+ w_damping = 1, damp_opt = 3, zdamp = 5000, dampcoef = 0.2,
+ epssm = 0.1, smdiv = 0.1, emdiv = 0.01, time_step_sound = 4,
+/
+&bdy_control
+ spec_bdy_width = 5, spec_zone = 1, relax_zone = 4, specified = .true., nested = .false.,
+/
+&grib2
+/
+&namelist_quilt
+ nio_tasks_per_group = 0, nio_groups = 1,
+/

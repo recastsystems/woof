@@ -10,7 +10,7 @@ already detaches its products (``forecast_door.start_detached_products``); the c
 say "the card is free now, I am still running".
 
 The contract with the queue (run.sh gpu-done, 2026-10-27): the queue gives the command it leases
-``GPU_MUTEX_GPU_DONE`` (a file path) and ``GPU_MUTEX_LEASE_PID`` (its own pid). The leased command process
+``CARD_QUEUE_GPU_DONE`` (a file path) and ``CARD_QUEUE_LEASE_PID`` (its own pid; ``woof.hex.card_queue``). The leased command process
 itself (its parent is the queue; a door composed under another command is not the lease's command and says
 nothing) appends its pid to that file once it will not touch the card again, and starts everything after it
 with no visible CUDA device. The queue then releases the cards while the command keeps running (once no
@@ -22,10 +22,11 @@ nothing.
 from __future__ import annotations
 
 import os
+from woof.hex import card_queue
 from typing import MutableMapping
 
-GPU_DONE = "GPU_MUTEX_GPU_DONE"
-LEASE_PID = "GPU_MUTEX_LEASE_PID"
+GPU_DONE = card_queue.name(card_queue.GPU_DONE)
+LEASE_PID = card_queue.name(card_queue.LEASE_PID)
 CPU_ONLY = {"CUDA_VISIBLE_DEVICES": "", "GPUWM_NO_LOCAL_GPU": "1"}
 
 
@@ -37,7 +38,7 @@ def gpu_work_done(env: MutableMapping[str, str] | None = None) -> bool:
     another job. Does nothing, and changes no environment, outside a lease or when this process is not the
     lease's own command."""
 
-    path, lease = os.environ.get(GPU_DONE), os.environ.get(LEASE_PID)
+    path, lease = card_queue.get(card_queue.GPU_DONE), card_queue.get(card_queue.LEASE_PID)
     if not path or not lease or str(os.getppid()) != lease:
         return False
     # The environment changes before the queue is told, so nothing this door starts after the declaration

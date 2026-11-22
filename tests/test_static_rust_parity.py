@@ -374,6 +374,35 @@ class TestLane3HighresParity:
                 err_msg=f"{name}: terrain-only merge differs")
         assert rust_terrain_audit == python_terrain_audit
 
+    def test_a_merge_with_no_land_to_donate_matches_in_the_library(
+            self, monkeypatch):
+        """The library's own merge on a grid with no baseline land: open
+        sea, and open sea with an islet the land cover finds.  It searches
+        no donor, keeps the islet as the baseline's water, and matches the
+        Python reference at the byte.  (The merge does not route this case
+        to the library, which the 2.9.13 and 3.0.3 builds refuse; this
+        holds the library itself to the same answer.)"""
+        bridge = _bridge_or_fail()
+        from woof.static.highres import (_merge_via_rust,
+                                          merge_highres_overrides)
+        from test_highres_geog import _sea_inputs, _with_islet
+
+        baseline, sea = _sea_inputs()
+        for overrides in (sea, _with_islet(baseline, sea, [(1, 1), (4, 2)])):
+            rust_merged, rust_audit = _merge_via_rust(
+                bridge, baseline, overrides, mode="all")
+            monkeypatch.setenv(bridge.STATIC_PYTHON_ENV, "1")
+            python_merged, python_audit = merge_highres_overrides(
+                baseline, overrides)
+            monkeypatch.delenv(bridge.STATIC_PYTHON_ENV)
+            assert sorted(rust_merged) == sorted(python_merged)
+            for name in sorted(python_merged):
+                np.testing.assert_array_equal(
+                    np.asarray(rust_merged[name]),
+                    np.asarray(python_merged[name]), err_msg=name)
+            for key, value in python_audit.items():
+                assert int(rust_audit[key]) == value, key
+
     def test_merge_refusal_decisions_match_through_the_dll(
             self, monkeypatch):
         _bridge_or_fail()

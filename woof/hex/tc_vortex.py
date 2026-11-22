@@ -1,10 +1,11 @@
 """TC inner-core initialization for hex, for any table source (TC-VI1, hex port).
 
-Breakage it prevents (the storm 2024-10-08, box M, 2026-10-27): hex had no vortex step. The init door's only TC route
+Breakage it prevents (the storm 2024-10-08, 2026-10-27): hex had no vortex step. The init door's only TC route
 took a hand-sealed GFS canonical request, so GEFS members (and GFS itself, through the Vtable decode) reached the hex
 mesh with their own weak, broad vortices (gep01 18Z: 988 hPa, RMW 55 km against a 909 hPa, 9 km-RMW storm), and
+the first downstream analysis then rejected the recon and TDR core against that first guess.
 
-:func:`stage_source` replaces the plain decode of a staged source with the WOOF canonical composition of the same
+:func:`stage_source` replaces the plain decode of a staged source with the WOOF-ArWen canonical composition of the same
 files (the Rust mapped engine; the row's ``tc_composition`` table declaration: packaged profile, the extra fields
 a WPS export needs, in-band supplement role, surface contract) followed, on that canonical frame, by
 
@@ -60,7 +61,7 @@ def composition(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _merge_namespace(storm_merge: Sequence[str]):
-    """The storm-merge declaration from its CLI words, through WOOF's own parser (woof/storm_merge.py)."""
+    """The storm-merge declaration from its CLI words, through WOOF-ArWen's own parser (woof/storm_merge.py)."""
     import argparse
     from woof.storm_merge import add_arguments, declaration
     parser = argparse.ArgumentParser(add_help=False)

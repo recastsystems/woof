@@ -130,7 +130,10 @@ def evaluate_bare_flux_calls(
     inputs, ints = pack_bare_flux_calls(calls)
     count = inputs.shape[0]
     device_out = cp.empty(count * N_OUTPUT, dtype=cp.float32)
-    kernel = get_kernel("noahmp_bareflux", "noahmp_bare_flux")
+    from woof.core.noahmp_kernel_sources import STAGED_MELT_RESET, melt_reset_kernel
+    kernel = (melt_reset_kernel("noahmp_bareflux", "noahmp_bare_flux")
+              if STAGED_MELT_RESET.get() else
+              get_kernel("noahmp_bareflux", "noahmp_bare_flux"))
     blocks = (count + THREADS - 1) // THREADS
     kernel(
         (blocks,), (THREADS,),

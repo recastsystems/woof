@@ -2,6 +2,39 @@
 
 ## WRF comparison
 
+gpuwm 3.0.3 was compared against stock scalar WRF 4.8.0 (strict serial
+build, single precision, GNU Fortran, run in an Ubuntu 24.04 container on
+glibc 2.39) for one forecast hour, every step compared, on a 40 x 40 x 50
+grid at 3 km with a 15 s step, one GPU and one process. Both sides read the
+same `wrfinput_d01` and `wrfbdy_d01`, written by woof's own HRRR
+initialization for 2024-05-21 21Z (no WPS or real.exe). The decks and the
+build and run scripts are in the engine tree's `tools/wrf480_gate/`.
+
+| Case | Physics | Stored values compared | Different |
+| --- | --- | --- | --- |
+| A071 | Kessler, YSU, Grell-Freitas, revised MM5 surface layer, Noah, RRTMG | 654,871,971 across 215 fields and 241 frames | 0 |
+| A195 (the HRRR recipe) | Thompson, MYNN-EDMF (`bl_mynn_mixlength = 1`), MYNN surface layer, RUC with 9 soil layers, RRTMG, no cumulus | 605,907,981 across 221 fields and 241 frames | 0 |
+
+The scheme generations were named on the command line as WRF 4.8.0 has
+them: for A071 `cu_gf_version=gfl_873b414`, `solar_generation=wrf_480`,
+`ysu_version=wrf_480`; for A195 `bl_mynn_version=wrf_480`,
+`mynn_sfclay_variant=mynnsfc_b66187f`, `solar_generation=wrf_480`,
+`ruc_soilprop=wrf_461` (stock WRF's soil-property table).
+
+Every field both sides write was compared. Fields only WRF writes were
+not: for A071 `ZNT` (woof does not write it for this surface layer),
+`RQIBLTEN` (WRF leaves it uninitialized) and the `SWDDIR`, `SWDDNI`,
+`SWDDIF` diagnostics; for A195 `ZNT`.
+
+Both comparisons used `GPUWM_WRF_EXACT=1`, which selects strict arithmetic
+and `physics.mode = "exact"`. The default uses fast numerics and correct
+mode, which deliberately departs from WRF where WRF's code contradicts
+itself (the changelog lists each correction). These two configurations do
+not establish WRF identity for the default, for other physics, grids or
+compiler environments, or observation-based forecast skill.
+
+The earlier comparison against WRF 4.6.1 remains on record:
+
 The [2.9.2 changelog](../../CHANGELOG.md) records one full forecast-hour
 comparison against stock scalar WRF 4.6.1 on glibc 2.39: a 40 x 40 x 50
 grid at 3 km, using Kessler, YSU, Grell-Freitas, MM5 surface layer, Noah

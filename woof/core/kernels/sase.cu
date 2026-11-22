@@ -1178,7 +1178,7 @@ void sase_thomas_momentum(real* __restrict__ u, real* __restrict__ v,
 // S3-11b surface scalar-flux deposit (authority
 // surface_scalar_flux_deposit; registered SFC_SCALAR_FLUX =
 // "explicit-deposit-v1"; root cause
-// .superpowers/sdd/lake-momentum-root-cause.md): with has_sfc != 0,
+// docs/internal/sdd/lake-momentum-root-cause.md): with has_sfc != 0,
 // ``sfc_flux`` is the (ny, nx) DIMENSIONAL post-sfclay surface flux
 // (HFX [W m^-2] for the theta row, QFX [kg m^-2 s^-1] for the qv
 // row -- positive UPWARD), ``sfc_rho1`` the (ny, nx) lowest-level

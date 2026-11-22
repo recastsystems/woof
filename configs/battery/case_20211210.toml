@@ -46,7 +46,7 @@
 # on the branch that synthesizes SH2O from SMOIS.  This is a cold-season
 # case, so that refusal is LIVE until measured -- it is checked at root
 # preparation and the answer recorded in the entry receipt, never assumed
-# here.  The WOOF arm is unaffected either way.
+# here.  The WOOF-ArWen arm is unaffected either way.
 #
 # ROUTE STATUS: re-run tools/battery_route_preflight.py against THIS file for
 # the case's own answer; it quotes every gate verbatim from the route's own

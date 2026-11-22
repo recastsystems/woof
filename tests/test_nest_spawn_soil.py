@@ -7,7 +7,7 @@ soil is on the parent's grid; the own-grid statics are climatological
 ground, not state.  Until this landed, the real-data spawn route refused
 rather than integrate a nest on undefined land.
 
-THE PRACTICE, and it is not WOOF's invention.  WRF has exactly two
+THE PRACTICE, and it is not WOOF-ArWen's invention.  WRF has exactly two
 routes for a nest that starts later than its parent (Users' Guide chapter
 5, "Nesting"):
 
@@ -165,7 +165,7 @@ def test_mask_field_never_pulls_land_state_across_a_coast():
 
 def test_mask_field_counts_the_class_conflict_instead_of_hiding_it():
     """The island/lake case, where WRF's own comment (:4232) says it has
-    "no better way".  WOOF does the same thing and COUNTS it."""
+    "no better way".  WOOF-ArWen does the same thing and COUNTS it."""
     parent = np.full((_PNY, _PNX), 300.0, dtype=np.float32)
     out, counts = interp_mask_field(
         parent, nri=_RATIO, nrj=_RATIO, i_parent_start=3, j_parent_start=3,

@@ -146,7 +146,7 @@ _TRUSTED_LIBRARIES = frozenset(getattr(sys, "stdlib_module_names", ())) | {
 _PARALLEL_BYTES = 1 << 20
 #: Arrays at least this large are digested as SHA-256 over the SHA-256 of each block of this many bytes (C order),
 #: every block of every array on the host threads at once (_array_digests).  THE COST THIS REMOVES (RRFS hrrrv5
-#: limited area, mv3km 206,726 cells, V6000, 2026-10-28): one whole-array SHA-256 per thread left the terrain
+#: limited area, mv3km 206,726 cells, RTX PRO 6000, 2026-10-28): one whole-array SHA-256 per thread left the terrain
 #: coupling and regional dycore keys at ~1.7 s of start-up, the largest array hashed on one core while the card
 #: waited (about 11x on NOAA's conus3km).  Still a SHA-256 content digest of every byte, in a fixed block order.
 _BLOCK_BYTES = 32 << 20

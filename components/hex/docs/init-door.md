@@ -5,6 +5,12 @@ The numerics are the Rust engine `rw_mpas_init` (woof `tools/rustwx/crates/rw-mp
 case-7 port); this door finds the engine, refuses bad inputs by name before an
 engine run, and writes a provenance receipt beside the init file.
 
+After species initialization the door completes the pressure balance with the
+weight of cloud, rain, ice, snow and graupel, preserving column mass. This is on
+by default for both producer routes; `--condensate-balance no` retains the old
+output for strict comparisons. See [condensate balance](init-condensate-balance.md)
+for the equations, fields changed and precision limits.
+
 ## Invocation (native-free, the normal mode)
 
 Since the native-free bootstrap merged (136e31c), a normal invocation needs no

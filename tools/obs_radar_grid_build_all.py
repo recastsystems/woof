@@ -166,7 +166,7 @@ def main(argv=None) -> int:
     print(f"discovered {len(coverages)} sites covering the domain",
           file=sys.stderr)
 
-    from tools.da_recent_observations import (require_native_observations,
+    from tools.nexrad_archive import (require_native_observations,
         observation_workers, observation_memory, native_observation_threads)
     from woof.obs.coverage import read_site_table
     require_native_observations()

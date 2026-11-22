@@ -56,7 +56,7 @@ def test_monthly_to_date_is_mid_month_linear():
     np.testing.assert_allclose(value, 9.0, rtol=1e-6)
 
 
-def _tiny_fields(n_cells=7, n_edges=19, n_levels=3, soil=9, seed=0, native_soil=4):
+def _tiny_fields(n_cells=7, n_edges=19, n_levels=3, soil=9, seed=0, native_soil=4, seam_extra=None, require_native_land=False, snapshot_extra=None):
     rng = np.random.default_rng(seed)
     cell3 = (n_levels, n_cells)
     snap = {name: rng.uniform(1e-6, 1e-2, cell3).astype(np.float32) for name in jc.DEFAULT_SCALAR_NAMES}
@@ -77,10 +77,12 @@ def _tiny_fields(n_cells=7, n_edges=19, n_levels=3, soil=9, seed=0, native_soil=
         smois=rng.uniform(0.05, 0.45, (native_soil, n_cells)).astype(np.float32),
         tslb=rng.uniform(270, 300, (native_soil, n_cells)).astype(np.float32),
     )
+    snap.update(snapshot_extra or {})
     seam = {
         "snowh": rng.uniform(0, 1, (1, 1, n_cells + 1)).astype(np.float32),
         "cldfra": rng.uniform(0, 1, (n_levels, 1, n_cells)).astype(np.float32),
     }
+    seam.update(seam_extra or {})
     fallback = {
         "snowc": np.zeros(n_cells, np.float32),
         "xice": np.zeros(n_cells, np.float32),
@@ -99,6 +101,7 @@ def _tiny_fields(n_cells=7, n_edges=19, n_levels=3, soil=9, seed=0, native_soil=
         n_levels=n_levels,
         soil_levels=soil,
         valid=datetime(2026, 10, 3, 15),
+        require_native_land=require_native_land,
     )
     return fields, provenance, snap
 
@@ -457,3 +460,129 @@ def test_background_caller_attribute_replaces_the_default_once(tmp_path):
         assert dataset.getncattr("source") == "woof hex: MPAS CUDA dynamics and MPAS native physics"
         assert dataset.getncattr("hex_physics_route") == "MPAS native physics"
         assert names[:3] == ["model_name", "core_name", "source"]
+
+
+@pytest.mark.parametrize("soil", [4, 9, 3])
+def test_native_land_publication_preserves_every_live_carrier(tmp_path, soil):
+    """Live seam memory survives the real Rust writer, including soil/air equal levels."""
+    from woof.hex.cycle.land_state import LAND_FIELDS, LAND_ATTRIBUTE
+    from netCDF4 import Dataset
+    nc = 7
+    exported = {}
+    for i, f in enumerate(LAND_FIELDS):
+        shape = (soil, 1, nc + 1) if f.like == 'tslb' else (1, 1, nc + 1)
+        exported[f.sources[-1]] = (np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
+                                   + np.float32(i + .125))
+    fields, provenance, _ = _tiny_fields(soil=soil, native_soil=soil,
+                                       seam_extra=exported, require_native_land=True)
+    if soil == 3:
+        provenance.update({f.name: f'native MPAS pool surface.{f.name}' for f in LAND_FIELDS})
+    record = jc.write_background(tmp_path / 'land.nc', fields=fields, provenance=provenance,
+        valid=datetime(2026, 10, 3, 15), n_cells=nc, n_edges=19, n_levels=3,
+        soil_levels=soil, scalar_names=jc.DEFAULT_SCALAR_NAMES)
+    recovered = jc.read_contract_fields(Path(record.path), [f.name for f in LAND_FIELDS])
+    with Dataset(record.path) as ds:
+        assert set(json.loads(ds.getncattr(LAND_ATTRIBUTE))) == {f.name for f in LAND_FIELDS}
+        for f in LAND_FIELDS:
+            expected = np.squeeze(exported[f.sources[-1]])[..., :nc]
+            assert np.array_equal(recovered[f.name].view('u4'), expected.view('u4')), f.name
+            if f.like == 'tslb':
+                assert ds[f.name].dimensions == ('Time', 'nCells', 'nSoilLevels')
+    # An init-hour reservoir cannot stand in for missing current physics memory.
+    del exported['sh2o']
+    with pytest.raises(jc.ContractRefusal, match='missing live fields.*sh2o'):
+        _tiny_fields(soil=soil, native_soil=soil,
+                     seam_extra=exported, require_native_land=True)
+
+
+def test_a_four_layer_producer_writes_the_interim_nine_level_file_without_a_warm_land_marker(tmp_path):
+    """THE BREAKAGE THIS PREVENTS (hex 0.5.0 both-routes matrix, 2026-11-09): --jedi-background on the WOOF-ArWen
+    route's default land surface (four Noah-MP layers, nine-level file) stopped at its first frame: "exported physics
+    field 'smois' has shape (4, 1, nCells); expected ... (9, nCells)"."""
+    from woof.hex.cycle.land_state import LAND_FIELDS, LAND_ATTRIBUTE
+    from netCDF4 import Dataset
+    nc = 7
+    exported = {}
+    for i, f in enumerate(LAND_FIELDS):
+        shape = (4, 1, nc + 1) if f.like == 'tslb' else (1, 1, nc + 1)
+        exported[f.sources[-1]] = (np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
+                                   + np.float32(i + .125))
+    fields, provenance, _ = _tiny_fields(soil=9, native_soil=4, seam_extra=exported, require_native_land=True)
+    assert fields['smois'].shape == (9, nc) and jc.INTERIM_SOIL_LABEL in provenance['smois']
+    assert 'sh2o' not in fields                      # no soil memory on levels the producer does not have
+    record = jc.write_background(tmp_path / 'interim.nc', fields=fields, provenance=provenance,
+        valid=datetime(2026, 10, 3, 15), n_cells=nc, n_edges=19, n_levels=3,
+        soil_levels=9, scalar_names=jc.DEFAULT_SCALAR_NAMES)
+    with Dataset(record.path) as ds:
+        assert LAND_ATTRIBUTE not in ds.ncattrs()    # mapped soil is never read back as warm land state
+        assert ds.getncattr('hex_soil_mapping') == jc.INTERIM_SOIL_LABEL
+    # a producer with the file's own levels is still held to its whole live land state
+    del exported['sh2o']
+    with pytest.raises(jc.ContractRefusal, match='missing live fields.*sh2o'):
+        _tiny_fields(soil=4, native_soil=4, seam_extra=exported, require_native_land=True)
+
+
+def test_live_geometry_publication_preserves_native_bits_and_units(tmp_path):
+    fields, provenance, _ = _tiny_fields()
+    pblh = np.array([-0., 121., 255., 512., 777., 999., 1024.], dtype="f4")
+    zgrid = np.arange(28, dtype="f4").reshape(4, 7); zgrid[0, 0] = -0.
+    jc.add_live_geometry(fields, provenance, pblh=pblh, zgrid=zgrid, n_cells=7, n_levels=3)
+    record = jc.write_background(tmp_path / "geometry.nc", fields=fields, provenance=provenance,
+        valid=datetime(2026, 10, 3, 15), n_cells=7, n_edges=19, n_levels=3,
+        soil_levels=9, scalar_names=jc.DEFAULT_SCALAR_NAMES)
+    ds = jc._rust_open(Path(record.path))
+    for name, expected, dims in (("pblh", pblh, ("Time", "nCells")),
+                                  ("zgrid", zgrid.T, ("nCells", "nVertLevelsP1"))):
+        v = ds.variables[name]
+        assert tuple(v.dimensions) == dims
+        assert v.getncattr("units") == "m"
+        actual = np.asarray(v[0] if name == "pblh" else v[:], dtype="f4")
+        assert actual.tobytes() == expected.tobytes()
+    with pytest.raises(jc.ContractRefusal, match="exact FP32"):
+        jc.add_live_geometry({}, {}, pblh=pblh.astype("f8"), zgrid=zgrid, n_cells=7, n_levels=3)
+    with pytest.raises(jc.ContractRefusal, match="exact FP32"):
+        jc.add_live_geometry({}, {}, pblh=pblh, zgrid=zgrid[:-1], n_cells=7, n_levels=3)
+
+
+def test_arwen_driver_publishes_live_geometry_without_init_pbl_fallback(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from woof.hex.drivers import run_cuda_v841_forecast as driver
+    for name, value in (("N_CELLS", 7), ("N_EDGES", 19), ("N_LEVELS", 3)):
+        monkeypatch.setattr(driver, name, value)
+    fields, provenance, snap = _tiny_fields()
+    pblh = np.arange(7, dtype="f4") + 100
+    zgrid = np.arange(28, dtype="f4").reshape(4, 7)
+    prepared = NS(reference=NS(pressure_base=np.ones((3, 7), dtype="f4")),
+                  vertical=NS(zgrid=zgrid), mesh=NS(areaTriangle=np.ones(5)))
+    stack = dict(driver=NS(cp=NS(asnumpy=np.asarray),
+        atmosphere=NS(saved=NS(pressure_perturbation=np.zeros((3, 7), dtype="f4")))))
+    captured = {}
+    monkeypatch.setattr(jc, 'assemble_background_fields', lambda **kwargs: (dict(fields), dict(provenance)))
+    def write(path, **kwargs):
+        captured.update(kwargs)
+        return NS(path=str(path), bytes=1, sha256='test', receipt_path='test')
+    monkeypatch.setattr(jc, 'write_background', write)
+    kw = dict(output_root=tmp_path, stack=stack, host=dict(prepared=prepared,
+        scalar_names=jc.DEFAULT_SCALAR_NAMES), label='test', valid_time='2026-10-03_15:00:00',
+        soil_levels=9, init_fallback=dict(pblh=np.full(7, 9999, dtype='f4')),
+        init_path=tmp_path/'init.nc', backend_state={})
+    driver.write_jedi_background(snapshot=dict(arrays=dict(snap, pblh=pblh)), **kw)
+    assert captured['fields']['pblh'].tobytes() == pblh.tobytes()
+    assert captured['fields']['zgrid'].tobytes() == zgrid.tobytes()
+    with pytest.raises(jc.ContractRefusal, match='no init fallback'):
+        driver.write_jedi_background(snapshot=dict(arrays=snap), **kw)
+
+
+def test_cuda_history_live_pblh_has_metre_units(tmp_path, monkeypatch):
+    from woof.hex.drivers import run_cuda_v841_full_physics_x4 as proof
+    from netCDF4 import Dataset
+    for name, value in (("N_CELLS", 7), ("N_EDGES", 19), ("N_LEVELS", 3), ("N_INTERFACES", 4)):
+        monkeypatch.setattr(proof, name, value)
+    pblh=np.arange(7, dtype='f4') + 100
+    static={n:np.arange(7 if 'Cell' in n or n=='ter' else 19, dtype='f4')
+            for n in ('indexToCellID','latCell','lonCell','ter','indexToEdgeID','latEdge','lonEdge')}
+    path=tmp_path/'history.nc'
+    proof.write_snapshot_netcdf(path, dict(arrays=dict(pblh=pblh)), static)
+    with Dataset(path) as ds:
+        assert ds['pblh'].units == 'm'
+        assert ds['pblh'][0].data.tobytes() == pblh.tobytes()

@@ -36,8 +36,8 @@ ENTITY = {
 MP_STYLE = {8: "-", 28: "--"}
 
 RUNS = (
-    ("arwen-mp08-a", "arwen", 8, "WOOF mp=8"),
-    ("arwen-mp28-a", "arwen", 28, "WOOF mp=28"),
+    ("arwen-mp08-a", "arwen", 8, "WOOF-ArWen mp=8"),
+    ("arwen-mp28-a", "arwen", 28, "WOOF-ArWen mp=28"),
     ("wrf-vec-mp08-x", "wrf-vec", 8, "WRF -ftree-vectorize mp=8"),
     ("wrf-vec-mp28-x", "wrf-vec", 28, "WRF -ftree-vectorize mp=28"),
     ("wrf-novec-mp08-x", "wrf-novec", 8, "WRF -fno-tree-vectorize mp=8"),
@@ -253,7 +253,7 @@ def main() -> int:
             ax.plot(times, s["wrf"], color=ENTITY["wrf-vec"], linewidth=2.0,
                     label="WRF  mp28 - mp8")
             ax.plot(times, s["arwen"], color=ENTITY["arwen"], linewidth=2.0,
-                    linestyle="--", label="WOOF  mp28 - mp8")
+                    linestyle="--", label="WOOF-ArWen  mp28 - mp8")
             ax.axhline(0.0, color="#b8b8b2", linewidth=1.0)
             ax.axvline(5400.0, color="#b8b8b2", linewidth=1.0, linestyle=":")
             ax.set_xlabel("time (s)", color=INK, fontsize=9)
@@ -280,9 +280,9 @@ def main() -> int:
                     continue
                 ax.plot([p[0] for p in pts], [p[1] for p in pts],
                         color=ENTITY["arwen"], linestyle=MP_STYLE[mp],
-                        linewidth=2.0, label=f"WOOF vs WRF, mp={mp}")
+                        linewidth=2.0, label=f"WOOF-ArWen vs WRF, mp={mp}")
             ax.set_xlabel("time (s)", color=INK, fontsize=9)
-            ax.set_ylabel(f"||WOOF - WRF||2 / ||WRF||2   [{f}]", color=INK,
+            ax.set_ylabel(f"||WOOF-ArWen - WRF||2 / ||WRF||2   [{f}]", color=INK,
                           fontsize=9)
             ax.axvline(5400.0, color="#b8b8b2", linewidth=1.0, linestyle=":")
             style_axes(ax)

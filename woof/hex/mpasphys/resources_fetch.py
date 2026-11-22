@@ -63,6 +63,34 @@ def _check_file(path, row):
                                       f"sha256 {row['sha256']}")
 
 
+#: transient HTTP statuses a release download retries (gateway and rate-limit answers from the release host)
+_TRANSIENT_HTTP = {429, 500, 502, 503, 504}
+
+
+def _fetch_url(url, dst, attempts=5):
+    """Copy URL into the open file DST, retrying transient failures with backoff (2, 4, 8, 16 s).
+
+    THE BREAKAGE THIS PREVENTS: a fresh install's first MPAS-physics forecast stopped at "HTTP Error 504: Gateway
+    Time-out" from the release host while fetching the pinned physics assets (2026-11-09, x1.2562 hrrrv5); one
+    gateway timeout ended the run. Any other HTTP status, and the last attempt's failure, still raise; the pinned
+    sha256 check after the copy is unchanged."""
+    import urllib.error
+    for attempt in range(attempts):
+        try:
+            dst.seek(0)
+            dst.truncate()
+            with urllib.request.urlopen(url, timeout=300) as src:
+                shutil.copyfileobj(src, dst, 1 << 20)
+            return
+        except urllib.error.HTTPError as error:
+            if error.code not in _TRANSIENT_HTTP or attempt == attempts - 1:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if attempt == attempts - 1:
+                raise
+        time.sleep(2 ** (attempt + 1))
+
+
 def _download(asset, cache, source, release):
     name = asset['name']
     if _relative(name).name != name:
@@ -88,8 +116,7 @@ def _download(asset, cache, source, release):
                 base = os.environ.get(URL_ENV)
                 url = (base.rstrip('/') + '/' + name if base else asset.get('url') or
                        f"https://github.com/{release['repository']}/releases/download/{release['tag']}/{name}")
-                with urllib.request.urlopen(url, timeout=300) as src:
-                    shutil.copyfileobj(src, dst, 1 << 20)
+                _fetch_url(url, dst)
         _check_file(Path(temporary), asset)
         os.replace(temporary, target)
     finally:

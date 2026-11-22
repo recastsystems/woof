@@ -14,7 +14,7 @@ re-derives the ratified pins from the shipped config and refuses if the
 two have drifted apart.
 
 That drift is a real failure mode. The ratifications live in
-``docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`` as
+``docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md`` as
 prose, the geometry lives in the TOML as numbers, and nothing else
 connects them -- so a later edit to either could leave the run
 integrating something the owner never ruled on, with both documents
@@ -61,7 +61,7 @@ CONFIG_NAME = "les_tornado_100m_mayfield_20211210.toml"
 CONFIG = _repo_config.default_path(CONFIG_NAME)
 
 #: The owner ruling this case implements (session 3).
-RATIFICATION = ("docs/superpowers/specs/"
+RATIFICATION = ("docs/internal/specs/"
                 "P6-LES-DECISIONS-RATIFIED-2026-08-05.md")
 #: The screens the run is graded on, registered before it.
 EXPECTATIONS = "docs/les/ATTEMPT1-EXPECTATIONS.md"
@@ -122,7 +122,7 @@ RESTART_INTERVAL_S = 3600.0
 #: P3 inflow seeding, pilot amplitude, fixed seed.
 #:
 #: d03 ONLY, ruled 2026-08-06 (G4 in
-#: docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md).  The
+#: docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md).  The
 #: generator takes its vertical extent from the parent-diagnosed PBLH, so it
 #: needs a parent that PARAMETERIZES turbulence: d02 (YSU) -> d03 qualifies,
 #: d03 -> d04 does not, because d03 is itself LES and its RESOLVED eddies are

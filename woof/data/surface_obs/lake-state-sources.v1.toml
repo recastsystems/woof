@@ -87,3 +87,20 @@ zero_roundoff_tolerance = 1e-12
 name = "ice_temperature"
 variable = "lict"
 units = "K"
+
+# A water temperature stated for one water body by whoever runs the forecast (a venue's lake): a small CF file
+# that covers that body only. Its attributes say where the value was read. Never automatic.
+[[source]]
+id = "stated"
+licence = "stated by the file's maker; see the file's attributes"
+licence_url = ""
+citation = "A water temperature stated for one water body; the file's source attribute names where it was read"
+research_only = false
+latitude = "latitude"
+longitude = "longitude"
+time = "time"
+max_age_hours = 24
+[[source.field]]
+name = "water_temperature"
+variable = "water_temperature"
+units = "K"

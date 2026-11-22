@@ -1031,7 +1031,7 @@ def test_the_committed_deck_carries_wrfs_own_exner_constant():
     Every fixture records ``p_pa`` and ``temp_k``.  ``run_column_aero.F90``
     hands ``mp_gt_driver`` the pair ``(theta, pii)`` with
     ``pii = (p/p0)**rd_over_cp``, so the adapter has to solve for a float32
-    ``theta`` that reproduces ``temp_k`` bitwise under WOOF's own ``RCP``.
+    ``theta`` that reproduces ``temp_k`` bitwise under WOOF-ArWen's own ``RCP``.
 
     Under WRF's ``r_d/cp`` that solve succeeds at EVERY level of EVERY
     fixture.  Under the superseded ``287.0/1004.0`` it fails at 47 of the

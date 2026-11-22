@@ -1,6 +1,6 @@
 """A locally written source is published as an as-posted fetch the preparation reads.
 
-The breakage: a WOOF domain fed by a hex parent could only be prepared after
+The breakage: a WOOF-ArWen domain fed by a hex parent could only be prepared after
 the whole parent run, because nothing wrote the posting folder that
 ``woof prep --as-posted`` waits on for a source that is produced rather than
 downloaded.  These check the documents against the engine's own readers.

@@ -166,6 +166,48 @@ def test_self_parent_root_is_accepted_and_reported_on_both_doors(tmp_path):
     assert any(entry.key == "parent_id (root)" for entry in imported.dropped)
 
 
+@pytest.mark.parametrize("max_dom", [1, 2])
+def test_wps_zero_root_parent_is_accepted_and_reported_on_both_doors(
+        tmp_path, max_dom):
+    """Item 2 of the 2026-11-12 runner defects: ``&geogrid parent_id = 0``
+    for d01, as namelist generators write it, failed the support report
+    (INVALID_DOMAIN_HIERARCHY) and import-namelist."""
+    wps, inp = _write_pair(tmp_path, max_dom=max_dom, mp=6)
+    one = " parent_id = 1" + ", 1" * (max_dom - 1) + ","
+    zero = " parent_id = 0" + ", 1" * (max_dom - 1) + ","
+    text = wps.read_text(encoding="utf-8")
+    assert one in text
+    wps.write_text(text.replace(one, zero), encoding="utf-8")
+    report = analyze_namelists(wps, inp)
+    assert report["verdict"] == "PASS"
+    assert report["required_state"]["gpuwm_runtime"]["verdict"] == "PASS"
+    assert report["geometry"]["domains"][0]["parent_id"] == 0
+    issue = next(item for item in report["issues"]
+                 if item["code"] == "ROOT_PARENT_ID_NORMALIZED")
+    assert issue["severity"] == SEVERITY_ADVISORY
+    assert issue["location"] == "&geogrid/parent_id"
+    toml_text, imported = import_namelists(wps, inp)
+    assert any(entry.section == "geogrid" and entry.key == "parent_id (root)"
+               for entry in imported.dropped)
+    # Preparation with --wps-namelist holds the same file to the experiment
+    # imported from it; it refused the 0 one door later
+    # ("parent-slot identity mismatch: WPS [0], experiment [1]").
+    from woof.experiment import load_experiment
+    from woof.native_wrf_contract import validate_wps_geometry
+    experiment_path = tmp_path / "imported.toml"
+    experiment_path.write_text(toml_text, encoding="utf-8")
+    exp = load_experiment(experiment_path)
+    assert len(validate_wps_geometry(exp, wps, source_name="door")) == max_dom
+    # A head grid naming an external parent is still refused on every door.
+    wps.write_text(text.replace(one, one.replace("= 1", "= 2", 1)),
+                   encoding="utf-8")
+    assert analyze_namelists(wps, inp)["verdict"] == "FAIL"
+    with pytest.raises(ValueError, match="external parent"):
+        import_namelists(wps, inp)
+    with pytest.raises(ValueError, match="parent-slot identity mismatch"):
+        validate_wps_geometry(exp, wps, source_name="door")
+
+
 @pytest.mark.parametrize("key,hour", [("start_date", "00"), ("end_date", "12")])
 def test_wps_staging_dates_and_inactive_tail_are_advisory(tmp_path, key, hour):
     wps, inp = _write_pair(tmp_path, max_dom=2, mp=6)
@@ -632,7 +674,7 @@ def test_milbrandt_runtime_is_reported_runnable_while_its_export_is_not(
     message = export[0]["message"]
     assert "mp_physics=9" in message
     assert "UNCHANGED WRF" in message
-    assert "NOTHING about running the scheme in WOOF" in message
+    assert "NOTHING about running the scheme in WOOF-ArWen" in message
     assert "woof import-namelist" in export[0]["action"]
     # And the domain carries no stock row it could not write.
     assert state["stock_wrf_export"]["domains"] == []

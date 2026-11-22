@@ -308,7 +308,10 @@ def harness(monkeypatch, tmp_path, *, resident, injected, fail_after=False):
     module('woof.hex.cuda_physics_prep_v841',
            CudaMpasToPhysGeometryV841=NS(from_host=lambda mesh: object()))
     module('woof.hex.physics_suites', load_table=lambda: {'mpasphys_v842': dict(_V842_ROUTE)})
-    module('woof.hex.mpasphys.diagnostics_v842', initialize_thermodynamics=lambda *args, **kwargs: None)
+    # driver_rrfs imports native_diagnostic_source from this module at its top; without it here a test that is the
+    # first to import driver_rrfs (run alone, or first in a fresh process) fails on ImportError.
+    module('woof.hex.mpasphys.diagnostics_v842', initialize_thermodynamics=lambda *args, **kwargs: None,
+           native_diagnostic_source=lambda: '')
     module('woof.hex.device_memory_release', process_release=lambda: NS(receipt=lambda: {}),
            phase_release=lambda name, **kw: __import__('contextlib').nullcontext(),
            mpas_half_keep_threshold=lambda: None)

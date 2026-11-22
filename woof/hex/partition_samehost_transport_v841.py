@@ -38,7 +38,7 @@ __all__ = ["SameHostTransport", "SameHostTransportError", "choose_copy_paths", "
 def exchange_timing_requested() -> bool:
     """``WOOF_HEX_EXCHANGE_TIMING=1``: GPU-event halo timing on every same-host transport.
 
-    One reader for the WOOF route, the MPAS-physics rank threads and the MPAS-physics rank processes. Breakage
+    One reader for the WOOF-ArWen route, the MPAS-physics rank threads and the MPAS-physics rank processes. Breakage
     it prevents: the variable was read only by the ArWen-route driver, so on the MPAS-physics route (RRFS and
     MPAS-A, threads and processes) ``gpu_step_timings`` stayed empty and the exposed halo stall could not be
     measured (MULTICARD/MPAS-A-SCALING.md, 2026-10-28). Timing events add no host sync on the step path.
@@ -162,16 +162,16 @@ extern "C" __global__ void halo_copy_words_2d(
     unsigned int* live = (unsigned int*)t[0];
     unsigned int* packet = (unsigned int*)t[1];
     const long long* indices = (const long long*)t[2];
-    const int columns = (int)t[4];
+    const long long columns = t[4];
     const long long total = t[3] * columns;
     const long long* dims = (const long long*)t[7];
     const long long row_stride = dims[1] / 4;
     const long long stride = (long long)gridDim.x * blockDim.x;
     for (long long q = (long long)blockIdx.x * blockDim.x + threadIdx.x;
          q < total; q += stride) {
-        const int row = (int)q / columns;
-        const int column = (int)q - row * columns;
-        const long long offset = (long long)row * row_stride + indices[column];
+        const long long row = q / columns;
+        const long long column = q - row * columns;
+        const long long offset = row * row_stride + indices[column];
         if (scatter) live[offset] = packet[q];
         else packet[q] = live[offset];
     }
@@ -253,6 +253,11 @@ class _Round:
     producer_streams: dict[int, Any] = field(default_factory=dict)
     reserved_fields: list[Any] = field(default_factory=list)
     timing_fenced: set[int] = field(default_factory=set)
+
+
+def _table_cache_on() -> bool:
+    from .speed_words import HALO_TABLE_CACHE, on
+    return on(HALO_TABLE_CACHE)
 
 
 class SameHostTransport:
@@ -640,12 +645,22 @@ class SameHostTransport:
                 delta["dimension_uploads"] += dimensions
                 delta["descriptor_uploads"] += descriptors
             rows = len(fields) * len(active)
-            descriptor = (
-                self.xp.asarray(np.concatenate([packet.host_descriptor for packet in active]), dtype=self.xp.int64)
-                if rows else None
-            )
+            staged = None
+            if rows and _table_cache_on():
+                # WOOF_HEX_HALO_TABLE_CACHE: the table from pinned memory on the launch's stream; the pinned block is
+                # an owner, so it lives as long as the binding and every retained round that used it.
+                from .speed_words import pinned_upload_int64
+                descriptor, staged = pinned_upload_int64(
+                    self.xp, np.concatenate([packet.host_descriptor for packet in active]), stream)
+            else:
+                descriptor = (
+                    self.xp.asarray(np.concatenate([packet.host_descriptor for packet in active]), dtype=self.xp.int64)
+                    if rows else None
+                )
             peer_descriptors = tuple(packet.descriptor for packet in active) if overlapping else ()
             owners = tuple(dim for packet in active for dim in packet.dimensions) + peer_descriptors
+            if staged is not None:
+                owners = owners + (staged,)
             # Decide once per retained address binding, never per word or field
             # in the warm exchange path. Byte/strided/high-dimensional fields
             # retain the general kernel and its exact descriptor format.
@@ -706,6 +721,11 @@ class SameHostTransport:
         """
         dropped = 0
         limit = int(self.stale_binding_steps)
+        if _table_cache_on():
+            # WOOF_HEX_HALO_TABLE_CACHE: a binding used every third or fourth step (a round that runs on some steps
+            # only) is kept, not rebuilt and uploaded again each time it comes round; dead bindings still go.
+            from .speed_words import IDLE_BINDING_STEPS
+            limit = max(limit, IDLE_BINDING_STEPS)
         for buffers in tuple(self._cache[int(rank)].values()):
             for batch in (buffers.send_batch, buffers.recv_batch):
                 if not batch.used:

@@ -16,18 +16,28 @@ MAX_VEGETATION_CLASSES = 27
 MAX_SOIL_CLASSES = 19
 
 
+def device_route(cfg):
+    """Whether ``cfg``'s Noah-MP steps on the resident route: always, from
+    2.9.14 (noahmp_runtime.NoahmpRuntimeParameters.uses_device_surface_layout).
+    Pricing follows the route; :func:`selected_options` still says whether a
+    non-default option is selected (nest feedback reads that)."""
+    return int(getattr(cfg, "sf_surface_physics", 4)) == 4
+
+
 def selected_options(cfg):
     return int(getattr(cfg,"noahmp_output",1))==3 or float(getattr(cfg,"soiltstep",0.0)) > 0 or any(int(getattr(cfg, name, default)) != default
                for name, default in (("opt_gla",1), ("opt_alb", 2), ("opt_stc", 1),
                                      ("opt_rsf", 1), ("opt_btr", 1), ("opt_snf", 1),
                                      ("dveg", 4), ("opt_inf", 1), ("opt_run", 3),
-                                     ("opt_rad", 3), ("opt_frz", 1), ("opt_tbot", 2), ("opt_crs", 1), ("opt_sfc", 1), ("opt_soil", 1), ("opt_tdrn",0),("opt_irr",0),("opt_irrm",0),("opt_crop",0)))
+                                     ("opt_rad", 3), ("opt_frz", 1), ("opt_tbot", 2), ("opt_crs", 1), ("opt_sfc", 1), ("opt_soil", 1), ("opt_tdrn",0),("opt_irr",0),("opt_irrm",0),("opt_crop",0),("opt_runsub",0),("opt_tksno",1),
+                                     # Zhang (2022) wetland: its store and maps ride the device surface.
+                                     ("noahmp_wetland",0)))
 
 
 def parameter_bytes_per_row(cfg):
     from woof.core.noahmp_column_slab import PARAMETER_INTS, slab_parameter_widths
     return 4 * (sum(slab_parameter_widths(opt_alb=cfg.opt_alb,
-                                         opt_rsf=cfg.opt_rsf, opt_run=cfg.opt_run, opt_rad=cfg.opt_rad, opt_crs=cfg.opt_crs, opt_sfc=cfg.opt_sfc,dveg=cfg.dveg,opt_tdrn=cfg.opt_tdrn,opt_irr=cfg.opt_irr,opt_crop=cfg.opt_crop).values())
+                                         opt_rsf=cfg.opt_rsf, opt_run=cfg.opt_run, opt_rad=cfg.opt_rad, opt_crs=cfg.opt_crs, opt_sfc=cfg.opt_sfc,dveg=cfg.dveg,opt_tdrn=cfg.opt_tdrn,opt_irr=cfg.opt_irr,opt_crop=cfg.opt_crop,opt_runsub=int(getattr(cfg,"opt_runsub",0))).values())
                 + len(PARAMETER_INTS))
 
 
@@ -63,9 +73,13 @@ def parameter_pool(params, nsoil):
     from woof.core.noahmp import SOILPARM_SECTION
     from woof.core.noahmp_column_slab import parameter_fields
 
-    key = (cp.cuda.runtime.getDevice(), int(nsoil),
+    # A host shim (tools/health_field_census.py runs initialize_physics on
+    # NumPy) has no device to name; one pool per process serves it.
+    get_device = getattr(getattr(getattr(cp, "cuda", None), "runtime", None), "getDevice", None)
+    key = (get_device() if get_device is not None else 0, int(nsoil),
            params.land_options["opt_alb"], params.land_options["opt_rsf"],
-           params.land_options.get("opt_run", 3), params.land_options.get("opt_rad", 3), params.land_options.get("opt_crs", 1), params.land_options.get("opt_sfc", 1),params.land_options.get("opt_soil",1),params.land_options.get("dveg",4),params.land_options.get("opt_tdrn",0),params.land_options.get("opt_irr",0),params.land_options.get("opt_crop",0))
+           params.land_options.get("opt_run", 3), params.land_options.get("opt_rad", 3), params.land_options.get("opt_crs", 1), params.land_options.get("opt_sfc", 1),params.land_options.get("opt_soil",1),params.land_options.get("dveg",4),params.land_options.get("opt_tdrn",0),params.land_options.get("opt_irr",0),params.land_options.get("opt_crop",0),
+           params.land_options.get("opt_runsub",0))
     pools = params.__dict__.setdefault("_device_parameter_pools", {})
     if key in pools:
         return pools[key]
@@ -86,7 +100,7 @@ def parameter_pool(params, nsoil):
                 lookup[v, s] = index
                 index += 1
     pool = parameter_fields(rows, np.arange(len(rows), dtype=np.int32),
-                            opt_alb=key[2], opt_rsf=key[3], opt_run=key[4], opt_rad=key[5], opt_crs=key[6], opt_sfc=key[7],dveg=key[9],opt_tdrn=key[10],opt_irr=key[11],opt_crop=key[12])
+                            opt_alb=key[2], opt_rsf=key[3], opt_run=key[4], opt_rad=key[5], opt_crs=key[6], opt_sfc=key[7],dveg=key[9],opt_tdrn=key[10],opt_irr=key[11],opt_crop=key[12],opt_runsub=key[13])
     pools[key] = (pool, cp.asarray(lookup), nv, ns)
     return pools[key]
 

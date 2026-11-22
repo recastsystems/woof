@@ -5,7 +5,7 @@ tests/test_shinhong_wrf461_parity.py; this file covers what the DRIVER
 does with the scheme -- dispatch, the e_sgs publication seam, the
 registered stable-limb non-regression, and the off-path inertness pin
 the gray-zone expectation note cites
-(docs/superpowers/specs/2026-08-03-shinhong-grayzone-expectation.md).
+(docs/internal/specs/2026-08-03-shinhong-grayzone-expectation.md).
 
 CPU where possible; the two tests that need a real integration are
 gpu-marked and import cupy inside their bodies only.

@@ -61,6 +61,9 @@ _EXPECTED_HEADERS = {
     "noah_fractional": ("glibc_flt32.cuh",),
     "noah_seaice_options": ("glibc_flt32.cuh", "noah_seaice_options.cuh", "noah.cu"),
     "sfclay_dx2d": ("glibc_flt32.cuh", "sfclay_classic.cuh", "sfclay_dx2d.cuh", "sfclay.cu"),
+    # WRF v4.8.0 kim_tofd (port/wrf-480 L07): graded by
+    # tests/test_sfclayrev_wrf480_tofd_parity.py against the 4.8.0 referee objects.
+    "sfclay_tofd": ("glibc_flt32.cuh", "sfclay_classic.cuh", "sfclay_tofd.cuh", "sfclay.cu"),
     "solar_eclipse": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
     "wrf_stock_aer3": ("glibc_flt32.cuh", "rrtmg_aer3.cu"),
     "gsfcgce4ice": ("glibc_flt32.cuh", "glibc_flt64.cuh", "gsfcgce4ice_log10.cuh"),
@@ -207,6 +210,9 @@ _EXPECTED_HEADERS = {
     # Shin-Hong takes glibc's powf/expf since development branch; its WRF
     # v4.6.1 oracle grades the unit bitwise (tests/test_shinhong_wrf461_parity.py).
     "shinhong": ("glibc_flt32.cuh",),
+    # WRF 4.8.0 Shin-Hong generation (shinhong_version = "wrf_480"), its own
+    # unit composed on shinhong.cu (tools/shinhong480_oracle grades it).
+    "shinhong_480": ("glibc_flt32.cuh", "shinhong.cu"),
     # Lane 286-aer-swint: WRF swint_opt = 1 and aer_opt = 3, graded
     # bitwise against the operational HRRR fork's gfortran/glibc Fortran.
     "swint": ("glibc_flt32.cuh", "glibc_trig_flt32.cuh"),
@@ -311,7 +317,7 @@ def test_lake_compile_options_do_not_change_existing_modules(monkeypatch, strict
     # no-FMA units, four surface units and five diffusion units. In
     # particular MYNN PBL carries both the no-FMA and no-FTZ requirements.
     # A global option change must still fail for every other actual module.
-    no_fmad = {"soil_points", "gsfcsw", "gsfcgce", "gsfcgce_refl", "lake", "g3", "ysu", "shinhong", "mynn_pbl", "mynn_dmp_sibling",
+    no_fmad = {"soil_points", "gsfcsw", "gsfcgce", "gsfcgce_refl", "lake", "g3", "ysu", "shinhong", "shinhong_480", "mynn_pbl", "mynn_dmp_sibling",
                "wsm6", "kessler", "myjpbl", "milbrandt2", "milbrandt2_zet",
                "wdm6", "wdm6_refl", "wsm3", "wsm6r", "noah", "climate_diagnostics", "pxlsm"}
     if strict:
@@ -321,8 +327,8 @@ def test_lake_compile_options_do_not_change_existing_modules(monkeypatch, strict
             "myjpbl", "wsm6",
             # labs/windfarm (2.9.11): the Fitch unit joins the strict no-FMA set.
             "wind_farm"}
-    no_ftz = {"kf_old", "camzm", "cammgmp", "uwshcu", "gsfcsw", "sbu_ylin", "sbu_ylin_edge", "kfcup", "gsfcgce", "gsfcgce_refl", "g3", "sfclay", "myjsfc", "mynn_surface", "mynn_pbl", "thompson_column",
-              "ysu_480", "wsm6r", "aer_opt2"}
+    no_ftz = {"kf_old", "camzm", "cammgmp", "uwshcu", "gsfcsw", "sbu_ylin", "sbu_ylin_edge", "kfcup", "gsfcgce", "gsfcgce_refl", "g3", "sfclay", "sfclay_tofd", "myjsfc", "mynn_surface", "mynn_pbl", "thompson_column",
+              "ysu_480", "shinhong_480", "wsm6r", "aer_opt2"}
     diffusion = {"smag2d", "km5", "km5_geometry", "diffusion", "diff_opt1", "diff6", "diff6_seam", "sfs_output"}
     expected = {name: ("-std=c++17", "--fmad=false") for name in no_fmad}
     expected.update({name: ("-std=c++17", "--fmad=false", "--ftz=false")
@@ -349,6 +355,10 @@ def test_lake_compile_options_do_not_change_existing_modules(monkeypatch, strict
                        if strict else ('-std=c++17', '--ftz=false'))
     # The lightning unit's own direct NVRTC route (lane order of flags).
     expected["lightning"] = ("-std=c++17", "--ftz=false", "--fmad=false")
+    # WRF v4.8.0 dynamic lightning shares the lightning route: strict drops
+    # contraction, fast keeps it; subnormals kept in both.
+    expected["dyn_lightning"] = (("-std=c++17", "--ftz=false", "--fmad=false") if strict
+                                 else ("-std=c++17", "--ftz=false"))
     # WRF's ocean mixed layer (2.9.1) compiles as the column-exact ports do.
     expected["oml"] = ("-std=c++17", "--fmad=false", "--ftz=false")
     # WRF's HAILCAST diagnostics (development branch 97e9a3ca061) compile without
@@ -402,7 +412,7 @@ def test_lake_compile_options_do_not_change_existing_modules(monkeypatch, strict
     for name in ("cldfra3", "farms"):
         expected[name] = ("-std=c++17", "--ftz=false")
     # Native wind ports have a fast production route and strict proof route.
-    for name in ("wind_mav", "wind_legacy"):
+    for name in ("wind_mav", "wind_legacy", "wind_fitch_480"):
         expected[name] = (("-std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true") if strict
                           else ("-std=c++17", "--ftz=false"))
     # Reviewed batch007 lane compiler policies. Keep exact flag order and
@@ -575,6 +585,7 @@ def test_allow_listed_headers_exist_and_translation_units_are_explicit():
                 ("noah_init", "noah.cu"), ("pd_vertical_sl", "pd_advection.cu"),
                 ("tc_mixing", "smag2d.cu"),
                 ("urban_ucm480", "urban_ucm.cu"),
+                ("shinhong_480", "shinhong.cu"),
                 ("sfs_output", "smag2d.cu"),
                 ("km5_geometry", "smag2d.cu"),
                 ("lin_refl", "refl.cu"), ("gsfcgce_refl", "refl.cu"),
@@ -589,7 +600,7 @@ def test_allow_listed_headers_exist_and_translation_units_are_explicit():
                 ("noah_ua", "noah.cu"), ("noah_ua", "noah_mosaic.cu"),
                 ("noah_mosaic_ua", "noah_mosaic.cu"),
                 ("noah_seaice_options", "noah.cu"),
-                ("sfclay_dx2d", "sfclay.cu")), (
+                ("sfclay_dx2d", "sfclay.cu"), ("sfclay_tofd", "sfclay.cu")), (
                 "only the explicitly reused initialization and scalar units may supply a .cu header")
 
 

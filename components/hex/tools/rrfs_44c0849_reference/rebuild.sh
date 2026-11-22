@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Rebuild using fresh local clones of the exact published public source pins.
+# Usage: rebuild.sh REF NEW_WORK atmosphere|init_atmosphere      (make REF first with make_ref.sh REF)
 set -euo pipefail
 REF=$(realpath "$1")
 WORK=$(realpath -m "$2")
@@ -17,6 +18,8 @@ def clone(source,target,commit):
 clone(ref/'src/MPAS-Model',dst/'src/MPAS-Model',pins['model_commit'])
 for row in pins['submodules']:
     clone(ref/'src/MPAS-Model'/row['path'],dst/'src/MPAS-Model'/row['path'],row['commit'])
+if 'mpas_data_commit' in pins and (ref/'MPAS-Data').is_dir():
+    clone(ref/'MPAS-Data',dst/'MPAS-Data',pins['mpas_data_commit'])
 shutil.copy2(ref/'SOURCE-PINS.json',dst/'SOURCE-PINS.json')
 PY
 bash "$HERE/build.sh" "$WORK/input" "$WORK/build" "$CORE"

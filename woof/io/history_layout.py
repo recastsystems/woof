@@ -273,6 +273,13 @@ def live_state_history_fields(state) -> dict[str, object]:
         value = getattr(state, name, None)
         if value is not None:
             fields[name] = value
+    # WRF v4.8.0 dynamic lightning (registry.dyn_light history names).
+    if getattr(state, "light_pe", None) is not None:
+        for name, output in (("light_ne", "LIGHTNING_NE"), ("light_pe", "LIGHTNING_PE"),
+                             ("light_neu", "LIGHTNING_NEU"), ("lpos", "LPOS"),
+                             ("lneg", "LNEG"), ("lneu", "LNEU"),
+                             ("lpi2d", "LPI2D"), ("lpi3d", "LPI3D")):
+            fields[output] = getattr(state, name)
 
     p_top = getattr(state, "p_top", None)
     if p_top is not None:
@@ -452,6 +459,12 @@ def live_state_history_fields(state) -> dict[str, object]:
             for field_name in (*BUDGET, *PLUMES):
                 if field_name in live_surface:
                     fields[SCHEME_OUTPUT_FIELDS[field_name].netcdf_name] = live_surface[field_name]
+            # WRF 4.8.0's seven new EDMF fields exist only on the wrf_480
+            # route (initialize_physics allocates them nowhere else).
+            for field_name in ("excess_h", "excess_q", "maxmf_dd", "maxwidth_dd",
+                               "maxtkeprod", "cldtop_cooling", "ent_eff"):
+                if field_name in live_surface:
+                    fields[SCHEME_OUTPUT_FIELDS[field_name].netcdf_name] = live_surface[field_name]
             # Registry's MYNN package allocates TKE_PBL on interfaces,
             # although the wrapper evolves QKE instead (module_pbl_driver.F:
             # 1660-1720). Preserve this separate initialized carrier.
@@ -556,7 +569,14 @@ def live_state_history_fields(state) -> dict[str, object]:
             for field_name in (*GECROS_STATE,"grainxy","gddxy","croptype","season_gdd","cropcat","planting","harvest",*MAPS,*COUNTERS,*STATE,*(n for n in output_shapes(3 if "acsagv" in live_surface else 1,(1,1)) if n!="swnorm"),*ACCUMULATORS.values(), "td_fraction", "qtdrain", *NOAHMP_STATE_2D, *NOAHMP_GROUNDWATER_2D,*GW_CARRIERS,"smoiseq", *CARBON_STATE_2D, *CARBON_DIAGNOSTICS_2D, *(n.lower()+"_3d" for n in ("SMCWLT","SMCREF","SMCMAX","BEXP","PSISAT","DKSAT","DWSAT","SMCDRY","QUARTZ")), "soilcomp", "soilcl1", "soilcl2", "soilcl3", "soilcl4", *NOAHMP_STATE_INT_2D,
                                *NOAHMP_STATE_SNOW_3D,
                                *NOAHMP_STATE_SNOWSOIL_3D,
-                               *NOAHMP_DIAGNOSTICS_2D):
+                               *NOAHMP_DIAGNOSTICS_2D,
+                               # WRF writes SFROFF/UDROFF (Registry
+                               # EM_COMMON:855-856, mm) for Noah-MP as for
+                               # Noah; the write-back accumulates both
+                               # carriers (noahmp_runtime._write_back_slab)
+                               # and they were never published, so a Noah-MP
+                               # wrfout had no runoff at noahmp_acc_dt = 0.
+                               "sfcrunoff", "udrunoff"):
                 if field_name in live_surface:
                     fields[SCHEME_OUTPUT_FIELDS[field_name].netcdf_name] = \
                         live_surface[field_name]

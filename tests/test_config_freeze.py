@@ -97,7 +97,21 @@ def _pop_fork_dycore_defaults(actual: dict) -> bool:
             and actual.pop("mp_zero_out_all") == 0)
 
 
+#: port/wrf-480-L08: inert at gwd_opt = 0, which every frozen case runs.
+_WRF480_GWDO_DEFAULTS = {"gwdo_version": "wrf_471", "gwd_dx_factor": 2.0,
+                         "gwd_if_nonhyd": True}
 _BATCH007_DEFAULTS = {'tracer_opt': 0,
+ # Noah-MP scale-aware ground SCF selector:
+ # keyword-only beside the Noah-MP selectors, default the Niu-Yang table.
+ 'opt_scf': 1,
+ # Noah-MP snow thermal conductivity choice and the
+ # snow-layer cold-start profile (tksno-winter, 2 = conduction profile), keyword-only.
+ 'opt_tksno': 1,
+ 'noahmp_snow_tinit': 2,
+ 'noahmp_wetland': 0,
+ 'snicar_solarspec_opt': 0,
+ 'snicar_bandnumber_opt': 2,
+ 'snicar_solver_opt': 1,
  'tracer_adv_opt': 1,
  'tracer_mix2_off': False,
  'tracer_mix6_off': False,
@@ -111,10 +125,15 @@ _BATCH007_DEFAULTS = {'tracer_opt': 0,
  'aitken_mode': 300000000.0,
  'coarse_mode': 200000.0,
  'ntu_ccnty': 2,
+ # WRF 4.8.0 NTU/UDM generations (port/wrf-480 L11), beside ntu_ccnty.
+ 'ntu_version': 'wrf_480',
+ 'udm_version': 'wrf_480',
  'windfarm_ij': 0,
  'windfarm_wake_model': 2,
  'windfarm_overlap_method': 4,
- 'windfarm_induction': 0,
+ # WRF-480 L10: -1 = the selected Fitch pin's Registry default (wrf_471 resolves 0,
+ # today's value; wrf_480 resolves 1 with native WRF turbine files).
+ 'windfarm_induction': -1,
  'windfarm_deg': 0.0,
  'tslist': '',
  'ts_buf_size': 200,
@@ -303,10 +322,16 @@ _BATCH007_DEFAULTS = {'tracer_opt': 0,
  'snicar_bc_ppb': 0.0,
  'snicar_bubble_radius_um': 1000.0,
  'snicar_dust_ppm': 0.0,
+ 'snicar_fresh_grain_opt': 1,
  'snicar_ice_density': 900.0,
  'snicar_snowbc_intmix': True,
  'snicar_snowdust_intmix': False,
  'snicar_snowshape_opt': 3,
+ 'snicar_ice_ri_opt': 2,
+ 'snicar_dust_optics_opt': 0,
+ 'snicar_lap_opt': 0,
+ 'snicar_lap_series': '',
+ 'snicar_lap_table': '',
  'tc_fetch_m': 100000.0,
  'tc_flux_curve': 'off',
  'tc_horizontal_length_m': 0.0,
@@ -339,6 +364,69 @@ def test_new_fields_are_reviewed_defaults_appended_last():
         field = RunConfig.__dataclass_fields__[name]
         assert field.kw_only and field.default == default, name
     names = [name for name in names if name not in _BATCH007_DEFAULTS]
+    # The lateral-boundary hydrometeor envelope (ARWEN item 10): 25 km, the
+    # constant every earlier run served with, keyword-only, appended last.
+    assert names.pop() == "lbc_hydrometeor_envelope_km"
+    assert RunConfig.__dataclass_fields__["lbc_hydrometeor_envelope_km"].default == 25.0
+    assert RunConfig.__dataclass_fields__["lbc_hydrometeor_envelope_km"].kw_only
+    # Noah-MP opt_runsrf/opt_runsub split (re-implemented from published
+    # descriptions): 0 inherits opt_run, keyword-only, appended last.
+    for name in ("opt_runsub", "opt_runsrf"):
+        assert names.pop() == name
+        assert RunConfig.__dataclass_fields__[name].default == 0
+        assert RunConfig.__dataclass_fields__[name].kw_only
+    # Noah-MP snow compaction C_bd option:
+    # appended last, keyword-only, default 1 = WRF's fixed C_bd.
+    assert names.pop() == "opt_snow_compact"
+    assert RunConfig.__dataclass_fields__["opt_snow_compact"].default == 1
+    assert RunConfig.__dataclass_fields__["opt_snow_compact"].kw_only
+    # The upstream MYNN v6.1 fixes, appended
+    # last and keyword-only; correct-mode MY1 since 3.0.3, so their default
+    # is the correct-mode default (on, off in a strict process).
+    from woof import correct_mode as _cm
+    assert names.pop() == "mynn_fixes_v61"
+    assert (RunConfig.__dataclass_fields__["mynn_fixes_v61"].default
+            is _cm.CORRECT_KEYS_DEFAULT)
+    assert RunConfig.__dataclass_fields__["mynn_fixes_v61"].kw_only
+    # WRF v4.8.0 port: cu_physics=3's generation (GFL default, GFDRV the
+    # previous pin), appended last and keyword-only.
+    # WRF-480 assembly: L12 dynamic lightning, then L09 Shin-Hong, appended
+    # last and keyword-only.
+    for name in ("j_neu", "j_neg", "j_pos", "coul_neu", "coul_neg", "coul_pos",
+                 "dyn_lightning_option", "shinhong_ke_dissipation",
+                 "shinhong_scu_mixing", "shinhong_nonlocal_flux",
+                 "shinhong_version"):
+        assert names.pop() == name
+        assert RunConfig.__dataclass_fields__[name].kw_only
+    assert names.pop() == "cu_gf_version"
+    assert RunConfig.__dataclass_fields__["cu_gf_version"].default == "gfl_873b414"
+    assert RunConfig.__dataclass_fields__["cu_gf_version"].kw_only
+    # WRF-480 L10: the Fitch wind-farm pin, appended last and keyword-only;
+    # inert with farms off and absent from identity at wrf_471.
+    assert names.pop() == "windfarm_fitch_version"
+    assert RunConfig.__dataclass_fields__["windfarm_fitch_version"].default == "wrf_480"
+    assert RunConfig.__dataclass_fields__["windfarm_fitch_version"].kw_only
+    # port/wrf-480-L08: WRF v4.8.0's gwd_opt = 1 generation and its two
+    # keys, keyword-only, read only under gwd_opt = 1 (default 0).
+    for name in reversed(tuple(_WRF480_GWDO_DEFAULTS)):
+        assert names.pop() == name
+        field = RunConfig.__dataclass_fields__[name]
+        assert field.kw_only and field.default == _WRF480_GWDO_DEFAULTS[name]
+    # WRF v4.8.0 kim_tofd (KIM turbulent orographic form drag in the revised
+    # MM5 layer, port/wrf-480 L07): off by default, appended last, keyword-only.
+    assert names.pop() == "tofd_factor"
+    assert RunConfig.__dataclass_fields__["tofd_factor"].default == 0.003
+    assert names.pop() == "kim_tofd"
+    assert RunConfig.__dataclass_fields__["kim_tofd"].default is False
+    assert RunConfig.__dataclass_fields__["kim_tofd"].kw_only
+    # WRF v4.8.0 MYNN-SFC (port/wrf-480-L04): read only under
+    # mynn_sfclay_variant = "mynnsfc_b66187f", Registry defaults,
+    # appended last and keyword-only.
+    for name, default in (("shalwater_z0", 0), ("sf_mynn_sfcflux_water", 1),
+                          ("sf_mynn_sfcflux_land", 0)):
+        assert names.pop() == name
+        assert RunConfig.__dataclass_fields__[name].default == default
+        assert RunConfig.__dataclass_fields__[name].kw_only
     # 3.0.0: the 0-1/0-2/0-3 km UH maxima (feat/uh-layers), output only and
     # off by default, appended last and keyword-only.
     assert names.pop() == "uh_layers"
@@ -487,6 +575,15 @@ def test_new_fields_are_reviewed_defaults_appended_last():
     from woof import correct_mode
     assert names[-4:] == ['sf_ocean_physics', 'oml_hml0', 'oml_gamma', 'oml_relaxation_time']
     names = names[:-4]
+    # 3.0.3 ML1's second key (BouLac and k-epsilon PBL length sign).
+    assert names.pop() == 'pbl_boulac_down_sign'
+    assert RunConfig.__dataclass_fields__['pbl_boulac_down_sign'].kw_only
+    # 3.0.3 ML1 (MYNN BouLac downward length sign), keyword-only like HN1.
+    assert names.pop() == 'mynn_boulac_down_sign'
+    assert RunConfig.__dataclass_fields__['mynn_boulac_down_sign'].kw_only
+    # 2.9.14 SN1 (Noah-MP snowmelt reset), keyword-only like HN1.
+    assert names.pop() == 'noahmp_melt_reset_esat'
+    assert RunConfig.__dataclass_fields__['noahmp_melt_reset_esat'].kw_only
     # 2.9.7 HN1: keyword-only, so the positional constructor is unchanged.
     assert names.pop() == 'hydrometeor_handover_numbers'
     assert RunConfig.__dataclass_fields__['hydrometeor_handover_numbers'].kw_only
@@ -500,7 +597,8 @@ def test_new_fields_are_reviewed_defaults_appended_last():
     for field in ('ntiedtke_dry_mass_coupling', 'wsm6_conservative_surface',
      'wdm6_conservative_surface', 'thompson_cloud_surface_booking',
      'wsm3_conservative_surface', 'wsm5_conservative_surface',
-     'wsm7_conservative_surface', 'hydrometeor_handover_numbers'):
+     'wsm7_conservative_surface', 'hydrometeor_handover_numbers',
+     'noahmp_melt_reset_esat', 'mynn_boulac_down_sign', 'pbl_boulac_down_sign'):
         assert RunConfig.__dataclass_fields__[field].default is correct_mode.CORRECT_KEYS_DEFAULT
         assert correct_mode.CORRECT_KEYS_DEFAULT is (not correct_mode.STRICT)
     from woof.lightning_contract import LIGHTNING_DEFAULTS
@@ -523,6 +621,11 @@ def test_new_fields_are_reviewed_defaults_appended_last():
         assert RunConfig.__dataclass_fields__[name].default == default, name
         assert not RunConfig.__dataclass_fields__[name].kw_only, name
     assert names.pop() == 'thompson_table_dir'
+    # TEMPO generation (upstream latest-as-default): keyword-only, so the
+    # positional constructor is unchanged.
+    for name in ('tempo_hailhyperaware', 'tempo_version'):
+        assert names.pop() == name
+        assert RunConfig.__dataclass_fields__[name].kw_only, name
     assert names.pop() == 'tempo_surface_emission_before'
     assert names.pop() == 'tempo_ml_for_bl_nc'
     assert names.pop() == 'bl_mynn_mixnumcon'
@@ -734,6 +837,7 @@ def test_new_fields_are_reviewed_defaults_appended_last():
             ('thompson_table_dir', None),
             ('tempo_surface_emission_before', False),
             ('tempo_ml_for_bl_nc', False),
+            ('tempo_hailhyperaware', True),
             ('cycling', False),
             ('surface_energy_diag', False),
             ('bl_mynn_gsd41_unsquared_qtke', False),
@@ -869,7 +973,18 @@ def _check_frozen_defaults(actual):
                          # gases (fix/wrf461-2dom-exact).
                          ("ghg_input", 0), ("umove", 0.0), ("vmove", 0.0),
                          # 3.0.0: the 0-1/0-2/0-3 km UH maxima, off.
-                         ("uh_layers", 0)):
+                         ("uh_layers", 0),
+                         # WRF v4.8.0 kim_tofd, off (port/wrf-480 L07).
+                         ("kim_tofd", False), ("tofd_factor", 0.003),
+                         # WRF-480 L10: the Fitch pin; inert with farms off.
+                         ("windfarm_fitch_version", "wrf_480"),
+                         # Noah-MP snow compaction at WRF's fixed C_bd.
+                         ("opt_snow_compact", 1),
+                         # Noah-MP opt_runsrf/opt_runsub, stock pair at 0.
+                         ("opt_runsrf", 0), ("opt_runsub", 0),
+                         # The boundary hydrometeor envelope at the 25 km
+                         # every earlier run served with (ARWEN item 10).
+                         ("lbc_hydrometeor_envelope_km", 25.0)):
         assert actual.pop(field) == value, field
     for field,value in (("urban_ucm_generation","wrf_471"),("urban_treeoption",-1),
                         ("urban_ttscheme",-1),("urban_fvg",-1.),("urban_table_dir","")):
@@ -879,6 +994,19 @@ def _check_frozen_defaults(actual):
         assert actual.pop(field) == RunConfig.__dataclass_fields__[field].default
     # WRF 4.7/4.8 upstream fixes, default-on (declared default changes).
     assert actual.pop("solar_generation") == "wrf_480"
+    # WRF v4.8.0 cu_physics=3 generation: GFDRV stays the default until GFL
+    # meets the speed bar ('gfl_873b414' is the opt-in).
+    assert actual.pop("cu_gf_version") == "gfl_873b414"
+    # WRF v4.8.0 Shin-Hong (declared default change; 'wrf_461' keeps 4.7.1's).
+    assert actual.pop("shinhong_version") == "wrf_480"
+    assert actual.pop("shinhong_nonlocal_flux") is True
+    assert actual.pop("shinhong_scu_mixing") is False
+    assert actual.pop("shinhong_ke_dissipation") is False
+    # WRF v4.8.0 dynamic lightning, off.
+    for field, value in (("dyn_lightning_option", 0), ("coul_pos", 0.25e-4),
+                         ("coul_neg", 0.25e-4), ("coul_neu", 0.25e-4),
+                         ("j_pos", 5.e9), ("j_neg", 1.e9), ("j_neu", 1.e9)):
+        assert actual.pop(field) == value, field
     assert actual.pop("ysu_version") == "wrf_480"
     assert actual.pop("noahmp_snow_age") == "wrf_470"
     assert actual.pop("urban_water_balance") == "wrf_480"
@@ -897,6 +1025,12 @@ def _check_frozen_defaults(actual):
     assert actual.pop("wsm7_conservative_surface") is CORRECT_KEYS_DEFAULT
     # 2.9.7: HN1, the hydrometeor handover numbers, same default.
     assert actual.pop("hydrometeor_handover_numbers") is CORRECT_KEYS_DEFAULT
+    # 2.9.14: SN1, the Noah-MP snowmelt reset, same default.
+    assert actual.pop("noahmp_melt_reset_esat") is CORRECT_KEYS_DEFAULT
+    # 3.0.3: ML1, the MYNN BouLac downward length sign, same default.
+    assert actual.pop("mynn_boulac_down_sign") is CORRECT_KEYS_DEFAULT
+    # 3.0.3: ML1's second key, the BouLac and k-epsilon PBL length sign.
+    assert actual.pop("pbl_boulac_down_sign") is CORRECT_KEYS_DEFAULT
     # Declared default correction, 2.8.8 (test above).
     assert actual.pop("terrain_clock") == "local_face"
     assert actual.pop("use_rap_aero_icbc") is False
@@ -920,6 +1054,10 @@ def _check_frozen_defaults(actual):
     assert actual.pop("bl_mynn_mixnumcon") == 0
     assert actual.pop("tempo_ml_for_bl_nc") is False
     assert actual.pop("tempo_surface_emission_before") is False
+    # Declared default, upstream latest-as-default (decided 2026-11-08): TEMPO
+    # v3.2.5 with hail-hyperaware; v3.0.3 stays selectable by name.
+    assert actual.pop("tempo_version") == "v3.2.5"
+    assert actual.pop("tempo_hailhyperaware") is True
     assert actual.pop("thompson_table_dir") is None
     assert actual.pop("rrtmg_smoke_manifest") == ""
     assert actual.pop("cycling") is False
@@ -935,6 +1073,12 @@ def _check_frozen_defaults(actual):
     assert actual.pop("bl_mynn_cloud_tendency_form") == "wrf_461"
     # The MYNN surface-layer generation, at the form every build ran.
     assert actual.pop("mynn_sfclay_variant") == "wrf_461"
+    # WRF v4.8.0 MYNN-SFC keys, unread under that generation.
+    assert actual.pop("sf_mynn_sfcflux_land") == 0
+    assert actual.pop("sf_mynn_sfcflux_water") == 1
+    assert actual.pop("shalwater_z0") == 0
+    # 3.0.3: MY1, the upstream MYNN v6.1 fixes, the correct-mode default.
+    assert actual.pop("mynn_fixes_v61") is CORRECT_KEYS_DEFAULT
     assert actual.pop("fractional_seaice") == 0
     # The WRF v4.6.1 filter form and no zero-out pass, as before.
     from woof.config import G3_RUN_DEFAULTS
@@ -971,6 +1115,8 @@ def test_every_existing_legacy_toml_resolves_identically():
         actual = dataclasses.asdict(cfg)
         for name, default in _BATCH007_DEFAULTS.items():
             assert actual.pop(name) == default, name
+        for name, default in _WRF480_GWDO_DEFAULTS.items():
+            assert actual.pop(name) == default, name
         _check_frozen_defaults(actual)
         # These legacy files omit CQ. Its default-on defect fix is the
         # only approved change from the recorded field dictionary.
@@ -987,6 +1133,8 @@ def test_frozen_case_constructed_configs_resolve_identically():
         assert key in GOLDEN, key
         actual = dataclasses.asdict(cfg)
         for name, default in _BATCH007_DEFAULTS.items():
+            assert actual.pop(name) == default, name
+        for name, default in _WRF480_GWDO_DEFAULTS.items():
             assert actual.pop(name) == default, name
         _check_frozen_defaults(actual)
         # The constructors omit CQ too. Dry cases remain numerically

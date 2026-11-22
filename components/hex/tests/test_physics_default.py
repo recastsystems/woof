@@ -1,7 +1,7 @@
-"""MPAS physics is the hex default (owner ruling 2026-10-25), and WOOF physics stays one flag away.
+"""MPAS physics is the hex default (2026-10-25), and ArWen physics stays one flag away.
 
-THE BREAKAGE THIS PREVENTS: the default staying WOOF on some door after the flip (a plan, a step rule, a roster or a
-card price deciding the WOOF route while the forecast runs MPAS, or the reverse), and the WOOF route no longer
+THE BREAKAGE THIS PREVENTS: the default staying WOOF-ArWen on some door after the flip (a plan, a step rule, a roster or a
+card price deciding the WOOF-ArWen route while the forecast runs MPAS, or the reverse), and the WOOF-ArWen route no longer
 reachable as it ran before 0.4.6.  CPU only: parsers and plans, no card."""
 from __future__ import annotations
 
@@ -160,3 +160,83 @@ def test_a_suite_with_its_own_producer_reaches_the_cold_init():
 
     assert init_flags(["--physics-suite=hrrrv5"]) == ["--physics-suite", "hrrrv5"]
     assert init_flags(["--physics-suite=convection_permitting"]) == []
+
+
+def test_scheme_picks_over_an_arwen_suite_reach_the_cold_init():
+    """THE BREAKAGE THIS PREVENTS (2026-11-09, a zoom globe from ERA5 1957-12-18T12 on the WOOF-ArWen suite with NSSL
+    two-moment picked): the doors forwarded the suite alone to the cold init, so the init was built for the suite's own
+    microphysics and the forecast refused at its physics start for want of the picked scheme's species.  The picks ride
+    with the suite, in either spelling, and a request with no pick forwards exactly what it did."""
+    from woof.hex.physics_default import init_flags, physics_overrides
+
+    picked = ["--forecast-arg=--physics-suite=arwen_mpas_column",
+              "--forecast-arg=--physics=config_microp_scheme=mp_nssl2m",
+              "--physics", "config_radt_lw_scheme=rrtmgp_lw", "--physics-mode=correct"]
+    assert physics_overrides(picked) == ["config_microp_scheme=mp_nssl2m", "config_radt_lw_scheme=rrtmgp_lw"]
+    assert init_flags(picked) == ["--physics-suite", "arwen_mpas_column",
+                                  "--physics", "config_microp_scheme=mp_nssl2m",
+                                  "--physics", "config_radt_lw_scheme=rrtmgp_lw"]
+    assert init_flags(["--physics-suite=arwen_mpas_column"]) == ["--physics-suite", "arwen_mpas_column"]
+    # Picks with no suite run over the ArWen suite at the forecast door, so the init is told the same.
+    assert init_flags(["--physics=config_microp_scheme=mp_p3"]) == [
+        "--physics-suite", "arwen_mpas_column", "--physics", "config_microp_scheme=mp_p3"]
+    # MPAS-A's own suites still add nothing, picks or not: their forecast allocates its own species.
+    assert init_flags(["--physics-suite=convection_permitting"]) == []
+    assert init_flags([]) == []
+
+
+@pytest.mark.parametrize("scheme, species, nonzero", [
+    ("mp_nssl2m", {"qh", "qndrop", "qng", "qnh", "qni", "qnn", "qnr", "qns", "qvolg", "qvolh"}, {"qnn"}),
+    ("mp_p3", {"qib", "qir"}, set()),
+    ("mp_tempo", {"nwfa", "nifa"}, set()),
+])
+def test_the_init_selection_carries_the_picked_scheme(scheme, species, nonzero):
+    """The cold init's species row is the picked microphysics', not the suite's, and the one species a WOOF-ArWen
+    regional start does not leave at zero (NSSL's CCN number, WRF's ccn_conc over the reference density) starts at
+    the engine's own value."""
+    from woof.hex.init_physics import init_selection
+
+    from woof.hex.physics_suites import PhysicsSelectionRefusal
+
+    suite_only = init_selection("arwen_mpas_column", None)
+    try:
+        chosen = init_selection("arwen_mpas_column", None, overrides=[f"config_microp_scheme={scheme}"])
+    except PhysicsSelectionRefusal as error:
+        # The engine's column seam plans a pick, and it imports the GPU array module: an install without it (the
+        # CPU test tier) cannot plan one.  The GPU tier runs this test.
+        if "could not be imported" in str(error):
+            pytest.skip("the engine's column seam is not importable in this environment")
+        raise
+    assert species <= set(chosen["scalar_names"])
+    assert not species <= set(suite_only["scalar_names"])
+    assert "scalar_fill" not in suite_only and "choices" not in suite_only
+    assert set(chosen["scalar_fill"]) == nonzero
+    assert chosen["choices"]["config_microp_scheme"] == scheme
+    if nonzero:
+        from woof.core.microphysics_transition import NSSL2_BACKGROUND_CCN_PER_KG
+        assert chosen["scalar_fill"]["qnn"] == float(NSSL2_BACKGROUND_CCN_PER_KG)
+
+
+def test_door_step_keeps_a_suite_deck_step_only_under_the_mesh_limit():
+    """hrrrv5 runs NOAA's 20 s deck near 3 km; a mesh whose own limit is under 20 s runs its admitted step."""
+    from woof.hex.physics_default import door_step, forecast_step, suite_deck_step
+
+    hrrrv5 = {"suite": "hrrrv5"}
+    assert suite_deck_step(hrrrv5, 3000.0)["dt_seconds"] == 20.0
+    assert suite_deck_step(hrrrv5, 2000.0) is None          # no deck row within a factor 1.2 of 2 km
+    assert suite_deck_step({"suite": "convection_permitting"}, 3000.0) is None
+    assert suite_deck_step({"namelist": "namelist.atmosphere"}, 3000.0) is None
+    # No limit given: the door behaves as before.
+    assert door_step(hrrrv5, 18.0, 3000.0) == []
+    # The deck step fits the mesh (limit 20.237 s, the 96-to-3 km globe): NOAA's deck stays.
+    assert door_step(hrrrv5, 18.0, 3000.0, 20.237) == []
+    step = forecast_step(hrrrv5, 18.0, 3000.0, 20.237)
+    assert step["dt_seconds"] == 20.0 and abs(step["margin"] - 1.01185) < 1e-4
+    # The deck step is over the mesh's limit (19.6 s, a 24 km-background globe): the admitted step is passed.
+    assert door_step(hrrrv5, 18.0, 3000.0, 19.6) == ["--dt", "18.0"]
+    step = forecast_step(hrrrv5, 18.0, 3000.0, 19.6)
+    assert step["dt_seconds"] == 18.0 and "over this mesh's limit" in step["source"]
+    # A suite with no deck is untouched by the limit.
+    assert door_step({"suite": "convection_permitting"}, 18.0, 3000.0, 19.6) == []
+    assert forecast_step({"suite": "convection_permitting"}, 18.0, 3000.0, 19.6)["dt_seconds"] == 18.0
+    assert forecast_step({"suite": "convection_permitting"}, 12.0, 3000.0, 12.45)["dt_seconds"] == 12.0

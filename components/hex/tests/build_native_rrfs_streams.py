@@ -5,7 +5,7 @@ and mpas_split_string are extracted unchanged from the pinned source.
 """
 from pathlib import Path
 import hashlib,json,re,shutil,subprocess,os
-REF=Path(os.environ.get('RRFS_MPAS_REF') or Path(os.environ.get('MPAS_LANES', '.')) / 'ref/rrfs/MPAS-Model-rrfs')
+REF=Path(os.environ.get('RRFS_MPAS_REF') or Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/rrfs/MPAS-Model-rrfs')
 
 def prepare(destination):
     destination=Path(destination);destination.mkdir(parents=True,exist_ok=True)

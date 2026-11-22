@@ -1,0 +1,67 @@
+{
+  "schema": "rrfs-44c0849-source-pins/v1",
+  "model_commit": "44c084944e17f7098668bef6d1e353d12e3c2d1a",
+  "model_url": "https://github.com/RRFSx/MPAS-Model",
+  "readme_version": "MPAS-v8.4.1-1.8",
+  "workflow_commit": "570c81fec5adaefe966b9dd3eec3272da150fc9e",
+  "workflow_url": "https://github.com/NOAA-EMC/rrfs-workflow",
+  "workflow_version": "v2.1.4",
+  "submodules": [
+    {
+      "path": "src/core_atmosphere/physics/physics_mmm",
+      "commit": "a4baf7f3243d1db0dbc5f63473f895bdbdc05c30",
+      "url": "https://github.com/NCAR/MMM-physics.git",
+      "describe": "20250616-MPASv8.3"
+    },
+    {
+      "path": "src/core_atmosphere/physics/physics_noaa/GFL",
+      "commit": "bf6a4b0d58f112322fbf9b11d43ed2027aeb56fa",
+      "url": "https://github.com/NOAA-GSL/GFL.git",
+      "describe": "bf6a4b0"
+    },
+    {
+      "path": "src/core_atmosphere/physics/physics_noaa/MYNN-EDMF",
+      "commit": "c6d08709e83fbc6245e91a65600fd78c7219f1ee",
+      "url": "https://github.com/NCAR/MYNN-EDMF",
+      "describe": "c6d0870"
+    },
+    {
+      "path": "src/core_atmosphere/physics/physics_noaa/MYNN-SFC",
+      "commit": "b66187f54a0c169e36592552634867474e603ac0",
+      "url": "https://github.com/NCAR/MYNN-SFC.git",
+      "describe": "v6.0.0"
+    },
+    {
+      "path": "src/core_atmosphere/physics/physics_noaa/RUCLSM",
+      "commit": "8c9f1a8bb2cfb5fb8d115440fced566361fe0f20",
+      "url": "https://github.com/NOAA-GSL/RUCLSM.git",
+      "describe": "8c9f1a8"
+    },
+    {
+      "path": "src/core_atmosphere/physics/physics_noaa/SMOKE",
+      "commit": "5d2c71e2cf4083b6beeedbfa4d2091674b1556ea",
+      "url": "https://github.com/NOAA-GSL/SMOKE.git",
+      "describe": "5d2c71e"
+    },
+    {
+      "path": "src/core_atmosphere/physics/physics_noaa/TEMPO",
+      "commit": "9adf9ef2827104640125f0c322e1218fce74e94c",
+      "url": "https://github.com/NCAR/TEMPO",
+      "describe": "tempo_v3.0.3"
+    },
+    {
+      "path": "src/core_atmosphere/physics/physics_noaa/UGWP",
+      "commit": "c1c893edcf171af5639af60e3a3a528816f6cc2b",
+      "url": "https://github.com/NOAA-GSL/UGWP",
+      "describe": "MPAS_20241223"
+    },
+    {
+      "path": "src/core_atmosphere/stochastic_physics",
+      "commit": "3cfd4d95c001cd23a73659dbddfa4ead125a49de",
+      "url": "https://github.com/dtcenter/stochastic_physics.git",
+      "describe": "3cfd4d9"
+    }
+  ],
+  "mpas_data_commit": "c57dbc7be629802c6e848770a9e44b9bc602be41",
+  "mpas_data_url": "https://github.com/MPAS-Dev/MPAS-Data"
+}

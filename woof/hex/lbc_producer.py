@@ -109,6 +109,29 @@ def run_stream(arguments, engine):
     return 0
 
 
+def analysis_every_hours(row):
+    """The time step of an analysis series, from its table row (``boundaries.analysis_every_hours``: ERA5 1 h), or
+    None for a row that declares none. A region's boundaries from such a row are its own analyses at each boundary
+    time; a row with no forecast block and no analysis series (ICON reads only its f000) has no boundaries to give."""
+    from .errors import MpasPortError
+    every = (row.get("boundaries") or {}).get("analysis_every_hours")
+    if every is None:
+        return None
+    if type(every) is not int or every < 1:
+        raise MpasPortError(f"{row.get('id')}: boundaries.analysis_every_hours must be a whole number of hours of at "
+                            f"least 1, not {every!r}")
+    return every
+
+
+def endpoint_clock(row, cycle, lead):
+    """The (cycle, lead hours) a boundary time ``lead`` hours after ``cycle`` is read at: a lead of the one cycle for
+    a forecast row, the analysis valid at that time (lead 0) for any other row. Both region doors take it, so the
+    regional door's table stage and the country door's endpoints read the same files."""
+    if row.get("forecast"):
+        return cycle, int(lead)
+    return cycle + timedelta(hours=int(lead)), 0
+
+
 def source_endpoint_commands(*, source, cycle, hours, out_dir, staged=(), member=None, table=None, lead_hours=0,
                              boundary_interval_hours=None):
     """Plan source-table endpoints, including the first endpoint beyond the run.
@@ -137,7 +160,9 @@ def source_endpoint_commands(*, source, cycle, hours, out_dir, staged=(), member
         cadence = (boundary_step(forecast, issued.when.hour, lead_hours, hours, requested=boundary_interval_hours)
                    or int(boundary_interval_hours or forecast["interval_hours"]))
     else:
-        cadence = int(boundary_interval_hours or 1)
+        # An analysis series reads its analyses at the source's own time step (the row's
+        # boundaries.analysis_every_hours, ERA5 1 h) unless a step is asked.
+        cadence = int(boundary_interval_hours or analysis_every_hours(row) or 1)
     count = math.ceil(hours / cadence)
     if lead_hours and not row.get("forecast"):
         raise MpasPortError(
@@ -147,8 +172,8 @@ def source_endpoint_commands(*, source, cycle, hours, out_dir, staged=(), member
     commands = []
     for index in range(count + 1):
         lead = index * cadence
-        source_cycle = issued if row.get("forecast") else Cycle(start.when + timedelta(hours=lead))
-        source_lead = lead_hours + lead if row.get("forecast") else 0
+        when, source_lead = endpoint_clock(row, issued.when, lead_hours + lead)
+        source_cycle = Cycle(when)
         # Validate cadence, member, and product templates before any transfer.
         plan_products(row, source_cycle, member, source_lead)
         argv = ["init-source", "--source", row["id"], "--cycle", source_cycle.when.strftime("%Y-%m-%dT%H"),
@@ -166,7 +191,8 @@ def source_endpoint_commands(*, source, cycle, hours, out_dir, staged=(), member
             argv += ["--member", str(member)]
         for path in staged:
             argv += ["--staged", str(path)]
-        commands.append({"valid_time": (start.when + timedelta(hours=lead)).strftime(FORMAT), "argv": argv})
+        commands.append({"valid_time": (start.when + timedelta(hours=lead)).strftime(FORMAT), "argv": argv,
+                         "boundary_only": bool(lead)})
     return commands
 
 
@@ -224,6 +250,15 @@ def produce_source_endpoints(commands, met_dir, *, workers=2, runner=None, on_re
         elif dest.exists():
             raise MpasPortError(f"boundary destination already exists: {dest}")
         dest.symlink_to(source)
+        if item.get("boundary_only"):
+            # A boundary endpoint is read only through its verified intermediate (and its receipt, which reuse checks):
+            # its downloaded products and composed frames go once that file is in place. THE BREAKAGE THIS PREVENTS
+            # (ERA5 regions, 2026-11-13): every hourly ERA5 endpoint kept its whole-globe download and frames beside
+            # its 1.0 GB intermediate, 5.0 GB an hour, so a 48 h region wrote about 245 GB on the box.
+            import shutil
+            for spent in ("products", "mapped"):
+                if (root / spent).is_dir() and not (root / spent).is_symlink():
+                    shutil.rmtree(root / spent)
         record = {"valid_time": item["valid_time"], "receipt": str(receipt), "met": str(dest)}
         if on_ready is not None:
             on_ready(item, record)

@@ -183,7 +183,7 @@ def _check_document(document, path: Path) -> None:
     schema = document.get("schema") if isinstance(document, dict) else None
     if schema != NORMALIZATION_SCHEMA:
         raise ValueError(
-            f"{path.name} declares schema {schema!r}; this WOOF reads "
+            f"{path.name} declares schema {schema!r}; this WOOF-ArWen reads "
             f"{NORMALIZATION_SCHEMA!r}")
     for key in ("name", "contract", "bridge", "source_id", "profile",
                 "native_grid", "objects", "cadence", "roles", "plan_fields",

@@ -11,5 +11,5 @@ The pinned authority is WRF tag `v4.6.1`, commit
 `d66e442fccc04111067e29274c9f9eaccc3cef28`; its Noah-MP submodule is
 `848f54ad3d28c4303151fe5ad83724e232694422`.
 
-The probe imports no WOOF modules. Tests use it as a source oracle over
+The probe imports no WOOF-ArWen modules. Tests use it as a source oracle over
 multiple rate combinations and fractional ice values.

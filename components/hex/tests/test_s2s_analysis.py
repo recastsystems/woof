@@ -100,3 +100,32 @@ def test_analysis_reader_preserves_static_cell_and_level_dimensions(monkeypatch)
         np.testing.assert_array_equal(actual[name], expected)
     for name, expected in dynamic.items():
         np.testing.assert_array_equal(actual[name], expected[0])
+
+
+def test_interrupted_owned_analysis_is_rebuilt_not_refused(tmp_path, monkeypatch):
+    # fit16-rows s2s2, 2026-11-07: a full disk left init.nc beside a 0-byte receipt; the resume refused the
+    # whole verify stage. An owned folder without a finished receipt is rebuilt; a finished one is reused.
+    from types import SimpleNamespace
+    from woof.hex import global_ensemble, s2s_analysis
+    value = {"paths": {"work": str(tmp_path)}, "start_time": "2026-10-17_00:00:00", "days": 0,
+             "source": "era5", "members": [],
+             "commands": {"init": ["init-source", "--source", "gfs", "--cycle", "2026-10-17T00",
+                                    "--out-dir", "unused"]}}
+    inits = tmp_path / "inits"
+    for source in ("gfs", "era5"):
+        folder = inits / f"analysis-{source}-2026101700"
+        folder.mkdir(parents=True)
+        (folder / "init.nc").write_bytes(b"partial")
+    (inits / "analysis-gfs-2026101700" / "init-source-receipt.json").write_text("")
+    finished = inits / "analysis-era5-2026101700"
+    (finished / "init-source-receipt.json").write_text(json.dumps({
+        "source": "era5", "cycle": "2026-10-17_00:00:00", "lead_hours": 0,
+        "init": {"path": str(finished / "init.nc")}}))
+    calls = []
+    def capture(argv, log, env):
+        calls.append(argv[argv.index("--source") + 1])
+        raise RuntimeError("analysis preparation reached")
+    monkeypatch.setattr(global_ensemble, "_cli", capture)
+    with pytest.raises(RuntimeError, match="analysis preparation reached"):
+        s2s_analysis.verify_analyses(value, {}, SimpleNamespace(analysis_reference=[]), {})
+    assert calls == ["gfs"]

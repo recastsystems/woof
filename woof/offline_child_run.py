@@ -321,7 +321,7 @@ class _ChildProgress:
     in flight, and a finished one could not be listed beside the
     forecasts it came from.
 
-    So this publishes THE SAME TWO RECEIPTS every other WOOF run
+    So this publishes THE SAME TWO RECEIPTS every other WOOF-ArWen run
     publishes -- ``gpuwm.run-manifest.v1`` beside the frames and
     ``gpuwm.run-plan.event.v1`` in ``events.jsonl`` -- rather than
     inventing a third progress shape for one route.  Every existing

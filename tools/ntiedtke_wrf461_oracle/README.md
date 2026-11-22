@@ -106,7 +106,7 @@ them.
 becomes the scheme's `zz = kte`.  So inside `cu_ntiedtke_run` and `cumastrn`,
 **k = 1 is the model TOP and k = klev is the surface**: the ECMWF convention,
 and the opposite of what `module_cu_gf_deep.F` and `module_cu_kfeta.F` use.
-Every existing WOOF cumulus kernel is bottom-up.  The fixture deliberately
+Every existing WOOF-ArWen cumulus kernel is bottom-up.  The fixture deliberately
 builds in WRF order and lets the pinned driver do the flip, so a port that
 gets the direction wrong fails here rather than producing a plausible
 upside-down answer.

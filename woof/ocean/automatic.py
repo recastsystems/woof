@@ -44,13 +44,25 @@ def _lock(path):
             finally:fcntl.flock(stream,fcntl.LOCK_UN)
 
 
-def _grid_file(path,grid,latitude,longitude,state):
+def _surface_rows(state,physics):
+    """Model water (XLAND 2), surface height and ice: Rust finds inland lakes from them."""
+    import cupy as cp
+    fields=getattr(physics,"fields",None) or {}
+    height=getattr(state,"ht",None)
+    if "xland" not in fields or height is None:return {}
+    rows={"water":(cp.asarray(fields["xland"])>1.5).astype(cp.float32),"surface_height":height}
+    if fields.get("xice") is not None:rows["ice"]=fields["xice"]
+    return rows
+
+
+def _grid_file(path,grid,latitude,longitude,state,physics=None):
     import cupy as cp
     from woof.io.nc_writer_bridge import ClassicSchema
     schema=ClassicSchema("cdf2")
     y=schema.def_dim("y",latitude.shape[0]);x=schema.def_dim("x",latitude.shape[1])
     sina,cosa=grid.rotation_m()
-    fields={"latitude":latitude,"longitude":longitude,"cosalpha":cosa,"sinalpha":sina,"map_factor":state.msft}
+    fields={"latitude":latitude,"longitude":longitude,"cosalpha":cosa,"sinalpha":sina,"map_factor":state.msft,
+            **_surface_rows(state,physics)}
     ids={name:schema.def_var(name,"f4",(y,x)) for name in fields}
     schema.put_global_attr("Conventions","CF-1.10")
     with schema.create(path) as writer:
@@ -61,6 +73,7 @@ def _grid_file(path,grid,latitude,longitude,state):
             # coordinates and map factors are already on the device.
             device=cp.asarray(array,dtype=cp.float32)
             writer.write_var(ids[name],cp.asnumpy(cp.ascontiguousarray(device)))
+    return [name for name in ("water","surface_height","ice") if name in fields]
 
 
 def prepare_atmosphere(*,grid,latitude,longitude,state,physics,start_time,run_seconds,options):
@@ -78,7 +91,7 @@ def prepare_atmosphere(*,grid,latitude,longitude,state,physics,start_time,run_se
     with _lock(cache/"preparation.lock"):
         request_dir=cache/"requests"/uuid.uuid4().hex;request_dir.mkdir(parents=True)
         grid_file=request_dir/"atmosphere-grid.nc"
-        _grid_file(grid_file,grid,latitude,longitude,state)
+        surface=_grid_file(grid_file,grid,latitude,longitude,state,physics)
         identity={"source_grid_sha256":_sha(grid_file),"start":start.isoformat(),"end":end.isoformat(),
                   "coarsening":options["coarsening"],"stations":options["stations"],
                   "catalog_sha256":_sha(catalog),"binary_sha256":_sha(binary),
@@ -112,7 +125,8 @@ def prepare_atmosphere(*,grid,latitude,longitude,state,physics,start_time,run_se
                      "coarsening":options["coarsening"],"stations":options["stations"],"shared_inputs":shared,
                      "threads":os.cpu_count() or 1,
                      "grid":{"kind":"curvilinear","file":str(grid_file),"latitude":"latitude","longitude":"longitude",
-                             "cosalpha":"cosalpha","sinalpha":"sinalpha","map_factor":"map_factor","dx":grid.dx,"dy":grid.dy}}
+                             "cosalpha":"cosalpha","sinalpha":"sinalpha","map_factor":"map_factor","dx":grid.dx,"dy":grid.dy,
+                             **{name:name for name in surface}}}
             request_path=request_dir/"prepare.json"
             request_path.write_text(json.dumps(request,indent=2)+"\n")
             with (request_dir/"prepare.log").open("w") as log:

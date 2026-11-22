@@ -852,7 +852,7 @@ On the ERA5 route that means `--history-interval 900` in step 1.
 ## Rendering the child
 
 **The child draws itself.** `woof downscale` renders the finished child
-the way every other WOOF forecast door renders its forecast: the same
+the way every other WOOF-ArWen forecast door renders its forecast: the same
 stage, the same product catalog, the same folder shape. The pictures land
 in `<out>/png/<domain>/<product>/<valid-day>/`, beside the frames they
 came from, and each frame is drawn as it is written, one render at a time

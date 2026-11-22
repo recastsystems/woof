@@ -4207,20 +4207,22 @@ def _fast(numerics: str | None = None) -> bool:
     return (_hex_numerics.mode() if numerics is None else _hex_numerics.normalise(numerics)) == "fast"
 
 
-def _column_source(numerics: str | None = None) -> str:
+def _column_source(numerics: str | None = None, corrections=()) -> str:
     """The column support for this numerics mode: strict is ``_COLUMN`` byte for byte; fast (rrfs/tempo-yolo)
     fixes the fall speeds for the call and runs the sedimentation substeps in registers
     (tempo_fastsed_v303.fast_sed_source, warp shape), narrows TEMPO's own binary64 arithmetic to binary32
     (tempo_fastdp_v303.fast_dp_source), removes every remaining binary64 (tempo_allfloat_v303.all_float_source:
     binary32 blob, constant-bank parameters, binary32 intrinsics; in place of tempo_fastmath_v303.fast_source),
-    then treats graupel traces below 1e-9 kg/kg as absent (tempo_tinymass_v303.tiny_mass_source)."""
+    then treats graupel traces below 1e-9 kg/kg as absent (tempo_tinymass_v303.tiny_mass_source).
+    ``corrections``: correct mode's TEMPO fork ids (corrected_sources); empty is the exact column."""
+    column = corrected_sources(corrections)[0]
     if not _fast(numerics):
-        return _COLUMN
+        return column
     from woof.hex.mpasphys.rrfs.tempo_fastdp_v303 import fast_dp_source
     from woof.hex.mpasphys.rrfs.tempo_allfloat_v303 import all_float_source
     from woof.hex.mpasphys.rrfs.tempo_fastsed_v303 import fast_sed_source
     from woof.hex.mpasphys.rrfs.tempo_tinymass_v303 import tiny_mass_source
-    return tiny_mass_source(all_float_source(fast_dp_source(fast_sed_source(_COLUMN))))
+    return tiny_mass_source(all_float_source(fast_dp_source(fast_sed_source(column))))
 
 
 def _mpas_source(numerics: str | None = None) -> str:
@@ -4291,7 +4293,8 @@ def _device_tables(module, tables, blob_bytes):
     return tables
 
 
-def cuda_source(device_math_source: str, *, max_levels: int = 100, numerics: str | None = None) -> str:
+def cuda_source(device_math_source: str, *, max_levels: int = 100, numerics: str | None = None,
+                corrections=()) -> str:
     """Compose the full module with the shared, host-identified math header.
 
     RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_main.F90:74-3153.
@@ -4300,15 +4303,16 @@ def cuda_source(device_math_source: str, *, max_levels: int = 100, numerics: str
         raise ValueError("TEMPO requires the shared device mathematics header")
     if type(max_levels) is not int or max_levels < 1:
         raise ValueError("TEMPO column capacity must be a positive integer")
+    driver = corrected_sources(corrections)[1]
     return (f"#define TEMPO_NZ_MAX {max_levels}\n" + _shared_pow_define(device_math_source) + device_math_source
-            + _column_source(numerics) + _DRIVER + _mpas_source(numerics))
+            + _column_source(numerics, corrections) + driver + _mpas_source(numerics))
 
 
 # Unbounded on purpose (one entry per card and variant): a bounded per-card cache thrashes once ranks x
 # variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
 # 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
 @lru_cache(maxsize=None)
-def _compiled(device: int, device_math_source: str, max_levels: int):
+def _compiled(device: int, device_math_source: str, max_levels: int, corrections: tuple = ()):
     """Compile without CuPy RawModule's appended FTZ=true override.
 
     RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/TEMPO/src/module_mp_tempo_driver.F90:187-438.
@@ -4317,7 +4321,7 @@ def _compiled(device: int, device_math_source: str, max_levels: int):
     from cupy.cuda import compiler, function
     with cp.cuda.Device(device):
         image, _ = compiler.compile_using_nvrtc(
-            cuda_source(device_math_source, max_levels=max_levels),
+            cuda_source(device_math_source, max_levels=max_levels, corrections=corrections),
             options=_hex_numerics.options(COMPILE_OPTIONS), cache_in_memory=True)
         module = function.Module()
         module.load(image)
@@ -4334,7 +4338,8 @@ WARP_BLOCK = 32
 WARP_WAVES = 4
 
 
-def warp_source(device_math_source: str, *, max_levels: int = 100, numerics: str | None = None) -> str:
+def warp_source(device_math_source: str, *, max_levels: int = 100, numerics: str | None = None,
+                corrections=()) -> str:
     """The warp-per-column module: the same column routines and maths with
     TEMPO_WARP 1, the warp driver and the MPAS slice kernels.
 
@@ -4344,15 +4349,16 @@ def warp_source(device_math_source: str, *, max_levels: int = 100, numerics: str
         raise ValueError("TEMPO requires the shared device mathematics header")
     if type(max_levels) is not int or max_levels < 1:
         raise ValueError("TEMPO column capacity must be a positive integer")
+    warp = corrected_sources(corrections)[2]
     return (f"#define TEMPO_NZ_MAX {max_levels}\n#define TEMPO_WARP 1\n" + _shared_pow_define(device_math_source)
-            + device_math_source + _column_source(numerics) + _WARP + _mpas_source(numerics))
+            + device_math_source + _column_source(numerics, corrections) + warp + _mpas_source(numerics))
 
 
 # Per-card module cache, unbounded on purpose: entries are cards x variants. A bounded LRU thrashes once
 # ranks x variants exceed it, and the evicted card reloads its module on every call (thompson_v842._module
 # at maxsize=8 on 8 cards, measured 2026-10-28: 1.28 s/step against 0.25 s unbounded).
 @lru_cache(maxsize=None)
-def _compiled_warp(device: int, device_math_source: str, max_levels: int):
+def _compiled_warp(device: int, device_math_source: str, max_levels: int, corrections: tuple = ()):
     """Compile the warp module (same options as the column module); sizes and resident warps.
 
     Served from the shipped AOT kernel pack when it holds this source (aot_build.physics_inventory's
@@ -4365,7 +4371,7 @@ def _compiled_warp(device: int, device_math_source: str, max_levels: int):
     from cupy.cuda import compiler, driver, function, runtime
     from woof.hex.cuda_backend.aot import direct_image
     with cp.cuda.Device(device):
-        image = direct_image(warp_source(device_math_source, max_levels=max_levels),
+        image = direct_image(warp_source(device_math_source, max_levels=max_levels, corrections=corrections),
                              _hex_numerics.options(COMPILE_OPTIONS), compiler._get_arch())
         module = function.Module()
         module.load(image)
@@ -4429,7 +4435,7 @@ def _warp_work(device: int, nz: int, warps: int, sizes):
 
 
 def launch_columns(fields, tables, *, dt, flags, device_math_source,
-                   first_call_main=False, pbl=None, presence):
+                   first_call_main=False, pbl=None, presence, corrections=()):
     """Run prepared MPAS columns in place, preserving optional carrier presence.
 
     `fields` has shape (17, levels, cells), float32, column-fastest. `tables`
@@ -4451,7 +4457,7 @@ def launch_columns(fields, tables, *, dt, flags, device_math_source,
     if tables.dtype not in ((cp.float64, cp.float32) if _fast() else (cp.float64,)) or not tables.flags.c_contiguous:
         raise ValueError("TEMPO tables must be the Rust-prepared contiguous native blob")
     module, (work_bytes, state_bytes, blob_bytes) = _compiled(
-        cp.cuda.runtime.getDevice(), device_math_source, nz)
+        cp.cuda.runtime.getDevice(), device_math_source, nz, _corrections_key(corrections))
     tables = _device_tables(module, tables, blob_bytes)
     if pbl is not None and (pbl.shape != (2, nz, cells) or pbl.dtype != cp.float32
                             or not pbl.flags.c_contiguous):
@@ -4478,6 +4484,44 @@ PRECIP_ARGUMENTS = ("precipw","rainncv","rainnc","snowncv","snownc","graupelncv"
 PROFILE_ARGUMENTS = ("refl10cm","re_cloud","re_ice","re_snow")
 RADAR_ARGUMENTS = ("refl10cm_max","refl10cm_1km","refl10cm_1km_max")
 CONFIG_ARGUMENTS = ("config_tempo_aerosolaware","config_tempo_hailaware","config_tempo_ml_for_bl_nc","config_tempo_refl10cm_from_melting")
+#: TEMPO versions the slot runs (&physics_mp_tempo config_tempo_version). The default is the latest released
+#: upstream TEMPO (tempo_v325, NCAR/TEMPO tempo_v3.2.5); "v3.0.3" is this module, the RRFS 44c0849 pin every
+#: bitwise RRFS claim and the landing gate are proven against, and runs exactly as before when named.
+TEMPO_VERSIONS = ("v3.2.5", "v3.0.3")
+DEFAULT_TEMPO_VERSION = "v3.2.5"
+
+
+def tempo_version(options):
+    """The TEMPO version an option set selects (config_tempo_version, default DEFAULT_TEMPO_VERSION).
+
+    THE BREAKAGE THIS PREVENTS: a misspelt version would silently run the default; it is refused by name."""
+    value = options.get("config_tempo_version", DEFAULT_TEMPO_VERSION)
+    value = (value or DEFAULT_TEMPO_VERSION).strip() if isinstance(value, str) else value
+    if value not in TEMPO_VERSIONS:
+        raise ValueError(f"config_tempo_version must be one of {list(TEMPO_VERSIONS)}, not {value!r}")
+    return value
+
+
+#: The TEMPO both RRFS pins carry (9adf9ef); a stream without hex_tempo_version was written by it.
+PIN_TEMPO_VERSION = "v3.0.3"
+
+
+def output_attributes(config):
+    """Global attributes a run's output streams carry for its TEMPO: hex_tempo_version, hex_tempo_hailhyperaware.
+
+    Written only when the run's TEMPO is not the RRFS pin, so an exact-mode run's headers stay identical to native's;
+    a file without them came from the pin (or from hex before v3.2.5, or from native RRFS).
+    THE BREAKAGE THIS PREVENTS: rediagnosing a run's reflectivity with the other version's operator, silently
+    (tempo_refl_v303.rediagnose_file reads them)."""
+    selectors = getattr(config, "selectors", None) or {}
+    options = getattr(config, "options", None) or {}
+    if selectors.get("microphysics") != SCHEME:
+        return {}
+    version = tempo_version(options)
+    if version == PIN_TEMPO_VERSION:
+        return {}
+    hyper = bool(options.get("config_tempo_hailhyperaware", True)) and bool(options.get("config_tempo_hailaware", True))
+    return {"hex_tempo_version": version, "hex_tempo_hailhyperaware": "YES" if hyper else "NO"}
 CONSTANT_ARGUMENTS = ("R_v","R_d","rvord","P0","rcv","gravity")
 
 _MPAS = r"""
@@ -4660,18 +4704,20 @@ def launch_mpas(p, *, dt_dyn, flags, bucket, diagnostics, hourly):
     if type(p["n_microp"]) is not int or p["n_microp"]<1:
         raise ValueError("native manager must supply a positive microphysics substep count")
     phase=_phase_mode()
+    # Correct mode's TEMPO fork ids for this run (run_slot); empty in exact mode, whose modules are unchanged.
+    corrections=_corrections_key(p.get("corrections",()))
     if phase:
         # Fast numerics: (level, cell) phase kernels + warp tail (tempo_phase_v303); its module S also
         # carries the driver slice kernels below. Both modules read the binary32 blob (converted once per
         # blob) and their own constant-bank parameter block, written here for this launch.
         from woof.hex.mpasphys.rrfs import tempo_phase_v303 as _phase
-        pmod,module,sizes,_,_=_phase._modules(device,p["device_math_source"],nz,_phase.inline_mode())
+        pmod,module,sizes,_,_=_phase._modules(device,p["device_math_source"],nz,_phase.inline_mode(),corrections)
         tables=_phase.float_blob(p["tables"])
         if not tables.flags.c_contiguous or tables.nbytes!=sizes[2]:
             raise ValueError("TEMPO table blob has a different layout than the native module")
         _set_scalars(pmod,tables);_set_scalars(module,tables)
     else:
-        module,sizes,resident=_compiled_warp(device,p["device_math_source"],nz)
+        module,sizes,resident=_compiled_warp(device,p["device_math_source"],nz,corrections)
         # Fast: the binary32 blob (the bind converts it once) and the constant-bank parameter block for this launch.
         tables=_device_tables(module,p["tables"],sizes[2])
     for names,values in ((FIELD_ARGUMENTS[:12]+FIELD_ARGUMENTS[17:]+(FIELD_ARGUMENTS[12:15] if flags[0] else ())+(FIELD_ARGUMENTS[15:17] if flags[1] else ()),fields),
@@ -4681,6 +4727,11 @@ def launch_mpas(p, *, dt_dyn, flags, bucket, diagnostics, hourly):
         absent=[name for name in names if values.get(name) is None]
         if absent:raise ValueError(f"allocated native TEMPO carriers missing: {absent}")
     f=_pointer_array([fields.get(n) for n in FIELD_ARGUMENTS],shape=(nz,cells),device=device,optional=True)
+    if "TP6" in corrections:
+        # Correct mode TP6: pointer 20 is the solve cells' xland, which the warp driver and the phase kernels read.
+        land=tp6_land(p,cells)
+        _pointer_array([land],shape=(cells,),device=device)
+        f=_pointer_array([fields.get(n) for n in FIELD_ARGUMENTS]+[land],shape=None,device=device,optional=True)
     m=_pointer_array([p["model"].get(n) for n in MODEL_ARGUMENTS],shape=None,device=device,optional=True)
     mesh=_pointer_array([p["mesh"][n] for n in ("zz","zgrid")],shape=None,device=device)
     d=_pointer_array([p["diagnostics"][n] for n in DIAG_ARGUMENTS],shape=None,device=device)
@@ -4707,8 +4758,9 @@ def launch_mpas(p, *, dt_dyn, flags, bucket, diagnostics, hourly):
     if phase:
         _phase.launch_steps(device=device,nz=nz,cells=cells,steps=p["n_microp"],dt=p["dt_microp"],f=f,bl=pbl,s=s,
                             profiles=profiles,tables=tables,flags=flags,first=bool(p["first_call_main"]),
+                            first_column=("TP3" in corrections) or bool(p.get("first_column_here",True)),
                             presence=presence,radii=bool(p.get("radii",True)),device_math_source=p["device_math_source"],
-                            force_warp=(phase=="warp"))
+                            force_warp=(phase=="warp"),corrections=corrections)
     else:
         _launch_warp(module,resident,sizes,device,nz,cells,f,pbl,s,profiles,p,flags,presence,tables)
     p["first_call_main"]=False
@@ -4745,7 +4797,8 @@ def _launch_warp(module,resident,sizes,device,nz,cells,f,pbl,s,profiles,p,flags,
     module.get_function("tempo_warp_steps")((blocks,),(WARP_BLOCK,),(
         np.int32(nz),np.int32(cells),np.int32(p["n_microp"]),np.float32(p["dt_microp"]),f,
         pbl if pbl is not None else np.uint64(0),s,profiles,tables,
-        *(np.int32(bool(v)) for v in flags),np.int32(bool(p["first_call_main"])),np.int32(presence),
+        *(np.int32(bool(v)) for v in flags),
+        np.int32(bool(p["first_call_main"]) and (("TP3" in p.get("corrections",())) or bool(p.get("first_column_here",True)))),np.int32(presence),
         states,work,blwork,order,cost,np.int32(bool(p.get("radii",True)))))
 
 
@@ -4780,7 +4833,7 @@ def _launch_tail(module,p,f,s,profiles,pr,counter,precip_args,m,mesh,d,t,extent,
 
 def register(registry):
     """Bind slot only; RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_microphysics.F:592-646."""
-    registry.register("microphysics",SCHEME,BACKEND,run_slot)
+    registry.register("microphysics",SCHEME,BACKEND,run_slot,corrections=CORRECTIONS)
 
 
 def pack_initialized_resources(native, rust_transport, blob_path, *, table_files,
@@ -4958,9 +5011,19 @@ def run_slot(call):
     if call.slot!="microphysics" or call.scheme!=SCHEME or str(call.backend)!=BACKEND:
         raise ValueError("TEMPO requires its registered microphysics slot")
     p=call.pools["tempo_v303"]
+    # Correct mode: the TEMPO fork corrections the run applies (fork_corrections); exact mode passes none.
+    # Each TEMPO generation takes its own ids from this set (this module's CORRECTIONS, tempo_v325's).
+    p["corrections"]=_corrections_key(getattr(call,"corrections",()))
     try:
         flags=tuple(bool(call.options[n]) for n in CONFIG_ARGUMENTS)
-        result=launch_mpas(p,dt_dyn=call.dt,flags=flags,
+        launch=launch_mpas
+        if tempo_version(call.options)=="v3.2.5":
+            # tempo_v3.2.5 (default): same pools and tables; hail-hyperaware is forced off with hail-aware off
+            # (TEMPO driver:85).
+            from . import tempo_v325
+            launch=tempo_v325.launch_mpas
+            flags=flags+(bool(call.options.get("config_tempo_hailhyperaware",True)) and flags[1],)
+        result=launch(p,dt_dyn=call.dt,flags=flags,
             bucket=call.options["config_bucket_rainnc"],diagnostics=call.flags.diagnostics,
             hourly=_hourly_switch(p["do_diag_dbz_flag"]))
     except BaseException:
@@ -5059,6 +5122,31 @@ def radii_due(provider,call):
     return False
 
 
+
+def first_call_column_here(provider):
+    """Whether this process's local column 0 is the column the one-process run initialises on TEMPO's first call.
+
+    TEMPO v3.0.3 keeps first_call_main as a Fortran SAVE flag (module_mp_tempo_driver.F90): the graupel
+    number/volume cold-start (graupel_init) and the aerosol first-call checks run on the FIRST column a process
+    hands to tempo_main, then never again.  One process takes file cell 0 first.  A same-host or multi-card rank
+    takes its own first owned cell first, so native MPAS on N ranks initialises N columns, and before this fix
+    every hex rank did the same at its local column 0.
+    THE BREAKAGE THIS PREVENTS: the 120 km hrrrv5 forecast on 2 and 4 pieces differed from the one-piece forecast
+    after step 1 in exactly the other ranks' local cell 0 (global cells 3; 2, 3, 5: graupel number and volume
+    first), and the difference spread over the globe (split-120-forward, 2026-11-13), so an N-card gradient was
+    the gradient of a different forecast.
+    The rule: a process without halo cells is the whole run (its column 0 is file cell 0).  A rank of a split
+    run lists its owned cells first in ascending global id, so it holds file cell 0 exactly when its local
+    column 0 is that cell, whose indexToCellID is 1 (MPAS grids number cells 1..nCells in file order;
+    mpas_block_decomp reads the partition file by that number).
+    """
+    dims = provider.session.layout.dimensions
+    if int(dims.get("nCellsSolve", dims["nCells"])) >= int(dims["nCells"]):
+        return True
+    ids = provider.native.get_field("mesh", "indexToCellID")
+    return int(ids[0]) == 1
+
+
 def _bind_native_views(provider,call):
     """Pool binder; RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_interface.F:699-1110,1195-1616.
 
@@ -5125,6 +5213,11 @@ def _bind_native_views(provider,call):
         dt_microp=provider["scalar_state"]["dt_microp"],n_microp=int(provider["scalar_state"]["n_microp"]),
         l_acrain=bool(provider["scalar_state"]["l_acrain"]),do_diag_dbz_flag=do_diag_dbz_flag)
     p["radii"]=radii_due(provider,call)
+    # Correct mode TP6: the cells' land mask for the droplet activation's water floor (bound once per run).
+    if "TP6" in _corrections_key(getattr(call,"corrections",())):
+        p["xland"]=tp6_xland(provider,fields["qv"].shape[1],resource)
+    if "first_column_here" not in resource:resource["first_column_here"]=first_call_column_here(provider)
+    p["first_column_here"]=bool(resource["first_column_here"])
     # Pack the two PBL carriers with a CUDA copy, with no host numerical processing. Only the PBL subgrid
     # radii read them, so a call without radii does not pack them.
     if flags[2] and p["radii"]:
@@ -5194,3 +5287,170 @@ def reset_output_diagnostics(diagnostics):
         array = diagnostics.get(name)
         if array is not None:
             array.fill(np.float32(0.0))
+
+
+# ---------------------------------------------------------------------------------------------------
+# Correct mode: the fork corrections this scheme carries (woof.hex.mpasphys.rrfs.fork_corrections).
+# Exact mode never calls corrected_sources: the exact module sources stay _COLUMN, _DRIVER and _WARP byte for byte.
+# ---------------------------------------------------------------------------------------------------
+#: The fork correction ids this implementation applies (declared in the suite table's cuda_entries row).
+CORRECTIONS = ("TP1", "TP2", "TP3", "TP4", "TP5", "TP6")
+
+_TP1_OLD = """#if TEMPO_WARP
+  // warp: the serial RETURN at the first level with |ssatw| < eps leaves every
+  // level from there up untouched; find that level (own levels ascend), take
+  // the warp minimum, and process only the levels below it.
+  int kstop = nz + 1;
+  TEMPO_LEVELS(k, nz) if (fabs(ssatw[k]) < PS(eps)) { kstop = k; break; }
+  kstop = tempo_warp_min(kstop);
+#endif
+  TEMPO_LEVELS(k, nz) {
+    // Fortran quirk: RETURN (not CYCLE) leaves the remaining levels untouched.
+#if TEMPO_WARP
+    if (k >= kstop) break;
+#else
+    if (fabs(ssatw[k]) < PS(eps)) return;
+#endif
+"""
+_TP1_NEW = """  TEMPO_LEVELS(k, nz) {
+    // Correct mode TP1 (TEMPO v3.0.5, 881614f): CYCLE past an exactly saturated level, as upstream.
+    if (fabs(ssatw[k]) < PS(eps)) continue;
+"""
+_TP2_OLD = """          // Fortran quirk: no meters3_to_liters factor here (unlike other pbg terms).
+          T.pbg_rci[k] = T.prg_rci[k] / PS(rho_i);
+"""
+_TP2_NEW = """          // Correct mode TP2 (TEMPO 92aafb9): the meters3_to_liters factor every other pbg term has.
+          T.pbg_rci[k] = PS(meters3_to_liters) * T.prg_rci[k] / PS(rho_i);
+"""
+#: TP4 (TEMPO 71588d1): the riming graupel volume terms follow their mass terms through the cloud-water limiter.
+_TP4_OLD = """        T.prg_gcw[k] = T.prg_gcw[k] * ratio;
+      }
+    }
+
+    sump = T.pri_ide[k] - T.prs_iau[k] - T.prs_sci[k] - T.pri_rci[k];"""
+_TP4_NEW = """        T.prg_gcw[k] = T.prg_gcw[k] * ratio;
+        // Correct mode TP4 (TEMPO 71588d1): the volume of the riming terms scales with their mass.
+        T.pbg_scw[k] = T.pbg_scw[k] * ratio;
+        T.pbg_gcw[k] = T.pbg_gcw[k] * ratio;
+      }
+    }
+
+    sump = T.pri_ide[k] - T.prs_iau[k] - T.prs_sci[k] - T.pri_rci[k];"""
+#: TP5 (NCAR/TEMPO ace0eae, #59): snow_moments' two branches the right way round.  With bm_s = 2 (TEMPO's value) the
+#: mass moment smob IS the second moment; the temperature fit turns another bm_s moment into the second.  The pinned
+#: text ran the fit for bm_s = 2 and took smob otherwise.  The rain-snow collection table was built with the same
+#: flip and is NOT rebuilt here (fork_corrections TP5 says so).
+_TP5_HEAD = ("""  if (bm_s > 2.0f - 1.e-3f && bm_s < 2.0f + 1.e-3f) {
+    loga_ = SA(1) + SA(2) * tc + SA(3) * bm_s + SA(4) * tc * bm_s + SA(5) * tc * tc
+""", """  if (bm_s > 2.0f - 1.e-3f && bm_s < 2.0f + 1.e-3f) {
+    // Correct mode TP5 (TEMPO ace0eae): with bm_s = 2 the mass moment is the second moment itself.
+    smo2_ = *smob;
+  } else {
+    loga_ = SA(1) + SA(2) * tc + SA(3) * bm_s + SA(4) * tc * bm_s + SA(5) * tc * tc
+""")
+_TP5_TAIL = ("""    smo2_ = tempo_pow((*smob / a_), (1.0f / b_));
+  } else {
+    smo2_ = *smob;
+  }
+""", """    smo2_ = tempo_pow((*smob / a_), (1.0f / b_));
+  }
+""")
+#: TP3 (TEMPO 4b40a93): the first-call initialisation in every column of the first call, every substep of it
+#: (upstream passes is_first_step = itimestep == 1 to every tempo_main call of the step).
+_TP3_DRIVER = ("tempo_call(nz,dt,s,work[c],blob,flags,first && c==0,bl?b:nullptr,d,presence);",
+               "tempo_call(nz,dt,s,work[c],blob,flags,first,bl?b:nullptr,d,presence);")
+_TP3_WARP = ("TempoCtx ctx={dt,1.0f/dt,aero,hail,0,melt,0,1,last,re,re,re,last,first && sub==0 && c==0};",
+             "TempoCtx ctx={dt,1.0f/dt,aero,hail,0,melt,0,1,last,re,re,re,last,first};")
+
+
+#: TP6 (fork_corrections TP6): the activation takes the cell's land mask, so TEMPO's water floor applies.  The context
+#: carries the cell's xland word (0 = not given, the exact form); the warp driver and the phase kernels set it from
+#: pointer 20 of the field table, which launch_mpas appends (the sfc_input xland of the solve cells) only with TP6.
+#: The per-thread column driver (tempo_columns) leaves it 0: land absent, as exact mode.
+_TP6_CALL = ('xnc = tmax(PS(nt_c_min), activate_cloud_number(P, temp[k], w1d[k], nwfa[k], nullptr));', "// Correct mode TP6: the cell's land mask reaches the activation (C.xland: 1 land, 2 water; 0 not given),\n        // so TEMPO's water floor (lower_lim_nuc_frac 0.15) applies over water and sea ice.\n        const int tp6_land = (C.xland == 1) ? 1 : 0;\n        xnc = tmax(PS(nt_c_min), activate_cloud_number(P, temp[k], w1d[k], nwfa[k], C.xland ? &tp6_land : nullptr));")
+_TP6_CTX_V303 = ("  int ml_for_nc_flag;\n};\n", "  int ml_for_nc_flag;\n" + "  int xland;  // correct mode TP6: the cell's MPAS xland (1 land, 2 water); 0 = not given (land absent)\n" + "};\n")
+TP6_WARP_SET = "ctx.xland=f[20]?(int)f[20][c]:0;  // correct mode TP6: the cell's xland (pointer 20, launch_mpas)"
+TP6_PHASE_SET = "  C.xland = f[20] ? (int)f[20][c] : 0;  /* correct mode TP6: the cell's xland (pointer 20) */                \\\n"
+
+
+def tp6_warp(warp: str) -> str:
+    """The warp driver with TP6's land word set right after its context line (whatever TP3 did to that line)."""
+    import re
+    m = re.findall(r"^( *)(TempoCtx ctx=\{dt,1\.0f/dt,aero,hail[^\n]*;)\n", warp, re.M)
+    if len(m) != 1:
+        raise ValueError(f"TEMPO correct mode: TP6 warp context line found {len(m)} times")
+    indent, line = m[0]
+    return warp.replace(indent + line + "\n", indent + line + "\n" + indent + TP6_WARP_SET + "\n", 1)
+
+
+def tp6_phases(phases: str, corrections) -> str:
+    """The phase kernels' prologue with TP6's land word (the context line of TPH_PROLOGUE), with TP6 only."""
+    if "TP6" not in tuple(corrections or ()):
+        return phases
+    import re
+    m = re.findall(r"^  TempoCtx C = \{dt, 1\.0f / dt, aero, hail,[^\n]*\\\n", phases, re.M)
+    if len(m) != 1:
+        raise ValueError(f"TEMPO correct mode: TP6 phase prologue context line found {len(m)} times")
+    return phases.replace(m[0], m[0] + TP6_PHASE_SET, 1)
+
+
+def tp6_land(p, cells):
+    """TP6's land word for launch_mpas: the solve cells' xland (float32), as the pool builder bound it."""
+    land = p.get("xland")
+    if land is None:
+        raise ValueError("TEMPO correct mode TP6 needs the cells' xland (sfc_input); the slot was built without it")
+    return land[:cells]
+
+
+def tp6_xland(provider, cells, resource):
+    """The solve cells' sfc_input xland as contiguous float32, bound once per run (a view when it already is one).
+    None when the provider has no sfc_input xland (launch_mpas then refuses TP6 by name)."""
+    try:
+        xl = provider["sfc_input"]["xland"]
+    except (KeyError, TypeError):
+        return None
+    key = (int(xl.data.ptr), int(cells))
+    if resource.get("tp6_xland_key") != key:
+        cp = provider.cp
+        view = xl[:cells]
+        if view.dtype != cp.float32 or not view.flags.c_contiguous:
+            view = cp.ascontiguousarray(view, dtype=cp.float32)
+        resource["tp6_xland"], resource["tp6_xland_key"] = view, key
+    return resource["tp6_xland"]
+
+
+def _once(text: str, old: str, new: str, what: str) -> str:
+    if text.count(old) != 1:
+        raise ValueError(f"TEMPO correct mode: {what} anchor found {text.count(old)} times")
+    return text.replace(old, new)
+
+
+def _corrections_key(corrections) -> tuple[str, ...]:
+    """The TEMPO ids of ``corrections`` in a fixed order (the module cache key); unknown ids are refused."""
+    chosen = tuple(sorted(set(corrections or ()) & set(CORRECTIONS)))
+    return chosen
+
+
+def corrected_sources(corrections=()) -> tuple[str, str, str]:
+    """(column, driver, warp driver) sources with the TEMPO corrections in ``corrections`` applied.
+
+    With no TEMPO id it returns _COLUMN, _DRIVER and _WARP themselves (the exact-mode objects)."""
+    chosen = _corrections_key(corrections)
+    column, driver, warp = _COLUMN, _DRIVER, _WARP
+    if "TP1" in chosen:
+        column = _once(column, _TP1_OLD, _TP1_NEW, "TP1 cloud_condensation RETURN")
+    if "TP2" in chosen:
+        column = _once(column, _TP2_OLD, _TP2_NEW, "TP2 pbg_rci")
+    if "TP4" in chosen:
+        column = _once(column, _TP4_OLD, _TP4_NEW, "TP4 cloud-water limiter volume")
+    if "TP5" in chosen:
+        column = _once(column, *_TP5_HEAD, "TP5 snow_moments bm_s branch")
+        column = _once(column, *_TP5_TAIL, "TP5 snow_moments bm_s branch end")
+    if "TP3" in chosen:
+        driver = _once(driver, *_TP3_DRIVER, "TP3 column driver first call")
+        warp = _once(warp, *_TP3_WARP, "TP3 warp driver first call")
+    if "TP6" in chosen:
+        column = _once(column, *_TP6_CTX_V303, "TP6 TempoCtx land word")
+        column = _once(column, *_TP6_CALL, "TP6 activation land mask")
+        warp = tp6_warp(warp)
+    return column, driver, warp

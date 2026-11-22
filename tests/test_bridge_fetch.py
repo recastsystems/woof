@@ -1226,7 +1226,7 @@ def real_bundle(tmp_path_factory):
         pytest.skip("this machine's built artifacts are from "
                     f"{len(revisions)} different source revisions "
                     f"({', '.join(sorted(revisions))}); rebuild all "
-                    "WOOF-authored workspaces from one checkout")
+                    "WOOF-ArWen-authored workspaces from one checkout")
     source_rev = revisions.pop()
     # A user-level directory an older checkout filled holds binaries that
     # predate a contract this tree has since changed; staging refuses them

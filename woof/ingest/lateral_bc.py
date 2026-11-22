@@ -966,16 +966,40 @@ def _active_device_interval(state, cfg):
 #: The diameter of a deep convective cell, 10-25 km.  A hydrometeor mass
 #: narrower than this along the edge is a single cell, which an hourly
 #: forcing frame catches at one place for minutes; see
-#: :func:`hold_hydrometeor_ring_envelope`.
+#: :func:`hold_hydrometeor_ring_envelope`.  The DEFAULT of
+#: ``RunConfig.lbc_hydrometeor_envelope_km`` (25 km), which a run may set.
 RING_CELL_SCALE_M = 25_000.0
 
 
+def ring_envelope_km(cfg) -> float:
+    """``cfg.lbc_hydrometeor_envelope_km``: the edge stretch, in km, a ring
+    hydrometeor mass must span in both bracketing frames to be served.
+
+    25 km (:data:`RING_CELL_SCALE_M`) for a config that predates the key; 0
+    serves the prepared linear table as it is (no hold)."""
+    value = getattr(cfg, "lbc_hydrometeor_envelope_km", None)
+    if value is None:
+        return RING_CELL_SCALE_M / 1000.0
+    value = float(value)
+    if not (np.isfinite(value) and value >= 0.0):
+        raise ValueError(
+            f"lbc_hydrometeor_envelope_km must be a non-negative number of km, "
+            f"got {value!r}")
+    return value
+
+
 def ring_cell_radius(cfg) -> int:
-    """Half the cell scale in grid columns along the edge (at least 1)."""
+    """Half the envelope in grid columns along the edge (at least 1).
+
+    0 when the envelope is 0: the ring then serves the prepared linear
+    table, value and tendency, as it is."""
+    scale_m = 1000.0 * ring_envelope_km(cfg)
+    if scale_m == 0.0:
+        return 0
     dx = float(getattr(cfg, "dx", 0.0) or 0.0)
     if not (np.isfinite(dx) and dx > 0.0):
         raise ValueError("a specified hydrometeor ring needs the grid spacing")
-    return max(1, int(np.ceil(0.5 * RING_CELL_SCALE_M / dx)))
+    return max(1, int(np.ceil(0.5 * scale_m / dx)))
 
 
 def _erode_along_edge(a, side, radius, xp):
@@ -1018,7 +1042,9 @@ def hold_hydrometeor_ring_envelope(get, names, duration, radius, xp) -> int:
 
     THE RULE.  The ring serves, for the whole interval, a mass that BOTH
     frames bracketing it carry, over a stretch of the edge at least a
-    convective cell wide (:data:`RING_CELL_SCALE_M`): the smaller of the two
+    convective cell wide (``RunConfig.lbc_hydrometeor_envelope_km``,
+    default :data:`RING_CELL_SCALE_M`; 0 skips this function and serves
+    the linear table): the smaller of the two
     frames at each point (persists across the hour), then the minimum over
     ``radius`` columns either way along the edge (wider than a cell),
     with zero tendency.  The holding by time alone left dense convection
@@ -1087,23 +1113,232 @@ _HYDROMETEOR_RING_FIELDS = frozenset(
 _HELD_HOST_CACHE: dict = {}
 
 
+def _outermost_row(table, side):
+    """The outermost row of one side table (tables are outermost-first)."""
+    return table[..., 0] if side in ("west", "east") else table[..., 0, :]
+
+
+def hold_ring_tables(tables, names, duration, radius):
+    """Hold ``tables`` (``{(name, side, item): float32 array}``, the
+    linear ring tables of one interval) in place, as the forecast serves
+    them, and return ``{mass: (served, parent)}``.
+
+    The one entry point every holder uses -- the run's ring
+    (:func:`_held_host_sides`), an ensemble member's
+    (:mod:`woof.ensemble.batch_boundaries`) and the stock-WRF export
+    (:mod:`woof.wrf_direct`) -- so the three cannot serve different bytes.
+    ``radius`` 0 (``lbc_hydrometeor_envelope_km = 0``) leaves the tables as
+    they are.  ``served`` is the outermost row's sum, over all four sides
+    and levels, of what the ring serves over the interval; ``parent`` the
+    same sum of the linear table's mean over the interval (the mean of its
+    two frames): the source's condensate on the row.  Both are sums of the
+    coupled tables, so their ratio is the fraction of the source's
+    condensate the ring serves.
+    """
+    from woof.boundary_fields import BOUNDARY_HYDROMETEOR_MASSES
+
+    span = np.float32(duration)
+    parent = {}
+    for mass in BOUNDARY_HYDROMETEOR_MASSES:
+        if mass not in names:
+            continue
+        total = 0.0
+        for side in ("west", "east", "south", "north"):
+            value = _outermost_row(tables[(mass, side, "value")], side)
+            end = value + _outermost_row(tables[(mass, side, "tendency")], side) * span
+            total += 0.5 * float(np.maximum(value, 0).sum(dtype=np.float64)
+                                 + np.maximum(end, 0).sum(dtype=np.float64))
+        parent[mass] = total
+    if int(radius) > 0:
+        hold_hydrometeor_ring_envelope(
+            lambda name, side, item: tables[(name, side, item)], names,
+            duration, radius, np)
+    result = {}
+    for mass, source in parent.items():
+        served = 0.0
+        for side in ("west", "east", "south", "north"):
+            value = _outermost_row(tables[(mass, side, "value")], side)
+            if int(radius) > 0:
+                served += float(np.maximum(value, 0).sum(dtype=np.float64))
+            else:
+                end = value + _outermost_row(tables[(mass, side, "tendency")], side) * span
+                served += 0.5 * float(np.maximum(value, 0).sum(dtype=np.float64)
+                                      + np.maximum(end, 0).sum(dtype=np.float64))
+        result[mass] = (served, source)
+    return result
+
+
+#: What the ring served this process, interval by interval:
+#: ``{(start_seconds, end_seconds): {mass: (served, parent)}}``, written by
+#: :func:`_held_host_sides` (every tile and rank of one domain holds the same
+#: domain interval, so one entry per interval) and read into the run record
+#: by :func:`hydrometeor_ring_receipt`.  A forecast clears it before it steps
+#: (:func:`reset_hydrometeor_ring_ledger`).
+_RING_LEDGER: dict = {}
+
+
+def reset_hydrometeor_ring_ledger() -> None:
+    _RING_LEDGER.clear()
+
+
+def hydrometeor_ring_receipt(cfg, boundary_fields=(), *, ledger=None) -> dict | None:
+    """The run record's statement of the hydrometeors the ring served.
+
+    ``None`` when the boundary carries no hydrometeor mass.  Otherwise the
+    envelope (key, km, columns either way along the edge), the rule it
+    names, and the fraction of the source's condensate on the outermost row
+    that the ring served over the intervals this run stepped through (from
+    :data:`_RING_LEDGER`), per mass and for the masses together, so a reader
+    sees how much of the parent's cloud and precipitation came in.
+    ``ledger`` is one member's own ``{interval: served}`` in place of the
+    process ledger (:func:`ensemble_hydrometeor_ring_receipt`).
+
+    The masses are those ``boundary_fields`` names and those the ring
+    actually held (the ledger's rows): a prepared forecast restores its
+    state with a water-vapour-only scalar list while its boundary intervals
+    carry the hydrometeors, so the state's list alone left the record empty
+    on every prepared run that was fed them.
+    """
+    from woof.boundary_fields import BOUNDARY_HYDROMETEOR_MASSES
+
+    rows = sorted((_RING_LEDGER if ledger is None else ledger).items())
+    held = {mass for _, entry in rows for mass in (entry or {})}
+    masses = [name for name in BOUNDARY_HYDROMETEOR_MASSES
+              if name in set(boundary_fields) or name in held]
+    if not masses:
+        return None
+    km = ring_envelope_km(cfg)
+    radius = ring_cell_radius(cfg)
+    sums = {mass: [0.0, 0.0] for mass in masses}
+    for (start, end), entry in rows:
+        weight = float(end) - float(start)
+        for mass, (served, parent) in entry.items():
+            if mass in sums:
+                sums[mass][0] += weight * served
+                sums[mass][1] += weight * parent
+    served_total = sum(value[0] for value in sums.values())
+    parent_total = sum(value[1] for value in sums.values())
+    return {
+        "key": "lbc_hydrometeor_envelope_km",
+        "envelope_km": km,
+        "radius_columns": radius,
+        "rule": ("linear table as prepared (envelope 0)" if radius == 0 else
+                 "smaller of the two bracketing frames, then the minimum over "
+                 f"{radius} columns either way along the edge, zero tendency"),
+        "masses": masses,
+        "intervals_served": len(rows),
+        "served_fraction_of_source": {
+            mass: (None if parent == 0.0 else served / parent)
+            for mass, (served, parent) in sums.items()},
+        "served_fraction_of_source_all_masses": (
+            None if parent_total == 0.0 else served_total / parent_total),
+        "basis": ("outermost row of all four sides and all levels, coupled "
+                  "tables; source = the mean of the two frames bracketing "
+                  "each interval, weighted by interval length"),
+    }
+
+
+#: The members' share of :func:`hydrometeor_ring_receipt`: the rest of
+#: the block is the same for every member of one batch.
+_MEMBER_RING_KEYS = ("intervals_served", "served_fraction_of_source",
+                     "served_fraction_of_source_all_masses")
+
+
+def ensemble_hydrometeor_ring_receipt(cfg, boundary_fields, member_ledgers, *,
+                                      through_seconds=None) -> dict | None:
+    """The ensemble record's ``lateral_boundary_hydrometeors`` block.
+
+    The single-domain and tree records carry :func:`hydrometeor_ring_receipt`;
+    the native member batch holds each member's ring through the same
+    function (:func:`_held_host_sides_served`) and states it the same way:
+    the envelope, rule and masses once, and per member the intervals its
+    ring served and the fraction of its source's condensate it was fed.
+    ``member_ledgers`` maps member id to ``{(start, end): served}``; an
+    interval that starts at or after ``through_seconds`` was held at pack
+    build but never stepped into, and is not counted.  ``None`` when the
+    boundary carries no hydrometeor mass or the domain is not a specified
+    root, as for one run.
+    """
+    if not getattr(cfg, "specified", False) or getattr(cfg, "nested", False):
+        return None
+    members = {}
+    for member, ledger in member_ledgers.items():
+        rows = {key: value for key, value in ledger.items()
+                if through_seconds is None or float(key[0]) < float(through_seconds)}
+        receipt = hydrometeor_ring_receipt(cfg, boundary_fields, ledger=rows)
+        if receipt is None:
+            return None
+        members[str(member)] = receipt
+    if not members:
+        return None
+    first = next(iter(members.values()))
+    block = {key: value for key, value in first.items() if key not in _MEMBER_RING_KEYS}
+    block["members"] = {member: {key: receipt[key] for key in _MEMBER_RING_KEYS}
+                        for member, receipt in members.items()}
+    return block
+
+
+def hydrometeor_ring_plan(cfg, species, interval_seconds=None) -> dict | None:
+    """What a plan and a dry run say the ring will do with the source's
+    hydrometeors: ``None`` when the source publishes none (or the domain is
+    not a specified root), else the key, the envelope, the columns and one
+    plain sentence."""
+    from woof.boundary_fields import BOUNDARY_HYDROMETEOR_MASSES
+
+    species = [name for name in BOUNDARY_HYDROMETEOR_MASSES
+               if name in {str(item).lower() for item in (species or ())}]
+    if (not species or not getattr(cfg, "specified", True)
+            or getattr(cfg, "nested", False)):
+        return None
+    km = ring_envelope_km(cfg)
+    radius = ring_cell_radius(cfg)
+    cadence = ("" if not interval_seconds else
+               f" ({float(interval_seconds) / 3600.0:g} h apart)")
+    if radius == 0:
+        sentence = (f"boundary hydrometeors ({' '.join(species)}): the ring is "
+                    f"fed the linear table between its forcing frames{cadence} as prepared "
+                    "(lbc_hydrometeor_envelope_km = 0)")
+    else:
+        sentence = (f"boundary hydrometeors ({' '.join(species)}): the ring is "
+                    f"fed only what both bracketing forcing frames{cadence} hold over "
+                    f"{km:g} km of edge (lbc_hydrometeor_envelope_km = {km:g}, "
+                    f"{radius} columns either way, zero tendency); 0 feeds the "
+                    "linear table; the run record states the fraction served")
+    return {"key": "lbc_hydrometeor_envelope_km", "envelope_km": km,
+            "radius_columns": radius, "masses": species, "sentence": sentence}
+
+
 def _held_host_sides(interval, radius):
-    """``{(name, side, item): float32 array}``: ``interval``'s hydrometeor
+    """:func:`_held_host_sides_served`'s tables."""
+    return _held_host_sides_served(interval, radius)[0]
+
+
+def _held_host_sides_served(interval, radius):
+    """``({(name, side, item): float32 array}, served)``: ``interval``'s hydrometeor
     ring tables as the card is given them (the attach's float32 rounding of
-    the host table), held by :func:`hold_hydrometeor_ring_envelope`.
+    the host table), held by :func:`hold_hydrometeor_ring_envelope`
+    (:func:`hold_ring_tables`; ``radius`` 0 leaves them linear).
 
     Held on the host, from the WHOLE edge of the domain's own interval, so
     a resident run, every tile of a streamed one and every rank of a split
     one serve the same bytes: a tile's window would otherwise erode its
-    edge without the columns beyond its window.
+    edge without the columns beyond its window.  ``served`` is what
+    :data:`_RING_LEDGER` records for the interval (None when nothing was
+    held), so a caller holding for several members keeps each member's own.
     """
     key = (id(interval), int(radius))
     entry = _HELD_HOST_CACHE.get("entry")
     if entry is not None and entry[0] == key and entry[1] is interval:
-        return entry[2]
+        # A forecast that cleared the ledger and meets the interval it held
+        # last still records what it serves.
+        _RING_LEDGER[(float(interval.start_seconds),
+                      float(interval.end_seconds))] = entry[3]
+        return entry[2], entry[3]
     names = [name for name in interval.fields if name in _HYDROMETEOR_RING_FIELDS]
     if any(getattr(interval.fields[name], side).time_law is not None
            for name in names for side in ("west", "east", "south", "north")):
+        if int(radius) == 0:
+            return {}, None   # served as prepared; nothing is held or measured
         raise RuntimeError(
             "a hydrometeor ring table carries a nonlinear time law; its two "
             "frames cannot be read off value + tendency * duration")
@@ -1111,11 +1346,12 @@ def _held_host_sides(interval, radius):
                                            dtype=np.float32)
               for name in names for side in ("west", "east", "south", "north")
               for item in ("value", "tendency")}
-    hold_hydrometeor_ring_envelope(
-        lambda name, side, item: tables[(name, side, item)], names,
-        float(interval.end_seconds) - float(interval.start_seconds), radius, np)
-    _HELD_HOST_CACHE["entry"] = (key, interval, tables)
-    return tables
+    served = hold_ring_tables(
+        tables, names,
+        float(interval.end_seconds) - float(interval.start_seconds), radius)
+    _RING_LEDGER[(float(interval.start_seconds), float(interval.end_seconds))] = served
+    _HELD_HOST_CACHE["entry"] = (key, interval, tables, served)
+    return tables, served
 
 
 def _held_resident_interval(state, cfg, interval):
@@ -1136,7 +1372,12 @@ def _held_resident_interval(state, cfg, interval):
         return device
     window = getattr(interval, "ring_window", None)
     source, owned = (interval, None) if window is None else window
-    held = _held_host_sides(source, ring_cell_radius(cfg))
+    radius = ring_cell_radius(cfg)
+    held = _held_host_sides(source, radius)
+    if radius == 0:
+        # lbc_hydrometeor_envelope_km = 0: the uploaded linear tables are
+        # what is served; _held_host_sides only measured them for the record.
+        held = {}
     if getattr(state, "_host_setup_state", False):
         xp = np
     else:
@@ -3227,4 +3468,7 @@ __all__ = ["BoundaryInterval", "FieldBoundary", "LateralBoundaries",
            "lateral_boundary_clock_dt", "lateral_boundary_reload_count",
            "lateral_boundary_resident_bytes", "record_built_end_frame",
            "relax_timescale_seconds",
+           "ring_envelope_km", "ring_cell_radius", "hold_ring_tables",
+           "hydrometeor_ring_receipt", "reset_hydrometeor_ring_ledger",
+           "hydrometeor_ring_plan",
            "specified_relaxes_w", "start_last_forcing_order"]

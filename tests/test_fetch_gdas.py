@@ -315,7 +315,7 @@ def test_the_fetch_hint_table_refuses_an_unrouted_source_by_name(spelling):
 
     The breakage: a config whose step 1 cannot be run.  ``nam`` and
     ``hrrr-ak`` are REGISTERED sources with no fetch route in this
-    WOOF, and ``gdass`` is a typo for one that has a route -- all three
+    WOOF-ArWen, and ``gdass`` is a typo for one that has a route -- all three
     describe a download `woof fetch` would not perform, so the table
     has to be refused at config load rather than at the download, and
     the refusal has to print the offending spelling and the vocabulary

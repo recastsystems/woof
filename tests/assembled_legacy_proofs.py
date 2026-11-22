@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
-SOURCE_EXTENSION_SHA = 'cec428ac4374642aaf6a0fe68a4c49f4b1bf00431855f6baaaed8254115fe8ee'
+SOURCE_EXTENSION_SHA = '6e364433336d7d7a5f0dbb726ff451000b286a8ec3ddbe5f83b980c16bbc8af0'
 DIFFUSION_CACHE_EXTENSION_SHA = "6e6ee83679ba768bd94668fdbecd9a8fe14202a7ce8cf9045c51cde885f1bac6"
 
 PROOF_SHAS = {
@@ -206,7 +206,11 @@ def _source_extension(root, name, before, after, schema=None):
         # Re-measured for the 3.0.0 sealing pass strict reds (the MYNN and TC folds moved the loader;
         # the dyn-options folds moved dycore.py and acoustic.py): base 93a5e7e316 against eeede1b3b3,
         # zero differing words in all three families, same card and NVRTC. Previously 0f5df7085d.
-        assert replay["base"] == "93a5e7e3162c869ba6ce23cbb096ac0b40a9d04b"
+        # Re-measured for the 3.0.0 fold (the WRF 4.8.0 ports and the MYNN v6.1
+        # option moved the loader): base dc3753350b (public 2.9.13) against
+        # 5f81efef03, zero differing words in all three families on an RTX 5090
+        # (sm_120), NVRTC 13.4.92. Previously 93a5e7e316.
+        assert replay["base"] == "dc3753350b907007cefa558b69095efde070d3c7"
         assert replay["measurements"] == measured["measurements"]
         assert replay["numerics"] == "strict"
         assert replay["generator"] == "tools/assembled_legacy_replay.py"

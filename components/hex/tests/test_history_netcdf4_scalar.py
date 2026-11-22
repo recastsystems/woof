@@ -14,6 +14,8 @@ woof.hex.history_compression).  Skips where no stream bridge is installed or nei
 import numpy as np
 import pytest
 
+import site_support
+
 from woof.hex import history_compression, restart_v842
 from woof.hex.engines import EngineRefusal
 
@@ -23,9 +25,11 @@ TEMPERATURE = np.array([288.5, 290.25, 301.0], dtype=np.float32)
 
 def _bridge_or_skip():
     try:
-        return restart_v842._bridge()
+        restart_v842._bridge()
     except EngineRefusal:
         pytest.skip("no rw_mpas_stream installed (wheel libexec, WOOF_HEX_RW_MPAS_STREAM or woof's bridges)")
+    return str(site_support.current_bridge_or_skip(restart_v842._STREAM_ENGINE, b"ordered_metadata",
+                                                   "ordered metadata", "writing the history frame"))
 
 
 def _write_history_frame(tmp_path):

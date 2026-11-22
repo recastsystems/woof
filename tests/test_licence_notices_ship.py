@@ -333,6 +333,7 @@ NOTICE_CARRIERS: tuple[str, ...] = (
     "woof/core/rrtmgp.py",
     "woof/core/ruc.py",
     "woof/core/thompson_aerosol_contract.py",
+    "woof/mp_generations.py",  # WRF v4.8.0 NTU/UDM generations, WRF's notice (L11)
     "woof/obs/dealias_region.py",
     # The single-layer UCM's CPU reference embeds WRF v4.7.1's
     # module_sf_urban.F statement listing and carries WRF's notice.
@@ -430,6 +431,7 @@ _NOT_FDLIBM = {
     "nssl1_support.cuh": ("lake_atan", "nssl1_log10f"),  # CUDA atan/log10 wrappers
     "trajectory.cu": ("tatan2",),  # CUDA binary64 atan2
     "wind_mav.cu": ("mav_atan2", "mav_atan_series"),  # local 36-term series, CUDA fast arm
+    "wind_fitch_480.cu": ("f480_atan_series",),  # the same local 36-term series, CUDA fast arm
     # These two full headers retain CORE-MATH's MIT notice, independently
     # of the noticed Sun reductions in the FDLIBM carriers above.
     "noahmp_log10_profile.cuh": ("noahmp_native_log10", "noahmp_native_log10_special"),
@@ -651,7 +653,9 @@ _MPAS_SHORT = frozenset({"cases.F", "gwd.F", "initialize_real.F", "read_met.F", 
 #: each NAMED in the NOTICE as well as covered by WRF's declaration.
 #: share/output_wrf.F: the renderer's local import reads SIMULATION_START_DATE
 #: as WRF's history writer defines it (A137, rw-wrfbatch local_import.rs).
-_WRF_OTHER = frozenset({"output_wrf.F", "solve_em.F", "wrf_fddaobs_in.F"})
+_WRF_OTHER = frozenset({"output_wrf.F", "solve_em.F", "wrf_fddaobs_in.F",
+                        # WRF v4.8.0 phys/physics_mmm (gwdo_wps281, ELVMAX).
+                        "bl_gwdo.F90"})
 
 #: NCAR/TEMPO's own source files, cited bare (src/params.F90 and so on) by
 #: the rw-tempo crate that ports its table builders.

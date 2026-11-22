@@ -68,7 +68,7 @@ def prepare_native_ranks(arguments, config, layout, payload, streams, library,
     if not launcher or not Path(launcher).is_file():
         raise ValueError('MPAS_NATIVE_MPIEXEC must name the native library kit MPI launcher')
     if getattr(arguments, 'samehost_reference', None):
-        raise ValueError('native MPI receipts cannot claim the WOOF reference fingerprint format')
+        raise ValueError('native MPI receipts cannot claim the WOOF-ArWen reference fingerprint format')
     began = time.perf_counter()
     started = datetime.now(timezone.utc).isoformat()
     payload, out = Path(payload).resolve(), Path(out).resolve()

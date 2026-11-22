@@ -10,11 +10,36 @@ use crate::assemble::{DecodedCollection, DirectValue};
 use crate::refusal::{frame_invalid, Result};
 
 pub const ALIGNMENT: &str = "bilinear_mask_aware_nearest";
+/// The exact contiguous subset when the donor publishes every primary
+/// point; otherwise [`ALIGNMENT`] with a one-donor-step edge allowance.
+/// On matching grids it is byte-identical to `exact_coordinate_subset`.
+pub const EXACT_OR_REGRID: &str = "exact_coordinate_subset_or_bilinear_mask_aware_nearest";
+/// How far past the donor's box a primary point may lie under
+/// [`EXACT_OR_REGRID`], in donor steps.
+pub const EXACT_OR_REGRID_EDGE_CELLS: f64 = 1.0;
+
+/// Largest distance from a primary coordinate to its nearest donor
+/// coordinate, degrees (longitude folded modulo 360): how far apart two
+/// lattices that should share their points actually sit.
+pub fn lattice_offset(source: &[f64], target: &[f64], cyclic: bool) -> f64 {
+    target.iter().map(|t| source.iter().map(|s| {
+        let d = (s - t).abs();
+        if cyclic { let d = d.rem_euclid(360.0); d.min(360.0 - d) } else { d }
+    }).fold(f64::INFINITY, f64::min)).fold(0.0, f64::max)
+}
 
 #[derive(Clone, Copy)]
 struct Bracket { lo: usize, hi: usize, weight: f64 }
 
+#[cfg(test)]
 fn brackets(source: &[f64], target: &[f64], cyclic: bool) -> Result<Vec<Bracket>> {
+    brackets_with_edge(source, target, cyclic, 0.0).map(|(b, _)| b)
+}
+
+/// `edge_cells` > 0 lets a target lie up to that many donor steps past the
+/// donor's first or last coordinate; it takes the edge cell (weight 0).
+/// Returns the brackets and how many targets were clamped that way.
+fn brackets_with_edge(source: &[f64], target: &[f64], cyclic: bool, edge_cells: f64) -> Result<(Vec<Bracket>, usize)> {
     if source.is_empty() || source.iter().chain(target).any(|v| !v.is_finite()) {
         return Err(frame_invalid("horizontal regrid needs finite, nonempty coordinate axes"));
     }
@@ -42,10 +67,25 @@ fn brackets(source: &[f64], target: &[f64], cyclic: bool) -> Result<Vec<Bracket>
             ordered.push((ordered[0].0 + 360.0, ordered[0].1));
         }
     }
-    target.iter().map(|v| {
+    let end = ordered.len() - 1;
+    let step = ordered.windows(2).map(|w| w[1].0 - w[0].0).fold(f64::INFINITY, f64::min);
+    let reach = if edge_cells > 0.0 && step.is_finite() { edge_cells * step * (1.0 + 1e-9) } else { 0.0 };
+    let mut clamped = 0usize;
+    let out = target.iter().map(|v| {
         let mut v = if cyclic { v.rem_euclid(360.0) } else { *v };
-        if cyclic && v < ordered[0].0 { v += 360.0; }
-        let end = ordered.len() - 1;
+        if cyclic && v < ordered[0].0 {
+            // A regional longitude just west of the donor's first column
+            // stays west of it rather than wrapping to the far side.
+            if !(reach > 0.0 && ordered[0].0 - v <= reach) { v += 360.0; }
+        }
+        if v < ordered[0].0 && ordered[0].0 - v <= reach {
+            clamped += 1;
+            return Ok(Bracket { lo: ordered[0].1, hi: ordered[0].1, weight: 0.0 });
+        }
+        if v > ordered[end].0 && v - ordered[end].0 <= reach {
+            clamped += 1;
+            return Ok(Bracket { lo: ordered[end].1, hi: ordered[end].1, weight: 0.0 });
+        }
         if v < ordered[0].0 || v > ordered[end].0 {
             return Err(frame_invalid(format!("horizontal regrid target coordinate {v} outside donor coverage {}..{} (periodic={periodic})", ordered[0].0, ordered[end].0)));
         }
@@ -53,7 +93,8 @@ fn brackets(source: &[f64], target: &[f64], cyclic: bool) -> Result<Vec<Bracket>
         let lo = if hi == 0 || ordered[hi].0 == v { hi } else { hi - 1 };
         Ok(Bracket { lo: ordered[lo].1, hi: ordered[hi].1,
             weight: if lo == hi { 0.0 } else { (v - ordered[lo].0) / (ordered[hi].0 - ordered[lo].0) } })
-    }).collect()
+    }).collect::<Result<Vec<_>>>()?;
+    Ok((out, clamped))
 }
 
 fn categorical(name: &str) -> bool {
@@ -105,11 +146,20 @@ fn interpolate(value: &DirectValue, ys: &[Bracket], xs: &[Bracket], mask: Option
 }
 
 /// Consume and replace donor arrays once, before the temporal/vertical join.
-pub fn align(mut donor: DecodedCollection, latitude: &[f64], longitude: &[f64]) -> Result<(DecodedCollection, Value)> {
+pub fn align(donor: DecodedCollection, latitude: &[f64], longitude: &[f64]) -> Result<(DecodedCollection, Value)> {
+    align_with_edge(donor, latitude, longitude, 0.0)
+}
+
+/// [`align`], letting primary points up to `edge_cells` donor steps past the
+/// donor's box take the donor's edge cell.  Two ERA5 files requested over
+/// the same area from two CDS services can sit on lattices shifted by part
+/// of a cell (era5-137 grid mismatch, 2026-11-10), so the atmosphere's
+/// outer row or column can lie just outside the surface file.
+pub fn align_with_edge(mut donor: DecodedCollection, latitude: &[f64], longitude: &[f64], edge_cells: f64) -> Result<(DecodedCollection, Value)> {
     let started = std::time::Instant::now();
     let source_shape = [donor.latitude.len(), donor.longitude.len()];
-    let ys = brackets(&donor.latitude, latitude, false)?;
-    let xs = brackets(&donor.longitude, longitude, true)?;
+    let (ys, edge_rows) = brackets_with_edge(&donor.latitude, latitude, false, edge_cells)?;
+    let (xs, edge_columns) = brackets_with_edge(&donor.longitude, longitude, true, edge_cells)?;
     let results: Vec<Result<_>> = crate::threads::install(|| donor.direct.par_iter().map(|(key, value)| {
         let mask = donor.direct.get(&(key.0, key.1.clone(), "land_fraction".to_owned()));
         if let Some(m) = mask
@@ -125,11 +175,16 @@ pub fn align(mut donor: DecodedCollection, latitude: &[f64], longitude: &[f64]) 
     }).collect());
     donor.direct = crate::threads::in_order(results)?.into_iter().collect();
     donor.latitude = latitude.to_vec(); donor.longitude = longitude.to_vec();
-    let receipt = json!({"method": ALIGNMENT, "continuous": "bilinear_finite_weight_renormalization",
+    let mut receipt = json!({"method": ALIGNMENT, "continuous": "bilinear_finite_weight_renormalization",
         "masks_categories": "nearest", "surface_mask": "nearest_land_fraction_threshold_0.5",
         "source_shape": source_shape, "target_shape": [latitude.len(),longitude.len()],
         "seconds": started.elapsed().as_secs_f64(), "threads": crate::threads::width(),
         "fields": donor.direct.len()});
+    if edge_cells > 0.0 {
+        receipt["edge_cells_allowed"] = json!(edge_cells);
+        receipt["edge_clamped_rows"] = json!(edge_rows);
+        receipt["edge_clamped_columns"] = json!(edge_columns);
+    }
     Ok((donor, receipt))
 }
 
@@ -152,5 +207,23 @@ mod tests {
             let b = if *b > 180.0 { *b - 360.0 } else { *b };
             assert!((out[IxDyn(&[j,i])] - (270.0+2.0*a+3.0*b+0.25*a*b)).abs() < 1e-10);
         }}
+    }
+
+    #[test]
+    fn shifted_lattice_edge_takes_edge_cell_within_one_step_only() {
+        // Surface on the 0.25 lattice; atmosphere anchored at 52.1/-100.3.
+        let donor_lat = [52.0, 51.75, 51.5]; let donor_lon = [259.75, 260.0, 260.25];
+        let target_lat = [52.1, 51.85, 51.6]; let target_lon = [-100.3, -100.05, -99.8];
+        let (ys, rows) = brackets_with_edge(&donor_lat, &target_lat, false, 1.0).unwrap();
+        let (xs, cols) = brackets_with_edge(&donor_lon, &target_lon, true, 1.0).unwrap();
+        assert_eq!((rows, cols), (1, 1));
+        assert_eq!((ys[0].lo, ys[0].hi, ys[0].weight), (0, 0, 0.0));
+        assert_eq!((xs[0].lo, xs[0].hi, xs[0].weight), (0, 0, 0.0));
+        assert!((ys[1].weight - 0.4).abs() < 1e-9 && (xs[1].weight - 0.8).abs() < 1e-9);
+        // Without the allowance the same edge still refuses, and anything
+        // past one step refuses even with it.
+        assert!(brackets(&donor_lat, &target_lat, false).is_err());
+        assert!(brackets_with_edge(&donor_lat, &[52.3], false, 1.0).is_err());
+        assert!(brackets_with_edge(&donor_lon, &[-100.6], true, 1.0).is_err());
     }
 }

@@ -194,6 +194,7 @@ __all__ = [
     "mpas_rank_card_bytes",
     "RouteRunPeak",
     "route_required_free_bytes",
+    "route_peak_rows",
     "route_run_curve_mib",
     "harmonic_basis_bytes",
     "retired_affine_row_floor_bytes",
@@ -979,7 +980,7 @@ _SHAPED_ROWS: dict[str, dict[str, Any]] = {
         "stack": "proof-2026-08",
         "provenance": (
             "two-point fit on the per-allocation ledger session measured "
-            "2026-08-26 on the proving RTX 5090 (170 SM) at the merged tip, "
+            "2026-08-26 on an RTX 5090 (170 SM) at the merged tip, "
             "hex 2009db7 + engine 26daaab7e: x1.40962 peaked 8,874.0 MiB and "
             "x4.163842 20,446.0 MiB, both by this process's nvidia-smi row.  "
             "The tiled-workspace terms are subtracted from both points BEFORE "
@@ -998,7 +999,7 @@ _SHAPED_ROWS: dict[str, dict[str, Any]] = {
         "stack": "proof-2026-08",
         "provenance": (
             "two-point fit on the per-allocation ledger session measured 2026-08-25 on "
-            "the proving RTX 5070 Ti (70 SM) at hex 5252421 + engine "
+            "an RTX 5070 Ti (70 SM) at hex 5252421 + engine "
             "26daaab7e: x1.40962 peaked 6,272.0 MiB and u96.64002 8,802.0 MiB.  "
             "NOT MEASURED AT THE MERGED TIP -- the core carries "
             "PIN_RESTATEMENT_BYTES (+484.0 MiB, what the tip moved x1 by on "
@@ -1020,7 +1021,7 @@ _SHAPED_ROWS: dict[str, dict[str, Any]] = {
         "stack": "proof-2026-08",
         "provenance": (
             "single-point core from the per-allocation ledger row measured 2026-08-25 on "
-            "the desktop RTX 3080 (68 SM, sm_86, WDDM) at hex 5252421 + engine "
+            "an RTX 3080 driving a Windows desktop (68 SM, sm_86, WDDM) at hex 5252421 + engine "
             "26daaab7e: x1.40962 peaked 6,340.5 MiB device-view.  WDDM "
             "publishes no per-process row, so that figure INCLUDES the "
             "desktop's 1,142.5 MiB run-start baseline and the baseline is "
@@ -1047,7 +1048,7 @@ _SHAPED_ROWS: dict[str, dict[str, Any]] = {
             "ENVELOPE, NOT A FIT.  The per-allocation instrument has never "
             "been run on a regional mesh, so this core is the LARGEST residue "
             "(peak minus tiled terms minus slope*cells) over the five "
-            "concentric culls measured 2026-08-27 on the proving RTX 5090, "
+            "concentric culls measured 2026-08-27 on an RTX 5090, "
             "all 1,080 steps of full physics at dt 20 s through "
             "`woof hex forecast --lbc-dir`, whole-device sampler on an idle "
             "card: r4.75.4440 5,552 MiB, r4.75.7975 7,336, r4.75.11020 7,670, "
@@ -1114,7 +1115,7 @@ SHAPED_ROWS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
 #: 24,832.6 MiB the 170 SM row predicted, so a card with 26.6 GB free was
 #: admitted into an out-of-memory.
 #:
-#: MEASURED 2026-10-16 on the proving RTX 5090 (170 SM), route A
+#: MEASURED 2026-10-16 on an RTX 5090 (170 SM), route A
 #: (default ArWen physics) through the bare forecast door, one hour each, the
 #: run's own nvidia-smi row sampled every 500 ms, the same inputs and card for
 #: both arms:
@@ -1214,7 +1215,7 @@ class SameHostRankPeak:
 SAMEHOST_RANK_PEAKS: tuple[SameHostRankPeak, ...] = (
     SameHostRankPeak(
         multiprocessors=188, levels=55, local_cells=331_942, peak_mib=29_538.0,
-        receipt=("x1.655362 30 km globe, 2 cards, 24 h, GFS 2026-10-22 12Z, WOOF physics, fast numerics, "
+        receipt=("x1.655362 30 km globe, 2 cards, 24 h, GFS 2026-10-22 12Z, ArWen physics, fast numerics, "
                  "the hex 0.4.5 multi-card fix + gpuwm 2.9.5; the pool over-budget record "
                  "(nvidia-smi, the larger of the two cards), 2026-10-24")),
     # The single-card loop on the same case and card: its row predicts 39,877 MiB (43,080 MiB with
@@ -1222,7 +1223,7 @@ SAMEHOST_RANK_PEAKS: tuple[SameHostRankPeak, ...] = (
     # (woof.hex.drivers.samehost_forecast_v841.lease_vram_mib), not the single-card admission.
     SameHostRankPeak(
         multiprocessors=188, levels=55, local_cells=655_362, peak_mib=48_032.0, ranks=1,
-        receipt=("x1.655362 30 km globe, 1 card, 24 h, GFS 2026-10-22 12Z, WOOF physics, fast numerics, "
+        receipt=("x1.655362 30 km globe, 1 card, 24 h, GFS 2026-10-22 12Z, ArWen physics, fast numerics, "
                  "the hex 0.4.5 multi-card fix + gpuwm 2.9.5; the pool over-budget record "
                  "(nvidia-smi), 2026-10-24")),
 )
@@ -1251,7 +1252,7 @@ def samehost_rank_model(model: ShapedFootprintModel, *, ranks: int = 2,
     """Price the selected executor, retaining the thread row's measured slope.
 
     The 24 h 120 km run on 2026-11-02 (170 SM, 1536 threads/SM,
-    55 levels, fast WOOF physics, two processes on one card) held
+    55 levels, fast ArWen physics, two processes on one card) held
     22,524 MiB, against the thread row's 8,308 MiB. The process-local
     pools and wide radiation buffers cannot share the thread row's core.
     The whole-device peak is measured; its equal per-rank split is DERIVED
@@ -1275,7 +1276,7 @@ def samehost_rank_model(model: ShapedFootprintModel, *, ranks: int = 2,
                    provenance=model.provenance + "; PROCESS RANK CORE: derived equal split of "
                    "the measured 22,524 MiB whole-device peak, 24 h / 144 steps, "
                    "120 km, two process ranks on one RTX 5090, 21,445 + 21,449 local "
-                   "columns, 55 levels, fast WOOF physics; one size, retained thread "
+                   "columns, 55 levels, fast ArWen physics; one size, retained thread "
                    "slope and tiled growth. Observed shortwave block: 8192 columns x "
                    "112 g-points x 16 arrays x 57 levels x 4 bytes (3192 MiB)")
 
@@ -1412,7 +1413,7 @@ def _with_large_global_census(model: ShapedFootprintModel) -> ShapedFootprintMod
         radiation_chunk_override=8192, shortwave_arrays_override=16,
         provenance=(
             "MEASURED large-global stage envelope, 2026-10-17, 188 SM / 1536 threads, "
-            "55 levels, fast WOOF physics, one same-host rank, graphs off: "
+            "55 levels, fast ArWen physics, one same-host rank, graphs off: "
             "1,022,592 cells / 60 steps and 1,216,922 cells / 360 steps. "
             "Includes dynamics diagnostics workspace, GF convection scratch, "
             "retained CuPy pool blocks, outside-pool memory and history staging. "
@@ -1579,6 +1580,9 @@ class RouteRunPeak:
     cells: int
     peak_mib: float
     receipt: str
+    #: The physics suite the run used, when its footprint is not the route's general curve.  None: the general
+    #: curve (measured on convection_permitting), which also prices every suite with no rows of its own.
+    suite: str | None = None
 
 
 #: Whole-run peaks of ONE member on the MPAS physics route (fixed step, fast numerics).
@@ -1590,16 +1594,38 @@ class RouteRunPeak:
 #: next 2-member groups met the same end.  One member alone on that card peaked 75,069 MiB.
 _CURVE_RECEIPT = "GFS 2023-03-31 12Z, MPAS convection_permitting, fast numerics, 1 h, the global door's own forecast argv, one member alone on an RTX PRO 6000 (97,887 MiB, 188 SM); whole-card nvidia-smi rows of the run's processes every 0.5 s; hex 0.4.14 release measurement, 2026-11-06"
 
+#: A rank's share of ONE member split over eight cards: a rank measurement, never a point on the one-card curve.  It
+#: prices a rank of a split member (:data:`MPAS_RANK_CURVE_PEAKS`, :func:`mpas_rank_card_bytes`).
+#: THE BREAKAGE ITS MOVE PREVENTS (uniform MPAS-physics globes on one 96 GB card, 2026-11-15): as a point on the
+#: one-member curve it set the slope past 655,362 cells at 0.436 MiB a cell (0.480 with the margin), about six times
+#: the slope one card was measured at, so the forecast door refused before the forecast a 28 km globe (751,272 cells)
+#: as a 110,515.9 MiB footprint, 25 km (942,432) as 202,288.9 MiB and 22 km (1,216,922) as 334,067.4 MiB, and
+#: admitted 29 km with 7 GiB to spare where the run left 33 GiB free; one card held 59,318 MiB at 654,432 cells and
+#: 62,778 MiB at 700,362 cells that day (:data:`MPAS_ONE_CARD_PEAKS_20261115`).
+MPAS_RANK_SHARE_PEAK = RouteRunPeak(
+    route="mpas", multiprocessors=188, levels=55, cells=737_281,
+    peak_mib=102_000_000_000 / MIB,
+    receipt=("10 km x1.5898242, 5,898,242 cells, 55 levels, eight 96 GB cards; "
+             "ranks held 99.5/100.0 GB and requested another 1.61 GB, 2026-11-01. "
+             "102 GB is a failed-allocation lower bound, not a completed-run peak. "
+             "737,281 is ceil(global cells/8), an owned-share estimate, not a measured halo extent. "
+             "Applying this conservative floor to local cells also charges for their halos. "
+             "Source: HEX-GLOBAL-10KM-RESULT.md, MPAS physics memory result"))
+
+_ONE_CARD_RECEIPT = ("uniform quasi-uniform globe from the mesh generator, GFS 2026-06-21 12Z, 6 h with hourly history, "
+                     "MPAS convection_permitting, fast numerics, one member alone on an RTX PRO 6000 Blackwell Server "
+                     "(97,887 MiB, 188 SM) through the hosted global door; the card's peak from 1 s samples of the "
+                     "forecast's process group; woof hex 0.4.14 on gpuwm 2.9.13, 2026-11-15")
+
+#: One-card whole runs of uniform globes, 2026-11-15.
+MPAS_ONE_CARD_PEAKS_20261115: tuple[RouteRunPeak, ...] = (
+    RouteRunPeak(route="mpas", multiprocessors=188, levels=55, cells=654_432, peak_mib=59_318.0,
+                 receipt="30 km, 654,432 cells; " + _ONE_CARD_RECEIPT),
+    RouteRunPeak(route="mpas", multiprocessors=188, levels=55, cells=700_362, peak_mib=62_778.0,
+                 receipt="29 km, 700,362 cells; " + _ONE_CARD_RECEIPT),
+)
+
 MPAS_ROUTE_RUN_PEAKS: tuple[RouteRunPeak, ...] = (
-    RouteRunPeak(
-        route="mpas", multiprocessors=188, levels=55, cells=737_281,
-        peak_mib=102_000_000_000 / MIB,
-        receipt=("10 km x1.5898242, 5,898,242 cells, 55 levels, eight 96 GB cards; "
-                 "ranks held 99.5/100.0 GB and requested another 1.61 GB, 2026-11-01. "
-                 "102 GB is a failed-allocation lower bound, not a completed-run peak. "
-                 "737,281 is ceil(global cells/8), an owned-share estimate, not a measured halo extent. "
-                 "Applying this conservative floor to local cells also charges for their halos. "
-                 "Source: HEX-GLOBAL-10KM-RESULT.md, MPAS physics memory result")),
     # Re-measured on the 0.4.14 tree (hex 0.4.14, 2026-11-06).  THE BREAKAGE IT PREVENTS: the 0.4.8 points
     # (12,664 MiB at 40,962 cells, 75,069 MiB at 655,362) priced a 120 km member at 17.97e9 bytes for a 9.2 GB peak,
     # so smaller cards were refused and every planner and site price derived from the curve was about 2x high.
@@ -1616,7 +1642,30 @@ MPAS_ROUTE_RUN_PEAKS: tuple[RouteRunPeak, ...] = (
         route="mpas", multiprocessors=188, levels=55, cells=655_362, peak_mib=61_522.0,
         receipt=("x1.655362 30 km global-30km row, the larger of a 1 h run (60,372 MiB) and a 6 h run (61,522 MiB, "
                  "its peak in the first hour); " + _CURVE_RECEIPT)),
+    *MPAS_ONE_CARD_PEAKS_20261115,
+    # The RRFS hrrrv5 suite (59 levels; TEMPO, MYNN-EDMF, RUC land, GSL drag) holds more than the general curve.
+    # THE BREAKAGE IT PREVENTS (hex 0.5.0, 2026-11-09): the forecast door priced a 30 km hrrrv5 member from the
+    # convection_permitting curve scaled by 59/55 levels, 76,122,381,353 bytes (72,596 MiB), and the run peaked
+    # 86,834 MiB; a card with 80 GB free was admitted and would have run out of memory.  120 km: 9,829 MiB on the
+    # general curve against 13,228 MiB measured.  A suite with rows of its own is priced from them
+    # (:func:`route_run_curve_mib`).  Cross-check, not a row: the 60 km hrrrv5 globe (163,842 cells) ran in about
+    # 27 GB with strict numerics; the line through these two points gives 27,949 MiB there.
+    RouteRunPeak(
+        route="mpas", multiprocessors=170, levels=59, cells=40_962, peak_mib=13_228.0, suite="hrrrv5",
+        receipt=("x1.40962 120 km, 59 levels, RRFS hrrrv5 (44c0849 pin), dt 720 s, 12 steps with radiation at steps "
+                 "0, 5 and 10, fast numerics, one RTX 5090 (170 SM), the mesh as one rank; whole-card nvidia-smi rows "
+                 "every 0.5 s; hex 0.4.14 release measurement, 2026-11-06 (the single run of the co-tenant rank row)")),
+    RouteRunPeak(
+        route="mpas", multiprocessors=188, levels=59, cells=655_362, peak_mib=86_834.0, suite="hrrrv5",
+        receipt=("x1.655362 30 km, 59 levels, RRFS hrrrv5, GFS 2023-03-31 12Z, dt 180 s, 1 h (20 steps), fast "
+                 "numerics, hex 0.5.0, one member alone on an RTX PRO 6000 (97,887 MiB, 188 SM); the card's "
+                 "nvidia-smi row every 2 s; 2026-11-09")),
 )
+#: The curve a rank of a member split over several cards is priced on (:func:`mpas_rank_card_bytes`): the rank share
+#: and the one-card runs that price was set on.  The one-card runs of 2026-11-15 are not in it: no split run has been
+#: measured beside them, so a rank's price stays as it was until one is.
+MPAS_RANK_CURVE_PEAKS: tuple[RouteRunPeak, ...] = (
+    MPAS_RANK_SHARE_PEAK, *(peak for peak in MPAS_ROUTE_RUN_PEAKS if peak not in MPAS_ONE_CARD_PEAKS_20261115))
 #: The retired 0.4.8 points, kept as the record (never priced).
 RETIRED_MPAS_ROUTE_RUN_PEAKS_048: tuple[RouteRunPeak, ...] = (
     RouteRunPeak(
@@ -1697,10 +1746,23 @@ class MpasRankCardRow:
     rank_cells: int
     rank_peak_mib: float
     receipt: str
+    #: The suite the split was measured on (None: the general rows, measured on convection_permitting), and any
+    #: further measured rank sizes of the same mesh as (local columns, largest card's peak MiB).
+    suite: str | None = None
+    more: tuple[tuple[int, float], ...] = ()
 
     def terms_mib(self) -> tuple[float, float]:
         per_column = (self.solo_peak_mib - self.rank_peak_mib) / (self.cells - self.rank_cells)
         return self.solo_peak_mib - per_column * self.cells, per_column
+
+    def rank_mib(self, local_cells: int) -> float:
+        """Peak MiB of a rank of ``local_cells`` columns: straight between the measured rank sizes (the mesh on
+        one card is the last point), along the end segments past them.  Derived between and past the sizes."""
+        points = sorted({(self.rank_cells, self.rank_peak_mib), *self.more, (self.cells, self.solo_peak_mib)})
+        x = float(local_cells)
+        segment = next((i for i in range(1, len(points)) if x <= points[i][0]), len(points) - 1)
+        (x0, y0), (x1, y1) = points[segment - 1], points[segment]
+        return max(0.0, y0 + (y1 - y0) * (x - x0) / (x1 - x0))
 
 
 #: THE BREAKAGE IT PREVENTS (both-routes matrix RED 4, 2026-11-06): the two-card MPAS route asked 15.68 GB free on
@@ -1721,41 +1783,90 @@ MPAS_RANK_CARD_ROWS: tuple[MpasRankCardRow, ...] = (
                  "RTX PRO 6000 (188 SM): one card 18,136 MiB; --samehost-devices 0,1 (84,042 + 84,060 local columns) "
                  "peaked 14,812 and 14,146 MiB per card (28,958 summed), nvidia-smi rows every 0.5 s; hex 0.4.14 "
                  "release measurement, 2026-11-06")),
+    # THE BREAKAGE IT PREVENTS (hex 0.5.0, 2026-11-09): the 30 km hrrrv5 globe split one rank per card was priced
+    # 46,820 MiB per card on two cards and 26,329 MiB on four (the general rows cover neither 59 levels nor this
+    # suite), and the cards peaked 65,810 and 38,445 MiB: a 48 GB card would have been admitted for a four-card run
+    # with 38.4 GB to hold and no margin, a 64 GB card for a two-card run that needs 65.8 GB.
+    MpasRankCardRow(
+        levels=59, cells=655_362, solo_peak_mib=86_834.0, rank_cells=168_450, rank_peak_mib=38_445.0,
+        more=((331_942, 65_810.0),), suite="hrrrv5",
+        receipt=("x1.655362 30 km, 59 levels, RRFS hrrrv5, GFS 2023-03-31 12Z, dt 180 s, 1 h, fast numerics, hex "
+                 "0.5.0, RTX PRO 6000 (188 SM), one rank process per card: one card 86,834 MiB; --samehost-devices "
+                 "0,1 (331,942 + 331,934 local columns) 65,810 and 65,491 MiB; four cards (168,450, 167,789, 168,232 "
+                 "and 168,012 local columns) 37,790, 37,229, 38,445 and 37,537 MiB; each card's nvidia-smi row every "
+                 "2 s; 2026-11-09")),
 )
 
 
 def mpas_rank_card_bytes(local_cells: int, levels: int, model: "ShapedFootprintModel | None" = None,
-                         margin_bytes: int | None = None) -> int:
+                         margin_bytes: int | None = None, *, suite: str | None = None) -> int:
     """Bytes a card needs for ONE rank of a member split over several cards (MPAS route).
 
     From the smallest measured mesh whose ranks cover this one (:data:`MPAS_RANK_CARD_ROWS`, +ROUTE_RUN_MARGIN),
     never below the one-member price of the same columns.  Past every row the one-member price is raised by the
     largest measured ratio of a rank's peak to the one-member curve at its columns: a rank holds its halos, seam
     packets and its own process beside its columns (60 km: 14,812 MiB for a rank of 84,060 columns where one member
-    of that size is 12,309 MiB on the curve)."""
+    of that size is 12,309 MiB on the curve).
 
-    one_member = route_required_free_bytes(int(local_cells), model, margin_bytes, route="mpas")
-    rows = [row for row in MPAS_RANK_CARD_ROWS if int(local_cells) <= row.cells and int(levels) <= row.levels]
+    A ``suite`` with measured splits of its own is also priced from them, and the larger price is charged: inside
+    and above its measured rank sizes from :meth:`MpasRankCardRow.rank_mib` (more levels cost proportionally more);
+    below the smallest measured rank size from the suite's one-member price raised by the measured ratio of a
+    rank's peak to the suite's one-member curve at that size.  A suite's rows never lower a price."""
+
+    one_member = route_required_free_bytes(int(local_cells), model, margin_bytes, route="mpas", ranks=True)
+    rows = [row for row in MPAS_RANK_CARD_ROWS
+            if row.suite is None and int(local_cells) <= row.cells and int(levels) <= row.levels]
     if rows:
         row = min(rows, key=lambda r: r.cells)   # the smallest measured mesh whose ranks cover this one
         fixed, per_column = row.terms_mib()
         priced = int(round((fixed + per_column * int(local_cells)) * (1.0 + ROUTE_RUN_MARGIN) * MIB))
-        return max(one_member, priced)
-    ratios = [row.rank_peak_mib / curve for row in MPAS_RANK_CARD_ROWS
-              if (curve := route_run_curve_mib(row.rank_cells, "mpas", row.levels))]
-    return int(round(one_member * max([1.0, *ratios])))
+        general = max(one_member, priced)
+    else:
+        ratios = [row.rank_peak_mib / curve for row in MPAS_RANK_CARD_ROWS
+                  if row.suite is None and (curve := route_run_curve_mib(row.rank_cells, "mpas", row.levels, ranks=True))]
+        general = int(round(one_member * max([1.0, *ratios])))
+    own = [row for row in MPAS_RANK_CARD_ROWS if suite is not None and row.suite == suite]
+    if not own:
+        return general
+    suite_member = route_required_free_bytes(int(local_cells), model, margin_bytes, route="mpas", suite=suite,
+                                             ranks=True)
+    covering = [row for row in own if int(local_cells) <= row.cells]
+    row = min(covering, key=lambda r: r.cells) if covering else max(own, key=lambda r: r.cells)
+    measured = sorted({(row.rank_cells, row.rank_peak_mib), *row.more})
+    if int(local_cells) >= measured[0][0]:
+        priced = row.rank_mib(int(local_cells)) * max(1.0, int(levels) / row.levels)
+        priced = int(round(priced * (1.0 + ROUTE_RUN_MARGIN) * MIB))
+    else:
+        # the ratio at the smallest measured rank size, so the price is continuous there
+        curve = route_run_curve_mib(measured[0][0], "mpas", row.levels, suite, ranks=True)
+        priced = int(round(suite_member * max(1.0, measured[0][1] / curve if curve else 1.0)))
+    return max(general, suite_member, priced)
 
 
-def route_run_curve_mib(cells: int, route: str = "mpas", levels: int = MODEL_VERTICAL_LEVELS) -> float | None:
+def route_peak_rows(route: str = "mpas", suite: str | None = None, *,
+                    ranks: bool = False) -> tuple["RouteRunPeak", ...]:
+    """The measured whole runs that price one ``route`` member of ``suite``: the suite's own rows when it has any,
+    otherwise the route's general rows (data, never a code path per suite name)."""
+
+    rows = (MPAS_RANK_CURVE_PEAKS if ranks else MPAS_ROUTE_RUN_PEAKS) if route == "mpas" else ()
+    own = tuple(peak for peak in rows if suite is not None and peak.suite == suite)
+    return own or tuple(peak for peak in rows if peak.suite is None)
+
+
+def route_run_curve_mib(cells: int, route: str = "mpas", levels: int = MODEL_VERTICAL_LEVELS,
+                        suite: str | None = None, *, ranks: bool = False) -> float | None:
     """Peak MiB of one ``route`` member on ``cells`` columns, from that route's measured whole runs, or None.
 
+    ``suite``: a physics suite with measured runs of its own is read from those (:func:`route_peak_rows`).
+
     Straight between neighbouring measured runs (peaks made non-decreasing in cells), the end segments' slopes
-    past the smallest and largest; one run alone scales cell-linear.  The runs were measured on different cards;
+    past the smallest and the steepest chord into the largest past it; one run alone scales cell-linear.
+    ``ranks``: the curve a rank of a split member is priced on (:data:`MPAS_RANK_CURVE_PEAKS`).  The runs were measured on different cards;
     the per-card terms (CUDA local-memory store, radiation chunk) differ between them by a few hundred MiB, far
     inside :data:`ROUTE_RUN_MARGIN`.  Derived between and past the measured sizes, not measured there."""
 
     points: dict[int, float] = {}
-    for peak in MPAS_ROUTE_RUN_PEAKS if route == "mpas" else ():
+    for peak in route_peak_rows(route, suite, ranks=ranks):
         if peak.levels == int(levels):
             points[peak.cells] = max(points.get(peak.cells, 0.0), float(peak.peak_mib))
     if not points:
@@ -1767,6 +1878,15 @@ def route_run_curve_mib(cells: int, route: str = "mpas", levels: int = MODEL_VER
     x = float(cells)
     if len(xs) == 1:
         return ys[0] * x / xs[0]
+    if x > xs[-1]:
+        # Past the largest run: the steepest of the last segment and the chords into the largest run from the runs
+        # with at most three quarters of its cells.  THE BREAKAGE IT PREVENTS (2026-11-15): two runs a few per cent
+        # apart (654,432 and 700,362 cells, whose peaks differ by run-to-run spread as much as by size) make a last
+        # segment of 0.028 MiB a cell, a third of the 0.083 the route holds between 60 and 29 km, and would admit a
+        # 22 km globe on a 96 GB card it cannot fit.  Where the runs are spread out this is the last segment.
+        slope = max([(ys[-1] - ys[-2]) / (xs[-1] - xs[-2]),
+                     *((ys[-1] - y) / (xs[-1] - xi) for xi, y in zip(xs, ys) if xi <= 0.75 * xs[-1])])
+        return max(0.0, ys[-1] + slope * (x - xs[-1]))
     segment = next((i for i in range(1, len(xs)) if x <= xs[i]), len(xs) - 1)
     x0, x1, y0, y1 = xs[segment - 1], xs[segment], ys[segment - 1], ys[segment]
     return max(0.0, y0 + (y1 - y0) * (x - x0) / (x1 - x0))
@@ -1783,14 +1903,32 @@ def model_for_run(card: CardProfile, configuration: str = 'global', levels: int 
             or model_for_card(card, configuration, levels, rollback_armed=rollback_armed))
 
 
+def _curve_at_levels(cells: int, route: str, levels: int, suite: str | None, *,
+                     ranks: bool = False) -> float | None:
+    """:func:`route_run_curve_mib` on ``levels``; where no run was measured on that vertical grid, the curve of the
+    measured grid (55 levels where there is one) with extra levels scaled up: a different vertical grid still pays
+    for that route's physics."""
+
+    curve = route_run_curve_mib(cells, route, levels, suite, ranks=ranks)
+    if curve is None:
+        measured = sorted({peak.levels for peak in route_peak_rows(route, suite, ranks=ranks)})
+        reference = MODEL_VERTICAL_LEVELS if MODEL_VERTICAL_LEVELS in measured else (measured[0] if measured else None)
+        curve = None if reference is None else route_run_curve_mib(cells, route, reference, suite, ranks=ranks)
+        if curve is not None:
+            curve *= max(1.0, levels / reference)
+    return curve
+
+
 def route_required_free_bytes(cells: int, model: ShapedFootprintModel | None = None,
-                              margin_bytes: int | None = None, *, route: str = "arwen") -> int:
+                              margin_bytes: int | None = None, *, route: str = "arwen",
+                              suite: str | None = None, ranks: bool = False) -> int:
     """:func:`required_free_bytes` for one member on ``route``.
 
-    The WOOF route is exactly :func:`required_free_bytes`.  The MPAS route is never below it, and never below
+    The WOOF-ArWen route is exactly :func:`required_free_bytes`.  The MPAS route is never below it, and never below
     its own measured whole-run curve (:func:`route_run_curve_mib`) plus :data:`ROUTE_RUN_MARGIN` plus the
     model's margin.  The co-tenancy price both the ensemble planner and the roster admission charge per member
-    (U-H4, :data:`MPAS_ROUTE_RUN_PEAKS`)."""
+    (U-H4, :data:`MPAS_ROUTE_RUN_PEAKS`).  ``suite`` names the run's physics suite: one with measured whole runs
+    of its own (hrrrv5) is priced from them, every other from the route's general curve."""
 
     if route not in PHYSICS_ROUTES:
         raise ValueError(f"physics route {route!r} is not one of {PHYSICS_ROUTES}")
@@ -1801,14 +1939,22 @@ def route_required_free_bytes(cells: int, model: ShapedFootprintModel | None = N
         return base
     if route == "arwen":
         return base
-    curve = route_run_curve_mib(int(cells), route, int(model.levels))
+    curve = _curve_at_levels(int(cells), route, int(model.levels), None, ranks=ranks)
     if curve is None:
-        # The measured MPAS run has 55 levels. A different vertical grid
-        # still pays for that route's physics, with extra levels scaled up.
-        curve = route_run_curve_mib(int(cells), route, MODEL_VERTICAL_LEVELS)
-        if curve is None:
-            raise ValueError(f"no whole-run memory measurement for physics route {route}")
-        curve *= max(1.0, int(model.levels) / MODEL_VERTICAL_LEVELS)
+        raise ValueError(f"no whole-run memory measurement for physics route {route}")
+    own = [peak for peak in ((MPAS_RANK_CURVE_PEAKS if ranks else MPAS_ROUTE_RUN_PEAKS) if route == "mpas" else ())
+           if suite is not None and peak.suite == suite]
+    if own:
+        # The suite's own runs only ever raise the price, and only where they were measured: inside and above their
+        # sizes the suite curve; below the smallest one that run scaled by cells (an extrapolated intercept would
+        # raise every small mesh with no measurement behind it).
+        smallest = min(own, key=lambda peak: peak.cells)
+        if int(cells) >= smallest.cells:
+            measured = _curve_at_levels(int(cells), route, int(model.levels), suite, ranks=ranks)
+        else:
+            measured = (smallest.peak_mib * int(cells) / smallest.cells
+                        * max(1.0, int(model.levels) / smallest.levels))
+        curve = max(curve, measured)
     # The curve is whole-card nvidia-smi peaks of complete runs: they already hold the radiation arena and the
     # instrument gap the footprint model's margin terms price, so the curve is charged its ROUTE_RUN_MARGIN only (a
     # run's own --headroom-mib still adds).  THE BREAKAGE IT PREVENTS (hex 0.4.14, 2026-11-06): adding the
@@ -1891,7 +2037,7 @@ RETIRED_ROW_20260825 = FootprintModel(
     fixed_bytes=4339.1 * MIB,
     bytes_per_cell=103_696.0,
     provenance=(
-        "RETIRED 2026-08-26.  Measured 2026-08-25 on the proving RTX 5090 "
+        "RETIRED 2026-08-26.  Measured 2026-08-25 on an RTX 5090 "
         "(170 SM) at the converged seam pin, hex 7fe514b + engine 26daaab7e, "
         "both published meshes in one per-allocation ledger session; "
         "evidence/pin-move-335-20260825/.  Superseded by the merged-tip "
@@ -1925,7 +2071,7 @@ RETIRED_AFFINE_ROW_20260826 = FootprintModel(
     fixed_bytes=5016.5 * MIB,
     bytes_per_cell=98_748.0,
     provenance=(
-        "RETIRED 2026-08-27.  Measured 2026-08-26 on the proving RTX 5090 "
+        "RETIRED 2026-08-27.  Measured 2026-08-26 on an RTX 5090 "
         "(170 SM) at the merged tip, hex 2009db7 + engine 26daaab7e, both "
         "published meshes in one per-allocation ledger session -- the same session this "
         "module's global/170sm core is fitted from.  Retired for SHAPE, not "
@@ -2121,3 +2267,23 @@ FLOOR_DERIVATION: Mapping[str, Any] = MappingProxyType(
         },
     }
 )
+
+
+#: ``--physics KEY=VALUE`` overrides that only switch MPAS alarms and read per-cell surface planes, so the measured
+#: compact rows still price the run.  THE BREAKAGE THIS PREVENTS (global16 prove, 2026-11-06, woof hex 0.4.13 and
+#: 0.4.14): any --physics override disqualified the compact row at all three admission gates, so the 60 km global with
+#: SST/sea-ice updating (``--physics config_sst_update=.true.``, which the s2s door passes on the MPAS route) was
+#: refused on a 16 GB RTX 5070 Ti as a 27,659.5 MiB fitted footprint (request gate) and 29,930,042,163 bytes (MPAS
+#: rank gate); the same run is admitted at 15,623,782,400 bytes without the override, and with it ran 10 days at a
+#: 15,034 MiB card peak (14,516 MiB in its first day).  Every other key still falls back to the legacy row.
+MEMORY_NEUTRAL_PHYSICS_KEYS = frozenset({"config_sst_update", "config_sstdiurn_update", "config_deepsoiltemp_update"})
+
+
+def physics_overrides_move_footprint(items) -> bool:
+    """True when any ``--physics KEY=VALUE`` string or ``(key, value)`` pair names a key outside
+    :data:`MEMORY_NEUTRAL_PHYSICS_KEYS`."""
+    for item in items or ():
+        key = item[0] if isinstance(item, (tuple, list)) else str(item).split("=", 1)[0]
+        if str(key).strip() not in MEMORY_NEUTRAL_PHYSICS_KEYS:
+            return True
+    return False

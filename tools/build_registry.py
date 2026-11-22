@@ -102,6 +102,16 @@ IMPLEMENTED: dict[str, dict] = {
         "component_id": "land_surface", "read_when": {"sf_surface_physics": 4, "opt_alb": 3},
         "consuming_read": "woof/core/snow_papers.py",
         "description": "Paper snow optics internal dust mixing; written from papers, not bitwise to WRF."},
+    "opt_scf": {
+        "type": "integer", "enum": [1, 2], "default": 1,
+        "component_id": "land_surface", "read_when": {"sf_surface_physics": 4},
+        "consuming_read": "woof/core/noahmp_energy_slab.py",
+        "description": "Noah-MP ground snow cover fraction: 1 Niu-Yang 2007 with land-type table parameters; 2 scale-aware from grid spacing (Abolafia-Rosenzweig et al. 2025), re-implemented from published descriptions, not bitwise to upstream."},
+    "snicar_fresh_grain_opt": {
+        "type": "integer", "enum": [1, 2], "default": 1,
+        "component_id": "land_surface", "read_when": {"sf_surface_physics": 4, "opt_alb": 3},
+        "consuming_read": "woof/core/snow_papers.py",
+        "description": "Paper snow optics fresh-snow grain radius: 1 = 54.526-204.526 um, 2 = Lin 2025 MODSCAG 33-91 um; re-implemented from published descriptions, not bitwise to upstream."},
     "use_theta_m": {
         "type": "integer", "enum": [0, 1], "default": 0,
         "consuming_read": "woof/core/state.py",
@@ -129,9 +139,9 @@ IMPLEMENTED: dict[str, dict] = {
     "windfarm_opt": {"type":"integer", "enum":[0,1,2], "default":0,
         "per_domain":True,"component_id":"pbl","consuming_read":"woof/namelist_import.py",
         "description":"Native WRF wind farm: off, Fitch or MAV. MAV is a named opt-in: measured forecast hook cost 2.044114x Fitch on the retained eight-turbine case; added native wake quadratures are profiled. See docs/wind-farms.md."},
-    "windfarm_induction": {"type":"integer", "enum":[0,1], "default":0,
+    "windfarm_induction": {"type":"integer", "enum":[-1,0,1], "default":-1,
         "per_domain":False,"component_id":"pbl","consuming_read":"woof/core/wind_farm.py",
-        "description":"WRF Fitch two-pass axial induction correction; explicit opt-in, measured 1.28x Fitch cost; zero is the default."},
+        "description":"WRF Fitch two-pass axial induction correction; -1 (default) takes the selected Fitch pin's Registry default (windfarm_fitch_version wrf_471 resolves 0, wrf_480 resolves 1, as WRF v4.8.0 runs it); 0 and 1 choose explicitly. Measured 1.28x Fitch cost with it on."},
     "windfarm_wake_model": {"type":"integer", "enum":list(range(1,8)), "default":2,
         "per_domain":True,"component_id":"pbl","consuming_read":"woof/core/wind_mav.py",
         "description":"WRF MAV JS, XA, GM and the four native wake-model ensembles."},
@@ -161,6 +171,24 @@ IMPLEMENTED: dict[str, dict] = {
                      "WRF 4.6.1 bl_ysu_run word for word, under its own restart "
                      "identity. Changing generation changes tendencies and is "
                      "refused on restart."]},
+    "ntu_version": {
+        "type": "string", "enum": ["wrf_480", "wrf_471"], "default": "wrf_480",
+        "component_id": "microphysics", "read_when": {"mp_physics": 56},
+        "consuming_read": "woof/core/ntu.py",
+        "warnings": ["wrf_480 is WRF 4.8.0's NTU: the rain-graupel collection "
+                     "RATIO is taken after its riming density is set "
+                     "(module_mp_ntu.F 4.8.0:5694-5707). wrf_471 reproduces the "
+                     "4.7.1 transcription, which reads that density before it is "
+                     "set. A generation change is refused on restart."]},
+    "udm_version": {
+        "type": "string", "enum": ["wrf_480", "wrf_471"], "default": "wrf_480",
+        "component_id": "microphysics", "read_when": {"mp_physics": 27},
+        "consuming_read": "woof/core/udm.py",
+        "warnings": ["wrf_480 is WRF 4.8.0's UDM: hail deposition joins the "
+                     "ice-nucleation supersaturation budget and the graupel "
+                     "and hail fall densities are zeroed each substep "
+                     "(module_mp_udm.F 4.8.0:947, :1959). wrf_471 reproduces the "
+                     "4.7.1 generation. A generation change is refused on restart."]},
     "noahmp_snow_age": {
         "type": "string", "enum": ["wrf_470", "wrf_461"],
         "default": "wrf_470", "component_id": "land_surface",
@@ -1116,7 +1144,7 @@ TIGHTEN: dict[str, dict] = {
             "number/volume tracers keep theirs, which is WRF's own per-array "
             "scoping, not a woof simplification.",
             "This is divergence-ledger entry L4 and it is UNDECIDED: it is "
-            "a candidate WOOF default with no obs-skill receipt yet. "
+            "a candidate WOOF-ArWen default with no obs-skill receipt yet. "
             "Selecting it through the [experiment] physics_mode axis "
             "(woof/physics_mode.py) records the arm in the run receipt; "
             "setting it by hand here does not, and a hand-set value beside "
@@ -3153,7 +3181,7 @@ _MATURITY_RUNGS = (
     # a future in-tree-but-unreachable port re-adds it here.
     ("implemented-unverified", "warn",
      "A GPUWM runtime component executes this option and no matched "
-     "WOOF-versus-WRF forecast trajectory has been run with it. "
+     "WOOF-ArWen-versus-WRF forecast trajectory has been run with it. "
      "Selecting it warns and does not block."),
     ("experimental-runtime", "warn",
      "Executable, and carrying a documented runtime restriction or an "
@@ -3389,7 +3417,7 @@ def _composition_exemptions() -> dict:
 
     unverified_land_pbl = (
         "Noah and YSU are 'implemented-unverified': neither has its own "
-        "matched WOOF-versus-WRF forecast trajectory, so the strict-min "
+        "matched WOOF-ArWen-versus-WRF forecast trajectory, so the strict-min "
         "ceiling for every suite selecting them is 'implemented-unverified'."
     )
     return {
@@ -3458,7 +3486,7 @@ def _composition_exemptions() -> dict:
                 "tendency), which is conformance evidence and not a "
                 "matched forecast trajectory. Noah and Shin-Hong are "
                 "'implemented-unverified': neither has its own matched "
-                "WOOF-versus-WRF forecast trajectory, so the strict-min "
+                "WOOF-ArWen-versus-WRF forecast trajectory, so the strict-min "
                 "ceiling for this suite is 'implemented-unverified'."),
         },
         "wsm6-ysu-mm5-noah-no-radiation-v1": {
@@ -3620,7 +3648,7 @@ def _milbrandt2mom_mp9(registry: dict) -> None:
             "nk_BOTTOM=.false. (:3591), and the scheme body hard-codes "
             "snowSpherical=.false. (:1174), primIceNucl=1 (:1175) and "
             "grpl/hail/rainAccr/iceDep ON (:1170-1173). mp=9 therefore has "
-            "exactly ONE identity in WRF v4.6.1 and WOOF ships that one; "
+            "exactly ONE identity in WRF v4.6.1 and WOOF-ArWen ships that one; "
             "woof/config.py::validate_milbrandt2_options refuses by name "
             "any request to move one, because the 154-entry constant table "
             "in woof/core/milbrandt2_constants.py is derived under these "
@@ -3631,7 +3659,7 @@ def _milbrandt2mom_mp9(registry: dict) -> None:
             "translation unit woof/core/kernels/milbrandt2.cu. (1) "
             "phys/module_mp_milbrandt2mom.F:2819-2823 is a LIVE "
             "print-and-STOP on T<173 K or T>323 K -- a device kernel cannot "
-            "abort a run and WOOF's step-level health gate owns that "
+            "abort a run and WOOF-ArWen's step-level health gate owns that "
             "decision, so the value is left as computed. (2) count_columns "
             "at phys/module_mp_milbrandt2mom.F:821 would read QX(i,0) when "
             "ktop_sedi==kbot, which needs the lowest two layers to span "
@@ -3659,7 +3687,7 @@ def _milbrandt2mom_mp9(registry: dict) -> None:
             "gamma (:160-195, 'do j=1,4') is used throughout -- gamma(3) "
             "comes out 1.9999542 and that is the number every WRF mp=9 run "
             "integrates with.",
-            "DECLARED DIVERGENCE, RTE+RRTMGP cloud optics (WOOF's own; WRF "
+            "DECLARED DIVERGENCE, RTE+RRTMGP cloud optics (WOOF-ArWen's own; WRF "
             "has no RRTMGP and hands RRTMG no Milbrandt-Yau radii, "
             "has_reqc=has_reqi=has_reqs=0 at phys/module_physics_init.F:"
             "1004-1023). The adapter radiates the scheme's OWN effective "
@@ -3747,7 +3775,7 @@ def _wsm7_mp24(registry: dict) -> None:
             "tests/test_wsm7_wrf461_column_exact.py): 108 columns over 45 "
             "and 72 levels, five time-step configurations, every output "
             "field of every step, in the strict and the default build. No "
-            "matched WOOF-versus-WRF forecast trajectory exists for WSM7.",
+            "matched WOOF-ArWen-versus-WRF forecast trajectory exists for WSM7.",
             "TWO DECLARED DIVERGENCES FROM WRF, default-on. D1: the PLM "
             "sedimentation remap searches every arrival interface and the "
             "column top, so no layer drops its arriving mass; WRF's search "
@@ -4443,7 +4471,7 @@ def _sbu_ylin_mp13(registry: dict) -> None:
 
     ``maturity: supported``: committed native synthetic oracle parity,
     strict replay of real native inputs, GPU state-consumer checks and one
-    three-hour native/WOOF comparison are recorded in the public receipt.
+    three-hour native/WOOF-ArWen comparison are recorded in the public receipt.
     The observation review is visual and supplies no general skill score.
 
     ``reachability: component-override``: no template registers it.
@@ -6391,6 +6419,7 @@ def _madwrf_metadata(registry: dict) -> None:
     from woof.wrf_physics_inventory import _INVENTORIES
     from woof.core.refl import SCHEME_ABSENT_REFL_10CM
     from woof.checkpoint_identity import MICROPHYSICS_ALGORITHM_IDENTITIES
+    from woof.core import rrtmgp as _rrtmgp
     inv = _INVENTORIES[96]
     rows = {
         "restart_algorithm_identity": MICROPHYSICS_ALGORITHM_IDENTITIES[96],
@@ -6412,8 +6441,14 @@ def _madwrf_metadata(registry: dict) -> None:
         "nest_transition": {"mixed_edge_ported":False,"mass_fields":["qv","qc","qi","qs"],
                             "moment_fields":[],"refusal":"No qualified MAD-WRF mixed-scheme nest edge"},
         "offline_child": {"same_scheme":False,"refusal":"No qualified MAD-WRF offline-child route"},
+        # The adapter's own reason and remedy, as _consumer_rows writes them
+        # for every other scheme, so the run door (validate_run_config reads
+        # this row) and plan review (the refused_when rule derived from the
+        # same reason) refuse MAD-WRF on RTE+RRTMGP in the same words.
         "cloud_optics": {"legacy_declares_radii":False,"rte_rrtmgp_coupling":None,
-                         "rte_rrtmgp_refusal":"MAD-WRF cloud optics are qualified with legacy RRTMG"},
+                         "rte_rrtmgp_refusal":(
+                             _rrtmgp._NO_CLOUD_OPTICS_COUPLING[96] + ". "
+                             + _rrtmgp._CLOUD_OPTICS_REMEDY)},
         "lateral_forcing_dataset":None,
         "stock_wrf_export": {"inventoried":True,"reason":None,"scheme":inv.scheme,
             "registry_package":inv.registry_package,
@@ -6629,6 +6664,12 @@ _ASSET_RESOLUTION_LADDERS = {
             (*physics_compat.USER_THOMPSON_TABLE_ROOT_PARTS[:-1], "thompson-wrf461-hail")),
     },
     "wrf-cam3-tables-v1": {"data_relative":"cam3", "root_environment_override":"WOOF_CAM_TABLE_ROOT", "staged_root":"~/.woof/tables/cam3"},
+    # RCON's initialized table stream: the two rungs woof.core.rcon
+    # table_root() walks.  Not packaged and not built by any shipped tool.
+    "wrf471-rcon-initialized-tables-v1": {
+        "root_environment_override": "WOOF_RCON_TABLE_ROOT",
+        "staged_root": "~/.woof/tables/rcon",
+    },
     "wrf461-gsfc-shortwave-coefficients": {"data_relative":"wrf_radiation/gsfcsw"},
     # mp=8's classic set: two of its four assets are excluded from the
     # companion wheel by size (recast-woof-data/pyproject.toml) and arrive
@@ -7563,19 +7604,31 @@ def _slab_component(registry: dict) -> None:
                 "num_soil_layers": "WRF init_soil_depth_1 defines five layers, "
                                    "with thicknesses 1, 2, 4, 8 and 16 cm."},
             "required_settings": {},
+            # The same structural list Noah, RUC and Noah-MP carry, for the
+            # same reason: it says who writes the exchange fields the slab
+            # reads (FLHC/FLQC in woof.core.slab.launch_slab, CQS2 in the
+            # driver), and every active surface layer does -- the GFS layer
+            # (GFS_SFCLAY_OUTPUTS), TEMF (TEMF_SFCLAY_OUTPUTS), Pleim-Xiu
+            # (PX_SFCLAY_STATE) and QNSE through the Eta layer's seam
+            # (MYJ_SFCLAY_OUTPUTS).  The list used to stop at four, with a
+            # reason that named only the off layer, and validate_run_config
+            # ran the other four: the exhaustive authority walk found the
+            # slab with GFS, TEMF, QNSE and Pleim-Xiu refused at plan review
+            # and started by the run (3.0.3).
             "requires_components": {"surface_layer": [
-                "revised-mm5", "classic-mm5", "mynn", "eta-similarity"]},
+                "revised-mm5", "classic-mm5", "mynn", "eta-similarity",
+                "temf", "gfs", "qnse", "pleim-xiu"]},
             "requires_components_reasons": {
-                "surface_layer": "The slab consumes UST/CHS/CHS2/CQS2/FLHC/FLQC "
-                                 "exchange fields that have no writer when "
-                                 "sf_sfclay_physics=0."}},
+                "surface_layer": "The slab consumes the UST/CHS/CHS2/CQS2/FLHC/FLQC "
+                                 "exchange fields the surface layer writes; they "
+                                 "have no writer when sf_sfclay_physics=0."}},
         "consumers": {
             "reads_glw": True,
             "restart_algorithm_identity": "wrf-v4.7.1-slab-5layer-snow-fast-v3",
             "restart_parameter_bundle": {
                 "asset_roles": ["noah_landuse"], "driver_attribute": "slab_params"}},
         "extensions": {"arwen_surface_exchange_structural_requirement": {
-            "classification": "WOOF structural constraint; WRF v4.6.1 does not "
+            "classification": "WOOF-ArWen structural constraint; WRF v4.6.1 does not "
                               "prohibit sf_sfclay_physics=0 with an active LSM",
             "reason": "The active LSM consumes exchange fields that have no "
                       "writer when sf_sfclay_physics=0."}},
@@ -8241,8 +8294,9 @@ def build(registry: dict) -> dict:
         "warnings"] = list(MORRISON_WARNINGS)
     _fast_sbm_admission(registry)
     _p3_nc_mp51(registry)
-    # After every microphysics option is registered, because it walks them.
-    _rte_rrtmgp_cloud_optics_constraints(registry)
+    # The RTE+RRTMGP cloud-optics refusals are written near the end of this
+    # function, after the last pass that (re)registers a microphysics
+    # option: see the call beside _misc_qualified_components.
     _tke_nest_child(registry)
     registry["authority"][
         "wrf_v461_compatibility_matrix"
@@ -8428,7 +8482,12 @@ def build(registry: dict) -> dict:
     # declared here, and validate_sase_config now refuses the same pair.
     pbl_options["sase"]["constraints"]["requires_components"][
         "surface_layer"
-    ] = ["revised-mm5", "classic-mm5", "mynn", "pleim-xiu"]
+    ] = ["revised-mm5", "classic-mm5", "mynn", "pleim-xiu", "gfs"]
+    # "gfs" joined in 3.0.3, on the field contract like "mynn" below: the
+    # GFS layer writes UST, HFX, QFX and WSPD (GFS_SFCLAY_OUTPUTS), and
+    # validate_sase_config always admitted the pair.  The GFS layer's own
+    # row refused it on a claim that SASE reads MYNN-layer fields, which
+    # _run_sase does not.
     pbl_options["sase"]["constraints"]["requires_components_reasons"] = {
         "surface_layer": (
             "SASE's lower boundary condition is the surface layer's "
@@ -8458,6 +8517,14 @@ def build(registry: dict) -> dict:
     # has to be conditional or it doubles the warning on the second run.
     if _sase_mynn_warning not in pbl_options["sase"]["warnings"]:
         pbl_options["sase"]["warnings"].append(_sase_mynn_warning)
+    _sase_gfs_warning = (
+        "The GFS surface layer is admitted under SASE on the field "
+        "contract alone, as the MYNN layer is: it writes the friction "
+        "velocity, the heat and moisture fluxes and the wind speed its "
+        "friction velocity was computed against. No trajectory evidence "
+        "covers this pairing, so it is experimentable, not evidenced.")
+    if _sase_gfs_warning not in pbl_options["sase"]["warnings"]:
+        pbl_options["sase"]["warnings"].append(_sase_gfs_warning)
     # bldt IS NOT PINNED TO 0.  The required_settings row that carried it
     # was refused at plan review and at run start while
     # validate_sase_config admitted any cadence, and the driver is the
@@ -8491,7 +8558,7 @@ def build(registry: dict) -> dict:
         "phys/module_physics_init.F:3770-3772 fatals bl_pbl_physics=2 "
         "unless the surface layer set isfc=2, which only "
         "sf_sfclay_physics=2 does among the layers woof ports (:3169) -- "
-        "and WOOF adds the reverse refusal for a stated reason: the Eta "
+        "and WOOF-ArWen adds the reverse refusal for a stated reason: the Eta "
         "layer publishes AKHS/AKMS/THZ0/QZ0/UZ0/VZ0 and publishes NO MOL, "
         "ZOL, PSIM/PSIH, REGIME, GZ1OZ0 or WSPD "
         "(phys/module_sf_myjsfc.F:361-1056), while YSU, MYNN, Shin-Hong and "
@@ -8525,7 +8592,7 @@ def build(registry: dict) -> dict:
         "see the MYJ PBL row).")
     _MYJ_PBL_EVIDENCE_WARNING = (
         "MYJ PBL is implemented-unverified because no matched "
-        "WOOF-versus-WRF forecast trajectory exists for it, but its CUDA "
+        "WOOF-ArWen-versus-WRF forecast trajectory exists for it, but its CUDA "
         "kernel (woof/core/kernels/myjpbl.cu) is BIT-IDENTICAL to WRF "
         "v4.6.1's own MYJPBL. tools/myjpbl_wrf461_oracle compiles the "
         "byte-unmodified phys/module_bl_myjpbl.F at gfortran 13.3 -O0 "
@@ -8659,7 +8726,7 @@ def build(registry: dict) -> dict:
                     "only the Eta similarity surface layer produces them"),
                 "classification": (
                     "WRF v4.6.1 law in the PBL direction "
-                    "(phys/module_physics_init.F:3770-3772); WOOF structural "
+                    "(phys/module_physics_init.F:3770-3772); WOOF-ArWen structural "
                     "constraint in the surface-layer direction"),
                 "wrf_source": (
                     "phys/module_physics_init.F:3169,3770-3772"),
@@ -8705,7 +8772,7 @@ def build(registry: dict) -> dict:
                     "the Eta surface layer's PBLH scan is MYJSFC's TKE scan "
                     "over TKE_MYJ, which only the MYJ PBL allocates"),
                 "classification": (
-                    "WOOF structural constraint; WRF v4.7.1 places no "
+                    "WOOF-ArWen structural constraint; WRF v4.7.1 places no "
                     "surface-layer law on CAMUWPBLSCHEME and fatals only "
                     "the BEP/BEM urban pairing"),
                 "wrf_source": "phys/module_physics_init.F:3825-3832",
@@ -8726,7 +8793,7 @@ def build(registry: dict) -> dict:
     # gone from it (the kernel seeds ZINT(KTE+1)=HT as WRF does).
     _MYJ_SFC_EVIDENCE_WARNING = (
         "The Eta similarity surface layer is implemented-unverified because "
-        "no matched WOOF-versus-WRF forecast trajectory exists for it, but "
+        "no matched WOOF-ArWen-versus-WRF forecast trajectory exists for it, but "
         "its CUDA kernel (woof/core/kernels/myjsfc.cu) and its host "
         "similarity tables are BIT-IDENTICAL to WRF v4.6.1's own MYJSFC and "
         "MYJSFCINIT. tools/myjsfc_wrf461_oracle compiles the byte-unmodified "
@@ -9006,7 +9073,7 @@ def build(registry: dict) -> dict:
                     "the scheme reads PSIM/PSIH/BR/UST, which only the MM5 "
                     "and MYNN surface layers publish here"),
                 "classification": (
-                    "WOOF structural constraint; WRF v4.7.1's bl_init has "
+                    "WOOF-ArWen structural constraint; WRF v4.7.1's bl_init has "
                     "no KEPSSCHEME case and places no pairing law on it"),
                 "wrf_source": "phys/module_physics_init.F:3697-3916",
             },
@@ -9028,18 +9095,25 @@ def build(registry: dict) -> dict:
         "constraints": {
             "required_settings": {},
             "requires_components": {
+                # "gfs" joined in 3.0.3.  WRF's GFS layer sets isfc 2
+                # (module_physics_init.F:3186-3199), so WRF runs the pair
+                # (woof.wrf461_compatibility cell (8, 3), LEGAL), and it
+                # writes the UST/HFX/QFX that _run_boulac reads and nothing
+                # else.  validate_run_config always ran it; this list alone
+                # refused it, which the authority walk measured.
                 "surface_layer": [
-                    "revised-mm5", "classic-mm5", "eta-similarity"]},
+                    "revised-mm5", "classic-mm5", "eta-similarity", "gfs"]},
             "requires_components_reasons": {
                 "surface_layer": (
                     "WRF v4.6.1 runs BouLac only over a surface layer that "
                     "sets isfc 1 or 2 (phys/module_physics_init.F:3814-3816): "
-                    "the revised and classic MM5 layers and the Eta layer, "
-                    "each of which publishes the friction velocity and the "
-                    "surface heat and moisture fluxes (UST/HFX/QFX) that are "
-                    "BouLac's whole lower boundary. The MYNN layer sets isfc "
-                    "5, which WRF fatals, and with the surface layer off "
-                    "nothing writes UST/HFX/QFX at all")},
+                    "the revised and classic MM5 layers, the Eta layer and "
+                    "the GFS layer, each of which publishes the friction "
+                    "velocity and the surface heat and moisture fluxes "
+                    "(UST/HFX/QFX) that are BouLac's whole lower boundary. "
+                    "The MYNN layer sets isfc 5 and Pleim-Xiu isfc 7, which "
+                    "WRF fatals, and with the surface layer off nothing "
+                    "writes UST/HFX/QFX at all")},
         },
         "extensions": {
             "arwen_divergences": {
@@ -9154,7 +9228,7 @@ def build(registry: dict) -> dict:
                     "which it does not publish. EEPS consumes its actual "
                     "flux outputs and preserves the separate Eta TKE column"),
                 "classification": (
-                    "WOOF structural constraint; WRF v4.6.1 admits "
+                    "WOOF-ArWen structural constraint; WRF v4.6.1 admits "
                     "sf_sfclay_physics=2 with PBL schemes woof does not "
                     "port (phys/module_physics_init.F:3742, phys/module_physics_init.F:3756)"),
                 "wrf_source": "phys/module_sf_myjsfc.F:361-1056",
@@ -9197,7 +9271,7 @@ def build(registry: dict) -> dict:
                 "reason": (
                     "WRF admits sf_sfclay_physics=7 with PBL-off, ACM2 "
                     "(bl_pbl_physics=7) and CAMUW; woof ports all three, "
-                    "and SASE is WOOF's own "
+                    "and SASE is WOOF-ArWen's own "
                     "closure reading only UST/HFX/QFX/WSPD"),
                 "classification": (
                     "WRF's own isfc law (phys/module_physics_init.F:"
@@ -9228,20 +9302,28 @@ def build(registry: dict) -> dict:
     surface_options["gfs"] = {
         "asset_requirements": [],
         "constraints": {
-            "requires_components": {"pbl": ["off", "uw", "gfs"]},
+            # BouLac and SASE joined in 3.0.3.  The old reason said SASE read
+            # MYNN-layer fields; its driver reads UST/HFX/QFX/WSPD and
+            # nothing else (woof/core/physics.py::_run_sase), all four in
+            # GFS_SFCLAY_OUTPUTS or the carried UST.  BouLac reads
+            # UST/HFX/QFX (_run_boulac) and WRF runs it here (isfc 2).
+            # validate_run_config ran both pairs all along; this list alone
+            # refused them, which the authority walk measured.
+            "requires_components": {"pbl": ["off", "uw", "gfs", "boulac", "sase"]},
             "requires_components_reasons": {
                 "pbl": (
                     "the GFS surface layer publishes UST, HFX, QFX, "
                     "PSIM/PSIH, GZ1OZ0, BR, WSPD and the exchange "
-                    "coefficients, and no fm/fh, MOL, ZOL or REGIME "
+                    "coefficients, and no fm/fh, MOL, ZOL, REGIME or RMOL "
                     "(phys/module_sf_gfs.F:9-18): YSU and Shin-Hong divide "
                     "by fm/fh (and WRF fatals them on isfc=2), the MYJ PBL "
                     "needs AKHS/AKMS/THZ0/QZ0/UZ0/VZ0 that only the Eta "
-                    "layer writes, and MYNN and SASE read MYNN-layer fields "
-                    "this layer leaves at their allocated values, so each "
+                    "layer writes, and MYNN and EEPS read RMOL, which this "
+                    "layer leaves at its allocated value, so each "
                     "would run on zeros -- finite, plausible and wrong. The "
-                    "GFS PBL reads this published stability set, the UW PBL reads UST/HFX/QFX only, and PBL-off reads "
-                    "nothing")},
+                    "GFS PBL reads this published stability set; the UW PBL "
+                    "and BouLac read UST/HFX/QFX only and SASE "
+                    "UST/HFX/QFX/WSPD; PBL-off reads nothing")},
         },
         "consumers": {
             "restart_algorithm_identity": (
@@ -9253,7 +9335,7 @@ def build(registry: dict) -> dict:
                     "PSIM/PSIH/GZ1OZ0/BR/WSPD; a PBL that binds fm/fh, MOL, "
                     "ZOL or the Eta layer's AKHS family would read zeros"),
                 "classification": (
-                    "WOOF structural constraint; WRF v4.6.1 admits "
+                    "WOOF-ArWen structural constraint; WRF v4.6.1 admits "
                     "sf_sfclay_physics=3 (isfc=2) with the GFS, MYJ, MYNN, "
                     "BouLac and EEPS PBLs (phys/module_physics_init.F:"
                     "3742,3771,3815,3838,3872)"),
@@ -9348,7 +9430,7 @@ def build(registry: dict) -> dict:
                 "pbl": ["ysu", "mynn", "shinhong", "sase", "myj", "acm2", "uw", "gfs", "qnse", "boulac", "gbm", "mrf", "ccpp-tke-edmf", "eeps", "temf"]},
             "requires_components_reasons": {
                 "pbl": (
-                    "WOOF's Grell-Freitas adapter reads KPBL and the "
+                    "WOOF-ArWen's Grell-Freitas adapter reads KPBL and the "
                     "PBL-maintained surface fluxes for the trigger's "
                     "temperature and moisture excesses and for the shallow "
                     "arm; with the PBL off nothing writes them, so the "
@@ -9359,14 +9441,14 @@ def build(registry: dict) -> dict:
         "extensions": {
             "arwen_pbl_structural_requirement": {
                 "reason": (
-                    "WOOF's GF adapter reads KPBL and the PBL-maintained "
+                    "WOOF-ArWen's GF adapter reads KPBL and the PBL-maintained "
                     "surface fluxes for the trigger's excesses and the "
                     "shallow arm; with bl_pbl_physics=0 nothing writes "
                     "them (WRF reads KPBL=0 there and indexes below the "
-                    "column base, which WOOF refuses rather than "
+                    "column base, which WOOF-ArWen refuses rather than "
                     "reproduces)"),
                 "classification": (
-                    "WOOF structural constraint; WRF v4.6.1 does not "
+                    "WOOF-ArWen structural constraint; WRF v4.6.1 does not "
                     "prohibit cu_physics=3 with bl_pbl_physics=0"),
             },
             "shallow_closure_top_bound": {
@@ -9431,10 +9513,10 @@ def build(registry: dict) -> dict:
             "against a 113-bit oracle over all 59,768,833 float32 of "
             "[0.25, 36], it is wrong on 23,575,230 (39.4440 per cent), "
             "worst 6 ULP; tgammaf(4.0f) returns 6.00000048, not 6. "
-            "Through 2.6.5 WOOF's earlier gamma returned those same "
+            "Through 2.6.5 WOOF-ArWen's earlier gamma returned those same "
             "words; it is replaced, and like its replacement it was this "
             "project's own work under the project's licence. "
-            "gfk_tgamma is now WOOF's own correctly rounded "
+            "gfk_tgamma is now WOOF-ArWen's own correctly rounded "
             "gamma (0 of 59,768,833 arguments wrong) and the SHIPPED "
             "forecast path computes it, so fzu is no longer WRF's word: "
             "it changes on 68.1707 per cent of the reachable set, 98.390 "
@@ -9443,7 +9525,7 @@ def build(registry: dict) -> dict:
             "the deep mass flux xmb moves by up to ~7 per cent, median "
             "1.9 (tests/test_gf_deep_parity.py::"
             "test_a_one_ulp_massflux_shape_perturbation_moves_xmb_by_"
-            "seven_percent). WOOF is the closer of the two to the value "
+            "seven_percent). WOOF-ArWen is the closer of the two to the value "
             "the scheme's equations define on 49.95 per cent of the "
             "reachable set and further on 9.59; NEITHER is determined to "
             "better than tens of per cent, so this is NOT a skill claim. "
@@ -10067,10 +10149,12 @@ def build(registry: dict) -> dict:
             "checkpoint, actual two-member ensembles and both nest feedback "
             "modes are covered. See tools/noahmp_options_wrf461_oracle/README.md "
             "for evidence scope; this does not qualify other option values.")
-        if _name.startswith("snicar_"):
+        if _name.startswith("snicar_") or _name not in registry["parameters"]:
             # These kw-only RunConfig controls are absent from the old knob
             # survey. An admitted setting without its parameter default
-            # resolves to None and makes every Noah-MP plan unlaunchable.
+            # resolves to None and makes every Noah-MP plan unlaunchable
+            # (3.0.0 fold: opt_snow_compact, opt_runsub and opt_tksno did,
+            # tests/test_physics_registry.py expert-only Noah-MP templates).
             from woof.config import RunConfig
             _default = RunConfig.__dataclass_fields__[_name].default
             registry["parameters"].setdefault(_name, {
@@ -10078,7 +10162,8 @@ def build(registry: dict) -> dict:
                 "default": _default,
                 "enum": list(_values),
                 "per_domain": False,
-                "consuming_read": "woof/core/snow_papers.py:settings",
+                "consuming_read": ("woof/core/snow_papers.py:settings" if _name.startswith("snicar_")
+                                   else "woof/core/noahmp_runtime.py"),
             })
             _noahmp_constraints["admitted_setting_values_reasons"][_name] = (
                 "These settings select the paper-based snow rewrite at opt_alb=3: "
@@ -10086,6 +10171,29 @@ def build(registry: dict) -> dict:
                 "lifecycle checks cover snow habits and impurity mixing; the "
                 "native v4.6.1 replay claim does not cover these settings. "
                 "See docs/SNOW-PAPERS.md and tests/test_snow_papers.py.")
+    # opt_scf=2 is not a WRF v4.6.1 option, so the replay claim above does
+    # not describe it; state what it is instead.
+    _noahmp_constraints["admitted_setting_values_reasons"]["opt_scf"] = (
+        "The canonical default (1, Niu-Yang 2007 with the land-type SCFFAC and "
+        "MFSNO table values) is the unchanged WRF-lineage statement sequence. "
+        "Value 2 is the scale-aware ground snow cover fraction of "
+        "Abolafia-Rosenzweig et al. 2025 (JAMES, Eq. 4-5): re-implemented from "
+        "published descriptions, not bitwise to upstream. The native v4.6.1 "
+        "replay claim does not cover it. See woof/core/noahmp_scf.py and "
+        "tests/test_noahmp_scf.py.")
+    for _name, _what in (
+            ("opt_snow_compact", "Value 2 is the snow compaction C_bd(T_air, p_sfc) of "
+             "Abolafia-Rosenzweig et al. 2024 (woof/core/kernels/noahmp_water_options.cuh, "
+             "tests/test_noahmp_snow_compaction.py)"),
+            ("opt_runsub", "Nonzero values split subsurface runoff from opt_run under "
+             "WRF v4.8.0's opt_runsrf/opt_runsub names (woof/core/noahmp_runoff_split.py, "
+             "tests/test_noahmp_runoff_split.py)"),
+            ("opt_tksno", "Values 2-5 are Anderson, constant 0.35, Verseghy and Yen 1981 "
+             "snow thermal conductivity (woof/core/noahmp_tksno.py, tests/test_noahmp_tksno.py)")):
+        _noahmp_constraints["admitted_setting_values_reasons"][_name] = (
+            "The canonical default is the unchanged WRF-lineage statement sequence. "
+            + _what + ": re-implemented from published descriptions, not bitwise to "
+            "upstream. The native v4.6.1 replay claim does not cover it.")
     _noahmp_constraints["admitted_setting_values_reasons"]["noahmp_output"] = (
         "Level 3 runs all 58 native WRF output accumulators on resident GPU arrays. "
         "The pinned diagnostics driver treats levels 0/1/2 as standard output. "
@@ -10127,7 +10235,7 @@ def build(registry: dict) -> dict:
             "requires_components", {})["surface_layer"] = accepted
         option["constraints"]["requires_components_reasons"] = {
             "surface_layer": (
-                "WOOF's active land-surface drivers consume the "
+                "WOOF-ArWen's active land-surface drivers consume the "
                 "UST/CHS/CHS2/CQS2/FLHC/FLQC exchange fields the surface "
                 "layer writes; with the surface layer off those fields are "
                 "allocated and stay identically zero, and Noah-MP's "
@@ -10138,13 +10246,28 @@ def build(registry: dict) -> dict:
             "arwen_surface_exchange_structural_requirement"
         ] = {
             "reason": (
-                "WOOF's active LSM drivers consume UST/CHS/CHS2/CQS2/"
+                "WOOF-ArWen's active LSM drivers consume UST/CHS/CHS2/CQS2/"
                 "FLHC/FLQC exchange fields that have no writer when "
                 "sf_sfclay_physics=0"),
             "classification": (
-                "WOOF structural constraint; WRF v4.6.1 does not prohibit "
+                "WOOF-ArWen structural constraint; WRF v4.6.1 does not prohibit "
                 "sf_sfclay_physics=0 with an active LSM"),
         }
+
+    # Pleim-Xiu land (sf_surface_physics=7) reads the same exchange seam and
+    # validate_run_config refuses it with sf_sfclay_physics=0 in the same
+    # words as the three above, but its option is written whole by the PX
+    # pass with empty constraints, so plan review called PX land with the
+    # surface layer off LAUNCHABLE and the run refused it
+    # (tests/test_physics_combination_matrix.py, 3.0.1).  Only the admission
+    # constraint is added: requires_components is not part of the physics
+    # identity, so PX receipts and checkpoints are unchanged.
+    px_land = land_options["pleim-xiu"]
+    px_land.setdefault("constraints", {}).setdefault(
+        "requires_components", {})["surface_layer"] = list(accepted)
+    px_land["constraints"].setdefault("requires_components_reasons", {})[
+        "surface_layer"] = land_options["noah"]["constraints"][
+            "requires_components_reasons"]["surface_layer"]
 
     # The experiment-per-domain front door now exposes harmless WRF-legal
     # PBL-off and radiation-off choices, plus every WRF-legal implemented
@@ -10202,7 +10325,7 @@ def build(registry: dict) -> dict:
     analytic["reachability"] = {
         "state": "unreachable",
         "blocker": (
-            "The 90/90 analytic clear-sky proxy is WOOF-specific: WRF "
+            "The 90/90 analytic clear-sky proxy is WOOF-ArWen-specific: WRF "
             "v4.6.1 registers no equivalent package "
             "(Registry/Registry.EM_COMMON:3107-3125). It remains available "
             "to unnamed domain trees only through the authority-level "
@@ -10210,7 +10333,7 @@ def build(registry: dict) -> dict:
             "from allowed_component_options."),
     }
     analytic["warnings"] = [
-        "WOOF-SPECIFIC, NOT A WRF SCHEME. Analytic 90/90 radiation remains "
+        "WOOF-ArWen-SPECIFIC, NOT A WRF SCHEME. Analytic 90/90 radiation remains "
         "an expert acknowledgement path because WRF v4.6.1 has no equivalent "
         "Registry package."
     ]
@@ -11079,6 +11202,13 @@ def build(registry: dict) -> dict:
     # every maturity renamed, so the consumer rows see the final
     # option set.
     _cam5_components(registry)
+    # After every microphysics option is registered, because it walks them.
+    # It used to run some 2,800 lines earlier, and _madwrf_metadata (mp=96)
+    # and _misc_udm_component (mp=27) rewrite their options whole after
+    # that point, so both shipped with no refused_when rule: plan review
+    # called MAD-WRF and UDM on RTE+RRTMGP launchable and validate_run_config
+    # refused them (tests/test_physics_combination_matrix.py, 3.0.1).
+    _rte_rrtmgp_cloud_optics_constraints(registry)
     _consumer_rows(registry)
     # After the consumer rows exist, because it reads one of them, and
     # BEFORE the reachability pass below, which prices a way out through
@@ -11648,7 +11778,7 @@ def _phase2c_route_declarations(registry: dict) -> None:
         "It is a dycore and idealized instrument, which is why no template "
         "selects it and no per-domain option list admits it.")
     analytic["warnings"] = [
-        "WOOF-SPECIFIC, NOT A WRF SCHEME, AND NOT A FORECAST PRODUCT. The "
+        "WOOF-ArWen-SPECIFIC, NOT A WRF SCHEME, AND NOT A FORECAST PRODUCT. The "
         "90/90 analytic clear-sky proxy carries no cloud, aerosol or gas "
         "optics: every cloudy column's radiative heating is wrong by the "
         "whole cloud effect. WRF v4.6.1 registers no equivalent package "
@@ -11705,7 +11835,7 @@ def _phase2c_route_declarations(registry: dict) -> None:
             "carrying the water soil category (SOILTYP 14 under a land "
             "LU_INDEX) reached soilvegin, which has no arm for it, and "
             "0./0. went into MAVAIL. WRF's own real program reconciles "
-            "that column at initialization and so does every WOOF door, "
+            "that column at initialization and so does every WOOF-ArWen door, "
             "through woof/ingest/soil.py door_reconciled_soil_category "
             "(proven both ways by "
             "tests/test_ruc_shoreline_soil_category.py). No route blocker "
@@ -13212,15 +13342,33 @@ def _multiscale_parameters(registry):
 
 
 def _misc_rcon_component(registry):
+    from woof.core.rcon import TABLE_BYTES, TABLE_FILENAME, TABLE_SHA256
     options = registry["components"]["microphysics"]["options"]
     options["rcon-mp29"] = {
         "label": "RCON / MP29", "selectors": {"mp_physics": 29},
         "implemented": True, "maturity": "implemented-unverified", "scientific_evidence": "none",
-        "parameters": {"moist": True, "moist_cq": True}, "asset_requirements": [],
+        "parameters": {"moist": True, "moist_cq": True},
+        # The run refuses RCON by name when this stream is absent
+        # (woof.tables, MissingTableAssets).  The option declared no asset
+        # row while RCON-SPEED-01 refused it first, so once that guard left,
+        # plan review said nothing about a file the run cannot start
+        # without.  The row is the one plan review resolves into
+        # install_state, naming the file and the roots it searched.
+        "asset_requirements": [{
+            "id": "wrf471-rcon-initialized-tables-v1",
+            "kind": "operator-supplied-table-set",
+            "assets": [{"filename": TABLE_FILENAME, "bytes": TABLE_BYTES, "sha256": TABLE_SHA256}],
+            "root_environment_override": "WOOF_RCON_TABLE_ROOT",
+            "redistributed_by_gpuwm": False,
+            "regenerable": False,
+            "resolution": dict(_ASSET_RESOLUTION_LADDERS["wrf471-rcon-initialized-tables-v1"]),
+            "source": "WRF v4.7.1 RCON initialization: the scheme's lookup tables as the native build holds them after its init, written as one stream",
+            "note": "Not distributed with woof, and no shipped tool builds it: it is written from a native WRF 4.7.1 build. `woof fetch-tables --schemes rcon --from DIR` verifies a copy by size and SHA-256 and installs it.",
+        }],
         "constraints": {"required_settings": {"moist": True},
                         "required_settings_reasons": {"moist": "RCON advances vapor, five condensate classes and number moments."}},
-        "extensions": {"preset_scope_reason": "Strict replay and a three-hour forecast pass. The measured 1.885431x MP28 GPU stage cost exceeds the speed gate; RCON-SPEED-01 refuses forecast admission until a qualified handoff."},
-        "warnings": ["Requires the native initialized RCON table stream, validated by size and SHA-256. Set WOOF_RCON_TABLE_ROOT to its directory. Strict real-input replay: 0/25246820 words, no exclusions. A three-hour forecast passes, but measured stage cost is 1.885431x MP28; the native 1.053748x profile does not justify the GPU excess. Forecast admission is refused by RCON-SPEED-01 until speed qualification."]}
+        "extensions": {"preset_scope_reason": "Strict replay and a three-hour forecast pass. The measured microphysics stage costs 1.885431x MP28 on the GPU, outside the 1.2x speed bar, so it is an explicit component override and never a default."},
+        "warnings": ["Requires the native initialized RCON table stream, validated by size and SHA-256. Set WOOF_RCON_TABLE_ROOT to its directory. Strict real-input replay: 0/25246820 words, no exclusions. A three-hour forecast passes. Measured microphysics stage cost is 1.885431x MP28; the native 1.053748x profile does not explain the GPU excess, which is an open speed defect."]}
 
 
 def _misc_udm_component(registry):

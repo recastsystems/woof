@@ -141,6 +141,67 @@ class NudgingConfig:
         # WRF module_physics_init: nearest integer, at least one step.
         return max(1, int(self.fgdt * 60.0 / dt + 0.5))
 
+    def held_steps(self, dt):
+        """Most steps one refresh's tendency is applied (kernels.cu relax).
+
+        Without fgdtzero a refresh is held until the next one: N steps. With
+        fgdtzero=1 the tendency is cleared on the step after each regular
+        refresh, so only the first call (step 1, held until step N) is applied
+        for more than one step: N - 1 steps.
+        """
+        steps = self.cadence_steps(dt)
+        return max(1, steps - 1) if self.fgdtzero and steps > 1 else steps
+
+    def step_strength(self, dt):
+        """Largest share of the analysis mismatch one refresh applies.
+
+        The relaxation is an explicit update: each step adds coefficient*dt of
+        the mismatch, and a tendency refreshed every N steps (fgdt) is held for
+        N steps, so one refresh moves coefficient*dt*N of it. Masks and time
+        ramps only scale this down. Returns (strength, key, coefficient).
+        """
+        steps = self.held_steps(dt)
+        rows = [(key, self.coefficient(name)) for key, name in
+                (("guv", "u"), ("gt", "temperature"), ("gph", "geopotential"), ("gq", "qv"))]
+        if self.grid_sfdda:
+            rows += [(key, getattr(self, key)) for key in ("guv_sfc", "gt_sfc", "gq_sfc")]
+        key, value = max(rows, key=lambda row: row[1])
+        return value * dt * steps, key, value
+
+    def check_step(self, dt, where="nudging"):
+        """NUDGING_STEP_STRENGTH: refuse a strength that blows the run up.
+
+        One refresh multiplies the analysis mismatch by (1 - strength).
+        Measured on the 9 km ERA5 example (nudging-blowups note, 2026-11-10):
+        - applied every step (fgdt=0), above 1 the state is pushed past the
+          analysis on every step and the model amplifies that two-step
+          oscillation: 1.35 went non-finite at step 572, 2.25 at step 13
+          (grid and spectral); 1.0 and 0.45 ran 12 h;
+        - held by fgdt, every refresh overshoots by (strength - 1): 1.8 ran
+          12 h but its 10 m wind map is shredded into grid-scale noise, and
+          2.16 went non-finite at step 956. 1.08 (8 % overshoot) ran and
+          looked normal; it is refused too, with the admissible coefficient
+          named, because the line that never overshoots is 1.
+        Native WRF has no guard and diverges the same way.
+        """
+        if not self.enabled or not math.isfinite(dt) or dt <= 0:
+            return
+        strength, key, value = self.step_strength(dt)
+        if strength <= STEP_STRENGTH_SAFE:
+            return
+        steps = self.held_steps(dt)
+        name ="1/relaxation_seconds" if key in ("guv", "gt", "gph") and getattr(self, key) is None else key
+        held = f" x {steps} steps held by fgdt" if steps > 1 else ""
+        raise ValueError(
+            f"NUDGING_STEP_STRENGTH: {where} {name}={value:.4g} s^-1 x time_step {dt:g} s{held} = "
+            f"{strength:.3g} of the analysis mismatch per refresh, so each refresh overshoots the analysis "
+            f"and the run blows up; the safe range is coefficient x time_step x steps <= 1, here "
+            f"{name} <= {STEP_STRENGTH_SAFE / (dt * steps):.3g} s^-1 (WRF's usual value is 3e-4)")
+
+
+#: Share of the mismatch per refresh that never overshoots the analysis.
+STEP_STRENGTH_SAFE = 1.0
+
 
 SURFACE_KEYS = ("grid_sfdda", "sgfdda_inname", "io_form_sgfdda",
                 "sgfdda_interval_m", "sgfdda_end_h", "guv_sfc", "gt_sfc", "gq_sfc", "rinblw",

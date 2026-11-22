@@ -1,11 +1,11 @@
 """The default native library contains no code that cannot be sold; the opt-in builds it, by name.
 
-THE BREAKAGE THIS PREVENTS (owner ruling 2026-10-14: no default routes into code that cannot be sold).
+THE BREAKAGE THIS PREVENTS (no default routes into code that cannot be sold).
 MPAS-A v8.4.2's own sources USE Noah-MP v5.0 (UCAR terms: no sale of it or of any work that contains it):
 mpas_atmphys_vars.F:12 and the Noah-MP driver, init and finalize files.  So `woof hex physics-resources
 build` compiled it into every install's native framework library, for runs that never select it.  The
 default build now compiles a licence stub in its place.  (UGWP and the other NOAA-GSL physics stay compiled:
-owner ruling 2026-10-14, US Government code, not held.)  These checks hold that:
+they are US Government code, not held.)  These checks hold that:
 
 1. the default build stubs Noah-MP v5.0 and compiles UGWP, and only ``--licence-opt-in ucar-noahmp``
    compiles Noah-MP;
@@ -233,7 +233,7 @@ def test_the_build_command_passes_the_named_opt_ins(monkeypatch):
     monkeypatch.delenv(licence_gate.ENVIRONMENT, raising=False)
     assert rb._build_command(_cli()) == 0 and seen["licence_opt_in"] == {}
     rb._build_command(_cli("--licence-opt-in", "ucar-noahmp,ugwp-held,noaa-gsl-unlicensed"))
-    # ugwp-held and noaa-gsl-unlicensed are retired (owner ruling 2026-10-14, US Government code): the gate
+    # ugwp-held and noaa-gsl-unlicensed are retired (2026-10-14, US Government code): the gate
     # announces them and drops them, so only the UCAR term reaches the builder.
     assert seen["licence_opt_in"] == {"ucar-noahmp": "--licence-opt-in"}
     monkeypatch.setenv(licence_gate.ENVIRONMENT, "ucar-noahmp")

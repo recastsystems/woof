@@ -1,7 +1,7 @@
 """The ArWen-physics route writes the 2-5 km updraft-helicity maximum by default, as every MPAS-physics run does.
 
 THE BREAKAGE THIS GUARDS (both-routes matrix, woof hex 0.4.14 candidate, 2026-11-06): the MPAS route rendered
-composite_reflectivity_uh, uh_2to5km and 1km_reflectivity_uh2to5km and the WOOF route rendered none of them, because
+composite_reflectivity_uh, uh_2to5km and 1km_reflectivity_uh2to5km and the WOOF-ArWen route rendered none of them, because
 its history carried no updraft_helicity_max unless the run passed --uh-layers on (global leg: 225 vs 207 maps).
 CPU tier: a NumPy stand-in for CuPy; the kernel itself is not launched.
 """

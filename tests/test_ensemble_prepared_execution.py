@@ -234,6 +234,30 @@ def test_automatic_n1_keeps_original_first_receipt_without_device_or_new_clock(t
     assert seen == [node.clock] and result.first_member_id == 0
 
 
+def test_first_member_runs_in_the_directory_the_session_claimed(tmp_path):
+    # The ensemble session claims every member directory before execution and leaves member-provenance.json in it;
+    # member-roster ensembles then stopped with FileExistsError on member-0000 (rescued fix efb7cbed66a).
+    inputs, node = source()
+    claimed = tmp_path / "members" / "member-0000"
+    claimed.mkdir(parents=True)
+    (claimed / "member-provenance.json").write_text("{}")
+    seen = []
+    def runner(inputs, **options):
+        assert options["ensemble_bootstrap"](inputs=inputs, model=object(), node=node,
+            output_directory=options["output_directory"], observer=None, step_observer=None) is None
+        seen.append(options["output_directory"])
+        return {"status": "PASS"}
+    make = lambda: make_automatic_prepared_executor(runner, request=1, collector=collector(1),
+        output_directory=tmp_path, evidence_provider=lambda **kwargs: pytest.fail("device sampled"))
+    result = make()(inputs)
+    assert result.first_member_id == 0 and seen == [claimed] and result.first_output_directory == claimed
+    # Anything else in that directory is another run's output and is still refused.
+    (claimed / "wrfout_d01_2024-01-01_00:00:00").write_text("")
+    with pytest.raises(FileExistsError):
+        make()(inputs)
+    assert len(seen) == 1
+
+
 def test_automatic_capture_exposes_initialization_callback_before_restart_and_health(tmp_path):
     from woof.ensemble.runtime_context import current_capture
     inputs, node = source()

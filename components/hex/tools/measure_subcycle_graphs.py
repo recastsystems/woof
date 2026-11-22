@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+from woof.hex import card_queue
 from pathlib import Path
 import statistics
 import subprocess
@@ -47,7 +48,7 @@ def main():
         WOOF_HEX_CUDA_GRAPHS_REQUIRE_REPLAY=args.graphs,
     )
     from woof.timeline.ledger import Ledger
-    card = os.environ.get("GPU_MUTEX_CARDS", "").split(",")[0]
+    card = card_queue.get(card_queue.CARDS).split(",")[0]
     if not card.isdecimal():
         raise RuntimeError("measurement requires a granted physical card index from the card queue")
     os.environ["WOOF_CARD"] = card
@@ -63,7 +64,7 @@ def main():
              "--gpuwm-checkout", str(args.engine),
              "--fingerprint-every", str(args.fingerprint_every)]
     request = {"argv": [sys.executable, "-m", "woof.hex.cli", *argv],
-               "config": vars(args), "mutex_cards": os.environ.get("GPU_MUTEX_CARDS"),
+               "config": vars(args), "mutex_cards": card_queue.get(card_queue.CARDS, None),
                "visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
                "case_sha256": sha(args.input / "case.json"),
                "pin_sha256": sha(args.input / "pin.json")}

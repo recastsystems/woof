@@ -19,7 +19,7 @@ reference.
 
 ```sh
 woof hex render \
-  --history work/out/cuda-history.2026-08-12_07.00.00.nc \
+  --history work/out/history.2026-08-12_07.00.00.nc \
   --mesh    assets/x1.40962.grid.nc \
   --out     work/png \
   --simulation-start 2026-08-12_06:00:00 \
@@ -64,7 +64,7 @@ PNGs are filed at render time into a fixed tree, never flat:
 <out>/<domain-token>/<product>/<valid-day>/<engine-filename>.png
 ```
 
-The proving run filed 41 products under `work/png/d01-22km/...`: the
+The 0.2.0 run filed 41 products under `work/png/d01-22km/...`: the
 domain token comes from the engine's own filename for the focus window,
 the valid day from the converter's receipt for that frame. Facts that
 cannot be read file under `native_grid` / `unclassified` / `undated`; a

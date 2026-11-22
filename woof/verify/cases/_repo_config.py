@@ -126,7 +126,7 @@ def missing_config_message(name: str, *, flag: str = "--config") -> str:
         "run without the flag.",
         "",
         "Both want the `configs/` directory of a woof source checkout "
-        "(https://github.com/recastsystems/woof); the file is "
+        "(https://github.com/recastsystems/arwen); the file is "
         "committed there.  `woof domain` does NOT emit it -- it is a "
         "ratified experiment config, not a wizard product.",
     ]

@@ -99,6 +99,12 @@ _VERTICAL_KINDS = {
     "pressure", "hybrid_sigma_pressure", "model_level", "height",
     "soil_depth", "embedded_levels",
 }
+#: ``coordinates.vertical.interface_levels`` spelled as this string: a
+#: NetCDF model-level column whose N levels and N+1 interfaces are the
+#: file's own coordinates, with no declared ladder.  The Rust engine reads
+#: a non-list as "no declared interfaces" and an absent ``levels`` as "the
+#: levels the file offers", which is the same column.
+INTERFACE_LEVELS_FROM_FILE = "from_file"
 _POLICY_FIELDS = {
     "cloud_water_mixing_ratio",
     "rain_water_mixing_ratio",
@@ -1551,11 +1557,25 @@ def load_mapping(
             raise ValueError(
                 "interface_levels on a NetCDF model_level coordinate requires "
                 "vertical.interface_selector naming the interface coordinate variable")
-        if not isinstance(interfaces, list) or len(interfaces) != len(levels) + 1:
-            raise ValueError("interface_levels must bound every mass level with N+1 interfaces")
-        values = [_number(value, "vertical.interface_levels") for value in interfaces]
-        if len(set(values)) != len(values) or not all(b > a for a, b in zip(values, values[1:])):
-            raise ValueError("interface_levels must be unique and increasing in column order")
+        if interfaces == INTERFACE_LEVELS_FROM_FILE:
+            # The column is the file's own: every mass level its vertical
+            # coordinate offers and every interface its interface coordinate
+            # offers, N and N+1, checked against each other at decode.  A
+            # model writes the level count its run used (a woof hex parent:
+            # 55 levels on the default suites, 59 on hrrrv5), so a fixed
+            # ladder either refuses the parent or drops the top of its
+            # column.  No declared levels may sit beside it: a declared mass
+            # ladder would cut the column the interfaces still bound.
+            if source_format != "netcdf" or levels:
+                raise ValueError(
+                    "interface_levels 'from_file' takes the column from a NetCDF file's own "
+                    "coordinates and cannot be combined with declared vertical.levels")
+        else:
+            if not isinstance(interfaces, list) or len(interfaces) != len(levels) + 1:
+                raise ValueError("interface_levels must bound every mass level with N+1 interfaces")
+            values = [_number(value, "vertical.interface_levels") for value in interfaces]
+            if len(set(values)) != len(values) or not all(b > a for a, b in zip(values, values[1:])):
+                raise ValueError("interface_levels must be unique and increasing in column order")
     if vertical["kind"] == "hybrid_sigma_pressure":
         # The coefficient channels are the GRIB pv coordinate octets
         # (primary, read from the bytes at decode) and inline
@@ -3241,14 +3261,21 @@ def _decode_netcdf(mapping: Mapping[str, object], files: Sequence[Path]) -> _Dec
                     interface_dimension = _nc_coordinate_dimension(
                         interface_variable, "vertical interfaces"
                     )
-                    declared_interfaces = np.asarray(
-                        vertical["interface_levels"], dtype=np.float64
-                    )
-                    indices = _declared_level_indices(
-                        declared_interfaces, interface_values, source
-                    )
-                    if indices is not None:
-                        interface_selection = (interface_dimension, indices)
+                    if vertical["interface_levels"] != INTERFACE_LEVELS_FROM_FILE:
+                        declared_interfaces = np.asarray(
+                            vertical["interface_levels"], dtype=np.float64
+                        )
+                        indices = _declared_level_indices(
+                            declared_interfaces, interface_values, source
+                        )
+                        if indices is not None:
+                            interface_selection = (interface_dimension, indices)
+                    elif (vertical_values is not None
+                            and interface_values.size != vertical_values.size + 1):
+                        raise ValueError(
+                            f"{source} offers {vertical_values.size} vertical levels and "
+                            f"{interface_values.size} interfaces; a column taken from the "
+                            "file needs N+1 interfaces for N levels")
                 except ValueError as error:
                     interface_dimension = None
                     interface_error = error
@@ -3698,6 +3725,10 @@ def _decode_netcdf(mapping: Mapping[str, object], files: Sequence[Path]) -> _Dec
             int(reference_vertical.size),
             record_pv=(),
         )
+    # The missing policy belongs to the mapping, not to the byte format: a
+    # NetCDF producer that writes soil over water (ERA5 does) declares
+    # landmask_water exactly as a GRIB one does, and gets the same mask.
+    direct = _apply_landmask_water_missing(mapping, direct)
     return _DecodedCollection(
         reference_latitude,
         reference_longitude,

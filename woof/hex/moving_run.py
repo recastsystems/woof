@@ -803,7 +803,7 @@ class Controller:
         if name in self.state['members'] and name != self.state['current']:
             self.state['members'][name]['planned_source'] = self.state['current']
 
-    def request_member(self, centre, why, order=1, admit=None, speculative=False):
+    def request_member(self, centre, why, order=1, admit=None, speculative=False, serve_admitted=False):
         """Name of a member at (or serving) ``centre``, starting its preparation when none exists.
 
         ``admit`` (a centre -> bool rule, the same one :meth:`pick_target` applies) filters the two
@@ -812,7 +812,15 @@ class Controller:
         PREVENTS (hex-day2 storm-following runs, 2026-10-27, twice): a due move reused an on-disk
         member up to min(--reuse-km, min_move_km) off the policy's centre whose predicted core was
         not safe there for one check, so pick_target refused it once it was READY and the door
-        stopped the run ('moving member ... is ready after holding the forecast')."""
+        stopped the run ('moving member ... is ready after holding the forecast').
+
+        ``serve_admitted`` (a FORCED move: the storm cannot wait a check in the current region) lets any
+        member already preparing, prepared or ready that ``admit`` accepts serve the move, at any distance
+        from the policy's centre: the same rule pick_target applies to a ready member, so the member started
+        early for this move is waited for instead of being evicted by a fresh preparation.  THE BREAKAGE THIS
+        PREVENTS: a member prepared ahead 28 km off the decided centre was
+        passed over (min_move_km 20) and a second one, prepared ahead from a noisy two-fix motion, was
+        cancelled; the decided member started from nothing at the move's own frame."""
         step = self.session.config.placement.snap_deg
         lat, lon = self.st.snap(centre[0], centre[1], step)
         name = self.member_key(lat, lon)
@@ -878,6 +886,17 @@ class Controller:
                 members[key] = self.read_member(key, 'prepared')
                 self.event('member-reused', name=key, center=members[key]['center_deg'], wanted=[lat, lon], why=why)
             return key
+        if serve_admitted and admit is not None:
+            admitted = sorted((great_circle_km(m['center_deg'], (lat, lon)), n) for n, m in members.items()
+                              if n != self.state['current'] and m['status'] in ('preparing', 'prepared', 'ready')
+                              and admit(m['center_deg']))
+            if admitted:
+                name = admitted[0][1]
+                members[name]['order'] = min(members[name].get('order', order), order)
+                if admitted[0][0] > 1e-6:
+                    self.event('member-serves-forced-move', name=name, center=members[name]['center_deg'],
+                               wanted=[lat, lon], distance_km=admitted[0][0], status=members[name]['status'], why=why)
+                return name
         busy = [n for n, m in members.items() if m['status'] == 'preparing']
         near = [(great_circle_km(members[n]['center_deg'], (lat, lon)), n) for n in busy]
         near = [(d, n) for d, n in near if d <= self.session.policy.c.min_move_km
@@ -1193,6 +1212,75 @@ class Controller:
                             max(0.0, (seconds - fix.seconds) / 60.0),
                             max(policy.c.check_minutes, policy.SUBSTEP_MIN)) >= policy.c.check_minutes
 
+    # ---------------------------------------------------------------- leading a storm the region cannot hold
+    def landing_seconds(self, after):
+        """The first frame after ``after`` at which a move can land: the next check frame, and not before the
+        cycle's IAU window closes (its increment belongs to the current mesh until then)."""
+        frame = (math.floor(float(after) / self.check + 1e-9) + 1) * self.check
+        until = float(getattr(self, 'cycle_iau_until', 0.0) or 0.0)
+        if frame < until:
+            frame = math.ceil(until / self.check - 1e-9) * self.check
+        return float(frame)
+
+    def forced_at(self, region, landing):
+        """True when the predicted storm core (fix and motion uncertainty included) leaves ``region``'s safe
+        radius before one check after ``landing``: the move that lands there is forced, not a re-centre."""
+        policy = self.session.policy
+        good = [f for f in self.session.fixes if f.ok]
+        if policy is None or not good:
+            return False
+        last = good[-1]
+        velocity, _ = self.session.motion.velocity(self.session.fixes)
+        need = (landing - last.seconds) / 60.0 + policy.c.check_minutes
+        return policy.dwell(region, (last.lat, last.lon), velocity, 0.0, need) < need - 1e-6
+
+    def prepare_landing(self, seconds, region, why):
+        """Start, or keep, the member of the forced move that lands at the first landable frame after
+        ``seconds``.  Its centre is the placement policy's own decision at that frame, dead-reckoned from the
+        last good fix with the policy's motion (the decision that frame will make if the storm keeps its
+        predicted motion); a member already preparing that keeps the predicted core safe there serves it.
+        Returns the planned row, or None when no forced move lands before the run ends."""
+        policy = self.session.policy
+        good = [f for f in self.session.fixes if f.ok]
+        if policy is None or not good or self.session.lost or self.session.misses:
+            return None
+        landing = self.landing_seconds(seconds)
+        if landing >= self.duration - 1e-6 or not self.forced_at(region, landing):
+            return None
+        decision = policy.decide(landing, self.session.fixes, region)
+        if not decision.move:
+            return None
+        fix = good[-1]
+        name = self.request_member(decision.centre, f'{why}; forced move lands at {landing:.0f} s', order=1,
+                                   admit=lambda c: self.admits(c, landing, fix), serve_admitted=True)
+        return dict(centre=[float(v) for v in decision.centre], at_seconds=landing, name=name, order=1,
+                    forced=True)
+
+    def prepare_at_launch(self):
+        """A start or resume whose storm is already near or past the region's safe edge starts the member of
+        its first move beside the forecast launch, not at the frame that decides the move.
+
+        THE BREAKAGE THIS PREVENTS (a region resumed at 900 s):
+        the region resumed from its start centre with the storm already 52 km past its safe edge; the frames
+        at 1125 and 1350 s could not move (inside the cycle's IAU window), and the member of the move decided
+        at 1575 s started only then (static 24 s on 32 threads, then init): move-member-unavailable."""
+        if (getattr(self, 'plan', None) or self.state.get('pending_move')
+                or getattr(self.session, 'policy', None) is None):
+            return None
+        current = self.state['members'][self.state['current']]
+        good = [f for f in self.session.fixes if f.ok]
+        if not good:
+            return None
+        room, edge = self.storm_room(current, good[-1])
+        row = self.prepare_landing(float(self.state['t']), current['center_deg'],
+                                   f'at launch (t={float(self.state["t"]):.0f} s) the storm is {edge:.0f} km '
+                                   f'from the safe edge')
+        if row is not None:
+            self.event('launch-lead', launch_seconds=float(self.state['t']), storm_to_edge_km=edge,
+                       storm_room_minutes=room, **row)
+            self.save()
+        return row
+
     def on_frame(self, seconds, history, control: Path):
         if seconds in {f['model_seconds'] for f in self.state['frames']}:
             # A frame this controller already decided.  A segment that is holding at it still
@@ -1239,6 +1327,21 @@ class Controller:
             frame['move_wanted']['skipped'] = 'the run ends at this frame'
         chain = self.anticipate_chain(decision, current) if getattr(self, 'plan', None) is None else []
         frame['anticipated'] = chain
+        if decision.move and seconds < getattr(self, 'cycle_iau_until', 0):
+            # The current increment belongs to this mesh. Complete its physical
+            # insertion window before taking the already anticipated move.
+            decision = replace(decision, move=False,
+                               reason=decision.reason + '; complete the current mesh IAU window before remapping')
+            self.session.decisions[-1] = decision
+            frame['decision'] = decision.as_dict()
+            # The move this frame wanted lands at the first frame after the window: its member is prepared now.
+            # The anticipation chain is the move AFTER a move from the current region, extrapolated from the
+            # raw two-fix displacement, so it neither serves this move nor may evict its member while a forced move waits for it.
+            landing = self.prepare_landing(seconds, current['center_deg'],
+                                           f'move wanted at {seconds:.0f} s inside the IAU window')
+            if landing is not None:
+                chain = []
+                frame['anticipated'] = [landing]
         verdict = {'stop': False}
         if decision.move:
             target = self.pick_target(decision, current, seconds, ready, fix)
@@ -1246,8 +1349,11 @@ class Controller:
                 # The decision is for this frame. The anticipation chain starts at the
                 # NEXT move and can already lie outside this fix's safe radius.
                 centre = decision.centre
+                # A forced move (the storm cannot wait one check here) takes any member already on its way that
+                # keeps the core safe, rather than starting a new preparation at the policy's exact centre.
+                forced = self.storm_room(current, fix)[0] < self.session.policy.c.check_minutes
                 wanted = (self.request_member(centre, f'move decided at {seconds:.0f} s, no ready member',
-                                              admit=lambda c: self.admits(c, seconds, fix))
+                                              admit=lambda c: self.admits(c, seconds, fix), serve_admitted=forced)
                           if fix.ok and great_circle_km(centre, current['center_deg']) > 1e-6
                           else None)
                 # a member reused from disk with a cached operator is ready at once
@@ -1271,8 +1377,11 @@ class Controller:
                 # safe edge; its member, prepared from launch, was ready 12 s after the 1800 s frame.
                 last_chance = seconds + check * 60.0 >= getattr(self, 'duration', math.inf) - 1e-6
                 hold_limit = self.a.hold_for_member_seconds
-                if last_chance:
-                    # waiting longer than the forecast takes for the one check it serves buys nothing
+                if last_chance and stay >= check:
+                    # waiting longer than the forecast takes for the one check it serves buys nothing, when the
+                    # storm stays safe to the run end without the move.  A storm that cannot (stay < check) has
+                    # only the member to wait for: capping that wait turned a member already on its way into a
+                    # refusal while the member was still initializing and the storm was past the edge.
                     previous = [f for f in self.state['frames'][:-1] if f.get('segment') == frame['segment']
                                 and f.get('wall') is not None and f['model_seconds'] < seconds]
                     if previous:
@@ -1397,8 +1506,11 @@ class Controller:
         if not self.resident_ready():
             return   # the run adopts or drops a pre-launched process at the move, as before
         if pre is not None:
+            # The record named another member: it goes, and the move's own target is named in its place.  THE
+            # BREAKAGE (hex 0.6.1; fork jacobbieker/woof PR 497, Milton 2024 at 96 km: 2 of 6 moves): a return here
+            # left no record, so the process sealed its carrier to the file and exited, and the move started a cold
+            # process.
             self.drop_prelaunch(f'the move goes to {target}')
-            return
         source = self.state['current']
         proc, pseg, pcontrol, record = self.launch(
             'move', member_name=target, begin=seconds, checkpoint_in=str(Path(control).parent / 'boundary.pkl'),
@@ -1868,7 +1980,9 @@ class Controller:
             # A known path: its first members start preparing now, on host cores, while segment 0 starts.
             self.poll_background()
         else:
-            self.request_startup_member()
+            # Preserve speculative startup when no forced move needs preparation.
+            if self.prepare_at_launch() is None:
+                self.request_startup_member()
         while self.state['t'] < self.duration:
             if adopted is not None:
                 proc, seg, control, record = adopted

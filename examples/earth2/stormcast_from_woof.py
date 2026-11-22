@@ -3,7 +3,7 @@
 StormCast-CONUS (NVIDIA Earth-2, weights nvidia/stormcast-conus on Hugging Face,
 OpenMDW-1.1, no account) starts from the HRRR analysis and is driven hour by hour
 by a coarse "conditioning" forecast, GFS by default. Here the conditioning is a
-WOOF (WOOF or hex) forecast exported on the HRRR grid with
+WOOF (WOOF-ArWen or hex) forecast exported on the HRRR grid with
 
     woof export RUN/wrfout --earth2 e2s-hrrr-3km --for stormcast-conus --out STORE
 

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """How many same-host ranks share each card, and one copy per card of a read-only device object.
 
+THE BREAKAGE THIS PREVENTS (hex 0.4.14, long-run memory measurements):
 the radiation wrappers size each call's transient from a per-call budget (shortwave: a sunlit-column
 cap and half the free memory; longwave: 1 GiB and an eighth of the free memory, at most 1,024 columns
 under the compact policy).  Those budgets assume one caller per card.  On the same-host route N ranks

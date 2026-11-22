@@ -165,6 +165,10 @@ def slot_holders(directory: Path | None = None) -> list[str]:
             counts[fields[4]] = counts.get(fields[4], 0) + 1
     holders = []
     for pid, held in sorted(counts.items(), key=lambda item: -item[1]):
+        if pid == str(os.getpid()):
+            # Our own other transfers (one fetch-geog holding 30 of 30 named itself as the holder it waited on).
+            holders.append(f"this process (pid {pid}) holds {held} for its own other transfers")
+            continue
         try:
             command = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
         except OSError:
@@ -226,8 +230,12 @@ def lease(count=1, *, minimum=1):
                     f"them, or raise {SLOT_WAIT_ENV} / {MAX_CONNECTIONS_ENV}")
             if now >= next_notice:
                 holders = slot_holders(directory) or ["holders unknown (no /proc/locks)"]
-                _say(f"waiting {now - began:.0f} s for {minimum} of {cap} box fetch connection slots "
-                     f"({directory}); held by: {'; '.join(holders)}; refusing after {limit:.0f} s")
+                if all(holder.startswith("this process ") for holder in holders):
+                    _say(f"waiting {now - began:.0f} s for {minimum} of {cap} fetch connection slots, all held "
+                         f"by this process's own other transfers; this one starts as one of them ends")
+                else:
+                    _say(f"waiting {now - began:.0f} s for {minimum} of {cap} box fetch connection slots "
+                         f"({directory}); held by: {'; '.join(holders)}; refusing after {limit:.0f} s")
                 next_notice = now + WAIT_NOTICE_EVERY_S
             fetch_pool.sleep_unless_stopped(0.05)
         waited = time.monotonic() - began

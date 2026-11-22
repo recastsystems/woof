@@ -70,7 +70,7 @@ own edge narrowing (advection order, diff6 strip) corrupts a seam only
 DURING the step, so what it leaves to propagate is strictly inside ``R``
 (see ``harness.tile_config``).
 
-:func:`halo_for` is that arithmetic and nothing else.  At WOOF's
+:func:`halo_for` is that arithmetic and nothing else.  At WOOF-ArWen's
 ``time_step_sound=4`` and WRF's standard ``spec_zone=1`` it is
 ``16 + 1 = 17``.  Nothing here is tuned: both terms are read off the
 config.
@@ -1514,7 +1514,7 @@ def composite_reflectivity(case: CaseStores, *, slab_rows: int = 64,
                            column_max: bool = True):
     """Column-max ``REFL_10CM`` (dBZ) from the host store, by row slabs.
 
-    ``woof.core.refl.compute_refl_10cm`` is WOOF's own diagnostic and this
+    ``woof.core.refl.compute_refl_10cm`` is WOOF-ArWen's own diagnostic and this
     calls it unmodified.  Reflectivity is COLUMN-LOCAL -- Morrison's
     ``refl10cm_hm`` walks one column of ``qr/nr/qs/ns/qg/ng`` against
     ``t``/``p`` and reads no neighbour -- so a bare row slab with no halo

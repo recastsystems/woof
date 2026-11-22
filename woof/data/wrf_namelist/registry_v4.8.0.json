@@ -1,0 +1,8361 @@
+{
+ "schema": "gpuwm.wrf-namelist-registry.v1",
+ "wrf": {
+  "tag": "v4.8.0",
+  "commit": "06d4240ae989cc3e50af412bb472df3d9048783c",
+  "url": "https://github.com/wrf-model/WRF",
+  "license": "public domain"
+ },
+ "read_from": [
+  {
+   "file": "Registry/Registry.EM",
+   "sha256": "2bcaf5871914ad7f4683f2bc0a5f8ada5b1199915f3263d1e4c5b1d3986bdff8"
+  },
+  {
+   "file": "Registry/registry.dimspec",
+   "sha256": "06d3b91baf7cdfdad23cd7ef368fffac07dbd76daf294db058ac2b4262292973"
+  },
+  {
+   "file": "Registry/registry.em_shared_collection",
+   "sha256": "cf036edf05c3b1a442a621ffb7191d94d343ebebba0b16134a8812854516027f"
+  },
+  {
+   "file": "Registry/Registry.EM_COMMON",
+   "sha256": "78aa665d0488da08b7441b8a7802c5c774cb21b24f64e99b8ef6cf805c84b0eb"
+  },
+  {
+   "file": "Registry/registry.io_boilerplate",
+   "sha256": "2b0a6877b10c6ebdd4d502d098ce3f5dabfcf792db3ecb2cb69bab7903922270"
+  },
+  {
+   "file": "Registry/registry.fire",
+   "sha256": "ac84a1bce8ff1ee114f137635ebb1633d431de027167b4b34d5866ecd36b39f5"
+  },
+  {
+   "file": "Registry/registry.avgflx",
+   "sha256": "8027ca9397c84952d9104593bb4502872c99aa203043ad508c59f34b34137c44"
+  },
+  {
+   "file": "Registry/registry.stoch",
+   "sha256": "7c781030e0dd2f6e623d0efa81acd86aaeb952d0371beaeee92989e700b48f19"
+  },
+  {
+   "file": "Registry/registry.les",
+   "sha256": "d36ff30559f7f2d509db9304b444d9eece338743ac36e1da6cdc0e1f5534f56e"
+  },
+  {
+   "file": "Registry/registry.cam",
+   "sha256": "19c143d4aed9e52f003fbeda865b5bd2a40172085d897c45213c7318793725da"
+  },
+  {
+   "file": "Registry/registry.clm",
+   "sha256": "3ace44d2ef294578c0dc3ea210b84af603959b38cec08fc9d07645e50f2f597f"
+  },
+  {
+   "file": "Registry/registry.lake",
+   "sha256": "f4897ffa57d2eae17552df220e984c5a76c93b95327fac1172b84d2ce969fe31"
+  },
+  {
+   "file": "Registry/registry.ssib",
+   "sha256": "7fa144a8741211edf39adf8363db4f8f9022861a4c758644f53867d100ca02f6"
+  },
+  {
+   "file": "Registry/registry.noahmp",
+   "sha256": "979fbf7c6816ebf5716f4c64c36973aa0e73f5a487433444066cb3d1b44324af"
+  },
+  {
+   "file": "Registry/registry.sbm",
+   "sha256": "9882f8612c30111c5cee9ae50a7d379fd5154c6c939e6c37bde040137fbcf288"
+  },
+  {
+   "file": "Registry/registry.polrad",
+   "sha256": "77671d204e7cef7e9d8fbaf9141a0c962bac42826fb16bb53b7700f2fe3d2fce"
+  },
+  {
+   "file": "Registry/registry.afwa",
+   "sha256": "ea7861b2ebe0001144ae5a6f5542e5b8e8d7b4f028a2564cc9986187a994d372"
+  },
+  {
+   "file": "Registry/registry.rasm_diag",
+   "sha256": "3be086896cd8f6703bcca889917e0c653847fae2ebf252e2033434149e9e3a0f"
+  },
+  {
+   "file": "Registry/registry.elec",
+   "sha256": "481afe9524b471f0684c3a7b278d76569aaa828ae0e1a1daaa16983526faf290"
+  },
+  {
+   "file": "Registry/registry.bdy_perturb",
+   "sha256": "c6a5b889bc839a1631dba474b41792ad898af091bdbbb5cb4b222d4cbbf39265"
+  },
+  {
+   "file": "Registry/registry.hyb_coord",
+   "sha256": "1f008d5f5a3bf0e7097665b310122a3079528963bc755e8df474ae8d97274c14"
+  },
+  {
+   "file": "Registry/registry.new3d_wif",
+   "sha256": "a3cdbadd8c0426e5bae56b6d1bafce4204174e59bf521a226fbd64e0e1ceb4e9"
+  },
+  {
+   "file": "Registry/registry.trad_fields",
+   "sha256": "f90ccd0c06bfbf00b1f117e65c9517b4da9cedd37f3834b9d9ce68030367dfd1"
+  },
+  {
+   "file": "Registry/registry.solar_fields",
+   "sha256": "40254d5deeb59d247b977de121d092ff7a8f4e180255f82251fb1320967d78f5"
+  },
+  {
+   "file": "Registry/registry.diags",
+   "sha256": "fa0b1c46bf0e6c8b7d0ffaae032d38bfb6f20ca7d9a9736017d61b5d95309cc3"
+  },
+  {
+   "file": "Registry/registry.iau",
+   "sha256": "9141be91350388aab294aa7c972334aafafefaa33bf938e178ac28aaea8ee8cd"
+  },
+  {
+   "file": "Registry/registry.dyn_light",
+   "sha256": "adcce4ed5889af1f2282e9bc4fac576de9c030cf61eb601358ff855e2b86ed10"
+  },
+  {
+   "file": "Registry/registry.CMAQ",
+   "sha256": "b35561203e1ee08398215802d2bf370709a924cb020da7c9d7ff9ef578e8a905"
+  },
+  {
+   "file": "Registry/registry.cordex",
+   "sha256": "f03bcf64138393c8d7e333928c314bfb83bbccab0c7d6ea547eacdfee98e9c35"
+  }
+ ],
+ "keys": [
+  {
+   "section": "afwa",
+   "key": "afwa_bad_data_check",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_buoy_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_cloud_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_diag_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_icing_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_ptype_ccn_tmp",
+   "type": "real",
+   "nentries": "1",
+   "default": "264.15"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_ptype_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_ptype_tot_melt",
+   "type": "real",
+   "nentries": "1",
+   "default": "50.0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_radar_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_severe_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_therm_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_turb_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_vil_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "afwa",
+   "key": "afwa_vis_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "bdy_control",
+   "key": "constant_bc",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "have_bcs_moist",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "have_bcs_scalar",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "multi_bdy_files",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "nested",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "open_xe",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "open_xs",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "open_ye",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "open_ys",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "periodic_x",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "periodic_y",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "polar",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "real_data_init_type",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "bdy_control",
+   "key": "relax_zone",
+   "type": "integer",
+   "nentries": "1",
+   "default": "4"
+  },
+  {
+   "section": "bdy_control",
+   "key": "spec_bdy_width",
+   "type": "integer",
+   "nentries": "1",
+   "default": "5"
+  },
+  {
+   "section": "bdy_control",
+   "key": "spec_exp",
+   "type": "real",
+   "nentries": "1",
+   "default": "0."
+  },
+  {
+   "section": "bdy_control",
+   "key": "spec_zone",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "bdy_control",
+   "key": "specified",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "symmetric_xe",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "symmetric_xs",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "symmetric_ye",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "bdy_control",
+   "key": "symmetric_ys",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "cordex",
+   "key": "convxtrm_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "cordex",
+   "key": "fogvars",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "cordex",
+   "key": "fogvisibility_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "cordex",
+   "key": "latdbg",
+   "type": "real",
+   "nentries": "1",
+   "default": "-999."
+  },
+  {
+   "section": "cordex",
+   "key": "londbg",
+   "type": "real",
+   "nentries": "1",
+   "default": "-999."
+  },
+  {
+   "section": "cordex",
+   "key": "output_cordex",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "cordex",
+   "key": "output_wb",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "cordex",
+   "key": "potevp_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "cordex",
+   "key": "psl_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "cordex",
+   "key": "psmooth",
+   "type": "integer",
+   "nentries": "1",
+   "default": "5"
+  },
+  {
+   "section": "cordex",
+   "key": "ptarget",
+   "type": "real",
+   "nentries": "1",
+   "default": "70000."
+  },
+  {
+   "section": "cordex",
+   "key": "timedbg",
+   "type": "integer",
+   "nentries": "1",
+   "default": "720"
+  },
+  {
+   "section": "cordex",
+   "key": "wgsts_wbdswsstres",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "cordex",
+   "key": "wsgs_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "cordex",
+   "key": "wsz100_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "cordex",
+   "key": "z100m_wind",
+   "type": "real",
+   "nentries": "1",
+   "default": "100."
+  },
+  {
+   "section": "cordex",
+   "key": "z50m",
+   "type": "real",
+   "nentries": "1",
+   "default": "50."
+  },
+  {
+   "section": "cordex",
+   "key": "zmlagen_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "cordex",
+   "key": "zmlagen_dqv",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.1"
+  },
+  {
+   "section": "cordex",
+   "key": "zmlagen_dtheta",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.5"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_bckstop_day",
+   "type": "integer",
+   "nentries": "1",
+   "default": "14"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_bckstop_hour",
+   "type": "integer",
+   "nentries": "1",
+   "default": "12"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_bckstop_minute",
+   "type": "integer",
+   "nentries": "1",
+   "default": "00"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_bckstop_month",
+   "type": "integer",
+   "nentries": "1",
+   "default": "03"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_bckstop_second",
+   "type": "integer",
+   "nentries": "1",
+   "default": "00"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_bckstop_year",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2004"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_cutoff_seconds",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3600"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_fwdstop_day",
+   "type": "integer",
+   "nentries": "1",
+   "default": "13"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_fwdstop_hour",
+   "type": "integer",
+   "nentries": "1",
+   "default": "12"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_fwdstop_minute",
+   "type": "integer",
+   "nentries": "1",
+   "default": "00"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_fwdstop_month",
+   "type": "integer",
+   "nentries": "1",
+   "default": "03"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_fwdstop_second",
+   "type": "integer",
+   "nentries": "1",
+   "default": "00"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_fwdstop_year",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2004"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_nfilter",
+   "type": "integer",
+   "nentries": "1",
+   "default": "7"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_savehydmeteors",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_time_dim",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1000"
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_write_dfi_history",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "dfi_control",
+   "key": "dfi_write_filtered_input",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "diags",
+   "key": "diag_nwp2",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "diags",
+   "key": "extrap_below_grnd",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "diags",
+   "key": "num_press_levels",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "diags",
+   "key": "num_z_levels",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "diags",
+   "key": "p_lev_diags",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "diags",
+   "key": "p_lev_diags_dfi",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "diags",
+   "key": "p_lev_missing",
+   "type": "real",
+   "nentries": "1",
+   "default": "-999"
+  },
+  {
+   "section": "diags",
+   "key": "press_levels",
+   "type": "real",
+   "nentries": "max_plevs",
+   "default": "0"
+  },
+  {
+   "section": "diags",
+   "key": "solar_diagnostics",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "diags",
+   "key": "use_tot_or_hyd_p",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "diags",
+   "key": "z_lev_diags",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "diags",
+   "key": "z_lev_diags_dfi",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "diags",
+   "key": "z_lev_missing",
+   "type": "real",
+   "nentries": "1",
+   "default": "-999"
+  },
+  {
+   "section": "diags",
+   "key": "z_levels",
+   "type": "real",
+   "nentries": "max_zlevs",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "adaptation_domain",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "adjust_heights",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "aggregate_lu",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "auto_levels_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "domains",
+   "key": "blend_width",
+   "type": "integer",
+   "nentries": "1",
+   "default": "5"
+  },
+  {
+   "section": "domains",
+   "key": "corral_dist",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "8"
+  },
+  {
+   "section": "domains",
+   "key": "cycle_x",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "cycle_y",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "dx",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "200"
+  },
+  {
+   "section": "domains",
+   "key": "dy",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "200"
+  },
+  {
+   "section": "domains",
+   "key": "dzbot",
+   "type": "real",
+   "nentries": "1",
+   "default": "50."
+  },
+  {
+   "section": "domains",
+   "key": "dzstretch_s",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.3"
+  },
+  {
+   "section": "domains",
+   "key": "dzstretch_u",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.1"
+  },
+  {
+   "section": "domains",
+   "key": "e_sn",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "32"
+  },
+  {
+   "section": "domains",
+   "key": "e_vert",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "31"
+  },
+  {
+   "section": "domains",
+   "key": "e_we",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "32"
+  },
+  {
+   "section": "domains",
+   "key": "eta_levels",
+   "type": "real",
+   "nentries": "max_eta",
+   "default": "-1."
+  },
+  {
+   "section": "domains",
+   "key": "extrap_type",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "domains",
+   "key": "feedback",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "force_sfc_in_vinterp",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "grid_allowed",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "domains",
+   "key": "grid_id",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "hypsometric_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "domains",
+   "key": "i_parent_start",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "ideal_init_method",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "interp_method_type",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "domains",
+   "key": "interp_theta",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "interp_type",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "domains",
+   "key": "irand",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "j_parent_start",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "lagrange_order",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "domains",
+   "key": "lats_to_mic",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "linear_interp",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "lowest_lev_from_sfc",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "max_dom",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "max_dz",
+   "type": "real",
+   "nentries": "1",
+   "default": "1000."
+  },
+  {
+   "section": "domains",
+   "key": "max_step_increase_pct",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "5"
+  },
+  {
+   "section": "domains",
+   "key": "max_time_step",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "max_time_step_den",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "max_ts_level",
+   "type": "integer",
+   "nentries": "1",
+   "default": "15"
+  },
+  {
+   "section": "domains",
+   "key": "max_ts_locs",
+   "type": "integer",
+   "nentries": "1",
+   "default": "5"
+  },
+  {
+   "section": "domains",
+   "key": "max_vortex_speed",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "40"
+  },
+  {
+   "section": "domains",
+   "key": "maxw_above_this_level",
+   "type": "real",
+   "nentries": "1",
+   "default": "30000"
+  },
+  {
+   "section": "domains",
+   "key": "maxw_horiz_pres_diff",
+   "type": "real",
+   "nentries": "1",
+   "default": "5000"
+  },
+  {
+   "section": "domains",
+   "key": "min_time_step",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "min_time_step_den",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "moad_grid_ratio",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "moad_time_step_ratio",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "move_cd_x",
+   "type": "integer",
+   "nentries": "max_moves",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "move_cd_y",
+   "type": "integer",
+   "nentries": "max_moves",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "move_id",
+   "type": "integer",
+   "nentries": "max_moves",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "move_interval",
+   "type": "integer",
+   "nentries": "max_moves",
+   "default": "999999999"
+  },
+  {
+   "section": "domains",
+   "key": "nest_interp_coord",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "nproc_x",
+   "type": "integer",
+   "nentries": "1",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "nproc_y",
+   "type": "integer",
+   "nentries": "1",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "num_ext_model_couple_dom",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "num_metgrid_levels",
+   "type": "integer",
+   "nentries": "1",
+   "default": "27"
+  },
+  {
+   "section": "domains",
+   "key": "num_metgrid_soil_levels",
+   "type": "integer",
+   "nentries": "1",
+   "default": "4"
+  },
+  {
+   "section": "domains",
+   "key": "num_moves",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "num_traj",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1000"
+  },
+  {
+   "section": "domains",
+   "key": "num_wif_levels",
+   "type": "integer",
+   "nentries": "1",
+   "default": "30"
+  },
+  {
+   "section": "domains",
+   "key": "numtiles",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "numtiles_inc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "numtiles_x",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "numtiles_y",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "ocean_levels",
+   "type": "integer",
+   "nentries": "1",
+   "default": "30"
+  },
+  {
+   "section": "domains",
+   "key": "ocean_s",
+   "type": "real",
+   "nentries": "max_ocean",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "ocean_t",
+   "type": "real",
+   "nentries": "max_ocean",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "ocean_z",
+   "type": "real",
+   "nentries": "max_ocean",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "p_top_requested",
+   "type": "real",
+   "nentries": "1",
+   "default": "5000"
+  },
+  {
+   "section": "domains",
+   "key": "parent_grid_ratio",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "parent_id",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "parent_time_step_ratio",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "perturb_input",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "qv_max_flag",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.E-5"
+  },
+  {
+   "section": "domains",
+   "key": "qv_max_p_safe",
+   "type": "real",
+   "nentries": "1",
+   "default": "10000"
+  },
+  {
+   "section": "domains",
+   "key": "qv_max_value",
+   "type": "real",
+   "nentries": "1",
+   "default": "3.E-6"
+  },
+  {
+   "section": "domains",
+   "key": "qv_min_flag",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.E-6"
+  },
+  {
+   "section": "domains",
+   "key": "qv_min_p_safe",
+   "type": "real",
+   "nentries": "1",
+   "default": "110000"
+  },
+  {
+   "section": "domains",
+   "key": "qv_min_value",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.E-6"
+  },
+  {
+   "section": "domains",
+   "key": "reasonable_time_step_ratio",
+   "type": "real",
+   "nentries": "1",
+   "default": "6."
+  },
+  {
+   "section": "domains",
+   "key": "rebalance",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "reorder_mesh",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "rh2qv_method",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "rh2qv_wrt_liquid",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "domains",
+   "key": "s_sn",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "s_vert",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "s_we",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "sfcp_to_sfcp",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "shw",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "2"
+  },
+  {
+   "section": "domains",
+   "key": "smooth_cg_topo",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "smooth_option",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "domains",
+   "key": "sr_x",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "sr_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "starting_time_step",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "starting_time_step_den",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "step_to_output_time",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "domains",
+   "key": "swap_x",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "swap_y",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "t_extrap_type",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "domains",
+   "key": "target_cfl",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.2"
+  },
+  {
+   "section": "domains",
+   "key": "target_hcfl",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.84"
+  },
+  {
+   "section": "domains",
+   "key": "tile_strategy",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "tile_sz_x",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "tile_sz_y",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "time_step",
+   "type": "integer",
+   "nentries": "1",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "time_step_dfi",
+   "type": "integer",
+   "nentries": "1",
+   "default": "-1"
+  },
+  {
+   "section": "domains",
+   "key": "time_step_fract_den",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "time_step_fract_num",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "time_to_move",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "domains",
+   "key": "track_level",
+   "type": "integer",
+   "nentries": "1",
+   "default": "50000"
+  },
+  {
+   "section": "domains",
+   "key": "track_loc_in",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "trop_horiz_pres_diff",
+   "type": "real",
+   "nentries": "1",
+   "default": "5000"
+  },
+  {
+   "section": "domains",
+   "key": "ts_buf_size",
+   "type": "integer",
+   "nentries": "1",
+   "default": "200"
+  },
+  {
+   "section": "domains",
+   "key": "tslist_unstagger_winds",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "use_adaptive_time_step",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "use_adaptive_time_step_dfi",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "use_levels_below_ground",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "domains",
+   "key": "use_maxw_level",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "use_sh_qv",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "use_surface",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "domains",
+   "key": "use_tavg_for_tsk",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "domains",
+   "key": "use_trop_level",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "vert_refine_fact",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "domains",
+   "key": "vert_refine_method",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "vortex_interval",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "15"
+  },
+  {
+   "section": "domains",
+   "key": "wif_input_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "domains",
+   "key": "zap_close_levels",
+   "type": "real",
+   "nentries": "1",
+   "default": "500"
+  },
+  {
+   "section": "domains",
+   "key": "ztop",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "15000."
+  },
+  {
+   "section": "dynamics",
+   "key": "actual_distance_average",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "base_lapse",
+   "type": "real",
+   "nentries": "1",
+   "default": "50."
+  },
+  {
+   "section": "dynamics",
+   "key": "base_lapse_strat",
+   "type": "real",
+   "nentries": "1",
+   "default": "-11."
+  },
+  {
+   "section": "dynamics",
+   "key": "base_pres",
+   "type": "real",
+   "nentries": "1",
+   "default": "100000."
+  },
+  {
+   "section": "dynamics",
+   "key": "base_pres_strat",
+   "type": "real",
+   "nentries": "1",
+   "default": "0."
+  },
+  {
+   "section": "dynamics",
+   "key": "base_temp",
+   "type": "real",
+   "nentries": "1",
+   "default": "290."
+  },
+  {
+   "section": "dynamics",
+   "key": "c_k",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.15"
+  },
+  {
+   "section": "dynamics",
+   "key": "c_s",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.25"
+  },
+  {
+   "section": "dynamics",
+   "key": "chem_adv_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "dynamics",
+   "key": "chem_mix2_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "chem_mix6_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "coriolis2d",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "coupled_filtering",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "dynamics",
+   "key": "damp_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "dynamics",
+   "key": "dampcoef",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.2"
+  },
+  {
+   "section": "dynamics",
+   "key": "diff_6th_factor",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.12"
+  },
+  {
+   "section": "dynamics",
+   "key": "diff_6th_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "diff_6th_slopeopt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "diff_6th_thresh",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.10"
+  },
+  {
+   "section": "dynamics",
+   "key": "diff_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "dynamics",
+   "key": "diff_opt_dfi",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "do_avgflx_cugd",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "do_avgflx_em",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "do_coriolis",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "dynamics",
+   "key": "do_curvature",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "dynamics",
+   "key": "do_gradp",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "dynamics",
+   "key": "dyn_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "dynamics",
+   "key": "emdiv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.01"
+  },
+  {
+   "section": "dynamics",
+   "key": "epssm",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": ".1"
+  },
+  {
+   "section": "dynamics",
+   "key": "etac",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.2"
+  },
+  {
+   "section": "dynamics",
+   "key": "fft_filter_lat",
+   "type": "real",
+   "nentries": "1",
+   "default": "91."
+  },
+  {
+   "section": "dynamics",
+   "key": "gwd_diags",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "gwd_dx_factor",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "2."
+  },
+  {
+   "section": "dynamics",
+   "key": "gwd_if_nonhyd",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "dynamics",
+   "key": "gwd_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "h_mom_adv_order",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "5"
+  },
+  {
+   "section": "dynamics",
+   "key": "h_sca_adv_order",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "5"
+  },
+  {
+   "section": "dynamics",
+   "key": "hybrid_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "dynamics",
+   "key": "iso_temp",
+   "type": "real",
+   "nentries": "1",
+   "default": "200.00"
+  },
+  {
+   "section": "dynamics",
+   "key": "khdif",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "km_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "dynamics",
+   "key": "km_opt_dfi",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "dynamics",
+   "key": "kvdif",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "m_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "mix_full_fields",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "mix_isotropic",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "mix_upper_bound",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.1"
+  },
+  {
+   "section": "dynamics",
+   "key": "moist_adv_dfi_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "moist_adv_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "dynamics",
+   "key": "moist_mix2_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "moist_mix6_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "momentum_adv_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "dynamics",
+   "key": "non_hydrostatic",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "dynamics",
+   "key": "pert_coriolis",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "phi_adv_z",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "dynamics",
+   "key": "pos_def",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "rad_nudge",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "rk_ord",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "dynamics",
+   "key": "rotated_pole",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "scalar_adv_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "dynamics",
+   "key": "scalar_mix2_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "scalar_mix6_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "sfs_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "smdiv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.1"
+  },
+  {
+   "section": "dynamics",
+   "key": "swap_pole_with_next_j",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "tenddiag",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "time_step_sound",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "tke_adv_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "dynamics",
+   "key": "tke_drag_coefficient",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "dynamics",
+   "key": "tke_heat_flux",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "dynamics",
+   "key": "tke_mix2_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "tke_mix6_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "tke_upper_bound",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1000."
+  },
+  {
+   "section": "dynamics",
+   "key": "top_lid",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "top_radiation",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "tracer_adv_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "dynamics",
+   "key": "tracer_mix2_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "tracer_mix6_off",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "tracer_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "use_baseparam_fr_nml",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "use_input_w",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "dynamics",
+   "key": "use_q_diabatic",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "use_theta_m",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "dynamics",
+   "key": "v_mom_adv_order",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "3"
+  },
+  {
+   "section": "dynamics",
+   "key": "v_sca_adv_order",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "3"
+  },
+  {
+   "section": "dynamics",
+   "key": "w_crit_cfl",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.0"
+  },
+  {
+   "section": "dynamics",
+   "key": "w_damping",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "zadvect_implicit",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "dynamics",
+   "key": "zdamp",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "5000."
+  },
+  {
+   "section": "fdda",
+   "key": "dk_zfac_ph",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fdda",
+   "key": "dk_zfac_q",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fdda",
+   "key": "dk_zfac_t",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fdda",
+   "key": "dk_zfac_uv",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fdda",
+   "key": "dtramp_min",
+   "type": "real",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "fdda_end",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "fdda_start",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "fgdt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "fgdtzero",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_begin_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_begin_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_begin_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_begin_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_begin_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_end_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_end_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_end_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_end_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_end_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"gfdda_d<domain>\""
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_interval",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_interval_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_interval_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_interval_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_interval_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gfdda_interval_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gph",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gq",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gq_sfc",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "grid_fdda",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "grid_sfdda",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "gt_sfc",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "guv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "guv_sfc",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "if_no_pbl_nudging_ph",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "if_no_pbl_nudging_q",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "if_no_pbl_nudging_t",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "if_no_pbl_nudging_uv",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "if_ramping",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "if_zfac_ph",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "if_zfac_q",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "if_zfac_t",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "if_zfac_uv",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "io_form_gfdda",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "fdda",
+   "key": "io_form_sgfdda",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "fdda",
+   "key": "k_zfac_ph",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "k_zfac_q",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "k_zfac_t",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "k_zfac_uv",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "ktrop",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "max_obs",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_coef_mois",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_coef_pstr",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_coef_temp",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_coef_wind",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_dpsmx",
+   "type": "real",
+   "nentries": "1",
+   "default": "7.5"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_dtramp",
+   "type": "real",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_idynin",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_ionf",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_ipf_errob",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "fdda",
+   "key": "obs_ipf_in4dob",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "fdda",
+   "key": "obs_ipf_init",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "fdda",
+   "key": "obs_ipf_nudob",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "fdda",
+   "key": "obs_max_sndng_gap",
+   "type": "real",
+   "nentries": "1",
+   "default": "20"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_no_pbl_nudge_q",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_no_pbl_nudge_t",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_no_pbl_nudge_uv",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_npfi",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudge_mois",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudge_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudge_pstr",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudge_temp",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudge_wind",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullmin",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullr1_q",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullr1_t",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullr1_uv",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullr2_q",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullr2_t",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullr2_uv",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullr4_q",
+   "type": "real",
+   "nentries": "1",
+   "default": "-5000"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullr4_t",
+   "type": "real",
+   "nentries": "1",
+   "default": "-5000"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezfullr4_uv",
+   "type": "real",
+   "nentries": "1",
+   "default": "-5000"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezmax",
+   "type": "real",
+   "nentries": "1",
+   "default": "3000"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampmin",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampr1_q",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampr1_t",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampr1_uv",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampr2_q",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampr2_t",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampr2_uv",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampr4_q",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampr4_t",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_nudgezrampr4_uv",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_prt_freq",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1000"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_prt_max",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1000"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_rinsig",
+   "type": "real",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_rinxy",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_scl_neg_qv_innov",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_sfc_scheme_horiz",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_sfc_scheme_vert",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_sfcfacr",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_sfcfact",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.0"
+  },
+  {
+   "section": "fdda",
+   "key": "obs_twindo",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "pxlsm_soil_nudge",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "rinblw",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_begin_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_begin_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_begin_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_begin_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_begin_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_end_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_end_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_end_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_end_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_end_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"sgfdda_d<domain>\""
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_interval",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_interval_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_interval_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_interval_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_interval_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "sgfdda_interval_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "xwavenum",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fdda",
+   "key": "ywavenum",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "delt_perturbation",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_advection",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fire",
+   "key": "fire_atm_feedback",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1."
+  },
+  {
+   "section": "fire",
+   "key": "fire_boundary_guard",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "8"
+  },
+  {
+   "section": "fire",
+   "key": "fire_const_grnhfx",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_const_grnqfx",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_const_time",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "-1."
+  },
+  {
+   "section": "fire",
+   "key": "fire_crwn_hgt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "15."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ext_crwn",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "50."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ext_grnd",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "50."
+  },
+  {
+   "section": "fire",
+   "key": "fire_fmc_read",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fire",
+   "key": "fire_fuel_cat",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fire",
+   "key": "fire_fuel_left_irl",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "2"
+  },
+  {
+   "section": "fire",
+   "key": "fire_fuel_left_jrl",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "2"
+  },
+  {
+   "section": "fire",
+   "key": "fire_fuel_left_method",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fire",
+   "key": "fire_fuel_read",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "fire",
+   "key": "fire_grows_only",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fire",
+   "key": "fire_heat_peak",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ign_time",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lat1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lat2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lat3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lat4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lat5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lon1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lon2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lon3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lon4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_lon5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_time1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_time2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_time3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_time4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_time5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_x1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_x2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_x3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_x4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_x5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_y1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_y2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_y3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_y4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_end_y5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_radius1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_radius2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_radius3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_radius4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_radius5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_ros1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.01"
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_ros2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.01"
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_ros3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.01"
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_ros4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.01"
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_ros5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.01"
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lat1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lat2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lat3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lat4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lat5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lon1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lon2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lon3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lon4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_lon5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_time1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_time2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_time3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_time4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_time5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_x1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_x2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_x3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_x4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_x5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_y1",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_y2",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_y3",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_y4",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_ignition_start_y5",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_is_real_perim",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fire_lat_init",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_lfn_ext_up",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_lon_init",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_lsm_band_ngp",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "4"
+  },
+  {
+   "section": "fire",
+   "key": "fire_lsm_reinit",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "fire",
+   "key": "fire_lsm_reinit_iter",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fire",
+   "key": "fire_lsm_zcoupling",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fire_lsm_zcoupling_ref",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "50."
+  },
+  {
+   "section": "fire",
+   "key": "fire_mountain_end_x",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "100."
+  },
+  {
+   "section": "fire",
+   "key": "fire_mountain_end_y",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "100."
+  },
+  {
+   "section": "fire",
+   "key": "fire_mountain_height",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "500."
+  },
+  {
+   "section": "fire",
+   "key": "fire_mountain_start_x",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "100."
+  },
+  {
+   "section": "fire",
+   "key": "fire_mountain_start_y",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "100."
+  },
+  {
+   "section": "fire",
+   "key": "fire_mountain_type",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_num_ignitions",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_print_file",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_print_msg",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_read_atm_grad",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fire_read_atm_ht",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fire_read_fire_grad",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fire_read_fire_ht",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fire_read_lu",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fire_read_tmn",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fire_read_tsk",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fire_sfc_flx",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_shape",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_slope_factor",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_smk_ext",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "50."
+  },
+  {
+   "section": "fire",
+   "key": "fire_smk_peak",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "fire_smk_scheme",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_sprd_mdl",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fire",
+   "key": "fire_test_steps",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_tg_ub",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1000."
+  },
+  {
+   "section": "fire",
+   "key": "fire_topo_from_atm",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "fire",
+   "key": "fire_tracer_smoke",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.02"
+  },
+  {
+   "section": "fire",
+   "key": "fire_upwind_split",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fire_upwinding",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "9"
+  },
+  {
+   "section": "fire",
+   "key": "fire_upwinding_reinit",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "4"
+  },
+  {
+   "section": "fire",
+   "key": "fire_viscosity",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.4"
+  },
+  {
+   "section": "fire",
+   "key": "fire_viscosity_band",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.5"
+  },
+  {
+   "section": "fire",
+   "key": "fire_viscosity_bg",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.4"
+  },
+  {
+   "section": "fire",
+   "key": "fire_viscosity_ngp",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "2"
+  },
+  {
+   "section": "fire",
+   "key": "fire_wind_height",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "6.096"
+  },
+  {
+   "section": "fire",
+   "key": "fmep_decay_tlag",
+   "type": "real",
+   "nentries": "1",
+   "default": "999999"
+  },
+  {
+   "section": "fire",
+   "key": "fmoist_dt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "600"
+  },
+  {
+   "section": "fire",
+   "key": "fmoist_freq",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fmoist_interp",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fmoist_only",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fmoist_run",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fs_array_maxsize",
+   "type": "integer",
+   "nentries": "1",
+   "default": "100000"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_dens",
+   "type": "real",
+   "nentries": "1",
+   "default": "513000.0"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_dens_char",
+   "type": "real",
+   "nentries": "1",
+   "default": "299000.0"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_dt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "5"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_levels",
+   "type": "integer",
+   "nentries": "1",
+   "default": "5"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_levrand",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_levrand_seed",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_lim",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_maxhgt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_mom3d_dt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "4"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_prop_diam",
+   "type": "real",
+   "nentries": "1",
+   "default": "10.0"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_prop_effd",
+   "type": "real",
+   "nentries": "1",
+   "default": "10.0"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_prop_temp",
+   "type": "real",
+   "nentries": "1",
+   "default": "900.0"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_gen_prop_tvel",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.0"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_land_hgt",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.15"
+  },
+  {
+   "section": "fire",
+   "key": "fs_firebrand_max_life_dt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "200"
+  },
+  {
+   "section": "fire",
+   "key": "fuel_crosswalk",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "hght_perturbation",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "ifire",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "nfmc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "5"
+  },
+  {
+   "section": "fire",
+   "key": "sfc_canwat",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "fire",
+   "key": "sfc_full_init",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "sfc_isltyp",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "7"
+  },
+  {
+   "section": "fire",
+   "key": "sfc_ivgtyp",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "18"
+  },
+  {
+   "section": "fire",
+   "key": "sfc_lu_index",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "28"
+  },
+  {
+   "section": "fire",
+   "key": "sfc_tmn",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "285.0"
+  },
+  {
+   "section": "fire",
+   "key": "sfc_tsk",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "285.0"
+  },
+  {
+   "section": "fire",
+   "key": "sfc_vegfra",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.5"
+  },
+  {
+   "section": "fire",
+   "key": "stretch_grd",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "fire",
+   "key": "stretch_hyp",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "trackember",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "fire",
+   "key": "xrad_perturbation",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "yrad_perturbation",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "fire",
+   "key": "z_grd_scale",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.40"
+  },
+  {
+   "section": "fire",
+   "key": "zrad_perturbation",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "grib2",
+   "key": "background_proc_id",
+   "type": "integer",
+   "nentries": "1",
+   "default": "255"
+  },
+  {
+   "section": "grib2",
+   "key": "compression",
+   "type": "integer",
+   "nentries": "1",
+   "default": "40"
+  },
+  {
+   "section": "grib2",
+   "key": "forecast_proc_id",
+   "type": "integer",
+   "nentries": "1",
+   "default": "255"
+  },
+  {
+   "section": "grib2",
+   "key": "production_status",
+   "type": "integer",
+   "nentries": "1",
+   "default": "255"
+  },
+  {
+   "section": "ideal",
+   "key": "ideal_case",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "namelist_adios2",
+   "key": "adios2_blosc_compressor",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"lz4\""
+  },
+  {
+   "section": "namelist_adios2",
+   "key": "adios2_compression_enable",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "namelist_adios2",
+   "key": "adios2_numaggregators",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "noah_mp",
+   "key": "dveg",
+   "type": "integer",
+   "nentries": "1",
+   "default": "4"
+  },
+  {
+   "section": "noah_mp",
+   "key": "noahmp_acc_dt",
+   "type": "real",
+   "nentries": "1",
+   "default": "0."
+  },
+  {
+   "section": "noah_mp",
+   "key": "noahmp_output",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_alb",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_btr",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_compact",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_crop",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_crs",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_frz",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_gla",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_inf",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_infdv",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_irr",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_irrm",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_pedo",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_rad",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_rsf",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_runsrf",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_runsub",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_scf",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_sfc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_snf",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_soil",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_stc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_tbot",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_tdrn",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_tksno",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "opt_wetland",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_aerosol_readtable",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_bandnumber_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_dustoptics_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_rtsolver_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_snowbc_intmix",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_snowdust_intmix",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_snowoptics_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_snowshape_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_solarspec_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_use_aerosol",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "noah_mp",
+   "key": "snicar_use_oc",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "noah_mp",
+   "key": "soiltstep",
+   "type": "real",
+   "nentries": "1",
+   "default": "0."
+  },
+  {
+   "section": "physics",
+   "key": "acc_phy_tend",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "accum_mode",
+   "type": "real",
+   "nentries": "1",
+   "default": "1000.0e6"
+  },
+  {
+   "section": "physics",
+   "key": "aer_angexp_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "aer_angexp_val",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.3"
+  },
+  {
+   "section": "physics",
+   "key": "aer_aod550_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "aer_aod550_val",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.12"
+  },
+  {
+   "section": "physics",
+   "key": "aer_asy_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "aer_asy_val",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.90"
+  },
+  {
+   "section": "physics",
+   "key": "aer_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "aer_ssa_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "aer_ssa_val",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.85"
+  },
+  {
+   "section": "physics",
+   "key": "aer_type",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "aercu_fct",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.0"
+  },
+  {
+   "section": "physics",
+   "key": "aercu_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "aitken_mode",
+   "type": "real",
+   "nentries": "1",
+   "default": "300.0e6"
+  },
+  {
+   "section": "physics",
+   "key": "alevsiz",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "alevsiz_cu",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_closure",
+   "type": "real",
+   "nentries": "1",
+   "default": "2.6"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_cloudmix",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_cloudpdf",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_edmf",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_edmf_dd",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_edmf_mom",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_edmf_tke",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_ess",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_mixaerosols",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_mixlength",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_mixnumcon",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_mixqt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_mixscalars",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_output",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "bl_mynn_tkeadvect",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "bl_pbl_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "bldt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "bmj_rad_feedback",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "bucket_j",
+   "type": "real",
+   "nentries": "1",
+   "default": "-1."
+  },
+  {
+   "section": "physics",
+   "key": "bucket_mm",
+   "type": "real",
+   "nentries": "1",
+   "default": "-1."
+  },
+  {
+   "section": "physics",
+   "key": "cam_abs_dim1",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "cam_abs_dim2",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "cam_abs_freq_s",
+   "type": "real",
+   "nentries": "1",
+   "default": "21600."
+  },
+  {
+   "section": "physics",
+   "key": "ccn_conc",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.0E8"
+  },
+  {
+   "section": "physics",
+   "key": "ccnty",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "physics",
+   "key": "cellcount_method",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "chem_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "cldovrlp",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "physics",
+   "key": "cldtop_adjustment",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "physics",
+   "key": "clean_atm_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "clos_choice",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "co2tf",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "coarse_mode",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.2e6"
+  },
+  {
+   "section": "physics",
+   "key": "convtrans_avglen_m",
+   "type": "real",
+   "nentries": "1",
+   "default": "30"
+  },
+  {
+   "section": "physics",
+   "key": "coul_neg",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.25E-4"
+  },
+  {
+   "section": "physics",
+   "key": "coul_neu",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.25E-4"
+  },
+  {
+   "section": "physics",
+   "key": "coul_pos",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.25E-4"
+  },
+  {
+   "section": "physics",
+   "key": "couple_farms",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "cu_diag",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "cu_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "cu_rad_feedback",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "cudt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "cugd_avedx",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "default_soiltype",
+   "type": "integer",
+   "nentries": "1",
+   "default": "8"
+  },
+  {
+   "section": "physics",
+   "key": "distributed_ahe_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "dm_has_traj",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "do_radar_ref",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "dust_emis",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "dyn_lightning_option",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "elec_physics",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "ensdim",
+   "type": "integer",
+   "nentries": "1",
+   "default": "144"
+  },
+  {
+   "section": "physics",
+   "key": "erosion_dim",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "physics",
+   "key": "flag_sm_adj",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "flashrate_factor",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.0"
+  },
+  {
+   "section": "physics",
+   "key": "force_read_thompson",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "fractional_seaice",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "ghg_input",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "grav_settling",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "gsfcgce_2ice",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "gsfcgce_hail",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "gsmdt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "hail_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "hailcast_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "haildt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "iccg_method",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "iccg_prescribed_den",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.0"
+  },
+  {
+   "section": "physics",
+   "key": "iccg_prescribed_num",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "physics",
+   "key": "icloud",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "icloud_bl",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "idcor",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "ideal_xland",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "ifsnow",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "imomentum",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "input_pft",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "insert_init_cloud",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "irr_daily_amount",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "irr_end_julianday",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "irr_freq",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "irr_num_hours",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "irr_ph",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "irr_start_hour",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "irr_start_julianday",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "isfflx",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "isftcflx",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "ishallow",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "iz0tlnd",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "j_neg",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.E9"
+  },
+  {
+   "section": "physics",
+   "key": "j_neu",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.E9"
+  },
+  {
+   "section": "physics",
+   "key": "j_pos",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "5.E9"
+  },
+  {
+   "section": "physics",
+   "key": "kf_edrates",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "kfeta_trigger",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "kim_tofd",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "lagday",
+   "type": "integer",
+   "nentries": "1",
+   "default": "150"
+  },
+  {
+   "section": "physics",
+   "key": "lake_min_elev",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "5"
+  },
+  {
+   "section": "physics",
+   "key": "lakedepth_default",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "50"
+  },
+  {
+   "section": "physics",
+   "key": "levsiz",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "lightning_dt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "physics",
+   "key": "lightning_option",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "lightning_start_seconds",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "physics",
+   "key": "madwrf_cldinit",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "madwrf_dt_nudge",
+   "type": "real",
+   "nentries": "1",
+   "default": "60."
+  },
+  {
+   "section": "physics",
+   "key": "madwrf_dt_relax",
+   "type": "real",
+   "nentries": "1",
+   "default": "60."
+  },
+  {
+   "section": "physics",
+   "key": "madwrf_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "maxens",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "physics",
+   "key": "maxens2",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "physics",
+   "key": "maxens3",
+   "type": "integer",
+   "nentries": "1",
+   "default": "16"
+  },
+  {
+   "section": "physics",
+   "key": "maxiens",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "maxpatch",
+   "type": "integer",
+   "nentries": "1",
+   "default": "10"
+  },
+  {
+   "section": "physics",
+   "key": "mfshconv",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "mindeepfreq",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "minshallowfreq",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "morr_rimed_ice",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "mosaic_cat",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "physics",
+   "key": "mosaic_lu",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "mosaic_soil",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "mp_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "mp_tend_lim",
+   "type": "real",
+   "nentries": "1",
+   "default": "10."
+  },
+  {
+   "section": "physics",
+   "key": "mp_zero_out",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "mp_zero_out_all",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "mp_zero_out_thresh",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.e-8"
+  },
+  {
+   "section": "physics",
+   "key": "naer",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1e9"
+  },
+  {
+   "section": "physics",
+   "key": "no_mp_heating",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "no_src_types",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "no_src_types_cu",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "nsas_dx_factor",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_2moment_on",
+   "type": "integer",
+   "nentries": "1",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_3moment",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_alphah",
+   "type": "real",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_alphahl",
+   "type": "real",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_cccn",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.5e9"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_ccn_is_ccna",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_ccn_on",
+   "type": "integer",
+   "nentries": "1",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_cnoh",
+   "type": "real",
+   "nentries": "1",
+   "default": "4.e5"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_cnohl",
+   "type": "real",
+   "nentries": "1",
+   "default": "4.e4"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_cnor",
+   "type": "real",
+   "nentries": "1",
+   "default": "8.e5"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_cnos",
+   "type": "real",
+   "nentries": "1",
+   "default": "3.e6"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_density_on",
+   "type": "integer",
+   "nentries": "1",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_disfrac",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.3"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_ecrit",
+   "type": "real",
+   "nentries": "1",
+   "default": "120000"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_hail_on",
+   "type": "integer",
+   "nentries": "1",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_ibrkd",
+   "type": "integer",
+   "nentries": "1",
+   "default": "4"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_icdx",
+   "type": "integer",
+   "nentries": "1",
+   "default": "6"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_icdxhl",
+   "type": "integer",
+   "nentries": "1",
+   "default": "6"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_idischarge",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_ipelec",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_isaund",
+   "type": "integer",
+   "nentries": "1",
+   "default": "12"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_iscreen",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_lightrad",
+   "type": "real",
+   "nentries": "1",
+   "default": "12000"
+  },
+  {
+   "section": "physics",
+   "key": "nssl_rho_qh",
+   "type": "real",
+   "nentries": "1",
+   "default": "500."
+  },
+  {
+   "section": "physics",
+   "key": "nssl_rho_qhl",
+   "type": "real",
+   "nentries": "1",
+   "default": "900."
+  },
+  {
+   "section": "physics",
+   "key": "nssl_rho_qs",
+   "type": "real",
+   "nentries": "1",
+   "default": "100."
+  },
+  {
+   "section": "physics",
+   "key": "nssl_ssat_output",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "nudge_light_int",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "600"
+  },
+  {
+   "section": "physics",
+   "key": "nudge_light_timee",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "7200"
+  },
+  {
+   "section": "physics",
+   "key": "nudge_light_times",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "nudge_lightning",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "num_land_cat",
+   "type": "integer",
+   "nentries": "1",
+   "default": "21"
+  },
+  {
+   "section": "physics",
+   "key": "num_light_periods",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "num_months",
+   "type": "integer",
+   "nentries": "1",
+   "default": "12"
+  },
+  {
+   "section": "physics",
+   "key": "num_pft_clm",
+   "type": "integer",
+   "nentries": "1",
+   "default": "17"
+  },
+  {
+   "section": "physics",
+   "key": "num_radn_layers",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "physics",
+   "key": "num_snow_layers",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "physics",
+   "key": "num_snso_layers",
+   "type": "integer",
+   "nentries": "1",
+   "default": "7"
+  },
+  {
+   "section": "physics",
+   "key": "num_soil_cat",
+   "type": "integer",
+   "nentries": "1",
+   "default": "16"
+  },
+  {
+   "section": "physics",
+   "key": "num_soil_layers",
+   "type": "integer",
+   "nentries": "1",
+   "default": "5"
+  },
+  {
+   "section": "physics",
+   "key": "num_urban_hi",
+   "type": "integer",
+   "nentries": "1",
+   "default": "15"
+  },
+  {
+   "section": "physics",
+   "key": "numbins",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "o3input",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "physics",
+   "key": "omdt",
+   "type": "real",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "oml_gamma",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.14"
+  },
+  {
+   "section": "physics",
+   "key": "oml_hml0",
+   "type": "real",
+   "nentries": "1",
+   "default": "50"
+  },
+  {
+   "section": "physics",
+   "key": "oml_relaxation_time",
+   "type": "real",
+   "nentries": "1",
+   "default": "0."
+  },
+  {
+   "section": "physics",
+   "key": "omlcall",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "opt_thcnd",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "paerlev",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "path_to_files",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"~/WRFV3/\""
+  },
+  {
+   "section": "physics",
+   "key": "physics_suite",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"none\""
+  },
+  {
+   "section": "physics",
+   "key": "prec_acc_dt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "physics",
+   "key": "progn",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "pxlsm_modis_veg",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "pxlsm_smois_init",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "qna_update",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "ra_call_offset",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "ra_lw_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "ra_sw_eclipse",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "ra_sw_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "radt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "rbinsize",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "rdlai2d",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "rdmaxalb",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "physics",
+   "key": "sas_pgcon",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.55"
+  },
+  {
+   "section": "physics",
+   "key": "sbm_diagnostics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "scalar_pblmix",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "seaice_albedo_default",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.65"
+  },
+  {
+   "section": "physics",
+   "key": "seaice_albedo_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "seaice_snowdepth_max",
+   "type": "real",
+   "nentries": "1",
+   "default": "1.E10"
+  },
+  {
+   "section": "physics",
+   "key": "seaice_snowdepth_min",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.001"
+  },
+  {
+   "section": "physics",
+   "key": "seaice_snowdepth_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "seaice_thickness_default",
+   "type": "real",
+   "nentries": "1",
+   "default": "3.0"
+  },
+  {
+   "section": "physics",
+   "key": "seaice_thickness_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "seaice_threshold",
+   "type": "real",
+   "nentries": "1",
+   "default": "100"
+  },
+  {
+   "section": "physics",
+   "key": "sf_lake_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "sf_mynn_sfcflux_land",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "sf_mynn_sfcflux_water",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "sf_ocean_physics",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "sf_sfclay_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "sf_surf_irr_scheme",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "sf_surface_mosaic",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "sf_surface_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "-1"
+  },
+  {
+   "section": "physics",
+   "key": "sf_urban_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "shadlen",
+   "type": "real",
+   "nentries": "1",
+   "default": "25000."
+  },
+  {
+   "section": "physics",
+   "key": "shallowcu_forced_ra",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "shalwater_depth",
+   "type": "real",
+   "nentries": "1",
+   "default": "-1.0"
+  },
+  {
+   "section": "physics",
+   "key": "shalwater_z0",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "shcu_aerosols_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "shcu_physics",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "shinhong_ke_dissipation",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "shinhong_nonlocal_flux",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".true."
+  },
+  {
+   "section": "physics",
+   "key": "shinhong_scu_mixing",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "shinhong_tke_diag",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "slope_rad",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "slucm_distributed_drag",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "sst_skin",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "sst_update",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "surface_input_source",
+   "type": "integer",
+   "nentries": "1",
+   "default": "3"
+  },
+  {
+   "section": "physics",
+   "key": "swint_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "swrad_scat",
+   "type": "real",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "tempo_aerosolaware",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "tempo_hailaware",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "thbinsize",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "tice2tsk_if2cold",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "tke_budget",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "tmn_update",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "tofd_factor",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": ".003"
+  },
+  {
+   "section": "physics",
+   "key": "topo_shading",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "topo_wind",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "tracer_pblmix",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "tracercall",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "traj_opt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "ua_phys",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "use_aero_icbc",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "use_lakedepth",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "use_mp_re",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "use_rap_aero_icbc",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "use_wudapt_lcz",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "usemonalb",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "wif_fire_emit",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "wif_fire_inj",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "windfarm_deg",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "windfarm_ij",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "windfarm_induction",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "physics",
+   "key": "windfarm_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "physics",
+   "key": "windfarm_overlap_method",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "4"
+  },
+  {
+   "section": "physics",
+   "key": "windfarm_tke_factor",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.25"
+  },
+  {
+   "section": "physics",
+   "key": "windfarm_wake_model",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "2"
+  },
+  {
+   "section": "physics",
+   "key": "write_thompson_mp38table",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "physics",
+   "key": "write_thompson_tables",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "physics",
+   "key": "wtddt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "30."
+  },
+  {
+   "section": "physics",
+   "key": "ysu_topdown_pblmix",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "pio_control",
+   "key": "pioprocs",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "pio_control",
+   "key": "pioshift",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "pio_control",
+   "key": "piostart",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "pio_control",
+   "key": "piostride",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "pio_control",
+   "key": "usepio",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "scm",
+   "key": "num_force_layers",
+   "type": "integer",
+   "nentries": "1",
+   "default": "8"
+  },
+  {
+   "section": "scm",
+   "key": "num_force_soil_layers",
+   "type": "integer",
+   "nentries": "1",
+   "default": "5"
+  },
+  {
+   "section": "scm",
+   "key": "scm_canwat",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.0"
+  },
+  {
+   "section": "scm",
+   "key": "scm_force",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "scm",
+   "key": "scm_force_dx",
+   "type": "real",
+   "nentries": "1",
+   "default": "4000."
+  },
+  {
+   "section": "scm",
+   "key": "scm_force_flux",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "scm",
+   "key": "scm_force_ql_largescale",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "scm",
+   "key": "scm_force_qv_largescale",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "scm",
+   "key": "scm_force_skintemp",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "scm",
+   "key": "scm_force_th_largescale",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "scm",
+   "key": "scm_force_wind_largescale",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "scm",
+   "key": "scm_isltyp",
+   "type": "integer",
+   "nentries": "1",
+   "default": "4"
+  },
+  {
+   "section": "scm",
+   "key": "scm_lat",
+   "type": "real",
+   "nentries": "1",
+   "default": "36.605"
+  },
+  {
+   "section": "scm",
+   "key": "scm_lon",
+   "type": "real",
+   "nentries": "1",
+   "default": "-97.485"
+  },
+  {
+   "section": "scm",
+   "key": "scm_lu_index",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "scm",
+   "key": "scm_ql_adv",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "scm",
+   "key": "scm_qv_adv",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "scm",
+   "key": "scm_qv_t_tend",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "scm",
+   "key": "scm_soilq_force",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "scm",
+   "key": "scm_soilt_force",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "scm",
+   "key": "scm_th_adv",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "scm",
+   "key": "scm_th_t_tend",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "scm",
+   "key": "scm_vegfra",
+   "type": "real",
+   "nentries": "1",
+   "default": "50."
+  },
+  {
+   "section": "scm",
+   "key": "scm_vert_adv",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "scm",
+   "key": "scm_wind_adv",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "stoch",
+   "key": "gridpt_stddev_rand_pert",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.03"
+  },
+  {
+   "section": "stoch",
+   "key": "gridpt_stddev_spp_conv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.3"
+  },
+  {
+   "section": "stoch",
+   "key": "gridpt_stddev_spp_lsm",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.3"
+  },
+  {
+   "section": "stoch",
+   "key": "gridpt_stddev_spp_pbl",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.15"
+  },
+  {
+   "section": "stoch",
+   "key": "gridpt_stddev_sppt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.5"
+  },
+  {
+   "section": "stoch",
+   "key": "hrrr_cycling",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "stoch",
+   "key": "iseed_rand_pert",
+   "type": "integer",
+   "nentries": "1",
+   "default": "17"
+  },
+  {
+   "section": "stoch",
+   "key": "iseed_skebs",
+   "type": "integer",
+   "nentries": "1",
+   "default": "811"
+  },
+  {
+   "section": "stoch",
+   "key": "iseed_spp_conv",
+   "type": "integer",
+   "nentries": "1",
+   "default": "171"
+  },
+  {
+   "section": "stoch",
+   "key": "iseed_spp_lsm",
+   "type": "integer",
+   "nentries": "1",
+   "default": "317"
+  },
+  {
+   "section": "stoch",
+   "key": "iseed_spp_pbl",
+   "type": "integer",
+   "nentries": "1",
+   "default": "217"
+  },
+  {
+   "section": "stoch",
+   "key": "iseed_sppt",
+   "type": "integer",
+   "nentries": "1",
+   "default": "53"
+  },
+  {
+   "section": "stoch",
+   "key": "kmaxforc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1000000"
+  },
+  {
+   "section": "stoch",
+   "key": "kmaxforct",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1000000"
+  },
+  {
+   "section": "stoch",
+   "key": "kminforc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "stoch",
+   "key": "kminforct",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "stoch",
+   "key": "lengthscale_rand_pert",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "500000.0"
+  },
+  {
+   "section": "stoch",
+   "key": "lengthscale_spp_conv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "150000.0"
+  },
+  {
+   "section": "stoch",
+   "key": "lengthscale_spp_lsm",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "50000.0"
+  },
+  {
+   "section": "stoch",
+   "key": "lengthscale_spp_pbl",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "700000.0"
+  },
+  {
+   "section": "stoch",
+   "key": "lengthscale_sppt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "150000.0"
+  },
+  {
+   "section": "stoch",
+   "key": "lmaxforc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1000000"
+  },
+  {
+   "section": "stoch",
+   "key": "lmaxforct",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1000000"
+  },
+  {
+   "section": "stoch",
+   "key": "lminforc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "stoch",
+   "key": "lminforct",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "stoch",
+   "key": "multi_perturb",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "nens",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "stoch",
+   "key": "num_pert_3d",
+   "type": "integer",
+   "nentries": "1",
+   "default": "15"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_cld3",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "stoch",
+   "key": "pert_cld3_qv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_cld3_t",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_deng",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "stoch",
+   "key": "pert_deng_qc",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_deng_qv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_deng_t",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_deng_w",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_farms",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "stoch",
+   "key": "pert_farms_aerasy",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_farms_albedo",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_farms_angexp",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_farms_aod",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_farms_qc",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_farms_qs",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_farms_qv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_mynn",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "stoch",
+   "key": "pert_mynn_qc",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_mynn_qke",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_mynn_qv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_mynn_t",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_noah",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "stoch",
+   "key": "pert_noah_qv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_noah_smois",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_noah_t",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_noah_tslb",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_thom",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "stoch",
+   "key": "pert_thom_ni",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_thom_qc",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_thom_qi",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_thom_qs",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "pert_thom_qv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0.0"
+  },
+  {
+   "section": "stoch",
+   "key": "perturb_bdy",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "perturb_chem_bdy",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "rand_pert_vertstruc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "rand_perturb",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "rexponent_psi",
+   "type": "real",
+   "nentries": "1",
+   "default": "-1.83"
+  },
+  {
+   "section": "stoch",
+   "key": "rexponent_t",
+   "type": "real",
+   "nentries": "1",
+   "default": "-1.83"
+  },
+  {
+   "section": "stoch",
+   "key": "skebs",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "skebs_vertstruc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "spdt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "-1.0"
+  },
+  {
+   "section": "stoch",
+   "key": "spp",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "spp_conv",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "spp_lsm",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "spp_pbl",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "sppt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "sppt_vertstruc",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "stddev_cutoff_rand_pert",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "3.0"
+  },
+  {
+   "section": "stoch",
+   "key": "stddev_cutoff_spp_conv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "3.0"
+  },
+  {
+   "section": "stoch",
+   "key": "stddev_cutoff_spp_lsm",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "3.0"
+  },
+  {
+   "section": "stoch",
+   "key": "stddev_cutoff_spp_pbl",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "2.0"
+  },
+  {
+   "section": "stoch",
+   "key": "stddev_cutoff_sppt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "2.0"
+  },
+  {
+   "section": "stoch",
+   "key": "stoch_force_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "stoch_vertstruc_opt",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "timescale_rand_pert",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "21600.0"
+  },
+  {
+   "section": "stoch",
+   "key": "timescale_spp_conv",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "21600.0"
+  },
+  {
+   "section": "stoch",
+   "key": "timescale_spp_lsm",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "86400.0"
+  },
+  {
+   "section": "stoch",
+   "key": "timescale_spp_pbl",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "21600.0"
+  },
+  {
+   "section": "stoch",
+   "key": "timescale_sppt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "21600.0"
+  },
+  {
+   "section": "stoch",
+   "key": "tot_backscat_psi",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.0E-05"
+  },
+  {
+   "section": "stoch",
+   "key": "tot_backscat_t",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "1.0E-06"
+  },
+  {
+   "section": "stoch",
+   "key": "vertstruc_spp_conv",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "vertstruc_spp_lsm",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "vertstruc_spp_pbl",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "stoch",
+   "key": "zsigma2_eps",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.0833"
+  },
+  {
+   "section": "stoch",
+   "key": "zsigma2_eta",
+   "type": "real",
+   "nentries": "1",
+   "default": "0.0833"
+  },
+  {
+   "section": "stoch",
+   "key": "ztau_psi",
+   "type": "real",
+   "nentries": "1",
+   "default": "10800.0"
+  },
+  {
+   "section": "stoch",
+   "key": "ztau_t",
+   "type": "real",
+   "nentries": "1",
+   "default": "10800.0"
+  },
+  {
+   "section": "tc",
+   "key": "insert_bogus_storm",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "tc",
+   "key": "latc_loc",
+   "type": "real",
+   "nentries": "max_bogus",
+   "default": "-999."
+  },
+  {
+   "section": "tc",
+   "key": "lonc_loc",
+   "type": "real",
+   "nentries": "max_bogus",
+   "default": "-999."
+  },
+  {
+   "section": "tc",
+   "key": "num_storm",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "tc",
+   "key": "rankine_lid",
+   "type": "real",
+   "nentries": "1",
+   "default": "-999."
+  },
+  {
+   "section": "tc",
+   "key": "remove_storm",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "tc",
+   "key": "rmax",
+   "type": "real",
+   "nentries": "max_bogus",
+   "default": "-999."
+  },
+  {
+   "section": "tc",
+   "key": "vmax_meters_per_second",
+   "type": "real",
+   "nentries": "max_bogus",
+   "default": "-999."
+  },
+  {
+   "section": "tc",
+   "key": "vmax_ratio",
+   "type": "real",
+   "nentries": "max_bogus",
+   "default": "-999."
+  },
+  {
+   "section": "time_control",
+   "key": "adjust_input_times",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "adjust_output_times",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "all_ic_times",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "auxinput1_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"met_em.d<domain>.<date>\""
+  },
+  {
+   "section": "time_control",
+   "key": "bdy_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfbdy_d<domain>\""
+  },
+  {
+   "section": "time_control",
+   "key": "bdy_outname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfbdy_d<domain>\""
+  },
+  {
+   "section": "time_control",
+   "key": "cycling",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "debug_level",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "diag_print",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "diurnal_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "end_day",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "14"
+  },
+  {
+   "section": "time_control",
+   "key": "end_hour",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "12"
+  },
+  {
+   "section": "time_control",
+   "key": "end_minute",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "00"
+  },
+  {
+   "section": "time_control",
+   "key": "end_month",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "03"
+  },
+  {
+   "section": "time_control",
+   "key": "end_second",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "00"
+  },
+  {
+   "section": "time_control",
+   "key": "end_year",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1993"
+  },
+  {
+   "section": "time_control",
+   "key": "fine_input_stream",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "force_use_old_data",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "frames_per_outfile",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "10"
+  },
+  {
+   "section": "time_control",
+   "key": "gmt",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "0."
+  },
+  {
+   "section": "time_control",
+   "key": "history_begin",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_begin_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_begin_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_begin_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_begin_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_begin_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_end",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_end_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_end_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_end_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_end_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_end_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfhist_d<domain>_<date>\""
+  },
+  {
+   "section": "time_control",
+   "key": "history_interval",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_interval_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_interval_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_interval_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_interval_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "history_outname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfout_d<domain>_<date>\""
+  },
+  {
+   "section": "time_control",
+   "key": "iau",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "iau_time_window_sec",
+   "type": "real",
+   "nentries": "max_domains",
+   "default": "3600."
+  },
+  {
+   "section": "time_control",
+   "key": "ignore_iofields_warning",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "time_control",
+   "key": "input_from_file",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "input_from_hires",
+   "type": "logical",
+   "nentries": "max_domains",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "input_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfinput_d<domain>\""
+  },
+  {
+   "section": "time_control",
+   "key": "input_outname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfinput_d<domain>\""
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_begin_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_begin_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_begin_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_begin_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_begin_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_end_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_end_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_end_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_end_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_end_y",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_interval",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_interval_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_interval_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_interval_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "inputout_interval_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "interval_seconds",
+   "type": "integer",
+   "nentries": "1",
+   "default": "10800"
+  },
+  {
+   "section": "time_control",
+   "key": "io_form_auxinput1",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "time_control",
+   "key": "io_form_boundary",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "time_control",
+   "key": "io_form_history",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "time_control",
+   "key": "io_form_input",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "time_control",
+   "key": "io_form_restart",
+   "type": "integer",
+   "nentries": "1",
+   "default": "2"
+  },
+  {
+   "section": "time_control",
+   "key": "iofields_filename",
+   "type": "character",
+   "nentries": "max_domains",
+   "default": "\"NONE_SPECIFIED\""
+  },
+  {
+   "section": "time_control",
+   "key": "julday",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1"
+  },
+  {
+   "section": "time_control",
+   "key": "julyr",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "mean_diag",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "mean_diag_interval",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "mean_diag_interval_d",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "mean_diag_interval_h",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "mean_diag_interval_m",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "mean_diag_interval_mo",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "mean_diag_interval_s",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "mean_freq",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "mean_interval",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "ncd_nofill",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".true."
+  },
+  {
+   "section": "time_control",
+   "key": "nocolons",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "nwp_diagnostics",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "output_diagnostics",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "output_ready_flag",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "reset_simulation_start",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "restart",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "restart_begin",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_begin_d",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_begin_h",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_begin_m",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_begin_s",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_begin_y",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_interval",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_interval_d",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_interval_h",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_interval_m",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "restart_interval_s",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "rsmas_data_path",
+   "type": "character",
+   "nentries": "1",
+   "default": "\".\""
+  },
+  {
+   "section": "time_control",
+   "key": "rst_inname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfrst_d<domain>_<date>\""
+  },
+  {
+   "section": "time_control",
+   "key": "rst_outname",
+   "type": "character",
+   "nentries": "1",
+   "default": "\"wrfrst_d<domain>_<date>\""
+  },
+  {
+   "section": "time_control",
+   "key": "run_days",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "run_hours",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "run_minutes",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "run_seconds",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  },
+  {
+   "section": "time_control",
+   "key": "self_test_domain",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "start_day",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "13"
+  },
+  {
+   "section": "time_control",
+   "key": "start_hour",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "12"
+  },
+  {
+   "section": "time_control",
+   "key": "start_minute",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "00"
+  },
+  {
+   "section": "time_control",
+   "key": "start_month",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "03"
+  },
+  {
+   "section": "time_control",
+   "key": "start_second",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "00"
+  },
+  {
+   "section": "time_control",
+   "key": "start_year",
+   "type": "integer",
+   "nentries": "max_domains",
+   "default": "1993"
+  },
+  {
+   "section": "time_control",
+   "key": "use_netcdf_classic",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "write_hist_at_0h_rst",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "write_input",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "time_control",
+   "key": "write_restart_at_0h",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "wrf_cmaq",
+   "key": "direct_sw_feedback",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "wrf_cmaq",
+   "key": "feedback_restart",
+   "type": "logical",
+   "nentries": "1",
+   "default": ".false."
+  },
+  {
+   "section": "wrf_cmaq",
+   "key": "met_file_tstep",
+   "type": "integer",
+   "nentries": "1",
+   "default": "10000"
+  },
+  {
+   "section": "wrf_cmaq",
+   "key": "wrf_cmaq_freq",
+   "type": "integer",
+   "nentries": "1",
+   "default": "1"
+  },
+  {
+   "section": "wrf_cmaq",
+   "key": "wrf_cmaq_option",
+   "type": "integer",
+   "nentries": "1",
+   "default": "0"
+  }
+ ]
+}

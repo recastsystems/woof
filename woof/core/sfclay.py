@@ -8,6 +8,12 @@ convention (1 land, 2 water); ``znt``, ``ust``, ``ustm``, ``mol``, ``hfx``,
 ``qfx``, ``qsfc`` and ``zol`` are copied as previous-step/inout values
 before launch.
 
+WRF v4.8.0's ``kim_tofd`` (KIM turbulent orographic form drag, option 1
+only, default off) is the ``varf``/``tofd_factor`` pair: with ``varf`` (the
+geo_em ``VAR`` plane) the call runs the ``sfclay_tofd`` unit; without it the
+unchanged ``sfclay``/``sfclay_dx2d`` units run, which is also the 4.6.1/4.7.1
+pin.  Option 91 has no form drag in WRF and ignores the pair.
+
 The high-level :func:`sfclay` allocates and returns every diagnostic and
 exchange field needed by the later LSM/PBL driver.  :func:`launch_sfclay`
 is the allocation-free form.  The float64 verification authority is
@@ -70,6 +76,22 @@ class SFClayResult:
 
 _TPB = 128
 
+#: WRF v4.8.0 Registry.EM_COMMON ``tofd_factor`` default (.003).
+TOFD_FACTOR_DEFAULT = 0.003
+
+#: Constant dx planes for the sfclay_tofd unit, which takes WRF's 2-D dx
+#: argument; keyed by (device, shape, dx) so a forecast allocates one.
+_DX_PLANES: dict = {}
+
+
+def _dx_plane(shape, dx):
+    key = (cp.cuda.Device().id, tuple(shape), float(DTYPE(dx)))
+    plane = _DX_PLANES.get(key)
+    if plane is None:
+        plane = cp.full(shape, DTYPE(dx), dtype=DTYPE)
+        _DX_PLANES[key] = plane
+    return plane
+
 
 def _validate_options(option: int, isftcflx: int, iz0tlnd: int) -> None:
     if option not in (1, 91):
@@ -111,8 +133,13 @@ def _allocate_result(shape, *, znt, ust, ustm, mol, hfx, qfx, qsfc, zol):
 def launch_sfclay(u, v, t, qv, p, dz8w, psfc, tsk, pblh, mavail, xland,
                    lakemask, result: SFClayResult, *, option: int, dx: float,
                    isfflx: bool = True, isftcflx: int = 0,
-                   iz0tlnd: int = 0, dx_field=None) -> None:
+                   iz0tlnd: int = 0, dx_field=None, varf=None,
+                   tofd_factor: float = TOFD_FACTOR_DEFAULT) -> None:
     """Launch into a preallocated :class:`SFClayResult`.
+
+    ``varf`` turns on WRF v4.8.0's KIM turbulent orographic form drag for
+    option 1 (``kim_tofd = .true.``): the (ny,nx) float32 sub-grid orographic
+    standard deviation, with ``tofd_factor`` WRF's namelist value.
 
     All inputs and result fields must be contiguous FP32 arrays with the same
     ``(ny,nx)`` shape.  WRF inout values are already held in
@@ -133,18 +160,32 @@ def launch_sfclay(u, v, t, qv, p, dz8w, psfc, tsk, pblh, mavail, xland,
     if dx_field is not None:
         if dx_field.shape != shape or dx_field.dtype != DTYPE or not dx_field.flags.c_contiguous:
             raise ValueError("dx_field must be a contiguous float32 surface plane")
+    tail = (np.int32(option), np.int32(bool(isfflx)), np.int32(isftcflx),
+            np.int32(iz0tlnd), np.int32(n))
+    if varf is not None and option == 1:
+        if varf.shape != shape or varf.dtype != DTYPE or not varf.flags.c_contiguous:
+            raise ValueError("varf must be a contiguous float32 surface plane")
+        if not float(tofd_factor) > 0.0:
+            # zf = varf*tofd_factor is a roughness height inside a log:
+            # zero divides by zero, a negative factor puts NaN into CD/UST.
+            raise ValueError(f"tofd_factor must be positive, got {tofd_factor}")
+        plane = dx_field if dx_field is not None else _dx_plane(shape, dx)
+        kernel = get_kernel("sfclay_tofd", "sfclay_column")
+        kernel((blocks,), (_TPB,), arrays + (
+            plane, varf, DTYPE(tofd_factor)) + tail)
+        return
     kernel = get_kernel("sfclay_dx2d" if dx_field is not None else "sfclay", "sfclay_column")
     # Kernel order: 12 read-only inputs; 8 inout fields; remaining outputs.
     kernel((blocks,), (_TPB,), arrays + (
-        dx_field if dx_field is not None else DTYPE(dx), np.int32(option), np.int32(bool(isfflx)),
-        np.int32(isftcflx), np.int32(iz0tlnd), np.int32(n)))
+        dx_field if dx_field is not None else DTYPE(dx),) + tail)
 
 
 def sfclay(u, v, t, qv, p, dz8w, psfc, tsk, znt, pblh, mavail, xland,
            *, option: int = 91, qsfc=None, zol=None, ust=None, ustm=None,
            mol=None, hfx=None, qfx=None, lakemask=None, dx: float = 1000.0,
            isfflx: bool = True, isftcflx: int = 0,
-           iz0tlnd: int = 0) -> SFClayResult:
+           iz0tlnd: int = 0, varf=None,
+           tofd_factor: float = TOFD_FACTOR_DEFAULT) -> SFClayResult:
     """Run one WRF MM5 surface-layer call and return FP32 device fields.
 
     Required fields are broadcast-compatible 2-D surface arrays.  Defaults
@@ -177,6 +218,8 @@ def sfclay(u, v, t, qv, p, dz8w, psfc, tsk, znt, pblh, mavail, xland,
     result = _allocate_result(shape, znt=znt_a, ust=ust_a, ustm=ustm_a,
                               mol=mol_a, hfx=hfx_a, qfx=qfx_a, qsfc=qsfc_a,
                               zol=zol_a)
+    varf_a = None if varf is None else _surface_array(varf, shape, "varf")
     launch_sfclay(*base, lake, result, option=option, dx=dx,
-                   isfflx=isfflx, isftcflx=isftcflx, iz0tlnd=iz0tlnd)
+                   isfflx=isfflx, isftcflx=isftcflx, iz0tlnd=iz0tlnd,
+                   varf=varf_a, tofd_factor=tofd_factor)
     return result

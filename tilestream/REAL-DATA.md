@@ -1,11 +1,11 @@
-# Real initial conditions: WOOF already does this. Do not rebuild it.
+# Real initial conditions: WOOF-ArWen already does this. Do not rebuild it.
 
 Every state in `tilestream/` so far is a seeded synthetic draw from
 `harness.make_state`. That is deliberate: a bit-exact gate needs two runs to
 start from an identical, reproducible condition, and a seeded state gives that
 for free with no download.
 
-**It is not a statement about WOOF's capabilities.** WOOF is a full-featured
+**It is not a statement about WOOF-ArWen's capabilities.** WOOF-ArWen is a full-featured
 model with a production ingest for GFS, HRRR, ERA5 and 20CR. An agent that
 concludes "real data is a gap" has misread the absence of real data in the
 STREAMING TESTS as the absence of real data in the MODEL.

@@ -148,7 +148,7 @@ def test_a_source_with_an_extent_is_requested_whole_whatever_the_targets(monkeyp
     """X12: per-slab crops sampled the same lake cell off different windows."""
     import woof.ingest.lake_state as obs
     asked = []
-    monkeypatch.setattr(obs, 'acquire_field', lambda row, field, valid_time, bounds, cache:
+    monkeypatch.setattr(obs, 'acquire_field', lambda row, field, valid_time, bounds, cache, attempts=None:
                         (asked.append(dict(bounds)) or (tmp_path / 'x.nc', 'url')))
     monkeypatch.setattr(obs, 'decode_field', lambda path, row, field, valid_time, lat, lon:
                         (np.full(lat.shape, 1.), dict(covered_targets=int(lat.size))))

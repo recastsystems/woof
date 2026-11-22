@@ -21,6 +21,11 @@ SCHEME = "sf_ruc"
 BACKEND = "hex-cuda"
 FORK_PIN = "1d6e370e7b43a332074809f170532a216c2212fb"
 RUC_PIN = "8c9f1a8bb2cfb5fb8d115440fced566361fe0f20"
+# Latest upstream (NOAA-GSL/RUCLSM main, no tags; PR #5, 2026-06-10).  Its only change since RUC_PIN moves the
+# diagnostic acwaterbudget into a saved allocatable (module_ruc_land.F90:359-360,591); it feeds no output, so the
+# default route is this commit as well.  Hex keeps its own arena zeroing (acwaterbudget below), because upstream
+# allocates the array on a cold start only (:590-591) and accumulates it on restarts and DA cycles too (:1220).
+RUC_LATEST = "ef5c9497bd7e"
 CUDA_OPTIONS = ("--std=c++17", "--fmad=false", "--ftz=false", "--prec-div=true", "--prec-sqrt=true")
 WORK_WORDS = 16384
 TABLE_WORDS = 955

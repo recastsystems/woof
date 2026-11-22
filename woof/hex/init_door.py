@@ -485,7 +485,7 @@ VERTICAL_CACHE_SCHEMA = "gpuwm-hex.vertical-cache/v2"
 #: SOURCE's first-guess ladder (GFS 34, IFS 15, GEFS 32, ERA5 38, ICON 19 with
 #: 8 soil levels), and with them in the key every source rebuilt the same
 #: vertical arrays into its own 5.9 GB file -- five artifacts and 35 GB for
-#: one mesh, which put a box under the GPU mutex's 80 GB free-disk guard.
+#: one mesh, which put a machine under its 80 GB free-disk floor.
 #: The arrays depend on the grid, static and vertical spec alone; the
 #: producer writes these values with setncattr and reads them nowhere.  Only
 #: declarations whose encoded width cannot change (a text clock of fixed
@@ -866,11 +866,19 @@ def add_init_parser(commands: Any) -> None:
                         help="interpolate skin temperature (and so sst) to water cells from water source points and "
                              "to land cells from land points, the WPS rule (default yes; no under strict numerics, "
                              "where the init is MPAS-A v8.4.2 case 7's unmasked interpolation)")
+    parser.add_argument("--condensate-balance", choices=("yes", "no"), default=None,
+                        help="include cloud, rain, ice, snow and graupel in the final hydrostatic balance "
+                             "at fixed column mass (default yes; no under strict numerics, where the init "
+                             "is the producer's own, as MPAS-A and NOAA's RRFS fork make it)")
     parser.add_argument("--receipt", type=Path, default=None, help="provenance receipt path")
     parser.add_argument("--physics-profile", help="profile initialization row, including verified monthly aerosols")
     parser.add_argument("--land-surface", choices=("noah", "noahmp", "ruc"), default=None,
                         help="target soil geometry; defaults to the physics suite, or Noah")
     parser.add_argument("--physics-suite", default=None, help="initialize this suite's soil and complete species row")
+    parser.add_argument("--physics", action="append", default=None, metavar="KEY=VALUE",
+                        help="a single scheme choice over a WOOF-ArWen-route suite, repeatable, as the forecast door "
+                             "takes it (config_microp_scheme=mp_nssl2m): the init carries the chosen scheme's "
+                             "species and soil levels instead of the suite's own")
     parser.add_argument("--wif-climatology", type=Path, default=None, help="explicit WIF dataset; missing or invalid named input refuses")
     rrfs = parser.add_argument_group(
         "suites with their own producer (RRFS-MPAS: hrrrv5, rrfs_*)",
@@ -1021,7 +1029,8 @@ def run_init_command(arguments: argparse.Namespace) -> int:
         selection = init_selection(getattr(arguments, "physics_suite", None),
                                    getattr(arguments, "land_surface", None),
                                    profile=getattr(arguments, "physics_profile", None),
-                                   pin_set=getattr(arguments, "physics_pin_set", None))
+                                   pin_set=getattr(arguments, "physics_pin_set", None),
+                                   overrides=getattr(arguments, "physics", None))
         require_boundary_producer(getattr(arguments, "boundary_recipe", None), selection.get("producer"))
     except RrfsInitError as error:
         _refuse(str(error))
@@ -1211,6 +1220,14 @@ def run_init_command(arguments: argparse.Namespace) -> int:
             if isinstance(error, ValueError):
                 _refuse(f"physics initialization did not complete and {out} was removed: {error}")
             raise
+    from .init_balance import balance_choice, complete_init
+    balance_enabled, balance_by = balance_choice(getattr(arguments, "condensate_balance", None))
+    try:
+        balance_receipt = {**complete_init(out, enabled=balance_enabled), "chosen_by": balance_by}
+    except ValueError as error:
+        # The balance writes block by block: a refusal part way leaves a half-balanced file.
+        out.unlink(missing_ok=True)
+        _refuse(f"the condensate balance refused this init and the incomplete file was removed: {error}")
     declarations = stamp_run_declarations(out, run_declarations(arguments))
     carried_clock = declarations["already_present"].get("config_start_time")
     if carried_clock is not None and str(carried_clock) != arguments.start_time:
@@ -1268,6 +1285,7 @@ def run_init_command(arguments: argparse.Namespace) -> int:
         },
         "engine_argv": argv,
         "engine_receipt": engine_receipt,
+        "condensate_balance": balance_receipt,
         "cold_soil_remap": soil_receipt,
         "first_guess_hydrometeors": {key: value for key, value in hydrometeors.items() if key != "argv"},
         "masked_skintemp": {key: value for key, value in skin.items() if key != "argv"},

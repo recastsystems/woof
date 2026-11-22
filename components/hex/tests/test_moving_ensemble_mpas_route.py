@@ -1,6 +1,6 @@
 """HEX-PHYSICS-PARITY run group 2 #6: the moving ensemble on the MPAS suite route.
 
-Each test is one of the defects the real run showed (box K, 2026-10-24).
+Each test is one of the defects the real run showed (2026-10-24).
 """
 from __future__ import annotations
 

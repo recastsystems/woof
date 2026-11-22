@@ -2477,7 +2477,7 @@ def test_cold_network_reproduces_wrfs_own_ice_koop_tendency(classic_tables):
     THE LEVEL-15 CLAIM IS NOW MADE ON THE STATE, WHICH IS STRICTLY STRONGER.
     It used to assert that the float64 finite difference
     ``(qi_after - qi_entry)/dt`` equalled WRF's ``qiten`` bit for bit.  That
-    quantity is a reconstruction WOOF never forms and WRF never stores, and
+    quantity is a reconstruction WOOF-ArWen never forms and WRF never stores, and
     on the regenerated column it sits 4.408228e-08 away -- one ulp of the
     float32 ``qi`` it is differenced from, not a kernel change.  What the
     kernel actually produces is the STATE, so the assertion is now that

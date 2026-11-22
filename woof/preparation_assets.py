@@ -15,11 +15,16 @@ def analyzed_aerosol_domains(experiment) -> tuple[int, ...]:
     for no one else, so every other subset keeps its bytes.
     """
 
+    # TEMPO under use_rap_aero_icbc reads the same pair.  Named breakage:
+    # without it the fetch and decoder skipped HRRR's QNWFA/QNIFA for TEMPO
+    # and the initializer refused every frame ("carries no number fields").
+    from woof.boundary_fields import tempo_analyzed_aerosol_boundaries
     return tuple(
         int(domain.grid_id) for domain in experiment.domains
-        if int(domain.run.mp_physics) == 28
-        and (bool(domain.run.use_rap_aero_icbc)
-             or str(domain.run.mp28_aerosol_source) == "analysis"))
+        if (int(domain.run.mp_physics) == 28
+            and (bool(domain.run.use_rap_aero_icbc)
+                 or str(domain.run.mp28_aerosol_source) == "analysis"))
+        or tempo_analyzed_aerosol_boundaries(domain.run))
 
 
 def analyzed_aerosol_fetch_hints(experiment, fetch_hints):

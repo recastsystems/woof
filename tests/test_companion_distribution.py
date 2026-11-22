@@ -214,6 +214,12 @@ def test_a_missing_companion_refuses_by_name_with_the_pip_line(
     import importlib.resources as resources
     monkeypatch.setattr(resources, "files", _no_package)
     monkeypatch.setattr(data_assets, "_checkout_root", lambda: None)
+    # The installed state is arranged, not inherited: where woof is read
+    # from a source tree nobody installed (the Windows desktop's Python),
+    # the refusal takes its other wording, tested just below, and this
+    # test failed there on the environment rather than on the product.
+    monkeypatch.setattr(data_assets, "_required_companion_version",
+                        lambda: "3.0.0")
 
     with pytest.raises(ModuleNotFoundError) as caught:
         data_assets.companion_root()
@@ -221,7 +227,37 @@ def test_a_missing_companion_refuses_by_name_with_the_pip_line(
     assert data_assets.COMPANION_DISTRIBUTION in message
     assert "REFUSES" in message
     assert "radiation" in message and "mp_physics=8/28" in message
-    assert f"pip install {data_assets.COMPANION_DISTRIBUTION}==" in message
+    assert (f"pip install {data_assets.COMPANION_DISTRIBUTION}==3.0.0"
+            in message)
+
+
+def test_a_missing_companion_in_an_uninstalled_tree_names_the_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same refusal from a source tree nobody installed.
+
+    There is no version to pin, so the remedy is the version-less pip line
+    and the message says what is actually wrong: the sibling ``recast-woof-data/``
+    directory is not beside this checkout.
+    """
+
+    def _no_package(_name):
+        raise ModuleNotFoundError("No module named 'woof_data'")
+
+    import importlib.resources as resources
+    monkeypatch.setattr(resources, "files", _no_package)
+    monkeypatch.setattr(data_assets, "_checkout_root", lambda: None)
+    monkeypatch.setattr(data_assets, "_required_companion_version",
+                        lambda: data_assets._UNKNOWN_VERSION)
+
+    with pytest.raises(ModuleNotFoundError) as caught:
+        data_assets.companion_root()
+    message = str(caught.value)
+    assert caught.value.name == data_assets.COMPANION_PACKAGE
+    assert "REFUSES" in message
+    assert "uninstalled source tree" in message
+    assert message.rstrip().endswith(
+        f"pip install {data_assets.COMPANION_DISTRIBUTION}")
 
 
 def test_a_version_mismatch_refuses_by_name_with_the_pip_line(

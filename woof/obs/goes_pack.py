@@ -6,7 +6,7 @@ Two pack families share this container and this reader, deliberately --
 ``gpuwm-obs.goes-cwp.v1`` on the 2 km ABI fixed grid and
 ``gpuwm-obs.goes-cloudtop.v1`` on the 10 km one.  The bridge refuses to
 regrid one onto the other (``tools/rustwx/crates/rw-goes/src/cloudtop.rs``,
-coordinator ruling 2026-08-06), so the two families are two files with two
+project decision 2026-08-06), so the two families are two files with two
 grids, and the join between them is the consumer's explicit, recorded
 choice.  This module does not make that choice; it hands back planes and
 the navigation they are on.  :mod:`woof.obs.goes_cwp` makes it.

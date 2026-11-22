@@ -1,0 +1,19 @@
+{
+  "version": "WRF v4.8.0",
+  "commit": "06d4240ae989cc3e50af412bb472df3d9048783c",
+  "module": {
+    "path": "phys/module_mp_ntu.F",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.8.0/phys/module_mp_ntu.F",
+    "sha256": "e94adbcb0a42c74c51674d47fa6b7d73697b5ec89dcd31c1f877ab00e29af7de",
+    "licence": "WRF public domain statement"
+  },
+  "licence": {
+    "path": "LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/wrf-model/WRF/v4.8.0/LICENSE.txt",
+    "sha256": "92373ebbb43f0e3bf701c1be0494b805fe89482ce0bf43a3cf4e9b8d390fe08f",
+    "note": "the v4.7.1 statement word for word; v4.8.0 drops the final newline"
+  },
+  "tables": "AERO_CONST DATA statements and module parameters in module_mp_ntu.F; no external NTU table file",
+  "source_changes": [],
+  "change_from_v4.7.1": "One statement moves: RATIO = (RHOGW/DNGRM)**THRD in the rain-graupel collection block is evaluated after DNGRM is set and clamped (v4.8.0 lines 5694-5707), instead of before (v4.7.1 line 5695, where DNGRM is undefined on the first pass)."
+}

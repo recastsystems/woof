@@ -44,8 +44,8 @@ out = Path(sys.argv[1])
 lines = []
 def say(text):
     lines.append(text); print(text)
-graph = sorted((out / "graphs/out").glob("cuda-history.*.nc"))
-eager = sorted((out / "eager/out").glob("cuda-history.*.nc"))
+graph = sorted((out / "graphs/out").glob("*history.*.nc"))  # MPAS route: history.*; ArWen route: cuda-history.*
+eager = sorted((out / "eager/out").glob("*history.*.nc"))
 names = [p.name for p in graph]
 ok = bool(graph) and names == [p.name for p in eager]
 variables = differing = 0

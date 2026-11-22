@@ -194,6 +194,17 @@ __device__ void d_bare_flux_selected(const float *p, const int *q, float *o,
         tgb = opt_stc == 3
             ? FADD(FMUL(FSUB(K_ONE, p[15]), tgb), FMUL(p[15], K_TFRZ))
             : K_TFRZ;
+        // Correct-mode SN1 (gpuwm/correct_mode.py): ESTG and QSFC at the
+        // reset ground temperature, as WRF's own glacier reset does
+        // (:1092-1105); the land reset kept the discarded, warmer TG's.
+#ifdef GPUWM_NOAHMP_MELT_RESET_ESAT
+        {
+            float t0 = f_min(K_P50, f_max(K_N50, FSUB(tgb, K_TFRZ)));
+            estg = (t0 > K_ZERO) ? esat_poly(0, t0) : esat_poly(7, t0);
+            float er0 = FMUL(estg, rhsur);
+            qsfc = FDIV(FMUL(K_P622, er0), FSUB(psfc, FMUL(K_P378, er0)));
+        }
+#endif
         irb = FSUB(FMUL(cir, powi4(tgb)), FMUL(emg, lwdn));
         shb = FMUL(csh, FSUB(tgb, sfctmp));
         evb = FMUL(cev, FSUB(FMUL(estg, rhsur), eair));

@@ -764,7 +764,23 @@ fn main() -> Result<()> {
         println!("rw-s2s-energy/v1 native-netcdf rayon sampled-power dated-climatology");
         return Ok(());
     }
+    // 0.6.0 read `--help` as a request file and answered "No such file or directory" (exit 1).
+    if path == "--help" || path == "-h" {
+        println!("{}", USAGE);
+        return Ok(());
+    }
     run(serde_json::from_slice(&fs::read(path)?)?)
+}
+/// What `--help` prints. `woof hex s2s` writes the request file and calls this program; it is not run by hand.
+const USAGE: &str = "usage: rw_s2s_energy REQUEST.json\n       rw_s2s_energy --build-climatology MANIFEST.json\n       rw_s2s_energy --abi | --help\n\nThe hub-height wind and solar energy tables of a woof hex s2s forecast.\nREQUEST.json is written by `woof hex s2s` (its products stage).";
+#[cfg(test)]
+mod usage_tests {
+    #[test]
+    fn help_names_every_form() {
+        for word in ["REQUEST.json", "--build-climatology", "--abi", "--help"] {
+            assert!(super::USAGE.contains(word), "{word}");
+        }
+    }
 }
 #[cfg(test)]
 mod tests {

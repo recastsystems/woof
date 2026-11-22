@@ -10,9 +10,15 @@ import subprocess
 
 def native_binary():
     from woof import bridges
-    found = bridges.find_artifact("GPUWM_RW_WAVES_DATA", bridges.executable_name("rw_waves_data"), crate_relative="tools/waves_data")
+    def find():
+        return bridges.find_artifact("WOOF_RW_WAVES_DATA", bridges.executable_name("rw_waves_data"), crate_relative="tools/waves_data")
+    found = find()
+    # A wheel install stages this bridge from the release bundle on first use, as the coupled preparation's door does.
+    # Breakage it prevents (3.0.0 lakes cut, 2026-11-10): `woof go --waves on` from the README's install stopped here.
+    if found is None and bridges.fetch_on_demand("rw_waves_data"):
+        found = find()
     if found is None:
-        raise FileNotFoundError("rw_waves_data is required; build tools/waves_data or set GPUWM_RW_WAVES_DATA to the built bridge")
+        raise FileNotFoundError("rw_waves_data is required for --waves on; run `woof fetch-bridges`, build tools/waves_data, or set WOOF_RW_WAVES_DATA to the built bridge")
     return found
 
 def invoke(request, *, operation):

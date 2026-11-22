@@ -152,6 +152,9 @@ class PhysicsStreams(NativePoolStreams):
         # exact mode writes native's.
         # The held f000 frame's reflectivity, formed from its start state beside step 1 (tempo_refl_v303), and
         # the side thread that compiles its module from the moment the frame will be held.
+        # The run's applied fork corrections (runtime_v842 sets them before it holds the frame): the f000
+        # reflectivity is formed with the snow moments the forecast hours use (tempo_refl_v303 REFL_CORRECTIONS).
+        self.fork_corrections = ()
         self._f000_reflectivity = None
         self._f000_warm = None
         self.first_frame_from_first_call = False
@@ -187,6 +190,8 @@ class PhysicsStreams(NativePoolStreams):
             pinned = {} if contract.git_version is None else {'git_version': contract.git_version}
             self.attrs = global_attributes(session.layout, header,
                 configs=getattr(session, 'output_config_snapshot', None), **pinned)
+            # The run's TEMPO when it is not the RRFS pin (tempo_v303.output_attributes); none on a pinned run.
+            self.attrs.update(getattr(session, 'output_extra_attributes', None) or {})
             self.field_attrs = input_field_attributes(session.layout, header,
                 field_definition=contract.registry.field_definition)
         # mpas_atm_core.F:264-277: restarts retain the original CF epoch.
@@ -297,7 +302,7 @@ class PhysicsStreams(NativePoolStreams):
         THE BREAKAGE THIS PREVENTS: the blocking pinned download of every frame
         (1.6 GB of history plus diag at 60 km) held the step thread 0.31 s per
         frame on one card and about 0.6 s on two (MPAS-ROUTE-SPEED-2026-10-24),
-        where the WOOF route captures in the background.
+        where the WOOF-ArWen route captures in the background.
         Never publish resident values through native.put_field.
         """
         storage, result, queued = {}, {}, []
@@ -524,7 +529,8 @@ class PhysicsStreams(NativePoolStreams):
                 from .rrfs.tempo_refl_v303 import warm_start_reflectivity
                 import cupy as cp
                 self._f000_warm = warm_start_reflectivity(
-                    self.layout.configs, int(self.layout.dimensions['nVertLevels']), device=cp.cuda.Device().id)
+                    self.layout.configs, int(self.layout.dimensions['nVertLevels']), device=cp.cuda.Device().id,
+                    corrections=getattr(self, 'fork_corrections', ()))
                 if self._f000_warm is None:
                     # WSM6's start-radar unit (wsm6_refl_start_v842) is its own compile: here, not at the f000 write.
                     from .wsm6_refl_start_v842 import warm_start_reflectivity as warm_wsm6
@@ -553,7 +559,8 @@ class PhysicsStreams(NativePoolStreams):
             # TEMPO (the RRFS suites), else Thompson (convection_permitting, hrrr-like-aerosol), else WSM6
             # (mesoscale_reference): the same breakage on the MPAS-A suites' routes, whose start frame showed
             # "No values to plot" over the first guess's own rain (hex-meshes-sources review, 2026-10-29).
-            pending = start_frame_reflectivity(self.layout.configs, snapshot, device=device)
+            pending = start_frame_reflectivity(self.layout.configs, snapshot, device=device,
+                                               corrections=getattr(self, 'fork_corrections', ()))
             if pending is None:
                 pending = thompson_start(self.layout.configs, snapshot, device=device)
             if pending is None and str(self.layout.configs.get('config_microp_scheme', '')).strip() == 'mp_wsm6':
@@ -643,6 +650,15 @@ class PhysicsStreams(NativePoolStreams):
         # Variables outside the Registry for the history stream (the suite route's chemistry), captured now.
         extras = (None if getattr(self, 'extra_history', None) is None
                   or not any(s.name in ('output', 'history') for s in selected) else self.extra_history())
+        # Variables outside the Registry for the diagnostics stream (woof.hex.hailcast's hail fields), captured now,
+        # before after_snapshot below restarts their window.  They ride the same extras to the encoder, which
+        # hands each stream its own (extra_diagnostics_names).
+        diag_extra = getattr(self, 'extra_diagnostics', None)
+        if diag_extra is not None and any(s.name == 'diagnostics' for s in selected):
+            words = diag_extra()
+            if words:
+                self.extra_diagnostics_names = frozenset(words) | getattr(self, 'extra_diagnostics_names', frozenset())
+                extras = {**(extras or {}), **words}
         if self.diagnostics is not None:
             # Reset only after immutable capture, while this event's stream
             # alarms still ring (mpas_atm_core.F:877-910).
@@ -772,6 +788,10 @@ class PhysicsStreams(NativePoolStreams):
                 out[name] = replace(item, values=values)
         return snapshot if out is None else out
 
+    def _identity_step(self, step):
+        """Return the native request step for a captured history frame."""
+        return int(step)
+
     def _encode(self, jobs, snapshot, when, step, extras=None):
         records = []
         snapshot = self._native_sentinels(snapshot)
@@ -789,9 +809,29 @@ class PhysicsStreams(NativePoolStreams):
                 writer.write_restart(target, self.mesh, snapshot, when, stream=stream,
                                      timestamp_path=self.output/'restart_timestamp', **options)
             else:
+                diag_names = getattr(self, 'extra_diagnostics_names', frozenset())
                 if extras and stream.name in ('output', 'history'):
-                    options['extra_fields'] = extras
+                    history = {name: value for name, value in extras.items() if name not in diag_names}
+                    if history:
+                        options['extra_fields'] = history
+                elif extras and stream.name == 'diagnostics':
+                    diagnostics = {name: value for name, value in extras.items() if name in diag_names}
+                    if diagnostics:
+                        options['extra_fields'] = diagnostics
                 writer.write_stream(target, stream, self.mesh, snapshot, when, **options)
+            request = self.output / 'native-physics-request.json'
+            from ..native_geometry import FIELDS, seal, sidecar, publish
+            # A rank writing only its owned slice (WOOF_HEX_PER_RANK_OUTPUT) seals no global-extent identity.
+            if (not getattr(self, '_per_rank_output', False)
+                    and stream.name in ('output', 'history') and request.is_file()
+                    and (json.loads(request.read_text()).get('native_state_publication', False)
+                         or set(FIELDS) <= set(self.stream_fields(stream)))):
+                arrays = {name: np.asarray(snapshot[name].values) for name in FIELDS if name in snapshot}
+                identity = seal(arrays, request, when.strftime('%Y-%m-%d_%H:%M:%S'), self._identity_step(step))
+                target_sidecar = sidecar(target)
+                frames = json.loads(target_sidecar.read_text()) if record else {}
+                frames[str(record)] = identity
+                publish(target_sidecar, frames)
             records.append(dict(name=stream.name, step=step, seconds=perf_counter()-started,
                 writer='rw_mpas_stream', path=str(target), record_index=record))
         self._publish_closed(jobs, step)
@@ -803,7 +843,7 @@ class PhysicsStreams(NativePoolStreams):
         THE BREAKAGE THIS PREVENTS (parity run group 4, 2026-10-24): this route marked its frames durable in one
         batch after the forecast, so the live first look (which follows ``history-ready.jsonl`` and the durable
         sidecars) rendered nothing until the end: f001 came 55.6 s after its frame closed on the 120 km globe and 194 s
-        on the 80 -> 10 km zoom globe, f000 84 s and 364 s. The WOOF route lists each frame as it closes.
+        on the 80 -> 10 km zoom globe, f000 84 s and 364 s. The WOOF-ArWen route lists each frame as it closes.
         Here, on the writer thread and after every stream of this alarm is on disk (a frame's diag companion
         included), an ``output`` stream file that holds one frame (its filename bucket is its output interval)
         gets its durable sidecar and its ``history-ready.jsonl`` row. A file that later records append to keeps

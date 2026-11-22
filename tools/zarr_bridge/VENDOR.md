@@ -5,7 +5,7 @@ the other offline workspaces. Existing locally corrected rustwx copies are
 retained; `tools/rustwx/VENDOR.md` records those corrections.
 `vendor-manifest.json` records each registry checksum and declared licence.
 The source reader owns acquisition orchestration, while zarrs owns Zarr and
-codec decoding, netcrust owns NetCDF reads, and WOOF's existing NetCDF writer
+codec decoding, netcrust owns NetCDF reads, and WOOF-ArWen's existing NetCDF writer
 and mapped engine supply writes and meteorological derivations.
 
 Build from this directory with `cargo build --release --locked --offline`.

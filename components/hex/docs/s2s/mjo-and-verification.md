@@ -40,7 +40,7 @@ export WOOF_RW_WRFBATCH=/absolute/private/renderer/rw_wrfbatch
 The build keeps the existing ensemble-renderer capabilities. Its additional
 probe is `rw_wrfbatch --s2s-diagnostics-abi`. The runtime resolves the renderer
 and its environment through `woof.rustwx`. A clean engine installation needs
-these built binaries; no binary is downloaded implicitly by this lane.
+these built binaries; no binary is downloaded implicitly by this path.
 
 For a qualified reference bundle and prepared observation windows:
 

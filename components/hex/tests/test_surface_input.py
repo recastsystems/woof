@@ -28,7 +28,17 @@ def test_ecmwf_rows_plan_the_same_cycle_gfs_sea_ice_analysis_at_any_start_lead(s
     assert companions[0].index_select["records"] == [["^(LAND|ICEC)$", "^surface$"]]
 
 
-def test_the_surface_input_stays_out_of_the_primary_decode_and_reaches_the_init(tmp_path, monkeypatch):
+def _name(path: str) -> str:
+    return path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+
+
+# THE BREAKAGE (hrrr-gfs-blend scratch, 2026-11-12): the primary-decode check matched "gfs" against each input's
+# whole path, so the test failed whenever the temporary folder's own name held "gfs" (a scratch folder named
+# hrrr-gfs-blend), though no GFS file was in the decode.  It reads the file name; the second folder proves it.
+@pytest.mark.parametrize("folder", ["work", "hrrr-gfs-blend"])
+def test_the_surface_input_stays_out_of_the_primary_decode_and_reaches_the_init(tmp_path, monkeypatch, folder):
+    tmp_path = tmp_path / folder
+    tmp_path.mkdir()
     seen: dict[str, object] = {}
 
     def acquire(plans, dest, cycle, **kwargs):
@@ -64,8 +74,7 @@ def test_the_surface_input_stays_out_of_the_primary_decode_and_reaches_the_init(
         staged=[], writer=None, remapper=None, jobs=1, stop_after="init", order_map=None, hex_order=None,
         case_template=None, keep_unordered=False)
     assert src.run_init_source_command(arguments) == 0
-    assert seen["primary"] and not [name for name in seen["primary"] if "gfs" in name]
-    assert [name.rsplit("/", 1)[-1].rsplit("\\", 1)[-1] for name in seen["surface"]] == [
-        "gfs.t00z.pgrb2.0p25.f000.land-icec"]
+    assert seen["primary"] and not [name for name in seen["primary"] if "gfs" in _name(name)]
+    assert [_name(name) for name in seen["surface"]] == ["gfs.t00z.pgrb2.0p25.f000.land-icec"]
     init = seen["init"]
     assert init[init.index("--sfc-met") + 1].endswith("SFC:2026-10-28_00")

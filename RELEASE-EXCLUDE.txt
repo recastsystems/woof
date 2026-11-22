@@ -71,7 +71,7 @@ docs/tree_triage_2026-07-26.md
 docs/assembly-execution-20260728.md
 
 # Internal development-campaign plans/specs (machine paths inside).
-docs/superpowers/**
+docs/internal/**
 
 # Internal campaign reports and machine-specific runbooks.
 docs/morrison_oracle_report.md
@@ -156,7 +156,7 @@ tools/gf_real74_dual/**
 # which rescued fork the digest came off -- so the machine paths inside them
 # are the measurement conditions, not sloppiness, and scrubbing them would
 # falsify the record rather than clean it.  They are internal engineering
-# documents in the sense docs/superpowers/** already is: the user-facing
+# documents in the sense docs/internal/** already is: the user-facing
 # page for this feature is docs/public/TILES.md, which carries no machine
 # path and ships.
 tilestream/BRANCHES.md
@@ -446,8 +446,6 @@ tools/rustwx/crates/rw-mpas/tests/surface_oracle/**
 # behind the GPU mutex (nothing in the tree reads any of them).
 # tools/release_exclusions.py's DA rule refuses the same content anywhere else.
 tools/jedi_clone/**
-tools/da_deck/**
-tools/da_lane7/**
 tools/radar_tten_proof/lane6/**
 # Private owner-packet integration instrumentation.
 tools/nextgen_noah_publication.py
@@ -564,10 +562,8 @@ tests/data/assembled_legacy_proofs/loader-fold-source-replay.json
 tools/rustwx/crates/rw-mpas/tests/rrfs_native/**
 
 # Private observation workflow instrumentation has no public runtime caller.
-tools/da_case_manifest.py
 
 # Private manifest tooling has no public configuration or test contract.
-tests/test_da_case_manifest.py
 
 # 3.0.0 fix batch (2026-11-02): lane harnesses bound to one lab's data roots and
 # internal ledgers (they append to the integration notes and message lanes);

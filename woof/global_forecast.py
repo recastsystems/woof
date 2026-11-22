@@ -102,7 +102,7 @@ def run(directory,outdir,*,restart=None,render_products=None):
         SIMULATION_START_DATE=time_string(start),DT=cfg.dt,RA_LW_PHYSICS=cfg.ra_lw_physics,
         RA_SW_PHYSICS=0,MP_PHYSICS=0,BL_PBL_PHYSICS=0,CU_PHYSICS=0,SF_SURFACE_PHYSICS=0,
         SF_SFCLAY_PHYSICS=0,HYBRID_OPT=cfg.hybrid_opt,TRUELAT1=0.,TRUELAT2=0.,STAND_LON=0.,
-        CEN_LAT=0.,CEN_LON=0.,POLE_LAT=90.,POLE_LON=0.,TITLE='WOOF native hydrostatic global ideal forecast')
+        CEN_LAT=0.,CEN_LON=0.,POLE_LAT=90.,POLE_LON=0.,TITLE='WOOF-ArWen native hydrostatic global ideal forecast')
     frames=[];checkpoints=[];writer=None;in_file=0
     frames_per_file=receipt['frames_per_outfile']
     def output():

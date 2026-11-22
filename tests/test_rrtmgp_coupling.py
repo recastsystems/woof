@@ -11,12 +11,12 @@ import pytest
 #: production validator over range(0, 107), exactly as
 #: ``test_the_accepted_selector_list_this_module_uses_is_the_real_one``
 #: does; not hand-extended.
-_ACCEPTED_MP_PHYSICS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 27, 28, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106, 900)
+_ACCEPTED_MP_PHYSICS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 24, 26, 27, 28, 29, 30, 38, 40, 50, 51, 52, 53, 55, 56, 95, 96, 97, 106, 900)
 
-#: Coupled selectors the run door still holds for a named guard: RCON (29)
-#: has its cloud-optics row, but validate_run_config refuses it until its
-#: release speed proof lands (RCON-SPEED-01). Retire with that guard.
-_HELD_COUPLED_MP_PHYSICS = (29,)
+#: Coupled selectors the run door still holds for a named guard.  Empty:
+#: RCON (29) was held by RCON-SPEED-01 until 3.0.2, when that speed guard
+#: was retired; it is accepted and couples through its Thompson row.
+_HELD_COUPLED_MP_PHYSICS: tuple[int, ...] = ()
 
 #: The admitted selectors without a cloud-optics coupling: FAST_SBM (30)
 #: alone, refused against the 4/4 pair with the legacy-RRTMG remedy until

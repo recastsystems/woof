@@ -25,7 +25,7 @@ def test_go_wrfinput_preserves_shared_forecast_arguments(monkeypatch, tmp_path):
 def test_temf_nested_execution_keeps_domain_local_carriers(feedback):
     import cupy as cp
     from test_physics_driver import _full_state
-    from test_da_nested_forecast_gpu import _experiment
+    from idealised_parent_fixture import _experiment
     from woof.experiment import DomainConfig
     from woof.core.nest import NestCoupler
     from woof.core.model import execute_experiment, FeedbackScratch

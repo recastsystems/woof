@@ -3,8 +3,11 @@ Current public pin: gpuwm 2.9.7 at public engine commit
 4726b689c6db142577eca3968a1f74256e3c057f, tag v2.9.7. The measurement
 repin-297-20261025.json verifies all published platform wheels, the complete
 sixteen-path seam, composed glacier digest, contract surface and helper set.
-The dependency is gpuwm>=2.9.12,<2.10. The release installation minimum is 2.9.12,
-which supplies the matching source and helper fixes.
+The dependency is gpuwm>=3.0.0,<3.1. The release installation minimum is 3.0.0: woof hex 0.5.0 and
+gpuwm 3.0.0 release together, and 3.0 carries the init, cumulus and radiation fixes the scheme picks need
+(declared species in rw_mpas_init, TEMPO with Grell-Freitas/Kain-Fritsch and RTE+RRTMGP) and KIM's
+orographic statistics builder. 3.0.0 runs on the engine-2.9.12-source radiation helper set (measured).
+The 2.9.12 floor supplied the matching source and helper fixes.
 The older 2.9.11 floor supplied wind-farm forcing and map view labels; 2.9.10 first supplied
 woof.output_formats, which every forecast door parser imports for --output-format). The sealed 2.9.3 public packet has
 its own complete measured PACKET_ENGINES row, recorded separately in
@@ -1254,7 +1257,7 @@ UNMEASURED_BUILD_COMMIT = "no-measured-row"
 def identity_of(inspection: "SeamInspection") -> EngineIdentity:
     """The engine a tree IS, whether or not a measured row names it.
 
-    RETIRED 2026-10-10 as a gate (owner ruling; Gate law, Refusals law; woof hex goes its own way, 2026-08-20):
+    RETIRED 2026-10-10 as a gate (Gate law, Refusals law; woof hex goes its own way, 2026-08-20):
     a tree whose sixteen seam bytes matched neither the public pin nor an
     admitted row used to refuse every forecast with "running against moved
     bytes would be running physics nobody proved" / "pinned Arwen source
@@ -1331,7 +1334,7 @@ def engine(version: str) -> PublishedEngine | None:
     return None
 
 
-GPUWM_INSTALL_MINIMUM = "2.9.12"
+GPUWM_INSTALL_MINIMUM = "3.0.0"
 
 
 def measured_gpuwm_floor() -> str:

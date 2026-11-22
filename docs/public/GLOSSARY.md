@@ -118,14 +118,16 @@ hand before writing `&geogrid`.
 `wrfbdy`, cycle, lead, nest, parent ratio, `e_vert`, `dx`, `dt`. These
 were not renamed and are not redefined.
 
-One exception worth knowing, because it bites on the first import: at
-`d01`, `namelist.input` in the wild writes `parent_id = 1` (the domain
-is its own parent) while `woof import-namelist` currently requires
-`parent_id = 0` there and refuses otherwise. The two halves of a WRF
-pair use opposite conventions for the root domain's parent, and the
-importer follows `namelist.wps`. Set `parent_id = 0` for `d01` in the
-copy you hand the importer. See [CONFIGURATION.md](CONFIGURATION.md) for
-the rest of the domain-layout mapping.
+One thing worth knowing about the outermost domain: `d01` has no
+parent, and the two halves of a WRF pair spell that differently. The
+WPS user guide asks for `parent_id = 1` in `namelist.wps`, WRF's
+`namelist.input` uses `0`, and namelist generators write either in
+either file. `woof import-namelist` and the namelist support report
+take `0` or `1` for `d01` in both files, and list the spelling they
+normalized as an advisory; any other value is refused, because the
+outermost domain cannot have a parent. See
+[CONFIGURATION.md](CONFIGURATION.md) for the rest of the domain-layout
+mapping.
 
 ## Bringing a real case over
 

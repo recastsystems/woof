@@ -1372,8 +1372,10 @@ def bind_owned_default_column_driver(driver, cfg, atmosphere, *, members, ny, nx
     if (cfg.mp_physics not in (8, 55) or (cfg.sf_surface_physics, cfg.bl_pbl_physics) != (2, 1)
             or cfg.sf_sfclay_physics not in (1, 91)):
         raise ValueError("this native binding implements Thompson or ISHMAEL with Noah/YSU/MM5; the configured suite needs its own qualified binding")
-    if cfg.cu_physics not in (0, 99) or cfg.sf_urban_physics or getattr(cfg, "sf_surface_mosaic", 0) or driver.terrain_drag is not None:
-        raise ValueError("this default column binding supports CU0/99 and has no urban, mosaic or terrain-drag producer binding")
+    if (cfg.cu_physics not in (0, 99) or cfg.sf_urban_physics or getattr(cfg, "sf_surface_mosaic", 0)
+            or driver.terrain_drag is not None or getattr(driver, "sfclay_varf", None) is not None):
+        raise ValueError("this default column binding supports CU0/99 and has no urban, mosaic, terrain-drag "
+                         "or kim_tofd form-drag producer binding")
     if cfg.cu_physics == 99 and cfg.mp_physics != 8:
         raise ValueError("the qualified packed CU99 binding requires mp_physics=8")
     if bool(cfg.cu_physics) != (cumulus_coupling is not None):

@@ -1,11 +1,11 @@
-# The WOOF intermediate format
+# The WOOF-ArWen intermediate format
 
 **Status: stable.** This page is the specification. A third party can target
-it without reading WOOF's source.
+it without reading WOOF-ArWen's source.
 
-WOOF does not have a list of blessed data sources that you must wait to be
+WOOF-ArWen does not have a list of blessed data sources that you must wait to be
 added to. It has an **intermediate contract**: you describe your own files in
-a JSON document, WOOF verifies the description against the actual bytes, and
+a JSON document, WOOF-ArWen verifies the description against the actual bytes, and
 the result runs through the same engine every other source runs through. This
 is WPS's intermediate-file idea, with the description made explicit and
 checked instead of implied by a hard-coded reader.
@@ -35,8 +35,8 @@ parallel format.
 | Schema string | Written by | Role |
 |---|---|---|
 | `rw-wps.descriptor.v1` | **you** | What your files contain and what each variable means. The authoring input. |
-| `rw-wps.mapping.v1` | WOOF | The compiled, executable form of your descriptor. Byte-sealed. |
-| `gpuwm-mapped-composition-v2` | WOOF | How products on different donor grids join, and the soil-layer geometry. |
+| `rw-wps.mapping.v1` | WOOF-ArWen | The compiled, executable form of your descriptor. Byte-sealed. |
+| `gpuwm-mapped-composition-v2` | WOOF-ArWen | How products on different donor grids join, and the soil-layer geometry. |
 
 You write the first. `woof adapt` compiles it into the second and third,
 plus `gpuwm-mapped-composition-inputs-v1` (an input manifest binding every
@@ -193,7 +193,7 @@ Keyed by **canonical name** (§3). Each entry:
 | `units.source` | Must equal the variable's `units` attribute **exactly**, as a string. No unit parsing, no equivalence: `"m s**-1"` does not match `"m s-1"`. |
 | `units.scale` / `units.offset` | Applied as `value * scale + offset` to reach `units.target`. |
 | `source_axes` | The file's axis order, from `time`, `member`, `vertical`, `y`, `x`, `soil`. |
-| `target_axes` | The canonical order WOOF wants. A transpose, never a regrid. |
+| `target_axes` | The canonical order WOOF-ArWen wants. A transpose, never a regrid. |
 | `location` | `mass`, `u_face`, `v_face`, `surface`, `soil`. |
 | `staggering` | `none`, `x`, `y`, `z`. |
 | `missing` | `{"kind":"reject"}` refuses any gap; `{"kind":"value","value":0.0}` fills; `{"kind":"attribute","name":"_FillValue"}` reads the marker from a named attribute (NetCDF only). |
@@ -202,7 +202,7 @@ Keyed by **canonical name** (§3). Each entry:
 | `when_absent` | GRIB2 `terrain_height` only, beside its `selectors`: how terrain is derived when the composition's terrain files carry no terrain record at all. See §2.6. |
 
 `scale_factor` / `add_offset` **packing is honoured automatically**: the
-NetCDF library unpacks before WOOF sees the values, and `_FillValue` /
+NetCDF library unpacks before WOOF-ArWen sees the values, and `_FillValue` /
 `missing_value` masking applies first. `units.scale` is a separate,
 descriptor-declared conversion applied after unpacking. Non-finite values
 surviving the missing policy are refused.
@@ -408,7 +408,7 @@ refused:
 
 ---
 
-## 4. What WOOF verifies, and what it trusts you for
+## 4. What WOOF-ArWen verifies, and what it trusts you for
 
 `woof adapt` emits status `runnable_mapping_not_stock_wrf_certified`. That is
 a precise claim, not hedging.

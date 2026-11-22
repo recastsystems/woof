@@ -113,11 +113,17 @@ def _run_lock(root: Path, *, name=".verification.lock"):
 
 
 @contextmanager
-def verification_scope(enabled: bool = True):
-    """Carry a run option to in-process and subprocess finish hooks."""
+def verification_scope(enabled: bool | None = True):
+    """Carry a run option to in-process and subprocess finish hooks.
+
+    ``None`` sets nothing and only gives the variable back on exit, so a
+    door that sets it from its flag (``woof run --no-verify-visuals``)
+    bounds that to its own call when the CLI is driven in-process.
+    """
     key = "WOOF_VERIFY_VISUALS"
     previous = os.environ.get(key)
-    os.environ[key] = "1" if enabled else "0"
+    if enabled is not None:
+        os.environ[key] = "1" if enabled else "0"
     try:
         yield
     finally:
@@ -125,6 +131,28 @@ def verification_scope(enabled: bool = True):
             os.environ.pop(key, None)
         else:
             os.environ[key] = previous
+
+
+def add_argument(parser) -> None:
+    """``--no-verify-visuals``, one spelling and one meaning on every forecast door.
+
+    ``woof go`` had it; ``woof sim`` and ``woof run`` had only the
+    ``WOOF_VERIFY_VISUALS`` variable, so a caller of those doors could not
+    find the switch for the CPU check that starts when the forecast ends
+    (2026-11-11, an outside runner: the check outlived the card lease).
+    """
+    parser.add_argument(
+        "--no-verify-visuals", action="store_false", dest="verify_visuals", default=None,
+        help="skip postforecast observation verification; the physical run is unchanged "
+             "(also WOOF_VERIFY_VISUALS=0)")
+
+
+def requested(args=None) -> bool:
+    """The door's ``--no-verify-visuals`` when given, else ``WOOF_VERIFY_VISUALS``."""
+    flag = getattr(args, "verify_visuals", None)
+    if flag is not None:
+        return bool(flag)
+    return os.environ.get("WOOF_VERIFY_VISUALS", "1").lower() not in ("0", "false", "off")
 
 
 @contextmanager
@@ -355,6 +383,53 @@ def discover_histories(root: Path, *, label="WOOF", paths=None,
         if previous:
             row["arms"][0]["previous_path"] = previous["arms"][0]["path"]
     return frames
+
+
+def select_run_requests(root: Path, *, cycle=None, domain=None,
+                        first_hour=None, last_hour=None) -> list[dict]:
+    """A run folder's requests, narrowed to the domain and hours the caller named.
+
+    The same rows :func:`score_available` takes when it is handed none (the
+    retained requests of ``verification.json`` plus the frames on disk), then
+    only those of ``domain`` and of forecast hours ``first_hour`` to
+    ``last_hour``.  Hours count from ``cycle`` when it is given and otherwise
+    from the earliest frame of the run.
+
+    THE BREAKAGE THIS PREVENTS (3.0.0 artefact check, 2026-11-10):
+    ``woof verify-visuals RUN --domain d02 --first-hour 2 --last-hour 3``
+    took the three flags and read none of them on a run folder, so a user who
+    asked for two hours of one nest waited for the whole sweep of every domain.
+    """
+    root = Path(root).resolve()
+    previous_state = _read(root / MANIFEST_NAME, {}) or {}
+    rows = {key: row["request"] for key, row in previous_state.get("hours", {}).items()
+            if row.get("request")}
+    for row in discover_histories(root, cycle=cycle):
+        rows[f"{row['domain']}/{row['valid_time']}"] = row
+    rows = list(rows.values())
+    if not rows:
+        raise ValueError(f"{root} holds no finished history frame to score")
+    start = _time(cycle) if cycle else min(_time(row["valid_time"]) for row in rows)
+    kept = []
+    for row in rows:
+        if domain is not None and row["domain"] != domain:
+            continue
+        lead = (_time(row["valid_time"]) - start).total_seconds() / 3600.0
+        if first_hour is not None and lead < first_hour:
+            continue
+        if last_hour is not None and lead > last_hour:
+            continue
+        kept.append(row)
+    if not kept:
+        named = ", ".join(sorted({row["domain"] for row in rows}))
+        last = max((_time(row["valid_time"]) - start).total_seconds() / 3600.0 for row in rows)
+        asked = " ".join(f"{flag} {value}" for flag, value in (
+            ("--domain", domain), ("--first-hour", first_hour), ("--last-hour", last_hour))
+            if value is not None)
+        raise ValueError(
+            f"no finished frame matches {asked}: this run holds "
+            f"{named} through hour {last:g} from {_stamp(start)}")
+    return kept
 
 
 def histories_before_restart(paths, cycle):
@@ -851,6 +926,36 @@ def finish_run(root, *, sections=None) -> dict | None:
     return state
 
 
+def finish_line(state) -> str | None:
+    """The one line a finished forecast prints about its verification step.
+
+    The step used to be silent: a detached CPU process started after the last
+    model step and could outlive the forecast's card lease, and nothing named
+    it or its switch (2026-11-11, an outside runner's pool record
+    ``cpu-only-tail=2``).
+    """
+    if not isinstance(state, dict):
+        return None
+    record = Path(state["run_dir"]) / BACKGROUND_NAME if state.get("run_dir") else None
+    if state.get("pid"):
+        return (f"verification: CPU check queued as process {state['pid']} (no card), which "
+                f"may run on after this forecast exits; record {record}; "
+                f"--no-verify-visuals or WOOF_VERIFY_VISUALS=0 skips it, and then the "
+                f"history is not made compact")
+    if state.get("status") == "pending" and state.get("reason"):
+        return f"verification: pending ({state['reason']}); later: {state.get('retry_command')}"
+    return None
+
+
+def _configured_cycle(config):
+    """The forecast's start time from its experiment TOML, as the worker reads it."""
+    if not config or Path(config).suffix.lower() != ".toml":
+        return None
+    import tomllib
+    metadata = tomllib.loads(Path(config).read_text(encoding="utf-8"))
+    return metadata.get("experiment", {}).get("start_time")
+
+
 def _finish_run(root, *, sections=None) -> dict | None:
     """Only the daemon launcher performs metadata I/O and process creation."""
     root = Path(root).resolve()
@@ -883,6 +988,10 @@ def _finish_run(root, *, sections=None) -> dict | None:
                "local_only": True, "foreground_cap_seconds": FINISH_FOREGROUND_SECONDS,
                "queued_at": _stamp(datetime.now(UTC)),
                "retry_command": f'woof verify-visuals "{root}"'}
+        # A run whose hours are all still ahead queues the worker too: it
+        # makes the history's compact verification inputs and releases the
+        # .keep lease, which is work even when no hour can be scored yet
+        # (item 8 review; the worker is CPU only and holds no card).
         _atomic_json(root / BACKGROUND_NAME, job)
         env = os.environ.copy()
         env.update(CUDA_VISIBLE_DEVICES="", GPUWM_NO_LOCAL_GPU="1", WOOF_VERIFY_VISUALS="0")
@@ -1088,10 +1197,8 @@ def _finish_worker(root, token, *, coverage_attempt=0):
             return 0
         cycle = job.get("cycle")
         config = job.get("config_path")
-        if cycle is None and config and Path(config).suffix.lower() == ".toml":
-            import tomllib
-            metadata = tomllib.loads(Path(config).read_text(encoding="utf-8"))
-            cycle = metadata.get("experiment", {}).get("start_time")
+        if cycle is None:
+            cycle = _configured_cycle(config)
         paths = [Path(path) for path in job.get("history_paths", [])]
         paths = [*histories_before_restart(paths, cycle), *paths]
         requests = discover_histories(root, paths=paths or None, cycle=cycle, include_missing=bool(paths))
@@ -1135,9 +1242,16 @@ def command_main(args):
         elif args.point_arm or args.field_arm:
             if not args.cycle:
                 raise ValueError("packaged verification needs --cycle to bind each valid hour")
-            requests = discover_packaged(cycle=args.cycle, domain=args.domain,
+            first = 1 if args.first_hour is None else args.first_hour
+            last = 48 if args.last_hour is None else args.last_hour
+            requests = discover_packaged(cycle=args.cycle, domain=args.domain or "d01",
                 point_arms=args.point_arm, field_arms=args.field_arm, grid=args.grid,
-                station_table=args.station_table, hours=range(args.first_hour, args.last_hour + 1))
+                station_table=args.station_table, hours=range(first, last + 1))
+        elif (args.domain is not None or args.first_hour is not None
+              or args.last_hour is not None):
+            requests = select_run_requests(
+                args.run_dir, cycle=args.cycle, domain=args.domain,
+                first_hour=args.first_hour, last_hour=args.last_hour)
         else:
             requests = None
         if args.list_pending:
@@ -1153,6 +1267,21 @@ def command_main(args):
         return 2
 
 
+def domain_id(text: str) -> str:
+    """``--domain`` as the frames name it: ``1``, ``d1``, ``D01`` and ``d01`` are all ``d01``.
+
+    THE BREAKAGE THIS PREVENTS (3.0.3 candidate check, 2026-11-15):
+    ``woof verify-visuals RUN --domain 1`` exited 2 with "no finished frame
+    matches ... this run holds d01", which reads as if the run had no frame,
+    when the only fault was the spelling of the domain.
+    """
+    matched = re.fullmatch(r"\s*[dD]?0*([1-9][0-9]?)\s*", str(text))
+    if not matched:
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is not a domain: give its number or its frame name, for example 1 or d01")
+    return f"d{int(matched.group(1)):02d}"
+
+
 def register_cli(subparsers):
     parser = subparsers.add_parser("verify-visuals", help="score and render finished hours against arrived observations")
     parser.add_argument("run_dir", type=Path)
@@ -1160,14 +1289,22 @@ def register_cli(subparsers):
     parser.add_argument("--cycle", help="UTC cycle, YYYY-MM-DDTHH[:MM:SS]Z")
     parser.add_argument("--reference", default="hrrr", help="reference row in the native renderer table")
     parser.add_argument("--reference-dir", type=Path, help="existing native reference files, named by its metadata table")
-    parser.add_argument("--domain", default="d01")
+    parser.add_argument("--domain", default=None, type=domain_id, metavar="N|dNN",
+                        help="on a run folder, score this domain only, by number or frame name "
+                             "(1 and d01 are the same; default: every domain); "
+                             "with packaged arms, the domain they belong to (default d01)")
     parser.add_argument("--point-arm", action="append", default=[], metavar="LABEL=DIR")
     parser.add_argument("--field-arm", action="append", default=[], metavar="LABEL=TEMPLATE",
                         help="NPZ path template, for example LABEL=fields/run-f{hour:02d}.npz")
     parser.add_argument("--grid", type=Path, help="native lat/lon NPZ for archived field arrays")
     parser.add_argument("--station-table", type=Path, help="frozen station table used by point extracts")
-    parser.add_argument("--first-hour", type=int, default=1)
-    parser.add_argument("--last-hour", type=int, default=48)
+    parser.add_argument("--first-hour", type=int, default=None,
+                        help="first forecast hour to score, counted from --cycle or, on a run folder "
+                             "without it, from the run's first frame (default: 1 for packaged arms, "
+                             "every finished hour of a run folder)")
+    parser.add_argument("--last-hour", type=int, default=None,
+                        help="last forecast hour to score (default: 48 for packaged arms, every "
+                             "finished hour of a run folder)")
     parser.add_argument("--station-mode", choices=("observed", "error"), default="observed")
     parser.add_argument("--timeout", type=int, default=120, help="seconds allowed for each public-source command")
     parser.add_argument("--refresh", action="store_true", help="refetch observations and regenerate receipts")

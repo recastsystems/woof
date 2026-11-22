@@ -185,7 +185,11 @@ def test_non_source_requests_keep_the_same_bytes_and_default():
         assert text.count(ruc_line) == 1
         assert text.count(uh_line) == 1
         assert tomllib.loads(text)["shared"]["nwp_diagnostics"] == 1
-        pinned = text.replace(ruc_line, "", 1).replace(uh_line, "", 1)
+        # ... and door item 7 (3.0.2): a GFS-route recipe states its lake-ice
+        # choice in [ingest].
+        from test_audit_parent_generic_bytes import without_lake_ice_table
+        pinned = without_lake_ice_table(source, text).replace(
+            ruc_line, "", 1).replace(uh_line, "", 1)
         from woof_engine_spelling import engine_spelling
         assert hashlib.sha256(engine_spelling(pinned).encode()).hexdigest() == baseline["recipes"][source]
         assert "mynn_sfclay_variant" not in tomllib.loads(text)["shared"]

@@ -3,7 +3,7 @@ regenerate with tools/sase_smoke/extract_lake_profile.py; do
 not hand-edit).
 
 PROVENANCE: mid-Lake-Michigan single column of the F-Y1
-over-coupling investigation (.superpowers/sdd/
+over-coupling investigation (docs/internal/sdd/
 yolo-lake-mechanism.md, controller ledger 2026-07-21), from
 the 1974-04-03 d02 run out/sase-yolo-a (extraction recipe and
 point selection in the extractor docstring): j=304, i=168,

@@ -2,6 +2,7 @@
 import hashlib
 import io
 import multiprocessing
+import os
 import threading
 import time
 from pathlib import Path
@@ -284,3 +285,22 @@ def test_lease_grants_what_is_free_and_names_holders_while_waiting(tmp_path, mon
                 with fetch_connections.lease(2):
                     pass
     assert "waiting" in capfd.readouterr().err
+
+
+@pytest.mark.skipif(not Path("/proc/locks").exists(), reason="slot holders are read from /proc/locks")
+def test_a_wait_on_its_own_slots_says_so(tmp_path, monkeypatch, capfd):
+    """public 3.0.3 walk, 2026-11-18: one fetch-geog holding 30 of 30 printed "held by: pid N holds 30
+    (... woof fetch-geog)", naming itself as the process it waited on."""
+    monkeypatch.setenv(fetch_connections.DIRECTORY_ENV, str(tmp_path))
+    monkeypatch.setenv(fetch_connections.MAX_CONNECTIONS_ENV, "2")
+    monkeypatch.setattr(fetch_connections, "WAIT_NOTICE_AFTER_S", 0.1)
+    monkeypatch.setenv(fetch_connections.SLOT_WAIT_ENV, "0.5")
+    with fetch_connections.lease(2):
+        assert fetch_connections.slot_holders(tmp_path) == [
+            f"this process (pid {os.getpid()}) holds 2 for its own other transfers"]
+        with pytest.raises(RuntimeError, match="no fetch connection slot came free"):
+            with fetch_connections.lease(1):
+                pass
+    err = capfd.readouterr().err
+    assert "all held by this process's own other transfers" in err
+    assert "held by:" not in err

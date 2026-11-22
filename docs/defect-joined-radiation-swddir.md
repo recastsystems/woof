@@ -14,7 +14,7 @@ the request and pricing its bank returns that beam and 61.7899169921875
 W/m² diffuse, with zero differing words against ordinary RRTMGP across
 192 surface-output words for two members. The distinct RRTMGP spectrum
 is not claimed bitwise equal to legacy WRF RRTMG. The clear column's
-unused zero native radii are represented by inert positive WOOF radii;
+unused zero native radii are represented by inert positive WOOF-ArWen radii;
 atmospheric and solar inputs remain from the real fixture. This default-on
 transport fix applies with CU0 and is independent of CU99. The exact
 command, old-field-omission reconstruction, native numbers and actual CUDA

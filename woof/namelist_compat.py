@@ -479,7 +479,7 @@ def _relocation_itinerary_action(domains: dict[str, list]) -> str:
         f"row per move -- {itinerary} (move_interval is minutes, "
         "at_seconds is seconds; di_parent_cells/dj_parent_cells are "
         "move_cd_x/move_cd_y, whole parent cells, same sign convention). "
-        "One difference you accept by doing this: WOOF relocates at "
+        "One difference you accept by doing this: WOOF-ArWen relocates at "
         "cycle boundaries, WRF on the model clock.")
 
 
@@ -998,10 +998,24 @@ def analyze_namelists(
                     raise ValueError(
                         f"ordered WPS/input {key} arrays differ: {left} != {right}"
                     )
-            if inp_parent[0] not in (0, grid_ids[0]) or wps_parent[0] != 1:
+            # The WPS user guide defines &geogrid parent_id "for each nest"
+            # and asks for 1 on the coarsest domain; generators write WRF's
+            # head-grid spelling 0 there.  Either names the head grid; any
+            # other value is an external parent it cannot have.
+            if inp_parent[0] not in (0, grid_ids[0]) or wps_parent[0] not in (0, 1):
                 raise ValueError(
                     "d01 parent_id must be 0 or its own grid_id in WRF "
-                    "and 1 in WPS; the head grid cannot have an external parent")
+                    "and 1 or 0 in WPS; the head grid cannot have an "
+                    "external parent")
+            if wps_parent[0] == 0:
+                wps_parent[0] = 1
+                issues.append(_issue(
+                    "ROOT_PARENT_ID_NORMALIZED", "&geogrid/parent_id",
+                    "WPS's coarsest domain has no parent; WRF's head-grid "
+                    "spelling 0 is normalized to WPS's 1.",
+                    "Nothing to change: both WPS root spellings are accepted.",
+                    severity=SEVERITY_ADVISORY,
+                ))
             if inp_parent[0] != 0:
                 inp_parent[0] = 0
                 issues.append(_issue(
@@ -1130,7 +1144,7 @@ def analyze_namelists(
                 "MOVING_NEST_UNSUPPORTED", "&domains/&geogrid",
                 _moving_nest_refusal(vortex),
                 "The vortex-following controls have no counterpart: "
-                "WOOF's tracker is field/threshold/cooldown shaped, not "
+                "WOOF-ArWen's tracker is field/threshold/cooldown shaped, not "
                 "corral/max-speed shaped, so there is nothing to write "
                 "them as. Remove them, and express the motion either as "
                 "a [[relocation.move]] itinerary or as "
@@ -1510,7 +1524,7 @@ def analyze_namelists(
                         f"d{index + 1:02d} &physics/mp_physics",
                         str(error),
                         "This is the stock-WRF export route only. To run "
-                        "this configuration in WOOF, take it through "
+                        "this configuration in WOOF-ArWen, take it through "
                         "`woof import-namelist` and `woof run`; the "
                         "runtime verdict below is answered independently. "
                         "To export a wrfinput for an unchanged WRF "

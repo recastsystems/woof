@@ -941,10 +941,10 @@ SOURCE_MANIFEST_SHA256 = "5ec8c4c614f29a230fb1a38ced564a0cccb0d8029e8e6c056c1701
 # This existing adapter explicitly cites the workflow's RRFS commit, rather
 # than MPAS v8.4.2. Authenticate that historical source; never reinterpret its
 # out-of-range v8.4.2 line numbers as a v8.4.2 citation.
-# MPAS_RRFS_REF names the pinned RRFS checkout; a pool host that exports MPAS_LANES keeps its
+# MPAS_RRFS_REF names the pinned RRFS checkout; a pool host that exports HEX_REFERENCE_ROOT keeps its
 # references under ref/rrfs there; a public checkout looks in vendor/ like the v8.4.2 source.
 RRFS_SOURCE_ROOT = Path(os.environ.get("MPAS_RRFS_REF") or (
-    str(Path(os.environ["MPAS_LANES"]) / "ref/rrfs/MPAS-Model-rrfs") if os.environ.get("MPAS_LANES")
+    str(Path(os.environ["HEX_REFERENCE_ROOT"]) / "ref/rrfs/MPAS-Model-rrfs") if os.environ.get("HEX_REFERENCE_ROOT")
     else str(ROOT / "vendor" / "MPAS-Model-rrfs")))
 RRFS_COMMIT = "1d6e370e7b43a332074809f170532a216c2212fb"
 RRFS_CITATION = "mpas_atmphys_driver_convection.F:1152-1154"

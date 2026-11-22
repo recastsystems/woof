@@ -38,6 +38,9 @@ class MetemRun:
     #: support, and carrying the number here is what lets that be refused
     #: at plan review instead of inside the worker.
     source_top_pressure_pa: float | None = None
+    #: What ``--lake-state`` chose, as one sentence for plan review; None
+    #: when the flag was not given (the run keeps lake_state_source=auto).
+    lake_state_note: str | None = None
 
 
 def _metadata(path):
@@ -60,7 +63,7 @@ def _metadata(path):
             variables={name:tuple(var.shape) for name,var in ds.variables.items()})
 
 
-def resolve_metem_run(directory, *, rrtmg_variant=None):
+def resolve_metem_run(directory, *, rrtmg_variant=None, lake_state=None, lake_state_path=None):
     from woof.experiment import build_experiment
     from woof.namelist_import import import_namelists, parse_namelist
     from woof.wrfinput_door import (refuse_latlon_files, synthesize_wps_namelist,
@@ -94,6 +97,9 @@ def resolve_metem_run(directory, *, rrtmg_variant=None):
             landuse_identity={key:root_attrs[key] for key in ('MMINLU', 'NUM_LAND_CAT')},
             metgrid_initialization=True)
     require_preserved_wrf_selectors(report)
+    # --lake-state, through the one function the wrfinput door calls too.
+    from woof.ingest.lake_state import select_lake_state
+    text, lake_state_note = select_lake_state(text, lake_state, lake_state_path)
     exp = build_experiment(tomllib.loads(text), source=str(namelist))
     if tuple(domain.grid_id for domain in exp.domains) != tuple(paths):
         raise ValueError('namelist max_dom differs from the met_em domain inventory')
@@ -113,16 +119,38 @@ def resolve_metem_run(directory, *, rrtmg_variant=None):
         item = metadata[domain.grid_id]
         if (domain.run.nx, domain.run.ny) != (item.nx, item.ny):
             raise ValueError(f'd{domain.grid_id:02d}: namelist dimensions differ from met_em')
+        # At plan review, so `woof check --met-em` and `woof run --met-em`
+        # give one answer: the run's land model reads LAI12M only with
+        # rdlai2d (woof.metem_forecast.metgrid_soil takes VEGPARM.TBL leaf
+        # area otherwise, as WRF does).
+        if metgrid_run_reads_lai12m(domain.run) and 'LAI12M' not in item.variables:
+            raise ValueError(f'{item.path.name}: land-surface initialization needs [\'LAI12M\'] '
+                             '(rdlai2d = .true. makes the land model read the monthly LAI12M field; '
+                             'with rdlai2d = .false. it takes leaf area from VEGPARM.TBL); '
+                             'retain these metgrid/geogrid fields')
     return MetemRun(directory, namelist, paths, metadata, exp, text, report, int(interval), parsed,
                     metem_coverage_seconds(paths, exp.start_time),
-                    met_em_source_top_pressure_pa(paths[1][0]))
+                    met_em_source_top_pressure_pa(paths[1][0]), lake_state_note)
+
+
+def metgrid_run_reads_lai12m(cfg):
+    """Does this run's land model read the monthly LAI12M field?
+
+    Only Noah (2) and RUC (3) with ``rdlai2d`` do (woof/config.py refuses
+    the flag for any other land model); every other run takes leaf area from
+    its tables, exactly as WRF does.  It lives here, in the door the
+    preparation-only package carries, so plan review needs no forecast module
+    (THE BREAKAGE: the RW-WPS wheel staging refused metem_door.py importing
+    woof.metem_forecast, an excluded executor module).
+    """
+    return int(getattr(cfg, 'sf_surface_physics', 0)) in (2, 3) and bool(getattr(cfg, 'rdlai2d', False))
 
 
 def metem_coverage_seconds(paths, start_time):
     """How far the root met_em series forces, from its file NAMES alone.
 
     ``parse_met_em_name`` reads the name and nothing else
-    (woof/ingest/metem.py:117-134), so this is a plan-review quantity: no
+    (woof/ingest/metem.py:130-145), so this is a plan-review quantity: no
     file is opened and no boundary array is decoded to learn it.
     """
     times = [parse_met_em_name(path)[1] for path in paths[1]]
@@ -154,10 +182,23 @@ def metgrid_initialization_controls(case, run, *, cfg=None):
         raise ValueError(f'{case.path.name}: sfcprs3 requires the declared PMSL field')
     if 'num_metgrid_levels' in values and values['num_metgrid_levels'] != [case.geometry['num_metgrid_levels']]:
         raise ValueError('num_metgrid_levels differs from the file vertical dimension')
+    from woof.ingest.metem import RH_DERIVED_LANE
+    lane = getattr(case, 'lane', None)
+    extra = {}
+    if lane in ('rh', RH_DERIVED_LANE):
+        # A file with RH and neither FLAG_QV nor FLAG_SH: real.exe sets
+        # use_sh_qv = .FALSE. itself (module_initialize_real.F:1119), so
+        # the namelist's value cannot select the direct-qv lane here.
+        use_sh = [False]
+    if lane == RH_DERIVED_LANE:
+        # Nor does real.exe make its FLAG_SH surface test (:1150, SH at the
+        # first point below 1e-6 replaces the surface level) on an RH file.
+        extra['flag_sh_surface_fallback'] = False
     return {'sfcp_to_sfcp':sfcp, 'use_sh_qv':use_sh[0],
             'analyzed_species':tuple(name for name in DECLARED_ANALYZED_HYDROMETEORS if name in case.snapshot.fields),
             'analyzed_surface_fields':tuple(name for name in DECLARED_ANALYZED_HYDROMETEORS if name in case.snapshot.fields),
-            'analyzed_number_fields':tuple(name for name in METGRID_NUMBER_FIELDS if name in case.snapshot.fields)}
+            'analyzed_number_fields':tuple(name for name in METGRID_NUMBER_FIELDS if name in case.snapshot.fields),
+            **extra}
 
 
 def check_analyzed_scalar_capability(attributes, cfg):
@@ -211,6 +252,14 @@ def metgrid_analysis_shapes(metadata):
     shapes = {}
     pairs = [('TT','T2'),('GHT',None),('UU','U10'),('VV','V10')]
     pairs += [('SPECHUMD','Q2'),('PRES',None)] if specific else [('RH','RH2')]
+    if not specific and 'PRES' in variables:
+        # An RH file on levels that are not isobaric uploads the derived
+        # specific humidity in RH's place AND its 3-D PRES
+        # (woof.ingest.metem.RH_DERIVED_LANE).  The inventory cannot tell
+        # isobaric PRES from model-level PRES without decoding it, so PRES
+        # is priced for every RH file: one level stack over on a
+        # pressure-level file, never under on a model-level one.
+        pairs.append(('PRES', None))
     from woof.ingest.analyzed_numbers import METGRID_NUMBER_FIELDS
     pairs += [(name,name+'_SFC') for name in ('QC','QR','QI','QS','QG','QH') if attrs.get('FLAG_'+name) == 1]
     pairs += [(name,name+'_SFC') for name in METGRID_NUMBER_FIELDS if attrs.get('FLAG_'+name) == 1]

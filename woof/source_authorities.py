@@ -249,13 +249,29 @@ _PACKAGED_PROFILES = MappingProxyType({
     ),
     # A woof hex run as an ArWen parent: the export door's frames on a
     # regular lat-lon window (region-latlon: or global-mesh), decoded on
-    # the 55 MPAS model levels.  Terrain is in band (HGT in every frame).
+    # the parent's own MPAS model levels, as many as the frame carries (55
+    # on the default suites, 59 on hrrrv5).  Terrain is in band (HGT in
+    # every frame).
     "hex-history-netcdf-v1": _profile(
         "rw-wps-hex-history-netcdf",
         source_format="netcdf",
-        mapping="e992c19fd9957ca050e8038e65033b1b886857a3ce80e47448515e67e081279a",
+        mapping="12eb1754e6a40bae1352850ddd36528c0ade3919f29e4afd98be88c4060f93c6",
         composition="bbd2c5b52f13ee8f1ebfac8a138fd109ae883877d5d6fee3a5684172bec8d875",
-        provenance="cd38d89e487695716cea9298be4ecb1f2ec0a93b96955ce1b0ac34a1ba195890",
+        provenance="701358a08bbbefaf991af412431da9c2984123fa7d155ffbc1c661c34746aec9",
+        data_role="hex_in_band_surface",
+        provenance_role="hex_in_band_surface_provenance",
+    ),
+    # The same hex export from a run on a RUC land surface (the RRFS v2 and
+    # hrrrv5 suites): its TSLB/SMOIS carry RUC's nine soil nodes, which the
+    # composition samples at the Noah layer midpoints as the HRRR, RAP and
+    # RRFS profiles do.  Chosen for a hex-global preparation by the frames'
+    # own soil_layers_stag (PROFILE_VARIANTS below), never by the caller.
+    "hex-history-ruc9-netcdf-v1": _profile(
+        "rw-wps-hex-history-ruc9-netcdf",
+        source_format="netcdf",
+        mapping="1b337391df6ea4f1044a39feba74bdbd469317cba2adb7d808364dc140c4bda6",
+        composition="4c8bdf3c1825d3822ce95728a475271d0b8efe07af6562f9112b5b4113e1799a",
+        provenance="5c6a57df515684126fc4957ca783db1ed3a936693336aeda347dbab2e5817942",
         data_role="hex_in_band_surface",
         provenance_role="hex_in_band_surface_provenance",
     ),
@@ -923,12 +939,17 @@ _PACKAGED_PROFILES = MappingProxyType({
     # zero everywhere.
     # Proven on real 2026-05-30 CDS bytes: both
     # engines byte-identical on air_pressure and geopotential_height
-    # (max ULP 0) and a preparation to rc 0.
+    # (max ULP 0) and a preparation to rc 0 -- for a donor on the same
+    # lattice as the atmosphere.  When the two CDS files sit on lattices
+    # shifted by part of a cell (corners off the 0.25 lattice), the
+    # donor is regridded by the native engine (bilinear, mask-aware,
+    # nearest for the land mask; one donor step of edge allowance) and
+    # the receipt says so (era5-137 grid mismatch, 2026-11-10).
     "era5-model-level-l137-grib2-v1": _profile(
         "rw-wps-era5-model-level-l137-grib2",
         source_format="grib2",
         mapping="65cfca7fc9fc6be102c796bd481126fe9e22491df8342fbaa1ff54b087fb09c6",
-        composition="eab1fcd5c10a746ebdaf269e910e08ea77a40d0db9789539423cbda477201e62",
+        composition="f8018559badbe5d974f19406d2b33b1d60942b726c58ced2d08fbcb20cf3833f",
         provenance="3c6477f94c1ab3428c5f3f1d6fb29c57ca9620dfecf41d600ca165df8609da7c",
         data_role="physical_analysis_surface_data",
         provenance_role="physical_analysis_surface_provenance",
@@ -1277,6 +1298,81 @@ def packaged_authority_sha256(profile_id: str) -> Mapping[str, str]:
     """One profile's immutable SHA-256 contract, without touching disk."""
 
     return packaged_profile(profile_id)["sha256"]   # type: ignore[return-value]
+
+
+#: Packaged profiles a source's profile hands its preparation to when the
+#: source's own files say they are laid out another way.  One source can
+#: write more than one layout: a woof hex export carries the soil column
+#: of the land surface its run used, Noah's four layers or RUC's nine
+#: nodes, under one source id.  Each variant is a full profile of its own
+#: (three pinned documents); the front door picks the one whose layered
+#: soil selectors the first input file satisfies, and the forecast runner
+#: accepts a preparation bound to any of them by its composition pin.
+#: THE BREAKAGE THIS PREVENTS (WOOF run_0368311be596aa52, 2026-11-10): an
+#: ArWen downscale of a hex run on the RRFS v2 suite was refused at prep,
+#: "soil_temperature selector layer_value=10.0 matches 0 entries of
+#: 'soil_layers_stag' ([0.0, 0.5, 3.0, 7.5, ...])", because the only
+#: hex-history profile named Noah's layers.
+PROFILE_VARIANTS: Mapping[str, tuple[str, ...]] = MappingProxyType({
+    "hex-history-netcdf-v1": ("hex-history-ruc9-netcdf-v1",),
+})
+
+
+def packaged_profile_family(profile_id: str) -> tuple[str, ...]:
+    """The profile and its layout variants, the profile itself first."""
+
+    return (profile_id, *PROFILE_VARIANTS.get(profile_id, ()))
+
+
+def packaged_variant_for_composition(profile_id: str, composition_sha256: str) -> str:
+    """The member of ``profile_id``'s family whose composition is pinned at
+    ``composition_sha256``; ``profile_id`` itself when none is (its own
+    checks then refuse the preparation as before)."""
+
+    for member in packaged_profile_family(profile_id):
+        if packaged_authority_sha256(member)["composition"] == composition_sha256:
+            return member
+    return profile_id
+
+
+def _layer_selectors(profile_id: str) -> dict[str, set[float]]:
+    """``{layer_dimension: {layer_value, ...}}`` over the profile's soil column."""
+
+    composition = json.loads(packaged_authorities(profile_id)["composition"].read_text(encoding="utf-8"))
+    soil = composition.get("soil_layers") or {}
+    wanted: dict[str, set[float]] = {}
+    for row in [*soil.get("source_layers", ()), *soil.get("source_nodes", ())]:
+        for selector in (row.get("selectors") or {}).values():
+            if isinstance(selector, Mapping) and "layer_value" in selector and "layer_dimension" in selector:
+                wanted.setdefault(str(selector["layer_dimension"]), set()).add(float(selector["layer_value"]))
+    return wanted
+
+
+def packaged_variant_for_inputs(profile_id: str, files) -> str:
+    """The member of ``profile_id``'s family whose layered soil selectors the
+    first readable input file answers exactly: every value it names is on the
+    file's layer coordinate, and the coordinate holds no other.  ``profile_id``
+    when it has no variants, no file can be read yet, or none matches (its own
+    decode then refuses with the coordinate it found)."""
+
+    family = packaged_profile_family(profile_id)
+    if len(family) == 1:
+        return profile_id
+    first = next((Path(f) for f in files or () if Path(f).is_file()), None)
+    if first is None:
+        return profile_id
+    try:
+        import netCDF4
+        with netCDF4.Dataset(first) as dataset:
+            coordinates = {name: {float(v) for v in dataset.variables[name][:].ravel().tolist()}
+                           for name in dataset.variables if name in dataset.dimensions}
+    except (OSError, ImportError, KeyError, ValueError, TypeError):
+        return profile_id
+    for member in family:
+        wanted = _layer_selectors(member)
+        if wanted and all(coordinates.get(dim) == values for dim, values in wanted.items()):
+            return member
+    return profile_id
 
 
 def packaged_contributing_sha256(profile_id: str) -> Mapping[str, str]:

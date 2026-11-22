@@ -1,4 +1,4 @@
-"""``woof cells export``: WOOF history as titan-rs volumes.
+"""``woof cells export``: WOOF-ArWen history as titan-rs volumes.
 
 titan reads Cartesian volumes on one height ladder shared by every
 column; a model writes its fields on terrain-following levels whose
@@ -215,7 +215,7 @@ def export_series(inputs, out_dir: Path | str, *, ladder: str = DEFAULT_LADDER,
         raise ExportError(
             f"none of the {len(paths)} wrfout files carries REFL_10CM, so "
             f"there is no reflectivity to identify a cell in; run with a "
-            f"microphysics scheme that writes it (every WOOF scheme does)")
+            f"microphysics scheme that writes it (every WOOF-ArWen scheme does)")
     paths = usable
     counts: list[int] = []
     for path in paths:

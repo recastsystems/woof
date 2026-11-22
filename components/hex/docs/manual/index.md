@@ -3,8 +3,8 @@
 woof hex runs a global, variable-resolution atmospheric model on one consumer
 CUDA GPU. It is a port of MPAS-Atmosphere v8.4.2: the dynamical core, the MPAS
 physics suites, initialization, IAU, limited-area runs, streams, restart and
-diagnostics, each checked against native MPAS. The default physics is the
-WOOF engine's suite. This manual is for users at every
+diagnostics, each checked against native MPAS. The default physics is MPAS's
+own (WOOF-ArWen's physics is one flag away). This manual is for users at every
 level of experience: it starts from "what is an atmospheric model" and ends at
 the receipts behind every measured number.
 
@@ -28,7 +28,7 @@ independent port and is not affiliated with or endorsed by them.)*
    gap doctor names, obtaining assets, first initial conditions, first
    forecast, first rendered products.
 3. [Concepts](03-concepts.md): mesh, static, init; the doors; why the
-   ported MPAS is matched against native MPAS while WOOF's physics is judged
+   ported MPAS is matched against native MPAS while WOOF-ArWen's physics is judged
    by observations; what a refusal is and why every refusal names its remedy.
 4. [Meshes and static fields](04-meshes-and-static.md): validate a mesh pair,
    generate a new mesh and build its static, capacity planning with the
@@ -52,6 +52,10 @@ independent port and is not affiliated with or endorsed by them.)*
     seven init sources, country rows, the observation scorecard and the hourly
     ensemble. Each with its command, its proof, a picture and what it does not
     do yet.
+11. [New in 0.6.2](11-new-in-0.6.2.md): generated meshes on geometry 2, runs
+    on several cards and several hosts, hail size, the opt-in surface and
+    boundary-layer closures on hrrrv5, the learned column correction, the
+    `ifs-gfs-top` start row, Grell-Freitas with hrrrv5 on the GPU. Each with its switch, its default and what was run.
 12. [Several cards on one host](12-same-host-ranks.md): `--samehost-devices`,
     layouts, checkpoints, and what is still unqualified.
 
@@ -101,7 +105,7 @@ in [`docs/declared-divergences.md`](../declared-divergences.md), and never
 hidden behind an option. The dycore identity result and its scope are in
 [MPAS compatibility](../mpas-compatibility.md). Read both before trusting a number.
 
-**Version.** This manual describes woof hex 0.4.14 with the gpuwm 2.9.12
+**Version.** This manual describes woof hex 0.6.2 with the gpuwm 3.0.0
 engine. Chapters 1 to 9 were walked against the earlier wheels named in
 *Conventions*; chapter 10 says where each 0.4 result was measured. Where a
 measurement was taken on specific hardware, the card is named beside the

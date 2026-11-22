@@ -317,6 +317,17 @@ def _value_rules() -> dict[tuple[str, str], dict]:
          "import retains its established full-field resolution.")
     for key, (allowed, why) in ni.PHYSICS_CHOICES.items():
         rule("physics", key, allowed, why, scalar=True)
+    # WRF 4.8.0's new keys import at their own Registry default only, under
+    # the 4.8.0 vocabulary the contract is read with (woof.wrf_reference).
+    from woof.wrf_namelist_registry import active_reference
+    if active_reference() == "4.8.0":
+        from woof.wrf_namelist_registry import wrf_namelist_keys
+        from woof.wrf_reference import WRF480_ONLY_KEYS
+        registry = wrf_namelist_keys()
+        for (section, key), row in WRF480_ONLY_KEYS.items():
+            rule(section, key, [_registry_value(registry[(section, key)])],
+                 f"{row['note']}; only the WRF 4.8.0 Registry default "
+                 f"imports until {row['owner']} ports it")
     for key, (ok, why) in ni.NEST_GUARDS.items():
         rule("domains", key, [ok], why, scalar=True)
     for key in ("slope_rad", "topo_shading"):

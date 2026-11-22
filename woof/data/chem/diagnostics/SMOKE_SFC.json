@@ -10,10 +10,10 @@
         "smoke"
       ],
       "ops": [],
-      "from": "DESIGN section 8 (WOOF addition, not a WRF-Chem sum)"
+      "from": "DESIGN section 8 (WOOF-ArWen addition, not a WRF-Chem sum)"
     }
   ],
   "divide_by_alt": true,
   "column_scale": 1,
-  "provenance": "WOOF-only 2-D output (DESIGN section 8), the counterpart of HRRR-Smoke's MASSDEN at 8 m above ground; WRF-Chem has no such field."
+  "provenance": "WOOF-ArWen-only 2-D output (DESIGN section 8), the counterpart of HRRR-Smoke's MASSDEN at 8 m above ground; WRF-Chem has no such field."
 }

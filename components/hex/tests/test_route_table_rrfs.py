@@ -56,7 +56,7 @@ def test_rrfs_drag_and_ocean_rows_reuse_the_source_identical_v842_slots():
     assert slots['gwdo']['cuda_entries']['bl_ysu_gwdo']['module'] == 'ysu_gwdo_v842'
     assert slots['oml']['cuda_entries']['on']['module'] == 'oml_v842'
     config = resolve_namelist(deck('hrrrv5'), default_backend='hex-cuda')
-    # UGWP ships (owner ruling 2026-10-14, US Government code): hrrrv5's drag runs on the GPU, not the
+    # UGWP ships (2026-10-14, US Government code): hrrrv5's drag runs on the GPU, not the
     # native library (the stale UGWP hold sent it to native-cpu with 'not in this distribution').
     assert _present('woof.hex.mpasphys.ugwp_oro_v842')
     assert config.backends['gwdo'] == Backend.HEX_CUDA

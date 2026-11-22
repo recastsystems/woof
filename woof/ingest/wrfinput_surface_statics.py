@@ -114,13 +114,14 @@ def terrain_drag_static(restored, cfg) -> dict[str, np.ndarray] | None:
     without VAR_SSO (start_em.F:222-223).  ``HGT_M`` is the file's HGT, the
     column check ``_attach_terrain_drag`` makes.
     """
-    from woof.static.orographic import required_static_fields
+    from woof.static.orographic import drag_static_fields, gwdo_version_of
 
     topo_wind = int(getattr(cfg, "topo_wind", 0) or 0)
     gwd_opt = int(getattr(cfg, "gwd_opt", 0) or 0)
     if topo_wind == 0 and gwd_opt == 0:
         return None
-    static = _read_mass_2d(restored, required_static_fields(topo_wind, gwd_opt))
+    static = _read_mass_2d(restored, drag_static_fields(
+        topo_wind, gwd_opt, gwdo_version_of(cfg)))
     static["HGT_M"] = np.asarray(restored.raw["HGT"], dtype=np.float32)
     return static
 

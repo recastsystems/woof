@@ -95,7 +95,7 @@ def interpolate_sounding(values, coordinates, target):
 def initialize_atmosphere(cfg, terrain, vertical, sounding, *, native_use_theta_m=1):
     """Native dry base, moist hydrostatics, wind and thermal perturbation.
 
-    T_DRY is the physical dry-theta perturbation used by WOOF. T retains
+    T_DRY is the physical dry-theta perturbation used by WOOF-ArWen. T retains
     the native final theta_m conversion for explicit initialization grading.
     No DomainState is mutated until the complete mapping has been validated.
     """

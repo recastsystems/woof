@@ -369,9 +369,9 @@ def test_a_threshold_product_without_a_threshold_is_an_error():
 
 
 def test_the_subtitle_extends_v1_0_1_with_the_member_count_and_the_stamp():
-    base = plot_context("d02", 3000.0, "1974-04-03_18:00:00", "WOOF")
+    base = plot_context("d02", 3000.0, "1974-04-03_18:00:00", "WOOF-ArWen")
     context = enprod.ensemble_plot_context("d02", 3000.0,
-                                           "1974-04-03_18:00:00", "WOOF", 30)
+                                           "1974-04-03_18:00:00", "WOOF-ArWen", 30)
     assert context.startswith(base)
     assert "30 members" in context
     assert enprod.EXPERIMENTAL_STAMP in context
@@ -405,7 +405,7 @@ def test_the_stamp_is_read_at_call_time_not_import_time(monkeypatch):
     monkeypatch.setattr(woof, "__version__", "9.9.9-probe")
     assert "v9.9.9-probe ensemble" in enprod.experimental_stamp()
     assert "v9.9.9-probe" in enprod.ensemble_plot_context(
-        "d02", 3000.0, "1974-04-03_18:00:00", "WOOF", 30)
+        "d02", 3000.0, "1974-04-03_18:00:00", "WOOF-ArWen", 30)
     # The compatibility ATTRIBUTE moves too: it is PEP 562 module
     # __getattr__ over experimental_stamp(), not a constant evaluated at
     # import.  A restored `EXPERIMENTAL_STAMP = experimental_stamp()`

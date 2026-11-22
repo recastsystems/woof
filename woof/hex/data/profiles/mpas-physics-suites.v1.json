@@ -504,6 +504,26 @@
       }
     }
   },
+  "refused_settings": {
+    "about": "Engine settings the column route accepts at resolve time and cannot honour: hex integrates with the MPAS-A dycore on an unstructured mesh and hands the engine one column-physics call, so a setting whose code reads the neighbouring grid points of a structured domain runs on columns that are not neighbours. A request for one is refused by name, with its reason. A value in inactive_values is the setting's off state and passes; refused_values, when given, names the only values refused. From fork jacobbieker/woof PR 302 (Apache-2.0), the rows checked against this engine.",
+    "settings": {
+      "slope_rad": {
+        "inactive_values": ["0"],
+        "reason": "WRF's slope shortwave builds each point's slope and aspect from the terrain of its grid neighbours (gpuwm.core.topo_radiation.slope_geometry); the hex column call has no neighbour terrain and no per-cell slope or aspect statics are staged. THE BREAKAGE: on gpuwm-hex 0.6.1, x1.40962 with --physics slope_rad=1 stopped at step 0 with non-finite sensible and latent heat fluxes (5,865 and 3,501 cells) going into YSU",
+        "follow_up": "slope_rad=0"
+      },
+      "topo_shading": {
+        "inactive_values": ["0"],
+        "reason": "WRF's terrain shadow mask marches the sun direction over the neighbouring terrain of a structured grid; a hex column has no neighbour terrain and no shadow statics are staged. THE BREAKAGE: on gpuwm-hex 0.6.1, x1.40962 with --physics topo_shading=1 ran and changed every history frame against the run without it (digest e334f5fd against 09df5028), though no shadow it computed can be right",
+        "follow_up": "topo_shading=0"
+      },
+      "shadlen": {
+        "inactive_values": [],
+        "reason": "shadlen is the search length of topo_shading's terrain shadow mask, which hex cannot run (see topo_shading)",
+        "follow_up": "drop shadlen with topo_shading=0"
+      }
+    }
+  },
   "pairings": [
     {
       "if": {
@@ -1353,7 +1373,8 @@
             "call": "run_slot",
             "corrections": [
               "RP1",
-              "RP7"
+              "RP7",
+              "RP8"
             ],
             "bind": "bind_native_pools",
             "resources": {
@@ -1530,7 +1551,8 @@
         "schemes": [
           "off",
           "bl_ysu_gwdo",
-          "bl_ugwp_gwdo"
+          "bl_ugwp_gwdo",
+          "bl_kim_gwdo"
         ],
         "native_entries": {
           "bl_ysu_gwdo": "driver_gwdo",
@@ -1547,6 +1569,12 @@
             "module": "ysu_gwdo_v842",
             "call": "forecast_callback",
             "bind": "bind_forecast"
+          },
+          "bl_kim_gwdo": {
+            "module": "kim_gwdo_2026",
+            "call": "forecast_callback",
+            "bind": "bind_forecast",
+            "source": "NCAR/MMM-physics 63c806d bl_gwdo.F90 (WRF v4.8.0 gwd_opt=1) with the MPAS-Model PR #1409 driver slice and the PR #1408 statistics; GPU only (native MPAS v8.4.2 has no KIM drag); gwdo_version=kim2026 selects it in correct mode"
           }
         }
       },
@@ -1847,6 +1875,10 @@
         "type": "character",
         "value": "constant"
       },
+      "config_radt_mcica_seed": {
+        "type": "character",
+        "value": "pressure"
+      },
       "config_gfconv_closure_deep": {
         "type": "integer",
         "value": 0
@@ -2046,6 +2078,7 @@
             "module": "rrfs.tempo_v303",
             "call": "run_slot",
             "bind": "bind_native_pools",
+            "corrections": ["TP1", "TP2", "TP3", "TP4", "TP5", "TP6"],
             "resources": {
               "module": "rrfs.tempo_v303",
               "call": "load_resources",
@@ -2149,6 +2182,7 @@
             "module": "rrfs.bl_mynnedmf_c942418",
             "call": "run_slot",
             "bind": "bind_native_pools",
+            "corrections": ["MY1", "MY2", "MY3", "MY4", "MY5"],
             "resources": {
               "module": "rrfs.bl_mynnedmf_c942418",
               "call": "load_cuda_packet",
@@ -2198,6 +2232,7 @@
           "sf_mynnsfclay": {
             "module": "rrfs.sf_mynnsfc_v600",
             "call": "launch_slot",
+            "corrections": ["SF1"],
             "profiles": {
               "u3d": "u_p",
               "v3d": "v_p",
@@ -2340,7 +2375,8 @@
         "schemes": [
           "off",
           "bl_ysu_gwdo",
-          "bl_ugwp_gwdo"
+          "bl_ugwp_gwdo",
+          "bl_kim_gwdo"
         ],
         "native_entries": {
           "bl_ysu_gwdo": "driver_gwdo",
@@ -2358,6 +2394,12 @@
             "module": "ysu_gwdo_v842",
             "call": "forecast_callback",
             "bind": "bind_forecast"
+          },
+          "bl_kim_gwdo": {
+            "module": "kim_gwdo_2026",
+            "call": "forecast_callback",
+            "bind": "bind_forecast",
+            "source": "NCAR/MMM-physics 63c806d bl_gwdo.F90 (WRF v4.8.0 gwd_opt=1) with the MPAS-Model PR #1409 driver slice and the PR #1408 statistics; GPU only (native MPAS v8.4.2 has no KIM drag); gwdo_version=kim2026 selects it in correct mode"
           }
         }
       },
@@ -2731,6 +2773,10 @@
         "type": "character",
         "value": "constant"
       },
+      "config_radt_mcica_seed": {
+        "type": "character",
+        "value": "pressure"
+      },
       "config_gfconv_closure_deep": {
         "type": "integer",
         "value": 0
@@ -2963,6 +3009,14 @@
         "type": "logical",
         "value": false
       },
+      "config_tempo_version": {
+        "type": "character",
+        "value": "v3.2.5"
+      },
+      "config_tempo_hailhyperaware": {
+        "type": "logical",
+        "value": true
+      },
       "config_smoke_scheme": {
         "type": "character",
         "value": "off"
@@ -3112,6 +3166,7 @@
     "pin_set": "rrfs",
     "route_default": ["rrfs_mesoscale_reference", "rrfs_convection_permitting", "rrfs_none"],
     "model_commit": "1d6e370e7b43a332074809f170532a216c2212fb",
+    "exact_mode_defaults": {"config_tempo_version": "v3.0.3"},
     "workflow_commit": "08eee4ceee301898d3cb837e03699a8da0d1cb32",
     "dycore": {
       "variant": "mpas-v8.3.1-noaa"
@@ -3223,6 +3278,7 @@
         "config_mynn_sfcflux_water",
         "config_radt_cld_overlap",
         "config_radt_cld_dcorrlen",
+        "config_radt_mcica_seed",
         "config_gfconv_closure_deep",
         "config_gfconv_closure_shallow",
         "config_mynn_tkeadvect",
@@ -3284,7 +3340,9 @@
         "config_tempo_aerosolaware",
         "config_tempo_hailaware",
         "config_tempo_ml_for_bl_nc",
-        "config_tempo_refl10cm_from_melting"
+        "config_tempo_refl10cm_from_melting",
+        "config_tempo_version",
+        "config_tempo_hailhyperaware"
       ],
       "chemistry": [
         "config_smoke_scheme",
@@ -5358,8 +5416,63 @@
           }
         },
         "source": "rrfs-workflow 08eee4ce parm/hrrrv5/namelist.atmosphere:58-59, parm/convection_permitting/namelist.atmosphere:60-61, scripts/exrrfs_fcst.sh:52-53"
+      },
+      {
+        "when": {
+          "config_physics_suite": "hrrrv5"
+        },
+        "set": {
+          "nhyd_model": {
+            "config_split_dynamics_transport": true,
+            "config_dynamics_split_steps": 3,
+            "config_horiz_mixing": "2d_smagorinsky",
+            "config_visc4_2dsmag": 0.05,
+            "config_scalar_advection": true,
+            "config_coef_3rd_order": 0.25,
+            "config_smdiv": 0.1
+          },
+          "damping": {
+            "config_mpas_cam_coef": 2.0,
+            "config_rayleigh_damp_u": true,
+            "config_zd": 16000.0,
+            "config_xnutr": 0.2,
+            "config_number_cam_damping_levels": 8
+          },
+          "physics": {
+            "config_sst_update": false,
+            "config_gvf_update": false,
+            "config_sstdiurn_update": false,
+            "config_frac_seaice": true,
+            "config_deepsoiltemp_update": false,
+            "config_bucket_update": "none",
+            "config_mynn_mixscalars": 0,
+            "config_mynn_mixaerosols": 1,
+            "config_mynn_mixnumcon": 0,
+            "config_mynn_ess": 0
+          },
+          "physics_mp_tempo": {
+            "config_tempo_aerosolaware": true,
+            "config_tempo_hailaware": true,
+            "config_tempo_ml_for_bl_nc": true
+          }
+        },
+        "source": "NOAA's deck: rrfs-workflow 570c81fe parm/hrrrv5/namelist.atmosphere lines 1-16 (&nhyd_model), 17-23 (&damping), 47-66 (&physics), 67-71 (&physics_mp_tempo). THE BREAKAGE THIS ENDS (MODEL-AUDIT D13, 2026-11-15): --physics-suite hrrrv5 with no namelist ran the fork Registry's defaults (no CAM filter, no Rayleigh u damping, w damping from 22 km, mynn_ess=1, mixnumcon=1, tempo_ml_for_bl_nc false, gvf_update true), so every adjoint recording linearised a configuration NOAA does not run; native 44c0849 on the 12 km cut differs in 1,917,431 of 4,135,591 history words at 15 minutes between the two. config_time_integration_order and config_monotonic equal the Registry and are left to their door flags; config_epssm (0.1 in the deck) is not written: v8.4.1 and 44c0849 ignore it (hexcore LegacyEpssmIgnored), so it would only print a warning on every run; config_dt, config_number_of_sub_steps and the radiation interval are per mesh (workflow_meshdep)"
       }
     ],
+    "workflow_meshdep": {
+      "when": {
+        "config_physics_suite": "hrrrv5"
+      },
+      "meshes": [
+        {"mesh": "conus12km", "nominal_dx_m": 12000.0, "dt": 60.0, "substeps": 2, "radt_minutes": 30, "physics": {"config_convection_scheme": "cu_ntiedtke", "config_gfl_sub3d": 1}},
+        {"mesh": "conus3km", "nominal_dx_m": 3000.0, "dt": 20.0, "substeps": 4, "radt_minutes": 15},
+        {"mesh": "fwx1p25km", "nominal_dx_m": 1250.0, "dt": 12.0, "substeps": 4, "radt_minutes": 10}
+      ],
+      "within_factor": 1.2,
+      "within_factor_source": "A row applies only to a mesh whose nominal spacing is within this factor of the row's (NOAA's three CONUS meshes and cuts of them). THE BREAKAGE THIS PREVENTS (audit-fix check, 15 Nov 2026): the nearest row went to every mesh, so a plain hrrrv5 run took 12 s on 800 m and 937.5 m meshes (the door's own steps 4 and 5 s), 60 s on 6 km (36 s), and 60 s on 25-120 km globes (150-600 s). Any other mesh keeps the door's own step, sub-steps and radiation interval",
+      "physics_source": "A row's physics options are NOAA's per-mesh namelist additions: rrfs-workflow 570c81fe scripts/exrrfs_fcst.sh:62-67 adds config_convection_scheme = cu_ntiedtke and config_gfl_sub3d = 1 when FCST_CONVECTION_SCHEME is true, which workflow/config_resources/config.meshdep:12,35 sets for na12km and conus12km (not conus3km or fwx1p25km). THE BREAKAGE THIS ENDS (job cumulus, 15 Nov 2026): a plain hrrrv5 run on a 12 km mesh ran no cumulus, a named departure from NOAA's deck, so every 12 km recording linearised a model without the scheme NOAA runs there. Exact mode with it equals native 44c0849 word for word (cumulus.md 21:25Z: 0 differing words in 27 files over the hour). An option the run names (--physics config_convection_scheme=...) or a --physics-namelist decides instead",
+      "source": "rrfs-workflow 570c81fe workflow/config_resources/config.meshdep (FCST_DT, FCST_SUBSTEPS, FCST_RADT for the CONUS line) through scripts/exrrfs_fcst.sh:9-11 and namelist.atmosphere's ${dt}, ${substeps}, ${radt}. The run's mesh takes the row nearest its nominal spacing (log distance). An explicit --dt or --acoustic-substeps, a --physics KEY=VALUE, or a --physics-namelist decides instead"
+    },
     "default_streams_omit": {
       "output": {
         "fields": ["ertel_pv", "u_pv", "v_pv", "theta_pv", "vort_pv", "iLev_DT"],
@@ -5460,7 +5573,7 @@
       "scheme": null,
       "backend": null,
       "reason": "fork native-defect correction inventory has not been qualified",
-      "owner": "RRFS integrator and fork scheme owners",
+      "owner": "hex RRFS fork physics ports (their correction inventory)",
       "breakage": "Applying v8.4.2 corrections without fork source and replay qualification would change the pinned v8.3.1/GSL behavior."
     }
   },
@@ -5568,6 +5681,7 @@
             "module": "rrfs.tempo_v303",
             "call": "run_slot",
             "bind": "bind_native_pools",
+            "corrections": ["TP1", "TP2", "TP3", "TP4", "TP5", "TP6"],
             "resources": {
               "module": "rrfs.tempo_v303",
               "call": "load_resources",
@@ -5622,6 +5736,16 @@
                 ]
               }
             ]
+          },
+          "cu_ntiedtke": {
+            "module": "ntiedtke_v842",
+            "call": "run_slot",
+            "bind": "bind_native_pools"
+          },
+          "cu_grell_freitas": {
+            "module": "gf_mpas_v842",
+            "call": "run_slot",
+            "bind": "bind_native_pools"
           }
         }
       },
@@ -5646,6 +5770,7 @@
             "module": "rrfs.bl_mynnedmf_c6d08709",
             "call": "run_slot",
             "bind": "bind_native_pools",
+            "corrections": ["MY1", "MY2", "MY3", "MY4", "MY5"],
             "resources": {
               "module": "rrfs.bl_mynnedmf_c6d08709",
               "call": "load_cuda_packet",
@@ -5682,6 +5807,7 @@
           "sf_mynnsfclay": {
             "module": "rrfs.sf_mynnsfc_v600",
             "call": "launch_slot",
+            "corrections": ["SF1"],
             "profiles": {
               "u3d": "u_p",
               "v3d": "v_p",
@@ -5786,7 +5912,8 @@
         "schemes": [
           "off",
           "bl_ysu_gwdo",
-          "bl_ugwp_gwdo"
+          "bl_ugwp_gwdo",
+          "bl_kim_gwdo"
         ],
         "native_entries": {
           "bl_ysu_gwdo": "driver_gwdo",
@@ -5804,6 +5931,12 @@
             "module": "ysu_gwdo_v842",
             "call": "forecast_callback",
             "bind": "bind_forecast"
+          },
+          "bl_kim_gwdo": {
+            "module": "kim_gwdo_2026",
+            "call": "forecast_callback",
+            "bind": "bind_forecast",
+            "source": "NCAR/MMM-physics 63c806d bl_gwdo.F90 (WRF v4.8.0 gwd_opt=1) with the MPAS-Model PR #1409 driver slice and the PR #1408 statistics; GPU only (native MPAS v8.4.2 has no KIM drag); gwdo_version=kim2026 selects it in correct mode"
           }
         }
       },
@@ -6178,6 +6311,10 @@
         "type": "character",
         "value": "constant"
       },
+      "config_radt_mcica_seed": {
+        "type": "character",
+        "value": "pressure"
+      },
       "config_gfconv_closure_deep": {
         "type": "integer",
         "value": 0
@@ -6414,6 +6551,14 @@
         "type": "logical",
         "value": false
       },
+      "config_tempo_version": {
+        "type": "character",
+        "value": "v3.2.5"
+      },
+      "config_tempo_hailhyperaware": {
+        "type": "logical",
+        "value": true
+      },
       "config_smoke_scheme": {
         "type": "character",
         "value": "off"
@@ -6566,6 +6711,7 @@
     "dycore_path": "v8.4.1-noaa",
     "pin_set": "rrfs-44c0849",
     "model_commit": "44c084944e17f7098668bef6d1e353d12e3c2d1a",
+    "exact_mode_defaults": {"config_tempo_version": "v3.0.3"},
     "workflow_commit": "570c81fec5adaefe966b9dd3eec3272da150fc9e",
     "dycore": {
       "variant": "mpas-v8.4.1-noaa",
@@ -6586,6 +6732,58 @@
       "RUCLSM": "8c9f1a8bb2cfb5fb8d115440fced566361fe0f20",
       "GFL": "bf6a4b0d58f112322fbf9b11d43ed2027aeb56fa",
       "SMOKE": "5d2c71e2cf4083b6beeedbfa4d2091674b1556ea"
+    },
+    "mynn_versions": {
+      "about": "Selectable MYNN suite versions on this pin set (hex-only, never written into a native namelist). The selector picks other CUDA modules for the MYNN slots at session build; the default is 'mynn-v6.1', the latest upstream releases (MYNN-EDMF v6.1.1 + MYNN-SFC v6.1.0; defaults are the latest upstream scheme versions, pins are for bitwise proof), taken wherever both of its MYNN slots run on hex-cuda. 'pinned' is this row's own entries (MYNN-EDMF c6d08709 + MYNN-SFC v6.0.0 b66187f, bitwise to native 44c0849): the 44c0849 referee option, named explicitly by every bitwise claim and gate against native 44c0849, and taken by a module replay or by a run that puts a MYNN slot on the native library (which is the 44c0849 pin). A version overlays only the cuda_entries it names and the submodule_pins it records in the receipt. 'requires' lists the slot/scheme pairs a version must carry before it can run: a run asking for it with one of them selected but not ported is refused, so no run mixes MYNN versions under a version's name. A versioned slot runs only on hex-cuda (the native library is the 44c0849 pin). Each version module lands on a strict module replay of real native captures against the tag built standalone (tools/rrfs_mynn_v61_replay).",
+      "selector": "config_mynn_version",
+      "default": "mynn-v6.1",
+      "versions": {
+        "pinned": {
+          "about": "RRFS 44c0849's own MYNN: MYNN-EDMF c6d08709, MYNN-SFC v6.0.0 b66187f. The 44c0849 referee option: bitwise to native RRFS-MPAS 44c0849; the bitwise gates and paper reruns name it.",
+          "submodule_pins": {},
+          "cuda_entries": {}
+        },
+        "mynn-sfc-v6.1.0": {
+          "about": "MYNN-SFC v6.1.0 (NCAR/MYNN-SFC a038a9e, Apache-2.0) with the pinned MYNN-EDMF c6d08709: the surface-layer half of mynn-v6.1 on its own.",
+          "requires": [["surface_layer", "sf_mynnsfclay"]],
+          "submodule_pins": {
+            "MYNN-SFC": "a038a9ea35a12f0bf879fac8b64c99a77ffdae1c"
+          },
+          "cuda_entries": {
+            "surface_layer": {
+              "sf_mynnsfclay": {
+                "module": "rrfs.sf_mynnsfc_v610"
+              }
+            }
+          }
+        },
+        "mynn-v6.1": {
+          "about": "MYNN-EDMF v6.1.1 (NCAR/MYNN-EDMF 2b2da61, Apache-2.0) + MYNN-SFC v6.1.0 (NCAR/MYNN-SFC a038a9e, Apache-2.0).",
+          "requires": [["pbl", "bl_mynnedmf"], ["surface_layer", "sf_mynnsfclay"]],
+          "submodule_pins": {
+            "MYNN-EDMF": "2b2da61b05a8ef9f9b06795c816dc01e347e0736",
+            "MYNN-SFC": "a038a9ea35a12f0bf879fac8b64c99a77ffdae1c"
+          },
+          "cuda_entries": {
+            "pbl": {
+              "bl_mynnedmf": {
+                "module": "rrfs.bl_mynnedmf_v611",
+                "resources": {
+                  "module": "rrfs.bl_mynnedmf_v611",
+                  "call": "load_cuda_packet",
+                  "attribute": "_rrfs_mynnedmf_image",
+                  "packet_key": "bl_mynnedmf_v611"
+                }
+              }
+            },
+            "surface_layer": {
+              "sf_mynnsfclay": {
+                "module": "rrfs.sf_mynnsfc_v610"
+              }
+            }
+          }
+        }
+      }
     },
     "suites": {
       "mesoscale_reference": {
@@ -6685,6 +6883,7 @@
         "config_mynn_sfcflux_water",
         "config_radt_cld_overlap",
         "config_radt_cld_dcorrlen",
+        "config_radt_mcica_seed",
         "config_gfconv_closure_deep",
         "config_gfconv_closure_shallow",
         "config_mynn_tkeadvect",
@@ -6747,7 +6946,9 @@
         "config_tempo_aerosolaware",
         "config_tempo_hailaware",
         "config_tempo_ml_for_bl_nc",
-        "config_tempo_refl10cm_from_melting"
+        "config_tempo_refl10cm_from_melting",
+        "config_tempo_version",
+        "config_tempo_hailhyperaware"
       ],
       "chemistry": [
         "config_smoke_scheme",
@@ -10127,8 +10328,63 @@
           }
         },
         "source": "rrfs-workflow 08eee4ce parm/hrrrv5/namelist.atmosphere:58-59, parm/convection_permitting/namelist.atmosphere:60-61, scripts/exrrfs_fcst.sh:52-53"
+      },
+      {
+        "when": {
+          "config_physics_suite": "hrrrv5"
+        },
+        "set": {
+          "nhyd_model": {
+            "config_split_dynamics_transport": true,
+            "config_dynamics_split_steps": 3,
+            "config_horiz_mixing": "2d_smagorinsky",
+            "config_visc4_2dsmag": 0.05,
+            "config_scalar_advection": true,
+            "config_coef_3rd_order": 0.25,
+            "config_smdiv": 0.1
+          },
+          "damping": {
+            "config_mpas_cam_coef": 2.0,
+            "config_rayleigh_damp_u": true,
+            "config_zd": 16000.0,
+            "config_xnutr": 0.2,
+            "config_number_cam_damping_levels": 8
+          },
+          "physics": {
+            "config_sst_update": false,
+            "config_gvf_update": false,
+            "config_sstdiurn_update": false,
+            "config_frac_seaice": true,
+            "config_deepsoiltemp_update": false,
+            "config_bucket_update": "none",
+            "config_mynn_mixscalars": 0,
+            "config_mynn_mixaerosols": 1,
+            "config_mynn_mixnumcon": 0,
+            "config_mynn_ess": 0
+          },
+          "physics_mp_tempo": {
+            "config_tempo_aerosolaware": true,
+            "config_tempo_hailaware": true,
+            "config_tempo_ml_for_bl_nc": true
+          }
+        },
+        "source": "NOAA's deck: rrfs-workflow 570c81fe parm/hrrrv5/namelist.atmosphere lines 1-16 (&nhyd_model), 17-23 (&damping), 47-66 (&physics), 67-71 (&physics_mp_tempo). THE BREAKAGE THIS ENDS (MODEL-AUDIT D13, 2026-11-15): --physics-suite hrrrv5 with no namelist ran the fork Registry's defaults (no CAM filter, no Rayleigh u damping, w damping from 22 km, mynn_ess=1, mixnumcon=1, tempo_ml_for_bl_nc false, gvf_update true), so every adjoint recording linearised a configuration NOAA does not run; native 44c0849 on the 12 km cut differs in 1,917,431 of 4,135,591 history words at 15 minutes between the two. config_time_integration_order and config_monotonic equal the Registry and are left to their door flags; config_epssm (0.1 in the deck) is not written: v8.4.1 and 44c0849 ignore it (hexcore LegacyEpssmIgnored), so it would only print a warning on every run; config_dt, config_number_of_sub_steps and the radiation interval are per mesh (workflow_meshdep)"
       }
     ],
+    "workflow_meshdep": {
+      "when": {
+        "config_physics_suite": "hrrrv5"
+      },
+      "meshes": [
+        {"mesh": "conus12km", "nominal_dx_m": 12000.0, "dt": 60.0, "substeps": 2, "radt_minutes": 30, "physics": {"config_convection_scheme": "cu_ntiedtke", "config_gfl_sub3d": 1}},
+        {"mesh": "conus3km", "nominal_dx_m": 3000.0, "dt": 20.0, "substeps": 4, "radt_minutes": 15},
+        {"mesh": "fwx1p25km", "nominal_dx_m": 1250.0, "dt": 12.0, "substeps": 4, "radt_minutes": 10}
+      ],
+      "within_factor": 1.2,
+      "within_factor_source": "A row applies only to a mesh whose nominal spacing is within this factor of the row's (NOAA's three CONUS meshes and cuts of them). THE BREAKAGE THIS PREVENTS (audit-fix check, 15 Nov 2026): the nearest row went to every mesh, so a plain hrrrv5 run took 12 s on 800 m and 937.5 m meshes (the door's own steps 4 and 5 s), 60 s on 6 km (36 s), and 60 s on 25-120 km globes (150-600 s). Any other mesh keeps the door's own step, sub-steps and radiation interval",
+      "physics_source": "A row's physics options are NOAA's per-mesh namelist additions: rrfs-workflow 570c81fe scripts/exrrfs_fcst.sh:62-67 adds config_convection_scheme = cu_ntiedtke and config_gfl_sub3d = 1 when FCST_CONVECTION_SCHEME is true, which workflow/config_resources/config.meshdep:12,35 sets for na12km and conus12km (not conus3km or fwx1p25km). THE BREAKAGE THIS ENDS (job cumulus, 15 Nov 2026): a plain hrrrv5 run on a 12 km mesh ran no cumulus, a named departure from NOAA's deck, so every 12 km recording linearised a model without the scheme NOAA runs there. Exact mode with it equals native 44c0849 word for word (cumulus.md 21:25Z: 0 differing words in 27 files over the hour). An option the run names (--physics config_convection_scheme=...) or a --physics-namelist decides instead",
+      "source": "rrfs-workflow 570c81fe workflow/config_resources/config.meshdep (FCST_DT, FCST_SUBSTEPS, FCST_RADT for the CONUS line) through scripts/exrrfs_fcst.sh:9-11 and namelist.atmosphere's ${dt}, ${substeps}, ${radt}. The run's mesh takes the row nearest its nominal spacing (log distance). An explicit --dt or --acoustic-substeps, a --physics KEY=VALUE, or a --physics-namelist decides instead"
+    },
     "default_streams_omit": {
       "output": {
         "fields": ["ertel_pv", "u_pv", "v_pv", "theta_pv", "vort_pv", "iLev_DT"],
@@ -10175,6 +10431,26 @@
           "gwdo": "bl_ugwp_gwdo",
           "radiation_lw": "rrtmg_lw",
           "radiation_sw": "rrtmg_sw"
+        },
+        {
+          "microphysics": "mp_tempo",
+          "convection": "cu_ntiedtke",
+          "pbl": "bl_mynnedmf",
+          "surface_layer": "sf_mynnsfclay",
+          "land_surface": "sf_ruc",
+          "gwdo": "bl_ugwp_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw"
+        },
+        {
+          "microphysics": "mp_tempo",
+          "convection": "cu_grell_freitas",
+          "pbl": "bl_mynnedmf",
+          "surface_layer": "sf_mynnsfclay",
+          "land_surface": "sf_ruc",
+          "gwdo": "bl_ugwp_gwdo",
+          "radiation_lw": "rrtmg_lw",
+          "radiation_sw": "rrtmg_sw"
         }
       ]
     },
@@ -10190,6 +10466,18 @@
           "this pairing is not NOAA's hrrrv5, which runs no cumulus scheme (the fork's hrrrv5 suite, mpas_atmphys_control.F); the fork's own suites put a cumulus scheme only in mesoscale_reference (New Tiedtke) and convection_permitting (Grell-Freitas)"
         ],
         "source": "RRFSx/MPAS-Model@44c0849 src/core_atmosphere/physics/mpas_atmphys_driver_convection.F (cu_grell_freitas_li), GFL submodule bf6a4b0"
+      },
+      "hrrrv5 + Grell-Freitas": {
+        "suite": "hrrrv5",
+        "selectors": {
+          "config_convection_scheme": "cu_grell_freitas"
+        },
+        "for": "a control or comparison that needs MPAS-A's own Grell-Freitas (the convection_permitting suite's scheme) beside hrrrv5's other physics, on meshes with cells coarser than about 5 km",
+        "differences_from_suite": [
+          "convection: MPAS-A's Grell-Freitas (module_cu_gf.mpas.F, the same file at MPAS-A v8.4.2 and in the RRFS fork at 44c0849, sha256 b63086af) on every cell, on the GPU (gf_mpas_v842); hrrrv5 runs none at 3 km and New Tiedtke at 12 km. Its updraft fraction scales with each cell's spacing (len_disp / meshDensity**0.25)",
+          "this pairing is not NOAA's hrrrv5; the fork's own suites put Grell-Freitas only in convection_permitting (with Thompson, MYNN and Noah)"
+        ],
+        "source": "RRFSx/MPAS-Model@44c0849 src/core_atmosphere/physics/mpas_atmphys_driver_convection.F (cu_grell_freitas) and physics_wrf/module_cu_gf.mpas.F"
       }
     },
     "streams_parser": "woof.hex.mpasphys.rrfs.stream_xml_rrfs:stream_tree",
@@ -10239,7 +10527,7 @@
       "scheme": null,
       "backend": null,
       "reason": "fork native-defect correction inventory has not been qualified",
-      "owner": "RRFS integrator and fork scheme owners",
+      "owner": "hex RRFS fork physics ports (their correction inventory)",
       "breakage": "Applying v8.4.2 corrections without fork source and replay qualification would change the pinned v8.3.1/GSL behavior."
     },
     "route_default": ["hrrrv5"],

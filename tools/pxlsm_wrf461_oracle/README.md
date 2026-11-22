@@ -51,7 +51,7 @@ output hashes, and the actual kernel manifest. It fails on any differing
 word. Retain the native namelist, build flags, executable and input
 hashes, completion log, instrumentation diff and JSON comparison;
 delete raw captures and forecast outputs once those receipts exist.
-This module replay does not qualify the coupled WOOF option, surface
+This module replay does not qualify the coupled WOOF-ArWen option, surface
 FDDA, nests, restarts, speed or forecast maps.
 
 ## Coupled qualification

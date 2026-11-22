@@ -47,6 +47,55 @@ def test_invalid_science_controls_refuse(row):
         NudgingConfig(**row)
 
 
+@pytest.mark.parametrize('row', [
+    dict(mode='grid', convention='wrf', guv=.05, gt=.05, gq=.05),            # 2.25 per step (NaN at step 13)
+    dict(mode='grid', convention='wrf', guv=.03, gt=.03, gq=.03),            # 1.35 per step (NaN at step 572)
+    dict(mode='grid', convention='wrf', guv=6e-4, gt=6e-4, gq=6e-4, fgdt=60.),  # 80 steps held: 2.16 (NaN at step 956)
+    dict(mode='spectral', convention='wrf', gt=3e-4, gph=6e-4, fgdt=60.),
+    dict(mode='grid', convention='wrf', guv=5e-4, gt=5e-4, gq=5e-4, fgdt=60.),  # 1.8 held: shredded 10 m wind
+    dict(mode='grid', convention='wrf', guv=3e-4, gt=3e-4, fgdt=60.),        # 1.08 held: overshoots
+    dict(mode='spectral', relaxation_seconds=30.),                           # 1.5 per step
+    dict(mode='grid', convention='wrf', guv=0., gt=0., gq=0., grid_sfdda=1, sgfdda_interval_m=180.,
+         rinblw=250., gt_sfc=.05),
+])
+def test_step_strength_refuses_settings_that_cannot_be_stable(row):
+    config = NudgingConfig(enabled=True, **row)
+    with pytest.raises(ValueError, match='NUDGING_STEP_STRENGTH.*safe range.*<= 1'):
+        config.check_step(45., where='d01')
+
+
+@pytest.mark.parametrize('row', [dict(mode='spectral'), dict(mode='grid', convention='wrf', guv=3e-4, gt=3e-4, gq=3e-4),
+                                 dict(mode='grid', convention='wrf', guv=.02, gt=.02),
+                                 dict(mode='spectral', relaxation_seconds=45.),
+                                 dict(mode='grid', convention='wrf', guv=3e-4, gt=3e-4, fgdt=30.)])  # 0.54 held
+def test_step_strength_admits_settings_that_do_not_overshoot(row):
+    NudgingConfig(enabled=True, **row).check_step(45., where='d01')
+
+
+def test_step_strength_counts_fgdtzero_hold_as_kernel_applies_it():
+    # fgdtzero=1 clears the held tendency after each regular refresh; only the
+    # step-1 call is held, until step N, so N - 1 steps (kernels.cu relax).
+    row = dict(mode='grid', convention='wrf', guv=3e-4, gt=3e-4, fgdt=60.)
+    assert NudgingConfig(enabled=True, **row).held_steps(45.) == 80
+    zeroed = NudgingConfig(enabled=True, fgdtzero=1, **row)
+    assert zeroed.held_steps(45.) == 79
+    assert zeroed.step_strength(45.)[0] == pytest.approx(3e-4 * 45. * 79)
+    assert NudgingConfig(enabled=True, fgdtzero=1, mode='spectral').held_steps(45.) == 1
+
+
+def test_every_door_refuses_overshooting_coefficients_at_load(tmp_path):
+    from tests.test_namelist_import import _import_with
+    with pytest.raises(Exception, match='NUDGING_STEP_STRENGTH'):
+        _import_with(tmp_path, extra_input='''&fdda
+ grid_fdda = 1, 0,
+ gfdda_interval_m = 360,
+ gfdda_end_h = 24,
+ guv = 0.05,
+ gt = 0.05,
+/
+''')
+
+
 def test_off_does_not_read_fields_or_import_cuda():
     from woof.spectral_nudging import build_nudger
     assert build_nudger(NudgingConfig(), None) is None

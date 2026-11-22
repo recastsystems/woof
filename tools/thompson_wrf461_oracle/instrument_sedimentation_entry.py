@@ -58,13 +58,13 @@ two gates disagree:
     qr1d   = 0                          qrten = 8.52096171399807645E-14
     nstep  = 1                          ksed1(1) = 6
 
-and at 0-based level 2, whose velocities WOOF inherits instead:
+and at 0-based level 2, whose velocities WOOF-ArWen inherits instead:
 
     vtrk   = 2.59040689468383789E+00    vtnrk = 1.68873035907745361E+00
 
 ``(qr1d + qrten*DT) = 8.521e-13`` is below R1 at the END of the step, which
 is what the falsification read; ``rr`` is 1.175e-12, which is what :3616
-actually tests.  WRF gives that level a real fall speed and WOOF gives it
+actually tests.  WRF gives that level a real fall speed and WOOF-ArWen gives it
 the level above's, 5.3x faster in number.
 
 USAGE

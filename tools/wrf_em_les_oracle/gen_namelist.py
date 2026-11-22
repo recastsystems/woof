@@ -3,7 +3,7 @@
 
 Three families:
   stock  - the shipped test/em_les configuration, unmodified (native oracle)
-  match  - matched to the WOOF idealized CBL case
+  match  - matched to the WOOF-ArWen idealized CBL case
            (woof/verify/cases/convective_boundary_layer.py)
   moist  - P1: the same two families with microphysics ON.  ``mp_physics`` is
            a per-run parameter here rather than the hard-coded 0 it used to

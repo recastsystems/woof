@@ -331,6 +331,33 @@ def test_a_uniform_mesh_draws_global_and_the_default_regions(monkeypatch, tmp_pa
     assert "Tokyo@" in points[points.index("--points") + 1]
 
 
+def test_a_uniform_globe_draws_the_default_regions_when_the_converter_draws_its_mesh_window(monkeypatch, tmp_path):
+    # The 0.6.0 converter (engine f717cd5e2c) draws --window mesh on a uniform globe instead of refusing it, so the
+    # door must know the mesh is uniform from the mesh itself: a plain 120 km x1.40962 forecast rendered a second globe
+    # ("refined-core", "Core zoom 121 km") and "refined-context" where 0.5.0 rendered North America and Europe.
+    seen: list = []
+    _stand_in_engines(monkeypatch, tmp_path, uniform=False, seen=seen)   # the converter frames any mesh it is given
+    _points_stand_in(monkeypatch, seen)
+    monkeypatch.setattr(products_door, "mesh_cell_spacing_km", lambda mesh: [118.0 + 0.01 * k for k in range(400)])
+    histories = _histories(tmp_path)
+    args = _arguments(tmp_path, histories)
+    assert products_door.run_products(args) == 0
+    manifest = json.loads(next((tmp_path / "out").rglob("products-manifest.json")).read_text())
+    views = {v["view"]: v for v in manifest["views"]}
+    assert set(views) == {"global", "refined-core", "north-america", "europe"}
+    assert views["refined-core"]["note"].startswith("uniform mesh")
+    converts = [c for stage, c in seen if stage == "CONVERT"]
+    assert all(c[c.index("--window") + 1] != "mesh" for c in converts)   # no core conversion at all
+    assert manifest["failed_views"] == []
+
+
+def test_a_variable_resolution_globe_is_not_taken_for_a_uniform_one(monkeypatch):
+    monkeypatch.setattr(products_door, "mesh_cell_spacing_km", lambda mesh: [3.0] * 300 + [48.0] * 100)
+    assert products_door.mesh_is_uniform_globe("x.grid.nc") is False
+    monkeypatch.setattr(products_door, "mesh_cell_spacing_km", lambda mesh: None)
+    assert products_door.mesh_is_uniform_globe("x.grid.nc") is False
+
+
 @pytest.mark.parametrize("takes_brand", [True, False])
 def test_the_model_label_and_brand_reach_the_point_pictures(monkeypatch, tmp_path, capsys, takes_brand):
     # WOOF sounding labels (2026-10-23): a host names the model top left and the brand top right.
@@ -339,7 +366,7 @@ def test_the_model_label_and_brand_reach_the_point_pictures(monkeypatch, tmp_pat
     _points_stand_in(monkeypatch, seen)
     monkeypatch.setattr(products_door, "points_take_brand", lambda exe: takes_brand)
     histories = _histories(tmp_path)
-    brand = "WOOF Hex · Global 120 km · Init GFS 22 Oct 2026 00Z"
+    brand = "WOOF-HEX-A · Global 120 km · Init GFS 22 Oct 2026 00Z"
     args = _arguments(tmp_path, histories, model_label="WOOF Hex", brand=brand)
     assert products_door.run_products(args) == 0
     points = [c for stage, c in seen if stage == "POINTS" and Path(str(c[0])).name == "rw_hex_points"][0]
@@ -681,20 +708,33 @@ def test_window_products_follow_the_stored_frames(tmp_path):
     assert hourly == products_door.WINDOWED_PRODUCTS and withheld == {}
     three, withheld = products_door.windowed_for_history(frames(24, 3), start)
     assert three == ("qpf_6h", "qpf_24h")
-    assert set(withheld) == {"qpf_1h", "10m_wind_run_max", "2m_temp_0_24h_max", "2m_temp_0_24h_min"}
+    assert set(withheld) == {"qpf_1h", "10m_wind_run_max", "2m_temp_0_24h_max", "2m_temp_0_24h_min",
+                             "uh_2to5km_1h_max", "uh_2to5km_3h_max", "uh_2to5km_run_max"}
     assert "every 1 h" in withheld["qpf_1h"] and "F001" in withheld["qpf_1h"]
     short, withheld = products_door.windowed_for_history(frames(6, 1), start)
-    assert short == ("qpf_1h", "qpf_6h", "10m_wind_run_max")
+    assert short == ("qpf_1h", "qpf_6h", "10m_wind_run_max", "uh_2to5km_1h_max", "uh_2to5km_3h_max",
+                     "uh_2to5km_run_max")
     assert "needs 24 h" in withheld["qpf_24h"]
+    two, withheld = products_door.windowed_for_history(frames(2, 1), start)
+    assert "uh_2to5km_1h_max" in two and "uh_2to5km_run_max" in two
+    assert "needs 3 h" in withheld["uh_2to5km_3h_max"]
+
+
+def test_the_uh_tracks_are_regional_windows_only():
+    """The UH tracks (WOOF 2026-11-10) are drawn on every regional view and never on the global view: a storm-scale
+    swath on a global map's spacing is empty paper."""
+    assert set(products_door.REGIONAL_WINDOWED_PRODUCTS) == {"uh_2to5km_1h_max", "uh_2to5km_3h_max",
+                                                              "uh_2to5km_run_max"}
+    assert set(products_door.REGIONAL_WINDOWED_PRODUCTS) <= set(products_door.WINDOWED_PRODUCTS)
 
 
 # -- the sounding brand from the run's own records ----------------------------------------------
 
 @pytest.mark.parametrize("shape, km, expect", [
-    ("global", 120.0, "WOOF Hex · Global 120 km · Init GFS 23 Oct 2026 18Z"),
-    ("variable-resolution", 3.0, "WOOF Hex · Variable-resolution globe to 3 km · Init GFS 23 Oct 2026 18Z"),
-    ("region", 3.75, "WOOF Hex · Region 3.75 km · Init GFS 23 Oct 2026 18Z"),
-    ("storm-following", 3.0, "WOOF Hex · Storm-following 3 km · Init GFS 23 Oct 2026 18Z"),
+    ("global", 120.0, "WOOF-HEX-A · Global 120 km · Init GFS 23 Oct 2026 18Z"),
+    ("variable-resolution", 3.0, "WOOF-HEX-A · Variable-resolution globe to 3 km · Init GFS 23 Oct 2026 18Z"),
+    ("region", 3.75, "WOOF-HEX-A · Region 3.75 km · Init GFS 23 Oct 2026 18Z"),
+    ("storm-following", 3.0, "WOOF-HEX-A · Storm-following 3 km · Init GFS 23 Oct 2026 18Z"),
 ])
 def test_the_default_brand_names_each_shape(shape, km, expect):
     assert products_door.default_brand(shape=shape, spacing_km=km, source="GFS",
@@ -703,15 +743,15 @@ def test_the_default_brand_names_each_shape(shape, km, expect):
 
 def test_the_default_brand_drops_what_the_run_does_not_record():
     assert products_door.default_brand(shape="global", spacing_km=120.0,
-                                       start="2026-10-23_18:00:00") == "WOOF Hex · Global 120 km · Init 23 Oct 2026 18Z"
-    assert products_door.default_brand(shape="region", spacing_km=3.0, source="HRRR") == "WOOF Hex · Region 3 km · Init HRRR"
-    assert products_door.default_brand(shape="variable-resolution") == "WOOF Hex · Variable-resolution globe"
-    assert products_door.default_brand() == "WOOF Hex"
+                                       start="2026-10-23_18:00:00") == "WOOF-HEX-A · Global 120 km · Init 23 Oct 2026 18Z"
+    assert products_door.default_brand(shape="region", spacing_km=3.0, source="HRRR") == "WOOF-HEX-A · Region 3 km · Init HRRR"
+    assert products_door.default_brand(shape="variable-resolution") == "WOOF-HEX-A · Variable-resolution globe"
+    assert products_door.default_brand() == "WOOF-HEX-A"
     assert products_door.default_brand(model=None) == "WOOF"
     # a spacing measured from the grid's edges is written to the kilometre, or the quarter below 10 km
-    assert products_door.default_brand(shape="global", spacing_km=120.4, spacing_measured=True) == "WOOF Hex · Global 120 km"
+    assert products_door.default_brand(shape="global", spacing_km=120.4, spacing_measured=True) == "WOOF-HEX-A · Global 120 km"
     assert products_door.default_brand(shape="variable-resolution", spacing_km=2.93,
-                                       spacing_measured=True) == "WOOF Hex · Variable-resolution globe to 3 km"
+                                       spacing_measured=True) == "WOOF-HEX-A · Variable-resolution globe to 3 km"
 
 
 def test_the_init_source_is_read_through_the_source_table():
@@ -760,7 +800,7 @@ def test_a_storm_following_run_brands_its_soundings_from_its_own_records(monkeyp
     products_door.add_products_arguments(parser)
     assert products_door.run_products(parser.parse_args([str(fc)])) == 0
     points = [c for stage, c in seen if stage == "POINTS" and Path(str(c[0])).name == "rw_hex_points"][0]
-    assert points[points.index("--brand") + 1] == "WOOF Hex · Storm-following 3 km · Init GFS 23 Oct 2026 18Z"
+    assert points[points.index("--brand") + 1] == "WOOF-HEX-A · Storm-following 3 km · Init GFS 23 Oct 2026 18Z"
     manifest = json.loads(next((fc / "products").rglob("products-manifest.json")).read_text(encoding="utf-8"))
     assert manifest["points"]["brand_from"] == "run metadata"
 
@@ -776,7 +816,7 @@ def test_a_global_row_without_brand_gets_one(monkeypatch, tmp_path):
     args = _arguments(tmp_path, _histories(tmp_path))
     assert products_door.run_products(args) == 0
     points = [c for stage, c in seen if stage == "POINTS" and Path(str(c[0])).name == "rw_hex_points"][0]
-    assert points[points.index("--brand") + 1] == "WOOF Hex · Global 120 km · Init GFS 22 Oct 2026 00Z"
+    assert points[points.index("--brand") + 1] == "WOOF-HEX-A · Global 120 km · Init GFS 22 Oct 2026 00Z"
 
 
 def test_a_first_look_without_a_forecast_receipt_reads_the_init_source_receipt(monkeypatch, tmp_path):
@@ -790,7 +830,7 @@ def test_a_first_look_without_a_forecast_receipt_reads_the_init_source_receipt(m
     args = _arguments(tmp_path, _histories(tmp_path), simulation_start="2024-07-14_15:00:00")
     assert products_door.run_products(args) == 0
     points = [c for stage, c in seen if stage == "POINTS" and Path(str(c[0])).name == "rw_hex_points"][0]
-    assert points[points.index("--brand") + 1] == "WOOF Hex · Variable-resolution globe to 3 km · Init ERA5 14 Jul 2024 15Z"
+    assert points[points.index("--brand") + 1] == "WOOF-HEX-A · Variable-resolution globe to 3 km · Init ERA5 14 Jul 2024 15Z"
 
 
 def test_frames_drawn_live_keep_their_maps_and_the_full_pass_draws_the_rest(monkeypatch, tmp_path):
@@ -863,7 +903,7 @@ def _write_patch_mesh(path: Path, *, lat0=35.0, lon0=-97.0, half_deg=3.0, step_d
 
 
 def test_mesh_point_check_splits_on_and_off_mesh_points(tmp_path):
-    # graded-plateau 1 km region, box J, 2026-10-24: London was 7,025 km off a
+    # graded-plateau 1 km region, 2026-10-24: London was 7,025 km off a
     # 300 km Oklahoma region and its refusal took every sounding with it.
     mesh = tmp_path / "patch.grid.nc"
     _write_patch_mesh(mesh)
@@ -933,7 +973,7 @@ def test_a_limited_area_run_with_no_city_takes_its_centre(monkeypatch, tmp_path)
 # ---------------------------------------------------------------------------
 def test_each_view_title_names_the_view_as_the_site_menu_does():
     """THE BREAKAGE (2026-10-30): the site menu read 'Core zoom · 8 → 38 km' over a picture
-    headlined '(hex 133-6.9 km) ... Δx 8.063 km' (run_713c9e1913164e02): every view carried the
+    headlined '(hex 133-6.9 km) ... Δx 8.063 km': every view carried the
     whole mesh's range.  Each view now asks the converter for its own name and the spacing its
     picture samples."""
     assert products_door.view_title("refined-core") == "Core zoom {spacing}"
@@ -1160,3 +1200,86 @@ def test_the_context_extent_is_four_core_widths_up_to_the_quarter_turn():
     corner = 0.5 * extent * (1.0 + 0.7 ** 2) ** 0.5
     assert corner == pytest.approx(0.5 * math.pi * 6370.0)                         # the corner at a quarter turn
     assert extent < 20012.0                                                        # inside the converter's limit
+
+
+# ------------------------------------------------- a grid file's lengths are in the units of its own sphere
+#: A 240-to-60 km zoom globe's own figures: its shortest and longest edge on the unit sphere.
+UNIT_FINE, UNIT_COARSE = 0.0077, 0.046
+
+
+def _sphere_grid(path, radius, *, scale=1.0, cells=400, edges=1200):
+    """A grid file with a refined patch: a fifth of its edges are UNIT_FINE, the rest run up to UNIT_COARSE."""
+    np = pytest.importorskip("numpy")
+    netcdf = pytest.importorskip("netCDF4")
+    dc = np.concatenate([np.full(edges // 5, UNIT_FINE),
+                         np.linspace(UNIT_FINE * 1.5, UNIT_COARSE, edges - edges // 5)]) * scale
+    area = np.concatenate([np.full(cells // 5, UNIT_FINE * UNIT_FINE * math.sqrt(3.0) / 2.0),
+                           np.full(cells - cells // 5, UNIT_COARSE * UNIT_COARSE * math.sqrt(3.0) / 2.0)]) * scale * scale
+    with netcdf.Dataset(path, "w") as grid:
+        if radius is not None:
+            grid.setncattr("sphere_radius", radius)
+        grid.createDimension("nEdges", dc.size)
+        grid.createDimension("nCells", area.size)
+        grid.createVariable("dcEdge", "f8", ("nEdges",))[:] = dc
+        grid.createVariable("areaCell", "f8", ("nCells",))[:] = area
+    return path
+
+
+def test_a_unit_sphere_zoom_globe_is_branded_with_its_finest_spacing(tmp_path):
+    """THE BREAKAGE (a 240-to-60 km zoom globe, hrrrv5, 2023-03-31 12Z, drawn 2026-11-14): the grid file was on the
+    unit sphere (``sphere_radius = 1.0``, shortest ``dcEdge`` 0.0077), the brand's measured spacing read ``dcEdge``
+    as metres, and every sounding and meteogram of the run was headed "Variable-resolution globe to 0 km"."""
+    metadata = products_door.run_brand_metadata(
+        forecast_dir=None, receipt={}, mesh=_sphere_grid(tmp_path / "unit.grid.nc", 1.0), limited_area=False,
+        uniform=None, start="2023-03-31_12:00:00")
+    brand = products_door.default_brand(**metadata)
+    assert "to 0 km" not in brand
+    assert brand == "WOOF-HEX-A · Variable-resolution globe to 49 km · Init 31 Mar 2023 12Z"
+    assert metadata["shape"] == "variable-resolution" and metadata["spacing_measured"]
+    assert metadata["spacing_km"] == pytest.approx(UNIT_FINE * 6371.229)      # 49.06 km
+
+
+def test_the_same_mesh_reads_the_same_spacing_on_either_sphere(tmp_path):
+    """A file already scaled to the Earth reads as before; one that names no sphere is read as metres."""
+    earth = products_door.MPAS_EARTH_RADIUS_M
+    unit = products_door._mesh_file_spacing(_sphere_grid(tmp_path / "unit.grid.nc", 1.0))
+    scaled = products_door._mesh_file_spacing(_sphere_grid(tmp_path / "earth.grid.nc", earth, scale=earth))
+    bare = products_door._mesh_file_spacing(_sphere_grid(tmp_path / "bare.grid.nc", None, scale=earth))
+    assert unit == pytest.approx(scaled) and scaled == bare
+    assert scaled == (pytest.approx(UNIT_FINE * earth / 1000.0), pytest.approx(UNIT_COARSE * earth / 1000.0))
+    # A sphere of another radius (a file in kilometres here) is scaled the same way.
+    km = products_door._mesh_file_spacing(
+        _sphere_grid(tmp_path / "km.grid.nc", earth / 1000.0, scale=earth / 1000.0))
+    assert km == pytest.approx(scaled)
+
+
+def test_the_views_and_the_brand_measure_one_grid_with_one_scale(tmp_path):
+    """The cell spacings behind the views and the brand's edges come out in the same kilometres."""
+    earth = products_door.MPAS_EARTH_RADIUS_M
+    for name, radius, scale in (("unit", 1.0, 1.0), ("earth", earth, earth)):
+        mesh = _sphere_grid(tmp_path / f"{name}.grid.nc", radius, scale=scale)
+        cells = products_door.mesh_cell_spacing_km(mesh)
+        fine, coarse = products_door._mesh_file_spacing(mesh)
+        assert min(cells) == pytest.approx(fine) and max(cells) == pytest.approx(coarse), name
+        assert products_door.grid_length_to_earth_m(radius) == pytest.approx(earth / radius)
+    assert products_door.grid_length_to_earth_m(earth) == 1.0
+
+
+def test_a_regional_view_draws_the_severe_weather_set_the_arwen_route_draws():
+    """WOOF 2026-11-15: a hex region rendered surface and most-unstable CAPE alone, though its frames carry HGT and
+    every field the shear, helicity and composite maps read (a live hex region run)."""
+
+    from woof.hex import products_door
+    for slug in ("mlcape", "sbcin", "mlcin", "mucin", "srh_0_1km", "srh_0_3km", "bulk_shear_0_1km",
+                 "bulk_shear_0_6km", "stp_fixed", "ehi_0_1km"):
+        assert slug in products_door.REGIONAL_PRODUCTS
+        assert slug not in products_door.GLOBAL_PRODUCTS
+
+
+def test_regional_views_carry_the_lightning_threat_and_the_gust():
+    """Brought from fork jacobbieker/woof PR 433 (Apache-2.0): through hex 0.6.1 a regional view had neither."""
+    from woof.hex.products_door import GLOBAL_PRODUCTS, REGIONAL_PRODUCTS
+
+    for name in ("lightning_threat_3", "10m_wind_gusts", "mlcape", "srh_0_1km", "stp_fixed"):
+        assert name in REGIONAL_PRODUCTS
+    assert "lightning_threat_3" not in GLOBAL_PRODUCTS

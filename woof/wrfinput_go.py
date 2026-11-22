@@ -28,7 +28,7 @@ def validate_controls(args, *, metem=False):
         "members", "keep_member_files", "render_products", "verify_visuals",
         "history_compression", "no_memory_gate", "explain", "keep_checkpoints",
         "soil_source", "rrtmg_variant", "thompson_version", "restart_from",
-        "checkpoint_at", "gpu_uuid", "health_debug",
+        "checkpoint_at", "gpu_uuid", "health_debug", "lake_state", "lake_state_path",
         "no_supervise", "benchmark", "dry_run", "run_stamp", "run_seconds",
         # CLI scopes apply output formats before dispatch.
         "output_config", "output_format", "icechunk_store",
@@ -50,14 +50,23 @@ def validate_controls(args, *, metem=False):
                         + "; launching would ignore the requested setting")
 
 
-def _dry_run(run, directory, outdir, *, run_seconds=None):
+def _dry_run(run, directory, outdir, *, run_seconds=None, restart=None, lake_state=None):
     import json
-    from woof.wrfinput_forecast import wrfinput_window_seconds
+    from woof.wrfinput_forecast import lake_plan_lines, wrfinput_window_seconds
     seconds = (run.experiment.run_seconds if run_seconds is None
                else wrfinput_window_seconds(run, run_seconds))
+    # What each domain's lakes will start from, as the run's plan review
+    # prints it: a plain dry run named no lake source, although the default
+    # asks GLSEA on a domain with Great Lakes cells.  Not read when
+    # --lake-state chose forcing or a row, which "lake_state" below says.
+    lake_plan = lake_plan_lines(run, restart=restart) if lake_state in (None, "auto") else []
     print(json.dumps({"route": "native-wrf", "input": str(directory),
                       "outdir": str(outdir), "grid_ids": list(run.grid_ids),
                       "run_seconds": seconds,
+                      # Present only when --lake-state chose one.
+                      **({} if getattr(run, "lake_state_note", None) is None
+                         else {"lake_state": run.lake_state_note}),
+                      **({"lake_state_plan": lake_plan} if lake_plan else {}),
                       "namelist_input": str(run.namelist_input)}, indent=2))
     return 0
 
@@ -66,7 +75,8 @@ def _resolve_inputs(directory, args):
     from woof.wrfinput_door import resolve_wrfinput_run
     return resolve_wrfinput_run(directory, **{
         name: getattr(args, name) for name in (
-            "rrtmg_variant", "thompson_version", "restart_from")
+            "rrtmg_variant", "thompson_version", "restart_from",
+            "lake_state", "lake_state_path")
         if getattr(args, name, None) is not None})
 
 
@@ -84,7 +94,9 @@ def _launch_flag_inputs(args):
     outdir = run_stamp.resolve(outdir, init=resolved.experiment.start_time,
                               enabled=args.run_stamp == "on", create=False)
     if args.dry_run:
-        return _dry_run(resolved, directory, outdir, run_seconds=getattr(args, "run_seconds", None))
+        return _dry_run(resolved, directory, outdir, run_seconds=getattr(args, "run_seconds", None),
+                        restart=getattr(args, "restart", None),
+                        lake_state=getattr(args, "lake_state", None))
     from woof.go_cli import _checkpoint_retention
     with memory_gate_override(args.no_memory_gate), _visual_scope(args.verify_visuals), _checkpoint_retention(args.keep_checkpoints):
         return run_wrf_forecast(directory, outdir, restart=args.restart,
@@ -122,7 +134,9 @@ def launch(args, *, observer=None):
     outdir = run_stamp.resolve(root, init=run.experiment.start_time,
                               enabled=args.run_stamp == "on", create=False)
     if args.dry_run:
-        return _dry_run(run, directory, outdir, run_seconds=getattr(args, "run_seconds", None))
+        return _dry_run(run, directory, outdir, run_seconds=getattr(args, "run_seconds", None),
+                        restart=getattr(args, "restart", None),
+                        lake_state=getattr(args, "lake_state", None))
     from woof.go_cli import _checkpoint_retention
     with (memory_gate_override(args.no_memory_gate),
           _visual_scope(args.verify_visuals),
@@ -169,12 +183,14 @@ def add_go_input_arguments(parser):
                         help='WRF inputs: allow the existing priced shared-GPU admission')
     add('--health-debug', action='store_true',
                         help='WRF inputs: write detailed health diagnostics')
+    from woof.ingest.lake_state import add_lake_state_arguments
+    add_lake_state_arguments(parser, prefix='WRF and met_em inputs: ')
 
 
 _GO_INPUT_CONTROLS = (
     'run_seconds', 'soil_source', 'rrtmg_variant', 'thompson_version',
     'restart_from', 'checkpoint_at', 'benchmark', 'gpu_uuid',
-    'allow_shared_gpu', 'health_debug',
+    'allow_shared_gpu', 'health_debug', 'lake_state', 'lake_state_path',
 )
 
 

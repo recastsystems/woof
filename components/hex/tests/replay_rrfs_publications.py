@@ -22,7 +22,7 @@ output.mkdir(parents=True, exist_ok=False)
 sha = lambda p: hashlib.file_digest(p.open('rb'), 'sha256').hexdigest()
 # The native reference store sits beside the pinned fork checkout (RRFS_MPAS_REF). On a host
 # without it, RRFS_REFERENCE_HOST (user@host) names where to copy the publications from.
-authority = Path(os.environ.get('RRFS_MPAS_REF') or Path(os.environ.get('MPAS_LANES', '.')) / 'ref/rrfs/MPAS-Model-rrfs').parent/'forecasts/native-da-cycling-original-ci-v1'
+authority = Path(os.environ.get('RRFS_MPAS_REF') or Path(os.environ.get('HEX_REFERENCE_ROOT', '.')) / 'ref/rrfs/MPAS-Model-rrfs').parent/'forecasts/native-da-cycling-original-ci-v1'
 remote = None if authority.is_dir() else os.environ['RRFS_REFERENCE_HOST']
 if remote:
     local = output/'authority'

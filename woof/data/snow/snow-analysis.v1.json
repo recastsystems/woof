@@ -1,0 +1,28 @@
+{
+  "schema": "gpuwm-snow-analysis-v1",
+  "purpose": "Which observed snow analysis replaces the forcing's snow water and depth at the start, where one covers the domain. Each analysis is a row here, never a code path (the arbitrary acceptance test). Defect it fixes: spring snow started far too light from every forcing at SNOTEL sites (2023-04-27 12Z, raw source grids against SNOTEL: GFS 4-8 mm SWE against 530-1240 mm observed; HRRR 531 mm against 1242 mm in the Sierra and 20 mm against 530 mm in the San Juans; ERA5 2023-04-12 12Z 271 mm against 1188 mm in the Sierra). Our ingest carries each source within interpolation (init/raw SWE 1.00 on ERA5, HRRR and GFS); the sources themselves are that low.",
+  "opt_out_env": "GPUWM_SNOW_ANALYSIS",
+  "opt_out_values": ["off", "0", "false", "no", "source"],
+  "analyses": [
+    {
+      "id": "snodas-conus",
+      "description": "NOHRSC SNODAS daily snow analysis (masked CONUS, 30 arc-second, about 1 km), snapshot at 06Z: modelled SWE (product 1034) and snow depth (product 1036), with SNOTEL, airborne gamma and satellite snow cover assimilated. NSIDC data set G02158.",
+      "licence": "US government work (NOAA NWS NOHRSC), public domain. Cite: National Operational Hydrologic Remote Sensing Center. 2004. Snow Data Assimilation System (SNODAS) Data Products at NSIDC, Version 1. doi:10.7265/N5TB14TC.",
+      "valid_from": "2003-09-30T06:00:00Z",
+      "analysis_hour_utc": 6,
+      "max_age_hours": 36,
+      "max_age_note": "NSIDC posts the 06Z analysis at about 14:00Z, so a start between 06Z and 14:00Z reads the previous day's 06Z analysis (up to 32 h old); 36 h covers every start hour.",
+      "coverage_box": {"comment": "the masked SNODAS grid edges (header: x -124.7333..-66.9417, y 24.9500..52.8750)", "lat": [24.95, 52.875], "lon": [-124.7334, -66.9416]},
+      "transport": {
+        "url": "https://noaadata.apps.nsidc.org/NOAA/G02158/masked/{date:%Y}/{date:%m}_{date:%b}/SNODAS_{date:%Y%m%d}.tar",
+        "file": "SNODAS_{date:%Y%m%d}.tar"
+      },
+      "format": "nohrsc-raster-v1",
+      "members": {
+        "snow_water": "us_ssmv11034tS__T0001TTNATS{date:%Y%m%d}05HP001",
+        "snow_depth": "us_ssmv11036tS__T0001TTNATS{date:%Y%m%d}05HP001"
+      },
+      "evidence": "2023-04-27 06Z against SNOTEL at 12Z: Sierra 32 sites, observed 1242 mm, SNODAS pixel 1260 mm (MAE 75 mm), density 493 against 507 kg/m3 observed; San Juans 51 sites, observed 530 mm, SNODAS 528 mm (MAE 33 mm), density 394 against 425. SNODAS assimilates SNOTEL, so this checks the decode and the grid, not independent skill."
+    }
+  ]
+}

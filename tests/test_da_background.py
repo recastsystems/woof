@@ -64,26 +64,6 @@ def test_hrrr_carries_condensate_and_gfs_does_not():
 # the cycle each source resolves to
 # ---------------------------------------------------------------------
 
-def test_gfs_cycle_selection_reproduces_the_shipped_front_door():
-    """Byte-for-byte the same cycle and lead the GFS route already picks.
-
-    ``tools/da_nowcast.py`` owns the shipped arithmetic and is not
-    touched by this lane.  This asserts the registry-driven planner
-    lands on the same answer for the same inputs, so selecting the
-    default changes nothing about which GFS files a case is built from.
-    """
-
-    from da_nowcast import latest_gfs_cycle
-
-    init = datetime(2026, 8, 5, 4)
-    now = init + timedelta(hours=2)
-    plan = background.plan_background_cycle(
-        "gfs", init=init, now=now, run_seconds=7 * 3600.0)
-    assert plan.cycle == latest_gfs_cycle(init, now)
-    assert plan.forecast_start_hour == int(
-        (init - plan.cycle).total_seconds() // 3600)
-
-
 @pytest.mark.parametrize("init_hour,expected_cycle_hour,expected_lead", [
     (4, 0, 4), (5, 0, 5), (6, 0, 6), (11, 6, 5),
 ])

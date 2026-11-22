@@ -7,14 +7,19 @@ Coriolis rotation, penetrating radiation, evaporation, convective adjustment,
 and bulk/gradient Richardson mixing. Its atmospheric call slot is after the
 land surface and before lake physics. Inland lakes are excluded.
 
-Forecasts of at least 48 hours with active surface fluxes select option 2
-when `sf_ocean_physics` is omitted. The policy is metadata in
-`woof/data/surface_ocean.json` and resolves before memory planning and
-configuration hashing in the experiment and legacy TOML loaders. Ocean
-physics acts on water cells, excluding land and inland lakes. Explicit
-`sf_ocean_physics = 0` opts out; `1` retains Pollard. Short forecasts retain
-their existing default. The 72-hour coastal storm qualification is recorded
-in [QUALIFICATION.md](QUALIFICATION.md); one event is not a general skill claim.
+An omitted `sf_ocean_physics` is 0 (no ocean model, WRF's default) at every
+run length; options 1 and 2 are chosen by setting them. Through 3.0.1 a run of
+48 h or more with surface fluxes took option 2 by itself, so a 47 h and a 48 h
+run of one case differed from the first hour. The plan (`woof check`, the
+`woof go` banner and its `--dry-run`, the `woof run --met-em` plan review),
+the run log (`note: ocean:`) and the run record (`report.json` key `ocean`)
+state the ocean every run, and for a surface-coupled run of 48 h or more with
+no ocean model they add a one-line offer of option 2. The words and the offer's
+threshold are metadata in `woof/data/surface_ocean.json`. Ocean physics acts
+on water cells, excluding land and inland lakes. The 72-hour coastal storm
+qualification is recorded in [QUALIFICATION.md](QUALIFICATION.md); it scored
+one run with option 2 on and none with it off, and one event is not a general
+skill claim.
 
 An experiment's `[shared]` table accepts:
 

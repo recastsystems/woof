@@ -1,6 +1,6 @@
 """One run, one folder -- the level above the render layout.
 
-The defect, reported by the collaborator who runs WOOF inside his own
+The defect, reported by the collaborator who runs WOOF-ArWen inside his own
 pipeline: he runs the same configuration repeatedly and every run wrote
 into the same directory as the one before it.  A second render dropped
 its PNGs among the first's; worse, the run artifacts -- ``wrfout``,

@@ -60,6 +60,7 @@ class _Resident:
         self.prep_spec: dict | None = None
         self.prep_thread: threading.Thread | None = None
         self.prep_rows: list[dict] = []
+        self.prep_host_bytes: int | None = None   # the last preparation's measured host growth
         self.watcher: threading.Thread | None = None
         self.watch_stop = threading.Event()
         self.continuation: dict | None = None     # the spec the last stop handed its carrier to
@@ -322,6 +323,13 @@ def prepare(spec: dict) -> None:
             if k in files and (v := getattr(arguments, k, None)) is not None}
     scratch = Path(getattr(arguments, 'scratch', None) or Path(arguments.out) / 'scratch').resolve()
     claim_prepared_scratch(scratch)
+    from ..kim_gwd_static import FILE_SUFFIX as _KIM_SUFFIX, ensure as _kim_statistics, mesh_file_of
+    if swap and any(str(s).endswith(_KIM_SUFFIX) for s in call['sources']):
+        # The KIM drag's PR #1408 statistics belong to one mesh: a moved mesh reads its own (kim_gwd_static).
+        moved = mesh_file_of(arguments)
+        if moved is not None:
+            fresh = str(_kim_statistics(moved).resolve())
+            swap.update({str(Path(s).resolve()): fresh for s in call['sources'] if str(s).endswith(_KIM_SUFFIX)})
     predicted = dict(call, sources=[Path(swap.get(str(Path(s).resolve()), str(s))) for s in call['sources']],
                      output=scratch / 'native-pools')
     key = _decode_key(predicted)
@@ -401,9 +409,81 @@ def prepare(spec: dict) -> None:
               seconds=time.perf_counter() - began, stages=rows))
 
 
+def process_rss_bytes() -> int | None:
+    """This process's resident set now (not its peak), or None when the OS does not say."""
+    try:
+        with open('/proc/self/status', encoding='ascii') as status:
+            for line in status:
+                if line.startswith('VmRSS:'):
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def preparation_host_gate(available: int | None = None, rss: int | None = None) -> dict:
+    """Whether the host has room to prepare the next segment beside the running one.
+
+    THE BREAKAGE THIS PREVENTS (fork jacobbieker/woof PR 497; Milton 2024, 96 km global background, 98,108 cells,
+    on a shared 125 GB host): a resident process held the running segment (25-36 GB host) and prepared the next
+    member's pool decode, inputs, remap map and class drivers beside it, a second copy of the same size, so it
+    peaked at 38-43 GB at moves and was OOM-killed twice.  The preparation is an optimisation: when the host's
+    available memory (MemAvailable, bounded by the cgroup) cannot hold another copy plus a reserve, it is not
+    started and the next segment builds those pieces itself after the move (a slower move, the same words).
+
+    The copy is priced at the last preparation's measured host growth times a margin, or before any at this
+    process's resident set (the running segment's own host copy).  ``WOOF_HEX_MOVING_PREPARE_HOST_GATE=0`` turns
+    the gate off; ``WOOF_HEX_MOVING_PREPARE_HOST_RESERVE_GB`` (default 2) is the room left over;
+    ``WOOF_HEX_MOVING_PREPARE_HOST_MARGIN`` (default 1.25) the margin.
+    """
+    if os.environ.get('WOOF_HEX_MOVING_PREPARE_HOST_GATE', '1') == '0':
+        return dict(admitted=True, reason='WOOF_HEX_MOVING_PREPARE_HOST_GATE=0')
+    if available is None:
+        try:
+            from woof.core.preflight import host_available_bytes
+            available = host_available_bytes()
+        except Exception:   # pragma: no cover - a probe failure is an unknown, not a refusal
+            available = None
+    if rss is None:
+        rss = process_rss_bytes()
+    need = _R.prep_host_bytes if _R.prep_host_bytes is not None else rss
+    reserve = int(float(os.environ.get('WOOF_HEX_MOVING_PREPARE_HOST_RESERVE_GB', '2')) * 2**30)
+    row = dict(available_bytes=available, rss_bytes=rss, need_bytes=need, reserve_bytes=reserve,
+               priced_from='last preparation' if _R.prep_host_bytes is not None else 'resident set')
+    if need is not None and _R.prep_host_bytes is not None:
+        # Members of one run share the mesh recipe; the margin covers a member with a few more cells than the
+        # one measured.
+        need = int(need * float(os.environ.get('WOOF_HEX_MOVING_PREPARE_HOST_MARGIN', '1.25')))
+        row['need_bytes'] = need
+    if available is None or need is None:
+        return dict(row, admitted=True, reason='host memory unknown')
+    return dict(row, admitted=available >= need + reserve)
+
+
 def _prepare_safely(spec):
+    before = process_rss_bytes()
+    peak = [before]
+    done = threading.Event()
+
+    def sample():   # the preparation's peak, not its end: temporaries freed before it returns count too
+        while not done.wait(0.5):
+            now = process_rss_bytes()
+            if now is not None and (peak[0] is None or now > peak[0]):
+                peak[0] = now
+
+    sampler = threading.Thread(target=sample, name='moving-resident-prepare-rss', daemon=True)
+    sampler.start()
     try:
         prepare(spec)
+        done.set()
+        sampler.join()
+        after = process_rss_bytes()
+        if before is not None and after is not None:
+            grown = max(after, peak[0] or after) - before
+            # The running segment allocates and frees beside the preparation: a growth at or below zero says
+            # nothing about the preparation's size, so the last estimate stands rather than a price of 0.
+            if grown > 0:
+                _R.prep_host_bytes = grown
     except Exception as error:
         # A preparation is an optimisation: anything it could not do is done by the segment itself.
         import traceback
@@ -411,6 +491,8 @@ def _prepare_safely(spec):
             _R.prepared.clear()
         _log(dict(preparation_failed=f'{type(error).__name__}: {error}',
                   trace=''.join(traceback.format_exception(error))[-2000:]))
+    finally:
+        done.set()
 
 
 def _watch(control_dir: Path, stop: threading.Event) -> None:
@@ -427,6 +509,17 @@ def _watch(control_dir: Path, stop: threading.Event) -> None:
         if thread is not None and thread.is_alive():
             continue   # the next record is prepared once the one in hand finishes
         seen = spec
+        gate = preparation_host_gate()
+        if stop.is_set():
+            break   # the segment closed while the gate probed host memory: nothing is prepared after the close
+        if not gate['admitted']:
+            with _R.lock:
+                _R.prepared.clear()
+                _R.prep_spec = None
+            _log(dict(preparation_skipped=dict(gate, segment=spec.get('index'), member=spec.get('member'),
+                                               reason='the host has no room for a second copy beside the '
+                                                      'running segment; the next segment builds its own')))
+            continue
         with _R.lock:
             _R.prepared.clear()
             _R.prep_spec = spec
@@ -489,6 +582,26 @@ def release_device_memory() -> dict[str, Any] | None:
                 resident_modules=None if modules is None else modules.stats())
 
 
+def trim_host_heap() -> dict[str, Any] | None:
+    """Give the finished segment's freed host memory back to the OS (glibc ``malloc_trim``); None elsewhere.
+
+    The finished segment's host arrays are freed by then, but glibc keeps freed heap and thread-arena pages mapped,
+    and the preparation thread allocates in its own arena: the resident set the next segment and the host-memory
+    gate (:func:`preparation_host_gate`) read would still count them.  Only memory moves; no word does.
+    """
+    if not sys.platform.startswith('linux'):
+        return None
+    import ctypes
+    try:   # an optimisation: a libc without glibc's malloc_trim (musl) must not fail the segment's close
+        trim = ctypes.CDLL('libc.so.6').malloc_trim
+        before = process_rss_bytes()
+        began = time.perf_counter()
+        trim(0)
+    except (OSError, AttributeError):
+        return None
+    return dict(rss_before=before, rss_after=process_rss_bytes(), seconds=time.perf_counter() - began)
+
+
 def forget_segment_kernels() -> int:
     """Drop the kernel-table entries of the finished segment's kernel caches (and its reference-wind cache).
 
@@ -541,8 +654,18 @@ def next_segment() -> list[str] | None:
     if not enabled() or spec is None:
         return None
     _R.watch_stop.set()
+    if _R.watcher is not None:
+        _R.watcher.join()   # bounded by one poll and the gate's probe; after it no preparation can start
+    # A preparation for another member than the one this move goes to (the controller renamed the record after the
+    # watcher had started on the old one) is a second host copy nothing will take: wait for it, then drop it.
+    thread = _R.prep_thread
+    if thread is not None and thread.is_alive():
+        thread.join()
     finished = Path(os.environ[CONTROL_ENV]).parent
     with _R.lock:
+        if _R.prep_spec != spec:
+            _R.prepared.clear()
+            _R.prep_spec = None
         _R.continuation = None
         # The finished segment closed: carriers it held for its own resume are spent.
         _R.handed = {k: v for k, v in _R.handed.items() if k in _R.carriers}
@@ -553,6 +676,7 @@ def next_segment() -> list[str] | None:
                   segment_wall_seconds=None if _R.segment_began is None else time.time() - _R.segment_began,
                   pid=os.getpid())
     released = release_device_memory()
+    trimmed = trim_host_heap()
     temporary = finished / (CLOSED_NAME + '.partial')
     temporary.write_text(json.dumps(closed, indent=2) + '\n')
     temporary.replace(finished / CLOSED_NAME)
@@ -570,7 +694,7 @@ def next_segment() -> list[str] | None:
     os.dup2(stream.fileno(), 2)
     stream.close()
     _log(dict(continued_from=str(finished), segment=spec.get('index'), member=spec.get('member'), pid=os.getpid(),
-              released_device_memory=released))
+              released_device_memory=released, trimmed_host_heap=trimmed))
     begin_segment()
     return [str(a) for a in spec['argv']]
 

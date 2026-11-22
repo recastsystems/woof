@@ -11,7 +11,7 @@ completion program spec §3.3 requires it in those words:
 
 and the oracle side's hand-off names the metrics it must move:
 ``cloud_frac``, ``n2_moist_frac`` and the cloud-layer metrics
-(``docs/superpowers/receipts/les/wrf-moist-oracle-2026-08-04.md``).
+(``docs/internal/receipts/les/wrf-moist-oracle-2026-08-04.md``).
 
 An instrument that cannot fail cannot pass anything.  A moist verdict
 built on an instrument that has never been shown to notice condensation is

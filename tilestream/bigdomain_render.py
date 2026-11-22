@@ -81,7 +81,7 @@ IC_FOOTER = (
     "trigger. What IS real: the Lambert conformal projection, its map "
     "factors and Coriolis, the per-column solar geometry every radiation "
     "and land-surface path reads, the terrain, and the physics. "
-    "Vapour is added to a dry-balanced column because WOOF's balanced "
+    "Vapour is added to a dry-balanced column because WOOF-ArWen's balanced "
     "moist initialiser refuses a terrain-following base state, so the first "
     "~15 min is a hydrostatic adjustment and carries no echo.")
 
@@ -389,7 +389,7 @@ def sheet(path: Path, out_png: Path, *, crop: int, run_label: str,
     lon, lat = d["LON"], d["LAT"]
     ny, nx = lat.shape
     fig, axes = plt.subplots(3, 2, figsize=(15.0, 19.4))
-    top = _suptitle(fig, f"WOOF out-of-core streamed forecast -- "
+    top = _suptitle(fig, f"WOOF-ArWen out-of-core streamed forecast -- "
                          f"{_valid(d)}\n{_context(d, run_label)}", floor=0.955)
 
     refl_panel(fig, axes[0][0], lon, lat, d["REFL_COMPOSITE"],
@@ -448,7 +448,7 @@ def evolution(paths, out_png: Path, *, crop: int, run_label: str,
     fig, axes = plt.subplots(1, n, figsize=(5.6 * n, 7.6), squeeze=False)
     label = {"REFL_COMPOSITE": "composite reflectivity",
              "WMAX": "column-maximum vertical velocity"}.get(field, field)
-    top = _suptitle(fig, f"WOOF out-of-core streamed forecast -- {label} "
+    top = _suptitle(fig, f"WOOF-ArWen out-of-core streamed forecast -- {label} "
                          f"evolution\n{_context(frames[0], run_label)}",
                     floor=0.88)
     # One scale across the whole strip, set by the largest frame.  A
@@ -497,7 +497,7 @@ def hero(path: Path, out_png: Path, *, crop: int, run_label: str,
                       cmap="magma", vmin=0.0, vmax=max(hi, 1.0))
     else:
         raise ValueError(f"no hero renderer for {field!r}")
-    top = _suptitle(fig, f"WOOF out-of-core streamed forecast -- "
+    top = _suptitle(fig, f"WOOF-ArWen out-of-core streamed forecast -- "
                          f"{_valid(d)}\n{_context(d, run_label)}", floor=0.90)
     _footer(fig, crop, nx, ny, top=top, bottom=0.13)
     fig.savefig(out_png, dpi=dpi)
@@ -538,7 +538,7 @@ def tile_seams(path: Path, out_png: Path, *, crop: int, run_label: str,
         if 0 <= e < ny:
             axis.plot(lon[e, :], lat[e, :], color="#111111", lw=0.7,
                       alpha=0.55, zorder=5)
-    top = _suptitle(fig, f"WOOF out-of-core streamed forecast -- "
+    top = _suptitle(fig, f"WOOF-ArWen out-of-core streamed forecast -- "
                          f"{_valid(d)}\n{_context(d, run_label)}", floor=0.90)
     _footer(fig, crop, nx, ny, top=top, bottom=0.13)
     fig.savefig(out_png, dpi=dpi)
@@ -597,7 +597,7 @@ def zoom(path: Path, out_png: Path, *, crop: int, run_label: str,
                   note_fmt="uniformly {value:.2f} deg C",
                   cmap="RdYlBu_r")
     ny, nx = d["LAT"].shape
-    top = _suptitle(fig, f"WOOF out-of-core streamed forecast -- "
+    top = _suptitle(fig, f"WOOF-ArWen out-of-core streamed forecast -- "
                          f"{_valid(d)}\nZOOM: {side}x{side} cells "
                          f"({km:.0f} x {km:.0f} km) centred on the domain's "
                          f"strongest updraught, at full model resolution\n"
@@ -620,7 +620,7 @@ def terrain(path: Path, out_png: Path, *, crop: int, run_label: str,
     _colorbar(fig, axis, mesh, "terrain height (m)")
     axis.set_title("domain geography: terrain gathered per tile, never rebuilt",
                    fontsize=10)
-    top = _suptitle(fig, f"WOOF out-of-core streamed forecast -- domain\n"
+    top = _suptitle(fig, f"WOOF-ArWen out-of-core streamed forecast -- domain\n"
                          f"{_context(d, run_label)}", floor=0.90)
     _footer(fig, crop, nx, ny, top=top, bottom=0.13)
     fig.savefig(out_png, dpi=dpi)
@@ -749,7 +749,7 @@ def main() -> None:
              "sheets and evolution strips still live")
     ap.add_argument("--crop", type=int, default=16)
     ap.add_argument("--prefix", default="bigdomain")
-    ap.add_argument("--run-label", default="WOOF, streamed out-of-core")
+    ap.add_argument("--run-label", default="WOOF-ArWen, streamed out-of-core")
     ap.add_argument("--ceiling-note", default="",
                     help="measured resident-ceiling line for every figure")
     ap.add_argument("--zoom", type=int, default=400,

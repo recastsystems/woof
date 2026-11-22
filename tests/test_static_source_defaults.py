@@ -257,14 +257,13 @@ def test_a_defaulted_source_on_its_own_cone_is_still_taken():
     assert carrier.static_source.id == "hrrr-conus-v4"
 
 
-#: Shipped configurations that RECORD a refusal rather than a run: the
-#: recent DA deck's literal 601 point domain (438760594), whose required
-#: native HRRR window starts south of row 0.  The deck README says so, and
-#: the refusal must stay the static source's own words.
-_RECORDED_STATIC_REFUSALS = {
-    "da_rerun_286/recent/requested-601-center31/authority/experiment",
-    "da_rerun_286/recent/requested-601-center31/base/experiment",
-}
+#: Configurations that RECORD a refusal rather than a run (a literal point
+#: domain whose required native HRRR window starts south of row 0, 438760594)
+#: carry a ``<stem>.recorded-refusal`` file beside them, and the refusal must
+#: stay the static source's own words.  The marker, not a list of names here,
+#: says which: this test file is public and those configurations are not.
+def _records_static_refusal(path):
+    return path.with_name(f"{path.stem}.recorded-refusal").is_file()
 
 
 @pytest.mark.parametrize("path,row_id", _shipped_static_source_configs())
@@ -283,7 +282,7 @@ def test_every_shipped_static_source_config_samples_its_source(path, row_id):
     row = static_source_row(row_id)
     exp = experiment_from_text(path.read_text(encoding="utf-8"), source=str(path))
     root = grids_from_projection_config(exp)[0]
-    if _shipped_name(path) in _RECORDED_STATIC_REFUSALS:
+    if _records_static_refusal(path):
         with pytest.raises(StaticSourceError, match="leaves the source"):
             sampling_window(row, root)
         return

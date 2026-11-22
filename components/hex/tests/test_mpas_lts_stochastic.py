@@ -3,7 +3,7 @@
 A WOOF storm roster runs SPPT/SKEB members on a refined moving mesh, and the moving controller always asks for
 active full-step LTS (``moving_run.segment_command``).  The MPAS-route class executor refused stochastic forcing,
 so every storm roster failed on the default route (run_392edb793fea0966 shape).  The executor now drives the
-WOOF route's class-aware generator (``LtsStochasticPhysics``): one process per member, drawn per macro by the
+WOOF-ArWen route's class-aware generator (``LtsStochasticPhysics``): one process per member, drawn per macro by the
 coordinator, each class forcing its own sources through ``LtsClassStochastic``.
 """
 from argparse import Namespace

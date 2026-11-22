@@ -69,7 +69,7 @@ class SpineImportGuard(MetaPathFinder):
                 f"{ROOT_PACKAGE!r} is already imported at "
                 f"{getattr(already, '__file__', '<unknown>')!r} before the "
                 "guard was installed; a forecast worker must be entered with "
-                "no woof in sys.modules so the port's pinned WOOF checkout "
+                "no woof in sys.modules so the port's pinned WOOF-ArWen checkout "
                 "is the first and only one to claim the name")
         if self not in sys.meta_path:
             sys.meta_path.insert(0, self)
@@ -109,7 +109,7 @@ class SpineImportGuard(MetaPathFinder):
             raise SpineImportRefused(
                 f"{fullname!r} is the cycling spine and must never be "
                 "imported inside an MPAS forecast process. The port pins "
-                "woof by commit and loads it from a frozen WOOF checkout; "
+                "woof by commit and loads it from a frozen WOOF-ArWen checkout; "
                 "importing the spine claims the package name first and the "
                 "port then refuses with 'woof was already imported from a "
                 "different tree'. Anything this worker needs from the spine "
@@ -120,7 +120,7 @@ class SpineImportGuard(MetaPathFinder):
             if not self.armed:
                 raise SpineImportRefused(
                     f"{fullname!r} was imported before the forecast worker "
-                    "armed its import guard with the port's pinned WOOF "
+                    "armed its import guard with the port's pinned WOOF-ArWen "
                     "checkout. Only the pinned checkout may claim the woof "
                     "name in this process; arm the guard first, or -- far "
                     "more likely -- this import does not belong here at all.")
@@ -168,7 +168,7 @@ class SpineImportGuard(MetaPathFinder):
         if not obeyed:
             raise SpineImportRefused(
                 f"woof was loaded from {receipt['loaded_root']!r}, not from "
-                f"the pinned WOOF checkout {receipt['pinned_root']!r}. The "
+                f"the pinned WOOF-ArWen checkout {receipt['pinned_root']!r}. The "
                 "forecast in this process is not the pinned physics and its "
                 "numbers must not be published.")
         return receipt

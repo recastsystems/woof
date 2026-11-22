@@ -31,7 +31,7 @@
 # ---------------------------------------------------------------------------
 # d01 and d02 run the 1-D YSU PBL with 2-D Smagorinsky horizontal mixing --
 # the same parent configuration the scored 250 m demonstration used
-# (docs/superpowers/receipts/les/nested-les-scored-2026-08-02.md).  The P4
+# (docs/internal/receipts/les/nested-les-scored-2026-08-02.md).  The P4
 # Shin-Hong (bl_pbl_physics = 11) gray-zone parent chain is deliberately NOT
 # used here: its AC-P4.2 partition screen reads OUT on every frame and
 # Finding 1 is unadjudicated.  That adjudication is explicitly NOT a gate on
@@ -72,7 +72,7 @@
 # ---------------------------------------------------------------------------
 # THE VERTICAL GRID -- the binding constraint, and what was done about it
 # ---------------------------------------------------------------------------
-# WOOF shares one vertical grid across every domain of a tree
+# WOOF-ArWen shares one vertical grid across every domain of a tree
 # (woof/experiment.py:193 rejects per-domain vertical keys), so the 100 m
 # child runs its 3 km root's levels.  On the shipped 49-level ladder that is
 # 18 half levels below 1.7 km -- an effective dz of 96.7 m
@@ -159,8 +159,8 @@
 #     product path can emit this config's namelists.  The demonstration hit
 #     the same wall and solved it by emitting a wizard set and extending the
 #     per-domain columns by hand
-#     (docs/superpowers/receipts/les/INFLOW-FETCH-D90-2026-08-03.md:68-75,
-#     generator docs/superpowers/receipts/les/make_d03.py).  This tree needs
+#     (docs/internal/receipts/les/INFLOW-FETCH-D90-2026-08-03.md:68-75,
+#     generator docs/internal/receipts/les/make_d03.py).  This tree needs
 #     the same treatment for TWO PBL-off domains rather than one.
 #
 # The staged queue runs an ingest admission probe as its first step, before
@@ -371,7 +371,7 @@ mix_upper_bound = 0.1
 isfflx = 1
 # P3 inflow seeding, pilot amplitude, fixed committed seed.  Amplitude, faces
 # and mode match the pilot ON arm
-# (docs/superpowers/receipts/les/inflow-generator/les.km3.p3.on-7h.toml:166-169);
+# (docs/internal/receipts/les/inflow-generator/les.km3.p3.on-7h.toml:166-169);
 # the SEED deliberately does not -- the pilot ran seed = 0 and this case
 # commits its own date-keyed number, so the two are different realisations of
 # the same amplitude and are not a reproduction of each other.
@@ -412,7 +412,7 @@ mix_isotropic = 1
 mix_upper_bound = 0.1
 isfflx = 1
 # OFF on d04.  RULED 2026-08-06 (G4 in
-# docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md), after the
+# docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md), after the
 # model refused the run:
 #
 #   ValueError: inflow_perturbation defines its vertical extent from the

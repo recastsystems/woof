@@ -123,7 +123,7 @@ def _bind_store(state, store) -> None:
 
 
 def reference(cfg, nsteps=NSTEPS):
-    """Resident, WOOF's own ``dycore.step``, with the same reset schedule."""
+    """Resident, WOOF-ArWen's own ``dycore.step``, with the same reset schedule."""
     import cupy as cp
 
     from woof.core.dycore import step

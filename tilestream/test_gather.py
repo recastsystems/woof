@@ -354,17 +354,22 @@ NONSPATIAL = {
     "etanew_tbpvs": (7501,), "etanew_tbpvs0": (7501,),
     "etanew_restart_dt": (1,),
 }
+#: WRF v4.8.0 dynamic lightning's restart carriers (woof/core/dyn_lightning.py):
+#: three advected energies and the 3-D LPI on mass levels, four planes.
+DYN_LIGHTNING_480 = ("light_ne", "light_pe", "light_neu", "lpi3d",
+                     "lpos", "lneg", "lneu", "lpi2d")
 U_FACES = {"u", "nudging_tendency_u", "surface_fdda_u"}
 V_FACES = {"v", "nudging_tendency_v", "surface_fdda_v"}
 W_LEVELS = {"w", "php", "nudging_tendency_geopotential"}
 SURFACE_PLANES = {"mup", "nwfa2d", "nifa2d", "sda_hfx", "sda_qfx",
-                  "qnorm", "hfx_both", "qfx_both"}
+                  "qnorm", "hfx_both", "qfx_both",
+                  "lpos", "lneg", "lneu", "lpi2d"}
 
 
 def _synthetic_shapes(nz, ny, nx):
     """Actual spatial shapes, with a closed inventory and no mass fallback."""
-    names = set(BASE_41 + NEW_SINCE_41 + FSBM_BINS + SINCE_204)
-    assert len(names) == 336 and names == set(G.serialized_attrs())
+    names = set(BASE_41 + NEW_SINCE_41 + FSBM_BINS + SINCE_204 + DYN_LIGHTNING_480)
+    assert len(names) == 344 and names == set(G.serialized_attrs())
     mass = names - (U_FACES | V_FACES | W_LEVELS | SURFACE_PLANES
                     | set(NONSPATIAL) | {"aerocu"})
     shapes = {name: (nz, ny, nx) for name in sorted(mass)}
@@ -737,14 +742,14 @@ def test_nonspatial_restart_carriers_are_not_spatial_fields():
 def test_all_49_names_device_and_host():
     """All spatial restart carriers, byte-exact, with both specs/memory paths.
 
-    The full contract is closed at336:321 spatial arrays plus15 known resident
+    The full contract is closed at 344: 329 spatial arrays plus 15 known resident
     carriers. Non-spatial arrays are tested for rejection below, not assigned
     invented mass shapes. This establishes no tiled FDDA/trajectory/Eta claim.
     """
     names = G.serialized_attrs()
     assert len(BASE_41) == 41 and len(SINCE_204) == 132
-    expected = BASE_41 + NEW_SINCE_41 + FSBM_BINS + SINCE_204
-    assert len(expected) == len(set(expected)) == len(names) == 336
+    expected = BASE_41 + NEW_SINCE_41 + FSBM_BINS + SINCE_204 + DYN_LIGHTNING_480
+    assert len(expected) == len(set(expected)) == len(names) == 344
     assert set(expected) == set(names)
     assert len(FSBM_BINS) == 142
     for name in NEW_SINCE_41 + FSBM_BINS:
@@ -755,7 +760,7 @@ def test_all_49_names_device_and_host():
     shapes = _synthetic_shapes(nz, ny, nx)
     assert set(shapes) | set(NONSPATIAL) == set(names)
     assert not set(shapes) & set(NONSPATIAL)
-    assert len(shapes) == 321
+    assert len(shapes) == 329
     gx, gy = tile + 2 * halo, tile + 2 * halo
     tile_shapes = _synthetic_shapes(nz, gy, gx)
 
@@ -773,7 +778,7 @@ def test_all_49_names_device_and_host():
                    for n, a in store.items()}
             gb, sb = _roundtrip(store, sink, tile_arrays, specs, nz=nz)
             key = f"{spec_label}/{mem_label}"
-            results[key] = _compare(ref, sink, f"all-321 spatial round trip [{key}]")
+            results[key] = _compare(ref, sink, f"all-329 spatial round trip [{key}]")
             total = sum(int(a.nbytes) for a in ref.values())
             assert sb == total, (key, sb, total)
             # The six post-41 joiners moved on THIS path, not by argument:

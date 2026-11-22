@@ -4,7 +4,7 @@
 Not one number below the line "MEASUREMENTS" had been produced when the
 fields, the thresholds and the verdict rule were written.** The runs this
 document gates had not happened; the node they run on had just been
-provisioned and carried no WRF build and no WOOF checkout.
+provisioned and carried no WRF build and no WOOF-ArWen checkout.
 
 This is the successor gate that `mp28-matched-trajectory.md` prescribes in
 its closing section: *"Declare the gate on the **short window** and use the
@@ -18,7 +18,7 @@ repair is not to reuse the post-hoc window's numbers, it is to declare the
 gate first and run second. This file is that declaration.
 
 It also closes the one instrumentation gap the first pass named (its §11):
-*"`U`, `V`, `PH` and `MU` are absent from this table because the WOOF frame
+*"`U`, `V`, `PH` and `MU` are absent from this table because the WOOF-ArWen frame
 writer does not dump them; that is a gap in the instrumentation, not a
 result, and it is the one thing a repeat of this test should fix first."*
 The frame writer dumps them now, in the same commit as this design, so the
@@ -65,17 +65,17 @@ way it lands is disclosed, not absorbed.
 | `sw-wrf-mp28` | WRF v4.6.1 | A | 28 | same |
 | `sw-wrf-novec-mp08` | WRF v4.6.1 | B ("novec": `-O2 -fno-tree-vectorize`, identical source) | 8 | same, the control |
 | `sw-wrf-novec-mp28` | WRF v4.6.1 | B | 28 | same, the control |
-| `sw-arwen-mp08`, `sw-arwen-mp08-b` | WOOF | CUDA / sm_120, FP32 | 8 | from build A's t = 1800 s history frame, 50 steps × 12 s, frame every 5 steps |
-| `sw-arwen-mp28`, `sw-arwen-mp28-b` | WOOF | same | 28 | same |
+| `sw-arwen-mp08`, `sw-arwen-mp08-b` | WOOF-ArWen | CUDA / sm_120, FP32 | 8 | from build A's t = 1800 s history frame, 50 steps × 12 s, frame every 5 steps |
+| `sw-arwen-mp28`, `sw-arwen-mp28-b` | WOOF-ArWen | same | 28 | same |
 
 WRF reaches the mature state by running continuously from t = 0 (no
-restart file is involved) and WOOF reads build A's first history frame as
+restart file is involved) and WOOF-ArWen reads build A's first history frame as
 its initial condition via `run_arwen.py --restart-from` (prognostics from
 the frame, time-invariant base state from `wrfinput_d01`). Each WRF build
-generates and uses its own Thompson lookup tables; WOOF uses its pinned
+generates and uses its own Thompson lookup tables; WOOF-ArWen uses its pinned
 shipped set. Three table sets again, as before, disclosed.
 
-Each WOOF configuration runs twice into separate directories: the card has
+Each WOOF-ArWen configuration runs twice into separate directories: the card has
 no ECC, and the byte comparison of independent runs is the corruption
 detector.
 
@@ -99,7 +99,7 @@ job.
 
 **Published, never gated:**
 
-* `RAINNC`: WOOF's accumulator restarts at zero while WRF's carries
+* `RAINNC`: WOOF-ArWen's accumulator restarts at zero while WRF's carries
   1800 s of rain, so the statistic compares two different quantities. The
   first pass's gate machinery nonetheless counted its rows; this one
   excludes them from the verdict in both the tested and control slots and
@@ -124,10 +124,10 @@ job.
   constant, applied in the one regime its own control showed it can
   discriminate in.
 * **G2: dual-run byte screen.** All 11 frames byte-identical between each
-  WOOF configuration and its duplicate. On a mismatch the configuration is
+  WOOF-ArWen configuration and its duplicate. On a mismatch the configuration is
   re-run once; a second mismatch withholds the result and the hardware
   finding is the report.
-* **G3: finite and bounded.** Every field of every WOOF frame finite in
+* **G3: finite and bounded.** Every field of every WOOF-ArWen frame finite in
   both schemes; `QNWFA` within `[11.1e6, 9999.0e6]` and `QNIFA` within
   `[5.0e3, 9999.0e6]` in every mp=28 frame: the same terminal clamp-band
   constants the first pass's V4 applied to the same fields. (No depletion
@@ -149,7 +149,7 @@ job.
   this document populates the short-window slot the first document
   prescribed. The scheme remains `implemented-unverified`, never a default;
   no maturity tier moves on this evidence.
-* **FAIL**: any of G0, G1, G3 fails for WOOF while the control passes G1.
+* **FAIL**: any of G0, G1, G3 fails for WOOF-ArWen while the control passes G1.
   The failing field and step are named. The first document's closing
   recommendation rested in part on its post-hoc short window; a FAIL here
   withdraws that support and says so.
@@ -171,7 +171,7 @@ MEASUREMENTS must record, before any verdict is read: the tarball sha256
 `f2b8d3916560f9046f89f8ac5f32c5292a1800498fd75301e422f147c82a3dbd`); both
 builds' `ideal.exe`/`wrf.exe` hashes; each build's generated Thompson table
 hashes; both `wrfinput_d01` hashes; compiler, glibc and netCDF versions;
-and for WOOF the source snapshot commit, CuPy version, driver and device.
+and for WOOF-ArWen the source snapshot commit, CuPy version, driver and device.
 sm_120 flushes FP32 subnormals to zero in all arithmetic, as published for
 the first pass; the same disclosure applies unchanged.
 
@@ -218,18 +218,18 @@ different root). `ideal.exe` carries no such bytes and reproduced exactly.
 All six regenerated Thompson tables are bit-for-bit the first pass's:
 table generation is deterministic per flag set on this compiler, which
 retires the residual worry that the published table hashes were
-node-luck. Three table sets in play again (vec, novec, WOOF's pinned
+node-luck. Three table sets in play again (vec, novec, WOOF-ArWen's pinned
 set), each model on its own, as declared.
 
 **Initial conditions.** `ideal.exe` (vec) per banked namelists:
 `wrfinput_d01` mp=8 `598911a4…`, mp=28 `c36ce7f8…`.
 
-**WOOF.** `git archive` of this document's design commit (`arwen-src`
+**WOOF-ArWen.** `git archive` of this document's design commit (`arwen-src`
 sha256 `180fd880…`), run in-tree; CCN table loaded under its pinned hash.
 
 **Cost.** WRF walls: vec 597 s (mp=8, includes its build's one-time table
 computation) / 216 s (mp=28); novec 823 s / 373 s (same asymmetry, same
-cause). WOOF 50-step runs: 57.1 s (first, includes kernel JIT), then
+cause). WOOF-ArWen 50-step runs: 57.1 s (first, includes kernel JIT), then
 2.7 / 11.5 / 3.3 s. Node total for the registered comparison, from first
 `ideal.exe` to gate receipt: under 40 minutes wall.
 
@@ -246,7 +246,7 @@ cause). WOOF 50-step runs: 57.1 s (first, includes kernel JIT), then
 
 ## 9. The measurements
 
-Normalised RMS field difference, WOOF vs WRF build A, `mp=8 | mp=28`,
+Normalised RMS field difference, WOOF-ArWen vs WRF build A, `mp=8 | mp=28`,
 at the compared frames (frame = 60 s):
 
 | frame | t (s) | `U` | `V` | `W` | `PH` | `MU` | `T` | `QVAPOR` | `QCLOUD` | `QNWFA` | `QNIFA` |
@@ -284,7 +284,7 @@ Three observations, in evidence order:
 
 ## 10. The verdict, as declared
 
-| condition | WOOF (tested slot) | **CONTROL: WRF build B in the tested slot** |
+| condition | WOOF-ArWen (tested slot) | **CONTROL: WRF build B in the tested slot** |
 |---|---|---|
 | **G0** installation screen | **PASS**, 28/28 rows exactly 0.0 | (not applicable by design, its step 0 is 1800 s of accumulated drift, published: `W` 7.555e-03 \| 1.631e-02) |
 | **G1** no amplification, ≤ 3.0× | **PASS**, 0 of 140 rows over, worst **2.195** (`QNRAIN` at frame 10; runner-up **1.501**, `QNRAIN` at frame 2) | **FAIL**, 8 of 140 rows over, worst **4.966** (`QRAIN` at frame 2) |
@@ -312,11 +312,11 @@ before ITS runs, not a repair applied to this one after the numbers
 arrived.
 
 **What is measured regardless, with the verdict unchanged:** the ratio
-statistic asks whether mp=28 adds disagreement beyond mp=8. WOOF has no
+statistic asks whether mp=28 adds disagreement beyond mp=8. WOOF-ArWen has no
 rows over 3x (worst 2.195), while the control has eight (worst 4.966).
-This does not mean WOOF is closer to WRF than recompiled WRF is. The ratio
-is steadier partly because WOOF's mp=8 divergence, its denominator, is larger.
-For mp=8, WOOF's normalized `W` difference after 60 s (1.800e-02) is about
+This does not mean WOOF-ArWen is closer to WRF than recompiled WRF is. The ratio
+is steadier partly because WOOF-ArWen's mp=8 divergence, its denominator, is larger.
+For mp=8, WOOF-ArWen's normalized `W` difference after 60 s (1.800e-02) is about
 2.4 times the recompiled WRF difference accumulated over the preceding
 1800 s (7.555e-03). For mp=28 the two are similar: 1.797e-02 after 60 s
 against 1.631e-02 after 1800 s. These compare different elapsed windows;

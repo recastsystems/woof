@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build compiler-bound kernel packs that ship as release assets."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -20,7 +21,21 @@ def main():
     parser.add_argument("--physics-family", action="append",
                         help="Build only these direct physics families, under both numerics modes")
     parser.add_argument("--workers", type=int, help="Maximum concurrent compiler processes")
+    parser.add_argument("--mynn-math-source", type=Path,
+                        help="Pinned replay math header for the bl_mynn family")
+    parser.add_argument("--mynn-math-sha256",
+                        help="Required SHA-256 of --mynn-math-source")
     args = parser.parse_args()
+    mynn_math = None
+    if args.mynn_math_source is not None or args.mynn_math_sha256 is not None:
+        if args.mynn_math_source is None or args.mynn_math_sha256 is None:
+            parser.error("--mynn-math-source and --mynn-math-sha256 are required together")
+        if args.physics_family != ["bl_mynn"]:
+            parser.error("a replay math header requires --physics-family bl_mynn")
+        blob = args.mynn_math_source.read_bytes()
+        if hashlib.sha256(blob).hexdigest() != args.mynn_math_sha256:
+            parser.error("MYNN replay math header SHA-256 mismatch")
+        mynn_math = blob.decode("utf-8")
     from woof.hex.cuda_backend.aot_build import build, physics_inventory
     if args.output is None:
         from woof.hex.cuda_backend.aot import compiler_identity
@@ -38,7 +53,7 @@ def main():
         if args.prune:
             parser.error("--physics-family builds part of a shared pack; --prune would drop the rest")
         families = set(args.physics_family)
-        available = [row for mode in ("strict", "fast") for row in physics_inventory(mode)]
+        available = [row for mode in ("strict", "fast") for row in physics_inventory(mode, mynn_math_source=mynn_math)]
         unknown = families - {row["physics_family"] for row in available}
         if unknown:
             parser.error("unknown physics families: " + ", ".join(sorted(unknown)))

@@ -1,4 +1,4 @@
-"""Candidate-only domain edits using WOOF's parser and native grid geometry.
+"""Candidate-only domain edits using WOOF-ArWen's parser and native grid geometry.
 
 This endpoint authors ordinary configuration metadata. It does not run a
 forecast, locate a storm, decode forcing, or implement a projection/tracker.
@@ -1031,7 +1031,7 @@ def _apply(raw, action, output):
             if not isinstance(points, list):
                 raise ValueError("Target points must be an array")
             if relocation.get("enabled") and relocation.get("grid_id") not in (None, grid_id):
-                raise ValueError("WOOF supports one global manual mover; another nest already owns relocation")
+                raise ValueError("WOOF-ArWen supports one global manual mover; another nest already owns relocation")
             if not points:
                 relocation.pop("move", None)
                 if not relocation.get("follow"):

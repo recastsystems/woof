@@ -1755,6 +1755,86 @@ def fetch_geog(*, root: Path, datasets: tuple[str, ...], source: str,
             progress=progress, urlopen_fn=urlopen_fn)
 
 
+# GMTED EAST OF 180.  The WPS_GEOG GMTED2010 30" terrain stores 0 m on land
+# in the strip east of 180 degrees (tile column 21601-22800, 180 to 190 E):
+# all of Taveuni east of the line (1,127 pixels; Vanua Levu just west of it
+# reaches 870 m), and land in the Lau group, Tonga, the Aleutians, Chukotka
+# and the Chatham Islands.  Every static built from the tiles -- the WRF
+# route, the MPAS/hex route, the gravity-wave-drag statistics -- had a flat
+# island there.  The repair is a table, not a code path per reader: each such
+# pixel (MODIS 20-class land, GMTED 0 m) gets the mean Copernicus GLO-30 height
+# of its 30" cell, from a shipped patch (data/geog_repairs, built by
+# tools/build_gmted_e180_patch.py), written into the tiles once per geography
+# root, so every reader of the tiles reads the island.  Same-size rewrite: the
+# install receipt's file and byte counts still hold.  GPUWM_GEOG_SEAM_REPAIR=off
+# reads the tiles as stored (WPS geogrid parity), as for the land-use seam.
+GMTED_DATASET = "topo_gmted2010_30s"
+GMTED_E180_PATCH = Path(__file__).resolve().parent / "data" / "geog_repairs" / "gmted2010_e180_glo30.npz"
+GMTED_E180_MARK = ".topo_gmted2010_30s.e180-glo30-v1"
+
+
+def repair_gmted_east_of_180(root: Path, *, progress=print) -> int:
+    """Write the GMTED EAST OF 180 patch into ``root``'s GMTED tiles, once.
+
+    Returns the number of terrain pixels written (0 when already repaired, off,
+    absent, or the tiles are not the layout the patch was made for)."""
+    import numpy as np
+
+    directory = root / GMTED_DATASET
+    mark = root / GMTED_E180_MARK
+    if os.environ.get("GPUWM_GEOG_SEAM_REPAIR", "").strip().lower() in ("off", "0", "no", "false"):
+        return 0
+    if mark.is_file() or not (directory / "index").is_file() or not GMTED_E180_PATCH.is_file():
+        return 0
+    from woof.static.geog import parse_index
+    idx = parse_index(directory / "index")
+    layout = (idx.wordsize == 2 and idx.tile_x == 1200 and idx.tile_y == 1200
+              and abs(idx.dx - 1 / 120) < 1e-7 and abs(idx.dy - 1 / 120) < 1e-7
+              and abs(idx.known_lon - 0.004166667) < 1e-6 and abs(idx.known_lat + 89.99583) < 1e-5
+              and (idx.known_x, idx.known_y) == (1.0, 1.0))
+    if not layout:
+        progress(f"fetch-geog {GMTED_DATASET}: not the 43200 x 21600 layout from 0 E the east-of-180 "
+                 "repair was made for; read as stored")
+        return 0
+    patch = np.load(GMTED_E180_PATCH)
+    xs, ys, hs = patch["x"].astype(np.int64), patch["y"].astype(np.int64), patch["h"].astype(np.int16)
+    b = int(idx.tile_bdr or 0)
+    side = (1200 + 2 * b)
+    dtype = (">" if idx.endian != "little" else "<") + "i2"
+    written = 0
+    # every tile whose interior or border holds a patched pixel
+    tiles: dict[tuple[int, int], list[int]] = {}
+    for i, (x, y) in enumerate(zip(xs, ys)):
+        for tx in {(x - 1 - d) // 1200 for d in (-b, 0, b)}:
+            for ty in {(y - 1 - d) // 1200 for d in (-b, 0, b)}:
+                c, r = x - (tx * 1200 + 1) + b, y - (ty * 1200 + 1) + b
+                if 0 <= c < side and 0 <= r < side:
+                    tiles.setdefault((tx, ty), []).append(i)
+    for (tx, ty), idxs in sorted(tiles.items()):
+        name = f"{tx * 1200 + 1:05d}-{tx * 1200 + 1200:05d}.{ty * 1200 + 1:05d}-{ty * 1200 + 1200:05d}"
+        path = directory / name
+        if not path.is_file() or path.stat().st_size != side * side * 2:
+            continue
+        a = np.fromfile(path, dtype).reshape(side, side)
+        sel = np.asarray(idxs)
+        c = xs[sel] - (tx * 1200 + 1) + b
+        r = ys[sel] - (ty * 1200 + 1) + b
+        change = a[r, c] == 0              # only what the source stored as 0 m
+        if not change.any():
+            continue
+        a[r[change], c[change]] = hs[sel][change]
+        part = path.with_name(path.name + ".e180-part")
+        a.astype(dtype).tofile(part)
+        os.replace(part, path)
+        written += int(change.sum())
+    mark.write_text(json.dumps({"patch": GMTED_E180_PATCH.name, "pixels": int(xs.size), "written": written,
+                                "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}) + "\n")
+    progress(f"fetch-geog {GMTED_DATASET}: east of 180 degrees, {written} land pixels stored as 0 m now carry "
+             "their Copernicus GLO-30 height (Taveuni, Lau, Tonga, the Aleutians, Chukotka; "
+             "GPUWM_GEOG_SEAM_REPAIR=off reads the tiles as stored)")
+    return written
+
+
 def _fetch_geog_locked(*, root: Path, datasets: tuple[str, ...], source: str,
                        bundle: bool, keep_archives: bool, allow_drift: bool,
                        progress, urlopen_fn) -> int:
@@ -1768,6 +1848,8 @@ def _fetch_geog_locked(*, root: Path, datasets: tuple[str, ...], source: str,
         else:
             needed.append(name)
     if not needed:
+        if GMTED_DATASET in datasets:
+            repair_gmted_east_of_180(root, progress=progress)
         progress(f"fetch-geog: all {len(datasets)} requested datasets "
                  f"already staged and valid at {root}")
         return 0
@@ -1905,6 +1987,10 @@ def _fetch_geog_locked(*, root: Path, datasets: tuple[str, ...], source: str,
     if failures:
         raise GeogFetchError(
             "post-stage validation failed:\n  " + "\n  ".join(failures))
+    if GMTED_DATASET in datasets:
+        if GMTED_DATASET in needed:
+            (root / GMTED_E180_MARK).unlink(missing_ok=True)    # freshly extracted tiles: repair them again
+        repair_gmted_east_of_180(root, progress=progress)
     progress(f"fetch-geog: {staged} dataset(s) staged; all "
              f"{len(datasets)} requested datasets valid at {root} "
              "(each carries its parsing WPS `index`); `woof doctor` "
@@ -2018,9 +2104,8 @@ def geography_for_run(config_path: Path) -> dict:
         cfg = domains[domain_id].run
         if getattr(cfg, "sf_lake_physics", 0) and "LAKE_DEPTH" not in served:
             required.add("lake_depth")
-        from woof.static.orographic import required_static_fields, orographic_paths
-        drag = tuple(name for name in required_static_fields(
-            getattr(cfg, "topo_wind", 0), getattr(cfg, "gwd_opt", 0)) if name not in served)
+        from woof.static.orographic import required_static_fields_for, orographic_paths
+        drag = tuple(name for name in required_static_fields_for(cfg) if name not in served)
         if drag:
             paths = orographic_paths(drag, selection.root, selection.resolution_tokens)
             required.update(path.relative_to(selection.root).as_posix() for path in paths.values())

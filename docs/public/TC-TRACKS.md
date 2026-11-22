@@ -60,8 +60,8 @@ must be explicit or all omitted. Family totals are never combined into a single
 probability distribution. Tracks retain their member's weight, including tracks
 with missing fixes. Multiple candidates from one member are not independent members.
 
-`--input` is a one-path shortcut for an Earth2Studio NetCDF, an ERA5-name Zarr, one WOOF GRIB2 valid time, or
-a WOOF run directory. A run without an exported Zarr invokes `woof ml-export`
+`--input` is a one-path shortcut for an Earth2Studio NetCDF, an ERA5-name Zarr, one WOOF-ArWen GRIB2 valid time, or
+a WOOF-ArWen run directory. A run without an exported Zarr invokes `woof ml-export`
 with the required pressure-level fields and earth-relative winds. Use a manifest
 for explicit source/family/ancestry, GRIB2 frame series, or converted hex output.
 
@@ -258,7 +258,7 @@ Relative best-track paths resolve beside that JSON. ATCF, HURDAT2 and a saved
 `gpuwm.tc-tracks.v1` document containing `best_track` are accepted. Without an
 explicit reference the roster's saved best track is reused, when present. The
 post-run `woof tc-tracks --manifest ... --backend tempestextremes --render` call
-uses WOOF parent histories, roster weights and strata. Its exact command and
+uses WOOF-ArWen parent histories, roster weights and strata. Its exact command and
 stages are saved under `forecast/cyclone/`. All members, including members with
 no detected storm, remain in the track manifest. The plume labels member weights
 and strata and draws supplied best track in black.

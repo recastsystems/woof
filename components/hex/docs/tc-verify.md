@@ -93,7 +93,7 @@ Neighbourhoods are square, rounded to odd cell counts; actual widths are reporte
 Windows clip at edges and normalize by common valid cells. All-dry FSS is undefined,
 not perfect. FSS, ETS, frequency bias, mean amounts and integrated volume bias are
 reported. DOI: 10.1175/2007MWR2123.1. Stage IV fetching/decoding and conservative
-remapping remain the data-preparation lane's responsibility; no Python gridded
+remapping remain the data-preparation step's responsibility; no Python gridded
 processing is introduced here.
 
 Station input is an array of records:

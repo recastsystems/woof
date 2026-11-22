@@ -1,4 +1,11 @@
-"""Capture UDM's real two-dimensional calls and native initialized state."""
+"""Capture UDM's real two-dimensional calls and native initialized state.
+
+usage: instrument.py SOURCE OUT [--all-rows]
+
+By default calls 1, 2, 30 and 100 are captured on each tile's first row;
+``--all-rows`` captures every row of those calls (the WRF v4.8.0 replay,
+whose hail-deposition and fall-density changes need wet columns).
+"""
 from pathlib import Path
 import importlib.util
 import json
@@ -11,6 +18,9 @@ t = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = t
 spec.loader.exec_module(t)
 source, out = map(Path, sys.argv[1:3])
+all_rows = sys.argv[3:] == ["--all-rows"]
+if sys.argv[3:] not in ([], ["--all-rows"]):
+    sys.exit(__doc__)
 out.mkdir(parents=True, exist_ok=True)
 module = {}
 for n, line in t.statements(source):
@@ -67,7 +77,7 @@ pre += """   CLOSE(udm_unit)
    udm_dumped=.TRUE.
    END IF
    IF (lat==jts) udm_call=udm_call+1
-   udm_capture=LEN_TRIM(udm_dir)>0.AND.lat==jts &
+   udm_capture=LEN_TRIM(udm_dir)>0""" + ("" if all_rows else ".AND.lat==jts") + """ &
      .AND.(udm_call==1.OR.udm_call==2.OR.udm_call==30.OR.udm_call==100)
 """
 text = text.replace(marker, pre + stream(".input", list(arrays)) + marker)

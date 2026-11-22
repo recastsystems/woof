@@ -143,7 +143,7 @@
   "tests/test_smallstep_oracle_contract.py": "6dbadf1c006a61b186567c1ab8652af1953425833fcfc250af9ae3c27a7e2d40",
   "tests/test_smallstep_vertical_wrf471_parity.py": "545bdccfe08b831090f0e8140850f6adb79f61b3bbf184c4dc881bceffd5930c",
   "tools/smallstep_wrf471_oracle/README.md": "2ea7c2796833511e5ba8831f4c4f5063753b997e1bbcc01cee63463be5f8b02c",
-  "tools/smallstep_wrf471_oracle/bookkeeping.py": "4499ffdd5c631f8d8bc61f585159957714f341e735748b316b0f9e40c2d4ae5c",
+  "tools/smallstep_wrf471_oracle/bookkeeping.py": "18a5d852fbc1e8c70ac96c2c465ac0de0d873665b73f3d76e2259e2be24fe0dd",
   "tools/smallstep_wrf471_oracle/bookkeeping_README.md": "01f2b2f3809a1f844db4be676957c038581e85f299fe500504f61e3a3443f286",
   "tools/smallstep_wrf471_oracle/bookkeeping_attribution.py": "d82889b88ef8e2c68fc3a196b14f8d48950fa920b41256c858920728685007d2",
   "tools/smallstep_wrf471_oracle/bookkeeping_receipt.py": "82231ee00ec03ac0f65b1af013383933f816a361745cd97dfc514e789f4c9704",

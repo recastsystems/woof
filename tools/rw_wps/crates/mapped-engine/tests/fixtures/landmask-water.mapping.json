@@ -1,0 +1,55 @@
+{
+  "schema": "rw-wps.mapping.v1",
+  "name": "landmask-water-fixture",
+  "format": "netcdf",
+  "coordinates": {
+    "horizontal": {
+      "kind": "variables",
+      "latitude": {"format": "netcdf", "name": ["latitude"]},
+      "longitude": {"format": "netcdf", "name": ["longitude"]}
+    },
+    "vertical": {
+      "kind": "pressure",
+      "units": "hPa",
+      "positive": "down",
+      "levels": [1000.0],
+      "selector": {"format": "netcdf", "name": ["level"]}
+    },
+    "time": {
+      "kind": "dimension",
+      "units": "hours since 2026-07-20 00:00:00",
+      "calendar": "standard",
+      "selector": {"name": ["time"]}
+    }
+  },
+  "fields": {
+    "land_fraction": {
+      "selectors": [{"format": "netcdf", "name": ["lsm"]}],
+      "units": {"source": "1", "target": "1"},
+      "source_axes": ["time", "y", "x"],
+      "target_axes": ["y", "x"],
+      "location": "surface",
+      "staggering": "none",
+      "missing": {"kind": "reject"}
+    },
+    "soil_temperature": {
+      "selectors": [{"format": "netcdf", "name": ["stl"]}],
+      "units": {"source": "K", "target": "K"},
+      "source_axes": ["time", "soil", "y", "x"],
+      "target_axes": ["soil", "y", "x"],
+      "location": "soil",
+      "staggering": "none",
+      "missing": {"kind": "landmask_water"}
+    },
+    "volumetric_soil_moisture": {
+      "selectors": [{"format": "netcdf", "name": ["swvl"]}],
+      "units": {"source": "m3 m-3", "target": "m3 m-3"},
+      "source_axes": ["time", "soil", "y", "x"],
+      "target_axes": ["soil", "y", "x"],
+      "location": "soil",
+      "staggering": "none",
+      "missing": {"kind": "landmask_water"}
+    }
+  },
+  "target": {"soil_layer_count": 2}
+}

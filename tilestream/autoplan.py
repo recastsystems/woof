@@ -1341,7 +1341,7 @@ class Plan:
                    if prepared is None else
                    "   (itemized independent prepared buffers, full unfused radiation peak)")
         lines = [
-            "WOOF out-of-core plan",
+            "WOOF-ArWen out-of-core plan",
             f"  domain        {self.nx} x {self.ny} x {self.nz}"
             f"  = {self.cells / 1e6:.1f} Mcell"
             f"   ({'periodic' if self.periodic else 'NOT periodic'})",

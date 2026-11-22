@@ -131,7 +131,7 @@ def test_an_unreasonable_land_column_is_rebuilt_on_noah_layers(route, capsys):
         np.full(_SHAPE, 277.0))[:, _BAD[0], _BAD[1]]
     np.testing.assert_allclose(
         state.soil_temperature[:, _BAD[0], _BAD[1]], expected,
-        rtol=0.0, atol=1.0e-12)
+        rtol=2.5e-7, atol=0.0)  # REAL storage, as real.exe holds the start soil
     receipt = state.soil_temperature_repair
     assert receipt["repaired_land_columns"] == 1
     assert receipt["land_cells"] == int(np.count_nonzero(_LAND))
@@ -329,7 +329,7 @@ def test_a_snow_covered_column_far_below_its_skin_is_rebuilt_on_noah_layers(
         np.full(_SHAPE, 277.0))[:, _BAD[0], _BAD[1]]
     np.testing.assert_allclose(
         state.soil_temperature[:, _BAD[0], _BAD[1]], expected,
-        rtol=0.0, atol=1.0e-12)
+        rtol=2.5e-7, atol=0.0)  # REAL storage, as real.exe holds the start soil
     receipt = state.soil_temperature_repair
     assert receipt["repaired_land_columns"] == 1
     assert receipt["samples_outside_band"] == 0

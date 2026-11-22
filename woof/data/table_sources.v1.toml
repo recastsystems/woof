@@ -19,7 +19,7 @@ filename = "qr_acr_qsV2.dat"
 version = "classic-wrf-4.6.1"
 bytes = 43764288
 sha256 = "47350be20bd59c9f31378dd5805ce7d35fd14bebcfafb4ade56626f6eed818d7"
-url = "https://github.com/FahrenheitResearch/arwen/releases/download/v1.0.0/qr_acr_qsV2.dat"
+url = "https://github.com/recastsystems/arwen/releases/download/v1.0.0/qr_acr_qsV2.dat"
 
 [[source]]
 filename = "qr_acr_qsV2.dat"
@@ -40,7 +40,7 @@ filename = "thompson_aux_tables.dat"
 version = "classic-wrf-4.6.1"
 bytes = 6164536
 sha256 = "a1bda803cdb53aedce8a2970c04c355fad19e3744398e1c9b13a876f09730547"
-url = "https://github.com/FahrenheitResearch/arwen/releases/download/v1.0.0/thompson_aux_tables.dat"
+url = "https://github.com/recastsystems/arwen/releases/download/v1.0.0/thompson_aux_tables.dat"
 
 [[source]]
 filename = "thompson_aux_tables.dat"
@@ -54,7 +54,7 @@ filename = "thompson_aux_tables.dat"
 version = "wrf-3.9-noaa"
 bytes = 6164536
 sha256 = "13d304911e5322fb5bcc2a0639effc20ad5381c59f076ced2386b56f2fb441ae"
-url = "https://github.com/FahrenheitResearch/arwen/releases/download/v2.8.7/thompson-wrf39-noaa-thompson_aux_tables.dat"
+url = "https://github.com/recastsystems/arwen/releases/download/v2.8.7/thompson-wrf39-noaa-thompson_aux_tables.dat"
 [[source]]
 filename = "thompson_aux_tables.dat"
 version = "classic-wrf-4.6.1"
@@ -74,14 +74,14 @@ filename = "freezeH2O.dat"
 version = "classic-wrf-4.6.1"
 bytes = 254944848
 sha256 = "c235d1ce6f8750a671b2273d0e216ed3acf9a869bfd52a14676826f87aab5c02"
-url = "https://github.com/FahrenheitResearch/arwen/releases/download/v1.0.0/freezeH2O.dat"
+url = "https://github.com/recastsystems/arwen/releases/download/v1.0.0/freezeH2O.dat"
 
 [[source]]
 filename = "freezeH2O.dat"
 version = "wrf-3.9-noaa"
 bytes = 254944848
 sha256 = "28c12192251969cd79a02e08e3174f26113de51490689f728cfc44af9cf76b2c"
-url = "https://github.com/FahrenheitResearch/arwen/releases/download/v2.8.7/thompson-wrf39-noaa-freezeH2O.dat"
+url = "https://github.com/recastsystems/arwen/releases/download/v2.8.7/thompson-wrf39-noaa-freezeH2O.dat"
 
 [[source]]
 filename = "freezeH2O.dat"
@@ -102,7 +102,7 @@ filename = "qr_acr_qg_V4.dat"
 version = "classic-wrf-4.6.1"
 bytes = 74966480
 sha256 = "89b779855847b2acdca1b40e24c5f1bd89b0c6ed105ca91a5a076d80c2437c3f"
-url = "https://github.com/FahrenheitResearch/arwen/releases/download/v1.0.0/qr_acr_qg_V4.dat"
+url = "https://github.com/recastsystems/arwen/releases/download/v1.0.0/qr_acr_qg_V4.dat"
 
 [[source]]
 filename = "qr_acr_qg_V4.dat"
@@ -131,7 +131,7 @@ filename = "qr_acr_qg.dat"
 version = "wrf-3.9-noaa"
 bytes = 51518256
 sha256 = "8b9b5039ec560748c6261cc9ecbc4366332473a9a1d0666ee5a7f04686abf402"
-url = "https://github.com/FahrenheitResearch/arwen/releases/download/v2.8.7/thompson-wrf39-noaa-qr_acr_qg.dat"
+url = "https://github.com/recastsystems/arwen/releases/download/v2.8.7/thompson-wrf39-noaa-qr_acr_qg.dat"
 
 [[source]]
 filename = "qr_acr_qg.dat"
@@ -145,7 +145,7 @@ filename = "qr_acr_qs.dat"
 version = "wrf-3.9-noaa"
 bytes = 33118944
 sha256 = "39b4fd363d440a867cc8c37a22ebf2651c8ffcf54f8c05ab7a6f5e753e630ac0"
-url = "https://github.com/FahrenheitResearch/arwen/releases/download/v2.8.7/thompson-wrf39-noaa-qr_acr_qs.dat"
+url = "https://github.com/recastsystems/arwen/releases/download/v2.8.7/thompson-wrf39-noaa-qr_acr_qs.dat"
 
 [[source]]
 filename = "qr_acr_qs.dat"

@@ -26,10 +26,20 @@ from woof.hex.cli import build_parser, main
 
 TREE = Path(__file__).resolve().parents[1]
 CASES = TREE / "verification" / "moving48" / "cases"
-# Assembled from pieces so that this file itself does not carry the literals
-# the public export's leak scan refuses (a rented host's card queue and work root).
-BOX_TOKENS = ("/opt/" + "gpu-" + "mutex", "GPU_" + "MUTEX_CARDS", "/" + "work/", "safe" + "kill",
-              "under-card-" + "lease")
+
+
+def _box_tokens() -> tuple[str, ...]:
+    """A rented host's work root, and its card queue's names, which are the project's own: those are read from the
+    private pattern file (``host_tokens``; HEX_PRIVATE_PATTERNS names it, and it is never packaged). THE BREAKAGE:
+    this file spelled them in pieces, so every source package carried them."""
+    tokens = ["/" + "work/"]
+    path = os.environ.get("HEX_PRIVATE_PATTERNS")
+    if path:
+        tokens += json.loads(Path(path).read_text(encoding="utf-8"))["host_tokens"]
+    return tuple(tokens)
+
+
+BOX_TOKENS = _box_tokens()
 
 
 def _case(tmp_path: Path, **changes) -> Path:

@@ -741,6 +741,104 @@ MAPPED_OPTIONAL_PROOF_KEYS = frozenset({
     "soil_moisture_floor",
     "initial_perturbation", "posting", "initial_source", "source_pairing", "storm_merge",
     "vortex_initialization"})
+#: The two spellings of one preparation's forcing axis.  A mapped
+#: preparation whose forcing times are whole hours apart writes
+#: ``forcing_hours``; one whose times are not (a hex parent's 15-minute
+#: frames) writes ``forcing_offsets_seconds`` -- the same choice, made once,
+#: in the proof, the cache identity, the cache metadata and the export
+#: (``woof.mapped_direct``, ``woof.ingest.prepared_cache``,
+#: ``woof.native_domain_artifacts``).
+#:
+#: THE BREAKAGE THIS PREVENTS (Hex with Regional, 2026-10-29): this reader
+#: knew only ``forcing_hours``, so every sub-hourly mapped preparation the
+#: writer sealed was refused at the forecast with "mapped hex-global proof
+#: top-level inventory differs", and an ArWen nest under a hex parent could
+#: only be forced hourly.  An hourly boundary linearly interpolates the
+#: parent's hydrometeors between frames: a storm that moved along the
+#: nest's south edge between 12:30 and 13:00 (86.6W to 85.9W) was faded in
+#: at its 13:00 position from 12:00, half an hour before the parent had any
+#: echo in the box, and the 1 km nest grew a 40-55 dBZ band in its edge rows.
+FORCING_AXIS_KEYS = ("forcing_hours", "forcing_offsets_seconds")
+
+
+@dataclass(frozen=True)
+class ForcingAxis:
+    """A preparation's forcing axis as written (``key``, ``values``), in seconds."""
+
+    key: str
+    values: tuple[int, ...]
+    seconds: tuple[int, ...]
+
+    @property
+    def hourly(self) -> bool:
+        return self.key == "forcing_hours"
+
+    @property
+    def hours(self) -> tuple[int, ...] | None:
+        """The whole-hour offsets, or ``None`` for a sub-hourly axis."""
+
+        return self.values if self.hourly else None
+
+    def identity(self) -> dict[str, list[int]]:
+        return {self.key: list(self.values)}
+
+    def describe(self, index: int = -1) -> str:
+        seconds = self.seconds[index]
+        return (f"{self.values[index]} h ({seconds:g} s)" if self.hourly
+                else f"{seconds / 3600:g} h ({seconds:g} s)")
+
+
+def forcing_axis_proof_keys(expected, proof: Mapping[str, object]) -> set[str]:
+    """``expected`` with the forcing axis under the spelling ``proof`` uses.
+
+    The required inventories name ``forcing_hours``; a sub-hourly proof
+    carries ``forcing_offsets_seconds`` in its place.  A proof naming both,
+    or neither, still fails the inventory check this feeds.
+    """
+
+    expected = set(expected)
+    if "forcing_offsets_seconds" in proof and "forcing_hours" in expected:
+        expected = (expected - {"forcing_hours"}) | {"forcing_offsets_seconds"}
+    return expected
+
+
+def hourly_forcing_axis(hours) -> ForcingAxis:
+    values = tuple(int(hour) for hour in hours)
+    return ForcingAxis(key="forcing_hours", values=values,
+                       seconds=tuple(hour * 3600 for hour in values))
+
+
+def forcing_axis(document: Mapping[str, object], *, source: str,
+                 label: str = "preparation proof") -> ForcingAxis:
+    """The forcing axis ``document`` carries, under exactly one of its two keys.
+
+    ``forcing_offsets_seconds`` is admitted only for a mapped source: the
+    native GFS, ERA5 and HRRR preparations publish whole-hour leads and
+    their source vocabularies (``source_forecast_hours``) are hours.
+    """
+
+    present = [key for key in FORCING_AXIS_KEYS if key in document]
+    if len(present) != 1:
+        raise ValueError(
+            f"{label} forcing must name exactly one of "
+            f"{' or '.join(FORCING_AXIS_KEYS)}")
+    key = present[0]
+    if key == "forcing_offsets_seconds" and source not in _MAPPED_SOURCES:
+        raise ValueError(
+            f"{label} forcing offsets in seconds are a mapped preparation's; "
+            f"the {source} route prepares whole-hour leads")
+    values = document[key]
+    if (not isinstance(values, list) or len(values) < 2
+            or any(isinstance(value, bool) or not isinstance(value, int)
+                   for value in values)
+            or values[0] != 0):
+        raise ValueError(f"{label} forcing hours are malformed")
+    values = tuple(values)
+    scale = 3600 if key == "forcing_hours" else 1
+    return ForcingAxis(key=key, values=values,
+                       seconds=tuple(int(value) * scale for value in values))
+
+
 _SOURCE_ADAPTER = {
     # The generic mapped adapter, truthfully: a packaged profile is
     # prepared by `woof.mapped_direct` with nothing model-specific in
@@ -784,6 +882,17 @@ _LBC_DYNAMICS_FIELDS = ("mu", "phi", "theta", "u", "v")
 _LBC_FIELDS = tuple(sorted((*_LBC_DYNAMICS_FIELDS, "qv")))
 
 
+def _ring_hydrometeor_record(state, cfg):
+    """:func:`woof.ingest.lateral_bc.hydrometeor_ring_receipt` for the
+    root's own boundary inventory, as the run record carries it."""
+    from woof.ingest.lateral_bc import hydrometeor_ring_receipt
+
+    if not getattr(cfg, "specified", False) or getattr(cfg, "nested", False):
+        return None
+    fields = getattr(state, "_external_scalar_boundary_fields", None) or ()
+    return _strict_json(hydrometeor_ring_receipt(cfg, fields))
+
+
 def _lbc_field_inventories(cfg) -> tuple[list[str], ...]:
     """The LBC field lists a prepared cache may legitimately carry for ``cfg``.
 
@@ -804,7 +913,8 @@ def _lbc_field_inventories(cfg) -> tuple[list[str], ...]:
         moist=bool(getattr(cfg, "moist", True)),
         mp_physics=int(getattr(cfg, "mp_physics", 0)),
         aer_init_opt=int(getattr(cfg, "aer_init_opt", 0)),
-        mp28_aerosol_source=getattr(cfg, "mp28_aerosol_source", "auto"))
+        mp28_aerosol_source=getattr(cfg, "mp28_aerosol_source", "auto"),
+        use_rap_aero_icbc=bool(getattr(cfg, "use_rap_aero_icbc", False)))
     inventories = []
     for aerosol_from_input in (False, True):
         fields = sorted(
@@ -1572,7 +1682,9 @@ class PreparedForecastInputs:
     grid: object
     static: Mapping[str, np.ndarray]
     landuse_identity: Mapping[str, object]
-    forcing_hours: tuple[int, ...]
+    #: Whole-hour forcing leads; ``None`` when the preparation's axis is
+    #: sub-hourly (``forcing_offsets_seconds``, :func:`forcing_axis`).
+    forcing_hours: tuple[int, ...] | None
     boundary_interval_seconds: int
     physics_receipt: Mapping[str, object]
     export_source_receipt: Mapping[str, object]
@@ -1600,6 +1712,17 @@ class PreparedForecastInputs:
     #: Ephemeral immutable mappings verified by this sealed direct preflight.
     #: These change no run authority or serialized receipt identity.
     cache_payload: object | None = field(default=None, repr=False, compare=False)
+    #: The forcing offsets in seconds of a sub-hourly mapped preparation
+    #: (a hex parent's 15-minute frames); ``None`` for whole-hour leads.
+    forcing_offsets_seconds: tuple[int, ...] | None = None
+
+    @property
+    def forcing_seconds(self) -> tuple[int, ...]:
+        """The forcing offsets in seconds, whichever spelling was prepared."""
+
+        if self.forcing_offsets_seconds is not None:
+            return tuple(self.forcing_offsets_seconds)
+        return tuple(int(hour) * 3600 for hour in self.forcing_hours)
 
     @property
     def execution_plan(self):
@@ -2699,11 +2822,61 @@ def _strict_json(value):
     return value
 
 
+def _gate_vertical_courant(report: Mapping[str, object],
+                           wrf_cfl: tuple[float, float]) -> dict:
+    """The stability sample with WRF's vertical Courant number as its term.
+
+    THE DEFECT THIS FIXES.  The gate's vertical term used to be the health
+    reduction's geometric ``dt*|w_upper|/dz_cell``: the Cartesian vertical
+    velocity over the layer's height.  Over steep ground most of that ``w``
+    is air following the terrain (at the ground WRF sets ``w = u . grad
+    h``), which crosses no model level, and the lowest layer is about 17 m
+    thick.  So the number grew with the wind on the slope and with the step,
+    whatever the flow did.  The San Joaquin valley fog night (HRRR
+    2025-01-06 00Z, 3 km, the MYNN suite as ``woof domain`` writes it)
+    stopped at 13 h on "vertical Courant 10.47" at the adaptive clock's
+    24 s, with -6.6 m/s of downslope flow in the 17 m lowest layer on a
+    0.33 slope of the Sierra.  The same night on a fixed 6 s step reads the
+    same rate (0.391 per second at 12Z in both) and ran to its end: nothing
+    was unstable, the gate measured dt times the slope flow.
+
+    The term is now WRF's ``max_vert_cfl``, ``|ww/(c1f*mu + c2f)*rdnw*dt|``
+    over WRF's levels (``w_cfl_stat``, the same reduction ``w_damp``
+    applies and the adaptive clock steers by toward ``target_cfl``), read
+    for the last step before the frame.  It counts only the motion that
+    crosses the coordinate surfaces, which is what an explicit vertical
+    step can overrun.  The breakage the gate still prevents is unchanged: a
+    run whose vertical transport has run away past any stable step (CFL
+    above 10), alongside the 150 m/s ``w`` and non-finite guards.
+
+    The geometric rate stays in the sample as ``geometric_vertical_cfl``,
+    and a non-finite one still fails the gate: it is the only signal of a
+    collapsed or folded layer (``health.cu`` mask bit 32).  Before the
+    first step the fold holds nothing and reads 0.
+    """
+    out = dict(report)
+    geometric = out.get("vertical_cfl")
+    out["geometric_vertical_cfl"] = geometric
+    if out.get("cfl") is None:
+        return out          # no cfg, or a non-finite field: nothing to grade
+    vertical = float(wrf_cfl[0])
+    out["vertical_cfl"] = vertical
+    horizontal = float(out["horizontal_cfl"])
+    if geometric is None or not math.isfinite(float(geometric)):
+        out["cfl"] = float("nan") if geometric is None else float(geometric)
+    elif not math.isfinite(vertical):
+        out["cfl"] = vertical
+    else:
+        out["cfl"] = max(horizontal, vertical)
+    return out
+
+
 def _stability_diagnosis(sample: Mapping[str, object], state, run) -> str:
     """Say which Courant term tripped, and that dt is the remedy.
 
-    The vertical term is the maximum co-located ``dt*|w_upper|/dz_cell``;
-    it never combines a global updraft with an unrelated thin layer.
+    The vertical term is WRF's eta-coordinate vertical Courant number
+    (:func:`_gate_vertical_courant`); the geometric ``dt*|w_upper|/dz``
+    is named beside it.
     """
 
     def number(key, default):
@@ -2718,10 +2891,15 @@ def _stability_diagnosis(sample: Mapping[str, object], state, run) -> str:
     horizontal = number(
         "horizontal_cfl", dt * u_max / float(run.dx))
     vertical = number("vertical_cfl", float("nan"))
-    if vertical >= horizontal:
+    geometric = number("geometric_vertical_cfl", float("nan"))
+    if ("geometric_vertical_cfl" in sample
+            and not math.isfinite(geometric)):
+        term = ("a model layer's live thickness is non-positive or "
+                "non-finite (a collapsed or folded geopotential column)")
+    elif vertical >= horizontal:
         term = (
-            f"VERTICAL Courant {vertical:.2f} "
-            "(maximum co-located |w|/layer-thickness)")
+            f"VERTICAL Courant {vertical:.2f} (WRF's eta-coordinate "
+            f"|ww|/mu*rdnw*dt; geometric |w|*dt/dz {geometric:.2f})")
     else:
         term = (f"HORIZONTAL Courant {horizontal:.2f} (u_max {u_max:.2f} "
                 f"m/s over dx {float(run.dx) / 1000:.3f} km)")
@@ -3792,7 +3970,8 @@ def _resolve_prepared_layout(
         "parent_id": 0,
         "boundary_mode": "external-specified",
         "valid_time": source_exp.start_time.isoformat(),
-        "forcing_hours": proof.get("forcing_hours"),
+        **{key: proof.get(key) for key in FORCING_AXIS_KEYS
+           if key in proof or key == "forcing_hours"},
     }
     if any(domain_receipt.get(key) != value
            for key, value in expected_domain_identity.items()):
@@ -5066,6 +5245,7 @@ def _validate_packaged_mapped_evidence(
     expected_proof_keys -= MAPPED_VERTICAL_COORDINATE_KEYS - set(proof)
     expected_proof_keys -= MAPPED_PREPARATION_TELEMETRY_KEYS - set(proof)
     expected_proof_keys -= {"boundary_stream"} - set(proof)
+    expected_proof_keys = forcing_axis_proof_keys(expected_proof_keys, proof)
     if not sealed:
         # A prepared head's proof: the seal adds these, and the seal
         # re-runs this check with them present.
@@ -5121,6 +5301,13 @@ def _validate_packaged_mapped_evidence(
             prepared_root / "source-evidence" /
             "input-manifest.json").resolve():
         raise RuntimeError("mapped source manifest resolved unexpectedly")
+    if profile_id:
+        # A source with layout variants (a hex export's Noah or RUC soil,
+        # woof.source_authorities PROFILE_VARIANTS) is held to the member
+        # its preparation bound, named by the composition it copied.
+        from woof.source_authorities import packaged_variant_for_composition
+        profile_id = packaged_variant_for_composition(
+            profile_id, _sha256(composition_path))
     expected_authority_sha256 = (
         dict(packaged_authority_sha256(profile_id)) if profile_id else {
             "mapping": _require_digest(
@@ -5478,26 +5665,33 @@ def _validate_packaged_mapped_evidence(
             # clock; every borrowed field must carry a subset digest, and
             # matched plus carried times must be exactly the canonical
             # valid times so no lead's provenance goes unnamed.
+            declared_grid = terrain_binding.get("grid_alignment")
             expected_alignment = {
                 "schema": "gpuwm-cross-source-binding-v1",
                 "status": "PASS",
                 "binding": terrain_binding_name,
                 "source_id": terrain_binding.get("source_id"),
-                "grid_alignment": terrain_binding.get("grid_alignment"),
+                "grid_alignment": declared_grid,
                 "time_alignment": terrain_binding.get("time_alignment"),
-                "coordinate_match": (
-                    "bilinear_mask_aware_nearest"
-                    if terrain_binding.get("grid_alignment") == "bilinear_mask_aware_nearest"
-                    else "exact_equivalent_regular_strided_subset"
-                    if terrain_binding.get("grid_alignment") == "exact_coordinate_strided_subset"
-                    else "exact_equivalent_contiguous_subset"
-                ),
             }
+            # The coordinate match the declared alignment can produce:
+            # exact-or-regrid is the exact subset on a shared lattice and
+            # the regrid otherwise (era5-137 grid mismatch, 2026-11-10).
+            expected_matches = (
+                {"bilinear_mask_aware_nearest"}
+                if declared_grid == "bilinear_mask_aware_nearest"
+                else {"exact_equivalent_contiguous_subset", "bilinear_mask_aware_nearest"}
+                if declared_grid == "exact_coordinate_subset_or_bilinear_mask_aware_nearest"
+                else {"exact_equivalent_regular_strided_subset"}
+                if declared_grid == "exact_coordinate_strided_subset"
+                else {"exact_equivalent_contiguous_subset"}
+            )
             matched = alignment.get("matched_primary_valid_times") \
                 if isinstance(alignment, dict) else None
             carried = alignment.get("broadcast_primary_valid_times", []) \
                 if isinstance(alignment, dict) else None
             if (not isinstance(alignment, dict)
+                    or alignment.get("coordinate_match") not in expected_matches
                     or any(alignment.get(key) != value
                            for key, value in expected_alignment.items())
                     or not isinstance(matched, list)
@@ -6082,11 +6276,12 @@ def _validate_artifact_record(
 
 
 def _validate_cache_metadata(
-        reader: PreparedCacheReader, *, source: str, exp, forcing_hours,
+        reader: PreparedCacheReader, *, source: str, exp, forcing_hours=None,
         boundary_interval_seconds: int, proof, layout: str,
         posted_placeholder: str | None = None,
         physical_catalog: Mapping[str, object] | None = None,
         boundary_publication=(), prepared_root: Path | None = None,
+        forcing: ForcingAxis | None = None,
 ) -> None:
     """The cache's metadata against the source, the proof and the experiment.
 
@@ -6098,7 +6293,12 @@ def _validate_cache_metadata(
     publishes on every frame (:func:`_boundary_publication`); a cache
     whose boundary lacks any a fresh preparation would carry is refused
     (:func:`_refuse_stale_boundary`).
+
+    ``forcing``: the preparation's forcing axis (:func:`forcing_axis`);
+    a caller with whole-hour leads may name them as ``forcing_hours``.
     """
+    if forcing is None:
+        forcing = hourly_forcing_axis(forcing_hours)
     metadata = reader.header.get("metadata")
     if not isinstance(metadata, dict):
         raise ValueError("prepared cache metadata must be an object")
@@ -6106,8 +6306,8 @@ def _validate_cache_metadata(
     expected_user = {
         "initial_valid_time": exp.start_time.isoformat(),
         "last_valid_time": (
-            exp.start_time + timedelta(hours=forcing_hours[-1])).isoformat(),
-        "forcing_hours": list(forcing_hours),
+            exp.start_time + timedelta(seconds=forcing.seconds[-1])).isoformat(),
+        **forcing.identity(),
     }
     receipt_keys = CONDITIONAL_PREPARATION_RECEIPTS
     if layout == HRRR_DIRECT_LAYOUT:
@@ -6122,7 +6322,7 @@ def _validate_cache_metadata(
         expected_user.update({
             "source_cycle": proof.get("source_cycle"),
             "source_forecast_hours": proof.get("source_forecast_hours"),
-            "model_forcing_hours": list(forcing_hours),
+            "model_forcing_hours": list(forcing.values),
         })
         reports = user.get("mapping_reports") if isinstance(user, dict) else None
         if not isinstance(reports, dict):
@@ -6203,15 +6403,15 @@ def _validate_cache_metadata(
             }):
         raise ValueError("prepared cache LBC width differs from experiment")
     intervals = lbc.get("intervals")
-    if not isinstance(intervals, list) or len(intervals) != len(forcing_hours) - 1:
+    if not isinstance(intervals, list) or len(intervals) != len(forcing.seconds) - 1:
         raise ValueError("prepared cache LBC interval count differs from forcing")
     admitted_fields = _lbc_field_inventories(cfg)
     from woof.boundary_fields import admissible_boundary_inventory
     scheme_id = int(getattr(cfg, "mp_physics", 0))
     for index, interval in enumerate(intervals):
         window = {
-            "start_seconds": float(forcing_hours[index] * 3600),
-            "end_seconds": float(forcing_hours[index + 1] * 3600),
+            "start_seconds": float(forcing.seconds[index]),
+            "end_seconds": float(forcing.seconds[index + 1]),
         }
         recorded = interval if isinstance(interval, dict) else {}
         if {key: recorded.get(key) for key in window} != window:
@@ -6439,7 +6639,7 @@ def _validate_mapped_static_proof(
 
 def _validate_hierarchy_wrf_authority(
         layout: _PreparedLayout, *, source: str, source_exp,
-        forcing_hours: tuple[int, ...], boundary_interval_seconds: int,
+        forcing: ForcingAxis, boundary_interval_seconds: int,
         source_manifest_sha256: str, decoder_sha256: object,
         preprocessing, contract_sha256: str, prepared_content_sha256: str,
         prepared_header_sha256: str, static_sha256: str,
@@ -6453,7 +6653,7 @@ def _validate_hierarchy_wrf_authority(
             or wrf.get("status") != "READY"
             or wrf.get("valid_time")
             != source_exp.start_time.strftime("%Y-%m-%d_%H:%M:%S")
-            or wrf.get("forcing_hours") != list(forcing_hours)
+            or wrf.get(forcing.key) != list(forcing.values)
             or wrf.get("boundary_interval_seconds")
             != boundary_interval_seconds
             or wrf.get("hierarchy") != _hierarchy_rows(source_exp)):
@@ -7211,20 +7411,19 @@ def preflight_prepared_forecast(
                 raise ValueError(
                     f"supplied {role} differs from the portable source manifest")
 
-    forcing_hours = proof.get("forcing_hours")
-    if (not isinstance(forcing_hours, list) or len(forcing_hours) < 2
-            or any(isinstance(hour, bool) or not isinstance(hour, int)
-                   for hour in forcing_hours)
-            or forcing_hours[0] != 0):
-        raise ValueError("preparation proof forcing hours are malformed")
-    forcing_hours = tuple(forcing_hours)
+    forcing = forcing_axis(proof, source=source)
+    # The whole-hour leads the native routes below compare with their
+    # source vocabularies; ``None`` on a sub-hourly mapped axis, which
+    # :func:`forcing_axis` admits for a mapped source only.
+    forcing_hours = forcing.hours
     deltas = {
         later - earlier
-        for earlier, later in zip(forcing_hours, forcing_hours[1:])
+        for earlier, later in zip(forcing.seconds, forcing.seconds[1:])
     }
     if len(deltas) != 1 or next(iter(deltas)) <= 0:
         raise ValueError("preparation proof forcing cadence is not uniform")
-    cadence_hours = next(iter(deltas))
+    boundary_interval_seconds = next(iter(deltas))
+    cadence_hours = boundary_interval_seconds / 3600
     if source == "hrrr" and cadence_hours != 1:
         # Not a warning like the others: HRRR publishes hourly and the
         # native preparer's whole forcing contract
@@ -7232,20 +7431,19 @@ def preflight_prepared_forecast(
         # a non-hourly HRRR cadence is a malformed preparation rather
         # than a coarser one.
         raise ValueError(
-            f"HRRR forcing cadence of {cadence_hours} h is not hourly; the "
+            f"HRRR forcing cadence of {cadence_hours:g} h is not hourly; the "
             "native HRRR route prepares contiguous hourly leads")
-    if (source == "gfs" and cadence_hours not in {1, 3}) \
-            or (source == "era5" and cadence_hours < 1) \
-            or (source in _MAPPED_SOURCES
-                and cadence_hours < 1):
+    if (source == "gfs" and cadence_hours not in {1, 3})             or (source == "era5" and cadence_hours < 1):
         # The cadence is uniform (checked above) and the coverage is
         # checked below; a cadence outside the blessed set is coarser
-        # boundary forcing, not a broken preparation.
-        warn(f"{source.upper()} forcing cadence of {cadence_hours} h is "
+        # boundary forcing, not a broken preparation.  A mapped source's
+        # cadence is its supplier's frame spacing (a hex parent writes
+        # every 15 min), which is what the nest under it should be forced
+        # at, so no mapped cadence is warned about.
+        warn(f"{source.upper()} forcing cadence of {cadence_hours:g} h is "
              "outside the set this runner has demonstrated "
              "(1 h/3 h for GFS); continuing with it as prepared")
-    boundary_interval_seconds = cadence_hours * 3600
-    if forcing_hours[-1] * 3600 < run_seconds:
+    if forcing.seconds[-1] < run_seconds:
         # The breakage this prevents: the solver stepping past the last
         # prepared lateral-boundary tendency.  The requested length is
         # the executed length (_apply_run_length), so this is the one
@@ -7253,15 +7451,15 @@ def preflight_prepared_forecast(
         raise ValueError(
             f"--run-seconds {run_seconds:g} asks for {run_seconds / 3600:g} h "
             f"but the prepared boundary forcing ends at lead "
-            f"{forcing_hours[-1]} h ({forcing_hours[-1] * 3600:g} s); the "
+            f"{forcing.describe()}; the "
             "forecast would step past its last prepared boundary "
             "tendency.  Prepare the longer window, or run at most "
-            f"--run-seconds {forcing_hours[-1] * 3600:g}")
+            f"--run-seconds {forcing.seconds[-1]:g}")
     if proof.get("boundary_interval_seconds") != boundary_interval_seconds:
         raise ValueError("prepared forcing cadence/coverage differs from the run")
     expected_times = [
-        (exp.start_time + timedelta(hours=hour)).isoformat()
-        for hour in forcing_hours
+        (exp.start_time + timedelta(seconds=offset)).isoformat()
+        for offset in forcing.seconds
     ]
     if proof.get("forcing_times") != expected_times:
         raise ValueError(
@@ -7512,7 +7710,7 @@ def preflight_prepared_forecast(
             static_cache_sha256=static_sha256,
             namelist_sha256=_sha256(experiment_config),
             domain_config=identity_domain,
-            forcing_hours=forcing_hours,
+            **forcing.identity(),
             source_identity=source_identity,
         )
     cache_identity, cache_identity_compatibility = (
@@ -7538,7 +7736,7 @@ def preflight_prepared_forecast(
         cache_payload = None
         readonly_reader = reader
     _validate_cache_metadata(
-        reader, source=source, exp=exp, forcing_hours=forcing_hours,
+        reader, source=source, exp=exp, forcing=forcing,
         boundary_interval_seconds=boundary_interval_seconds, proof=proof,
         layout=layout.kind, physical_catalog=physical_catalog,
         boundary_publication=_boundary_publication(source, mapped_paths),
@@ -7660,7 +7858,7 @@ def preflight_prepared_forecast(
             if (not isinstance(export, dict)
                     or export.get("schema") != expected_export_schema
                     or export.get("status") != "READY"
-                    or export.get("forcing_hours") != list(forcing_hours)
+                    or export.get(forcing.key) != list(forcing.values)
                     or export.get("boundary_interval_seconds")
                     != boundary_interval_seconds
                     or export.get("dimensions") != expected_dimensions
@@ -7708,7 +7906,7 @@ def preflight_prepared_forecast(
         else:
             export_source_receipt = _validate_hierarchy_wrf_authority(
                 layout, source=source, source_exp=source_exp,
-                forcing_hours=forcing_hours,
+                forcing=forcing,
                 boundary_interval_seconds=boundary_interval_seconds,
                 source_manifest_sha256=source_manifest_sha256,
                 decoder_sha256=(
@@ -7821,6 +8019,7 @@ def preflight_prepared_forecast(
         experiment=exp, grid=grid, static=MappingProxyType(static),
         landuse_identity=MappingProxyType(native_landuse_identity(static)),
         forcing_hours=forcing_hours,
+        forcing_offsets_seconds=(None if forcing.hourly else forcing.values),
         boundary_interval_seconds=boundary_interval_seconds,
         physics_receipt=MappingProxyType(
             physics_receipt if native_landuse_identity(static)
@@ -7876,6 +8075,8 @@ def _seal_streamed_inputs(inputs: PreparedForecastInputs, *,
     _require_sealed_identity(inputs, sealed_inputs, head)
     shared = set(inputs.file_sha256) & set(sealed_inputs.file_sha256)
     if (sealed_inputs.forcing_hours != inputs.forcing_hours
+            or sealed_inputs.forcing_offsets_seconds
+            != inputs.forcing_offsets_seconds
             or {key: inputs.file_sha256[key] for key in shared}
             != {key: sealed_inputs.file_sha256[key] for key in shared}):
         raise RuntimeError(
@@ -9605,9 +9806,11 @@ def _restore_single_checkpoint(model, restart):
 
 
 from woof.hydro.runtime import forecast_scope as _hydro_forecast_scope
+from woof.ingest.lake_state import skips_analysis_on_resume as _skips_lake_analysis_on_resume
 
 
 @_hydro_forecast_scope
+@_skips_lake_analysis_on_resume
 def run_prepared_forecast(
         inputs: PreparedForecastInputs, *, output_directory: Path,
         observer=None, first_products=None, stream_init: str = "auto",
@@ -9662,6 +9865,12 @@ def run_prepared_forecast(
     which step it is on cannot be driven from a script, and "the user
     did not pass a flag" is not a reason to withhold that.
     """
+    if restart is not None:
+        # A resume continues its checkpoint's TEMPO generation.
+        from dataclasses import replace as _replace_inputs
+        from woof.core.tempo import adopt_checkpoint_generation
+        inputs = _replace_inputs(inputs, experiment=adopt_checkpoint_generation(
+            inputs.experiment, restart))
 
     from woof.ensemble.runtime_context import current_session
     ensemble_session = current_session()
@@ -9699,7 +9908,10 @@ def run_prepared_forecast(
     import cupy as cp
 
     from woof.core.clock import build_schedule, resolve_clock
-    from woof.core.dycore import stability_gate_failed
+    from woof.core.dycore import (
+        enable_wrf_cfl_recording, reset_wrf_cfl_recording,
+        stability_gate_failed, take_wrf_cfl,
+    )
     from woof.core.gpu_mem_watch import (
         GpuPeakMemoryWatcher, default_cupy_probes,
         nvidia_smi_process_probes, process_memory_receipt,
@@ -10325,9 +10537,11 @@ def run_prepared_forecast(
             }
             gate_failed = False
         else:
-            report = streaming.stability_observer(stepper)(
-                current.state, current.cfg.run,
-                boundary_width=current.cfg.run.spec_bdy_width)
+            report = _gate_vertical_courant(
+                streaming.stability_observer(stepper)(
+                    current.state, current.cfg.run,
+                    boundary_width=current.cfg.run.spec_bdy_width),
+                take_wrf_cfl(int(current.cfg.grid_id)))
             gate_failed = stability_gate_failed(
                 report, max_cfl=10.0, max_w_ms=150.0)
         sample = {
@@ -10554,6 +10768,11 @@ def run_prepared_forecast(
         allocate_held_tendencies(node.state, cfg, selected(exp))
     with _checkpoint_restore_resources(writers, step_log):
         restart_info = _restore_single_checkpoint(model, restart)
+        if restart_info is not None:
+            # The lakes now hold the checkpoint's fields, not the analysis
+            # bound when the driver was built (item 5 review).
+            from woof.ingest.lake_state import mark_restored
+            mark_restored([driver], checkpoint=restart)
         from woof.runtime import _restart_is_complete
         already_complete = _restart_is_complete(restart_info)
         restored_seconds = (None if restart_info is None else
@@ -10673,9 +10892,19 @@ def run_prepared_forecast(
             node, steppers[int(node.cfg.grid_id)], exp.devices,
             devices_history, devices_peaks, committed_step_observer)
     history_frames: list = []
+    # What the ring serves is recorded interval by interval as it is held
+    # (lateral_bc._held_host_sides); this run's record starts empty.
+    from woof.ingest.lateral_bc import reset_hydrometeor_ring_ledger
+    reset_hydrometeor_ring_ledger()
     try:
         memory_watch.start()
         stall_watch.arm()
+        # The stability gate's vertical term reads WRF's own vertical
+        # Courant number off this fold (see _gate_vertical_courant).  The
+        # adaptive clock switches the same fold on inside execute_experiment;
+        # a fixed step needs it switched on here.  The fold only reads the
+        # stage's ww, mu, u and v, so no field changes.
+        enable_wrf_cfl_recording()
         with writers:
             if already_complete:
                 from woof.prepared_domain_tree_forecast import _completed_execution_report
@@ -10757,6 +10986,7 @@ def run_prepared_forecast(
         # thread waiting to announce a compile for a run that is over.
         stall_watch.disarm()
         memory_watch.stop()
+        reset_wrf_cfl_recording()
         model._io_manager = None
         if radar_heating_hook is not None:
             radar_heating_hook.detach()
@@ -11082,6 +11312,11 @@ def run_prepared_forecast(
             "forces": int(execution.forces),
             "feedback_calls": int(execution.feedback_calls),
         },
+        # The lateral-boundary hydrometeors the ring was fed: the envelope
+        # key and value, the rule, and the fraction of the source's
+        # condensate on the outermost row it served (None when the boundary
+        # carries water vapour only).
+        "lateral_boundary_hydrometeors": _ring_hydrometeor_record(node.state, cfg),
         "health": {
             "initial": initial_health,
             "final": final_health,
@@ -11099,6 +11334,9 @@ def run_prepared_forecast(
            else {"chem_ledger": chem_ledger}),
         "physics": {
             **dict(inputs.physics_receipt),
+            # The WRF pin the scheme generations amount to (4.8.0, 4.7.1
+            # or custom) and the generation keys themselves.
+            **_wrf_reference_receipt(cfg),
             "resolved_lw_sw": list(radiation_scheme_ids(cfg)),
             "radiation_update_count": _physics_update_count(
                 driver.radiation_callable),
@@ -11218,7 +11456,9 @@ def run_prepared_forecast(
             "wps_namelist_sha256": inputs.file_sha256["wps_namelist"],
             "wrf_direct_contract_sha256": inputs.file_sha256[
                 "wrf_direct_contract"],
-            "forcing_hours": list(inputs.forcing_hours),
+            **({"forcing_hours": list(inputs.forcing_hours)}
+               if inputs.forcing_offsets_seconds is None else
+               {"forcing_offsets_seconds": list(inputs.forcing_offsets_seconds)}),
             "boundary_interval_seconds": inputs.boundary_interval_seconds,
             "preprocessing": inputs.proof["preprocessing"],
             "source_identity": inputs.cache_identity["source_identity"],
@@ -11340,6 +11580,14 @@ def run_prepared_forecast(
             **prestaged_boundaries.receipt,
             "boundary_read_seconds": dict(boundary_source.intervals.read_seconds),
         }
+    # WHAT THE LAKES STARTED FROM, and why (defect 5 of the 2026-11-12
+    # runner list: an auto lake request that failed was one stderr line
+    # and a receipt under ~/.woof, never in the run's own record).
+    if getattr(driver, "lake_initialization_receipt", None) is not None:
+        report["lake_initialization"] = dict(
+            driver.lake_initialization_receipt,
+            scope=("the store road's slab-height template, not the whole "
+                   "domain" if init_road == "store" else "the whole domain"))
     if getattr(driver, "wind_farm_detection", None) is not None:
         report["wind_farm_detection"] = driver.wind_farm_detection
     if getattr(driver, "wind_farm", None) is not None:
@@ -11362,6 +11610,9 @@ def run_prepared_forecast(
         atmosphere_steps=int(execution.steps))
     from woof.ocean.products import publish as _wave_products
     report["wave_products"] = _wave_products(driver,outdir=outdir)
+    # The ocean this run ran, in words, every run (door item 6).
+    from woof.surface_ocean import domains_ocean_receipt
+    report["ocean"] = domains_ocean_receipt([cfg])
     report["hydro_products"] = _hydro_products(
         driver, _hydro_settings(), outdir=outdir, dx_m=float(cfg.dx))
     _atomic_json(outdir / "report.json", report)
@@ -12444,3 +12695,9 @@ def main(argv=None, *, observer=None, prestaged_boundaries=None,
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _wrf_reference_receipt(cfg) -> dict:
+    """woof.wrf_reference.wrf_reference_receipt, for the report."""
+    from woof.wrf_reference import wrf_reference_receipt
+    return wrf_reference_receipt(cfg)

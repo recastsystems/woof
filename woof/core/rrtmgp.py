@@ -26,7 +26,7 @@ and cache packed FP32 device copies.
 
 Reference: earth-system-radiation/rte-rrtmgp commit
 fa107a16120051c4124305c6b3d4c87059119f58; coefficient data are rrtmgp-data
-v1.9.  See ``woof_data/data/rrtmgp/PROVENANCE.md`` in the ``recast-woof-data``
+v1.9.2 (byte-identical to v1.9 for every file shipped).  See ``woof_data/data/rrtmgp/PROVENANCE.md`` in the ``recast-woof-data``
 companion distribution, which carries these tables since 2.5.0.
 """
 
@@ -2889,6 +2889,55 @@ def _cloud_ice_radius_table():
     return cp.asarray(_RETAB, dtype=DTYPE)
 
 
+#: The Thompson family's background radii in the state's micron convention
+#: (module_model_constants.F:62-64, RE_QC_BG/RE_QI_BG/RE_QS_BG): what
+#: woof/core/state.py fills effc/effi/effs with and what mp_gt_driver's
+#: clamps leave on a cell whose species is absent.
+THOMPSON_BACKGROUND_RADII_UM = {"effc": 2.49, "effi": 4.99, "effs": 9.99}
+
+#: Named schemes of the Thompson radii family whose own effective-radius
+#: routine returns ZERO for a species that is absent from a cell (TEMPO:
+#: woof/core/tempo.py writes its float64 result to state as it is).
+_ABSENT_RADIUS_IS_ZERO = frozenset(
+    _s.mp_id for _s in _NAMED_MP_SCHEMES.values()
+    if _s.cloud_optics_family == "thompson")
+
+
+def absent_radii_at_background(mp_physics, radii):
+    """``radii`` with a zero-for-absent scheme's zeros at the family background.
+
+    The Thompson-family branch gates and consumes ``effc/effi/effs`` under
+    the state contract every numbered member of the family keeps: an absent
+    species holds its background radius.  TEMPO's routine bounds a present
+    species (2.51-50, 2.51-125, 5.01-999 um) and returns zero for an absent
+    one, so its first radiation call after a microphysics step failed the
+    micron gate on every cloud-free cell: "effc is outside the
+    physical-plausibility band [0.5, 100.0] microns" (2026-11-09, TEMPO with
+    RTE+RRTMGP on a hex zoom globe: the run stopped at 1800 s, its first
+    radiation call after a microphysics step).  An exact zero becomes the
+    background the Thompson family's own driver leaves on such a cell, so
+    TEMPO's absent species radiate exactly as Thompson's do.  The legacy
+    RRTMG path needs no such step: WRF's wrapper floors (``max(2.5, 0)``,
+    ``max(5, 0)``, the 10 um snow floor; woof.core.rrtmg_legacy) already
+    size a zero.  A present value, a negative and a non-finite are returned
+    untouched, so the gates still see them.  Every other scheme gets
+    ``radii`` back as given, and the state itself is not written: the
+    legacy RRTMG path and every output keep TEMPO's own numbers.
+    """
+    if int(mp_physics) not in _ABSENT_RADIUS_IS_ZERO:
+        return radii
+    out = {}
+    for name, value in radii.items():
+        background = THOMPSON_BACKGROUND_RADII_UM.get(name)
+        if background is None:
+            out[name] = value
+            continue
+        xp = np if isinstance(value, np.ndarray) else __import__("cupy")
+        out[name] = xp.where(value == value.dtype.type(0.0),
+                             value.dtype.type(background), value)
+    return out
+
+
 def cloudy_background_radii(effc, effi, cldfra, tlay, xland, *, scheme,
                             supplied_liquid=None, supplied_ice=None):
     """The radii WRF's RRTMG coupling hands its optics for a cloudy layer.
@@ -3859,7 +3908,8 @@ class RRTMGPRadiation:
             # process (the npref references) gets the same SOLCON a card
             # does.  The capture-safe device twin is _solar_constant_device.
             from woof.core.rrtmg_legacy import radconst
-            return float(radconst(julian)[1])
+            from woof.core.solar import radiation_calendar
+            return float(radconst(radiation_calendar(valid_time, 0.0)[0])[1])
         da = 2.0 * np.pi * julian / 365.0
         eccfac = (1.000110 + 0.034221 * np.cos(da) + 0.001280 * np.sin(da)
                   + 0.000719 * np.cos(2.0 * da)
@@ -4102,6 +4152,8 @@ class RRTMGPRadiation:
                     "state.effc/effi/effs")
             kwargs.update({name: self._columns(value)
                            for name, value in effective.items()})
+            kwargs.update(absent_radii_at_background(
+                mp_physics, {name: kwargs[name] for name in effective}))
             effective_fields = {name: kwargs[name] for name in effective}
         qc_cols = _radiation_reads_nonnegative(self._columns(qc3))
         qr_cols = _radiation_reads_nonnegative(self._columns(qr3))

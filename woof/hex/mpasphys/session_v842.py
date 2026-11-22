@@ -261,7 +261,7 @@ class NativePhysicsSession:
         """Registry pool snapshot; Registry.xml:650-925; mpas_atmphys_vars.F:24-953.
 
         This is pool storage only. Private scheme SAVE/derived state is still
-        owned by f3's checkpoint provider; this method claims no complete restart.
+        owned by the checkpoint provider; this method claims no complete restart.
         """
         self.publish()
         result = {f'{pool}.{name}.{level}':self.native.get_field(pool,name,level=level)

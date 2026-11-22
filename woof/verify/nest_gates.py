@@ -6,7 +6,7 @@ registered here BEFORE any ARC-B implementing lane merges, and the rung
 executors (Task 8(c) cases, Task 14) consume ONLY these records.  Numeric
 thresholds are verbatim from the ratified architecture document
 
-    docs/superpowers/specs/2026-07-16-phase5-nesting-architecture.md
+    docs/internal/specs/2026-07-16-phase5-nesting-architecture.md
 
 section F ("Milestone ladder") AS AMENDED (the doc's F-numbered amendment
 record is the ratification trail; F15 ratifies the external-review rows
@@ -287,10 +287,10 @@ from dataclasses import dataclass, fields
 
 
 #: The ratified architecture document all anchors point into.
-ARCHITECTURE_DOC = ("docs/superpowers/specs/"
+ARCHITECTURE_DOC = ("docs/internal/specs/"
                     "2026-07-16-phase5-nesting-architecture.md")
 #: The plan that mandates this table (Task 8 stage (a)).
-PLAN_DOC = "docs/superpowers/plans/2026-07-16-gpuwm-phase5.md"
+PLAN_DOC = "docs/internal/plans/2026-07-16-gpuwm-phase5.md"
 
 #: Ladder order.  "CLOSING" is the Phase-5 closing milestone (two-way
 #: dormant closure, Task 16 -- executed THIS phase); "P5B" is the dormant

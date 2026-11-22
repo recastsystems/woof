@@ -231,7 +231,7 @@ pub fn list_s3_objects(
             }
             (None, None) => {}
         }
-        let mut response = agent.get(&url).call()?;
+        let mut response = rw_http::get(agent, &url)?;
         let xml = response.body_mut().read_to_string()?;
         let page = parse_s3_list_xml(&xml);
         objects.extend(page.objects);
@@ -266,7 +266,7 @@ pub fn download_object(
         });
     }
     let url = object_url(bucket, &object.key);
-    let mut response = agent.get(&url).call()?;
+    let mut response = rw_http::get(agent, &url)?;
     let limit = object
         .size_bytes
         .saturating_add(16 * 1024 * 1024)

@@ -74,8 +74,8 @@ def test_other_radiation_schemes_are_untouched(monkeypatch):
     ("exclusive", "9000", 96 * GIB), ("pool", "0", 96 * GIB),
 ])
 def test_widening_uses_pool_reservation(monkeypatch, mode, budget, expected):
-    monkeypatch.setenv("GPU_MUTEX_MODE", mode)
-    monkeypatch.setenv("GPU_MUTEX_VRAM_MIB", budget)
+    monkeypatch.setenv("CARD_QUEUE_MODE", mode)
+    monkeypatch.setenv("CARD_QUEUE_VRAM_MIB", budget)
     assert rc.chunk_capacity(96 * GIB) == expected
 
 
@@ -83,8 +83,8 @@ def test_small_pool_share_keeps_engine_width_on_large_card(monkeypatch):
     import sys
     from types import SimpleNamespace
 
-    monkeypatch.setenv("GPU_MUTEX_MODE", "pool")
-    monkeypatch.setenv("GPU_MUTEX_VRAM_MIB", "9000")
+    monkeypatch.setenv("CARD_QUEUE_MODE", "pool")
+    monkeypatch.setenv("CARD_QUEUE_VRAM_MIB", "9000")
     monkeypatch.setenv("WOOF_HEX_RADIATION_CHUNK", "auto")
     monkeypatch.setitem(sys.modules, "woof.core.rrtmg_legacy", SimpleNamespace(
         legacy_radiation_vram_bytes=lambda **kwargs: _price(kwargs.get("column_chunk", 2816))))

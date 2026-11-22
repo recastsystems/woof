@@ -160,7 +160,7 @@ def test_the_carrier_is_sealed_and_route_bound(tmp_path):
     assert mv.load_carrier(path)["time_seconds"] == 3600.0
     other = tmp_path / "arwen.pkl"
     mv._write_sealed(other, dict(payload, schema="gpuwm-hex.moving-boundary/v1"), {})
-    with pytest.raises(ValueError, match="WOOF route"):
+    with pytest.raises(ValueError, match="WOOF-ArWen route"):
         mv.load_carrier(other)
     path.write_bytes(path.read_bytes() + b"x")
     with pytest.raises(ValueError, match="sealed receipt"):

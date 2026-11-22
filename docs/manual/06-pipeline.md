@@ -171,7 +171,7 @@ path [tools/ensemble_forecast.py; tests/test_ensemble_engine.py]. See section
 ## 6.4 Downscaling
 
 `woof downscale` derives and runs a one-way child from an archived parent run
-(WOOF or stock WRF via `--parent-namelist`). The documented walkthrough was
+(WOOF-ArWen or stock WRF via `--parent-namelist`). The documented walkthrough was
 walked end to end on a wheel install (Windows 11, RTX 3080, 2026-08-17)
 [docs/public/DOWNSCALE.md]. Two facts shape the path, stated up front because
 they are the two dead ends: the parent must have written a woof restart
@@ -184,7 +184,7 @@ child needs a child-grid surface file, which the preparation already built
 
 The contract, in order: prove the parent (frame inventory, frozen geometry,
 regular cadence, one producer); prove the physics (microphysics identity from
-companion evidence, a WOOF restart or the WRF namelist, never inferred from the
+companion evidence, a WOOF-ArWen restart or the WRF namelist, never inferred from the
 variable inventory); boundary cadence defaults to the archive's own with one
 warning line; full-physics children refuse at the front door without a surface
 source; every run writes `report.json` with SHA-256 receipts of parent frames,

@@ -13,11 +13,15 @@ from a curated 915 KB of contracts to 31 MB of lane receipts.  Nothing looked
 at the artifacts' members before an upload would have shipped them.
 
 Every member of every artifact is scanned (binaries too: a Rust build embeds
-the build directory).  The rules are generic and carry no private literal, so
-this file can ship: the identity tokens (the checkout's ``git config
-user.name``/``user.email``, the login name, the home folder's name, and any
-``--owner``) are read where the gate runs.  Exit 0 clean, 1 with every hit
-listed, 2 when an artifact cannot be read.
+the build directory).  The rules written here are generic and carry no
+private literal, so this file can ship.  What is private is read where the
+gate runs: the identity tokens (the checkout's ``git config``
+``user.name``/``user.email``, the login name, the home folder's name, and any
+``--owner``), and the project's private pattern file (``--private-patterns``
+or the ``HEX_PRIVATE_PATTERNS`` variable; export_content.py says its shape),
+which is never packaged.  ``--require-private`` refuses to scan without it.
+Exit 0 clean, 1 with every hit listed, 2 when an artifact or the pattern file
+cannot be read, or when ``--require-private`` finds no pattern file.
 """
 
 from __future__ import annotations
@@ -42,30 +46,36 @@ content_scan = _content.scan
 from typing import Iterable, Iterator
 
 # Generic rules: (name, pattern).  Each names a class of private material.
-RULES: tuple[tuple[str, re.Pattern[bytes]], ...] = (
+GENERIC_RULES: tuple[tuple[str, re.Pattern[bytes]], ...] = (
     ("home-path", re.compile(rb"(?i)\b[a-z]:[\\/]{1,2}users[\\/]{1,2}(?!public\b|default\b)[a-z0-9._-]+")),
     ("home-path", re.compile(rb"(?<![\w.])/(?:home|Users)/(?!runner\b|user\b|username\b|you\b|me\b)[A-Za-z0-9._-]+/")),
     ("home-path", re.compile(rb"\bC--Users-[A-Za-z0-9._-]+")),
     ("downloads-path", re.compile(rb"(?<![\w.])Downloads[\\/]")),
     ("cloud-host-name", re.compile(rb"\bip-\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}\b")),
-    # split literals: the shipped gate itself should not spell a lab's naming
-    ("lab-host-name", re.compile(rb"\bweather" rb"-node-\d+\b")),
-    ("workstation-folder", re.compile(rb"\bcodex" rb"-\d{3,4}\b")),
-    ("workstation-folder", re.compile(rb"\bagent" rb"-scratch\b")),
-    ("private-case", re.compile(rb"(?i)\b" rb"u" rb"ae\b")),
-    ("private-da-name", re.compile(rb"(?i)\bcuda\s+" rb"je" rb"di\b")),
-    ("private-da-name", re.compile(rb"(?i)\bsyn" rb"radar\b")),
-    ("private-da-name", re.compile(rb"(?i)\bsynthetic-radar\s+da\s+cycle\b")),
-    ("private-worktree", re.compile(rb"(?i)\.claude[/\\]worktrees")),
-    ("private-host", re.compile(rb"(?i)\bno" rb"de-2\b")),
-    ("private-pool", re.compile(rb"(?i)\bpool-" rb"v3\b")),
-    ("private-ruling-file", re.compile(rb"(?i)\bd" rb"rew-ruling\.json\b")),
 )
 
-# Apply the same private-name rules to embedded strings in binary members.
-RULES += tuple((kind, re.compile(pattern.pattern.encode(), re.I))
-               for kind, pattern in _content.RULES
-               if kind in {"private assimilation name", "private assimilation tooling"})
+
+def private_rules() -> tuple[tuple[str, re.Pattern[bytes]], ...]:
+    """The private pattern file's artifact rules, as export_content loaded them (none without the file)."""
+    return tuple((kind, pattern) for kind, pattern, _ in _content.artifact_rules())
+
+
+def _private_kinds(option: str) -> frozenset[str]:
+    return frozenset(kind for kind, _, row in _content.artifact_rules() if row.get(option))
+
+
+RULES: tuple[tuple[str, re.Pattern[bytes]], ...] = GENERIC_RULES + private_rules()
+SKIP_BINARY = _private_kinds("skip_binary")
+
+
+def configure(path) -> bool:
+    """Load the private pattern file and rebuild ``RULES``; returns whether a file is loaded."""
+    global RULES, SKIP_BINARY
+    loaded = _content.configure(path)
+    RULES = GENERIC_RULES + private_rules()
+    SKIP_BINARY = _private_kinds("skip_binary")
+    _export_rules.cache_clear()
+    return loaded
 
 IPV4 = re.compile(rb"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.])")
 
@@ -113,7 +123,7 @@ def identity_rules(tokens: Iterable[str]) -> list[tuple[str, re.Pattern[bytes]]]
             if len(part) < 3:
                 continue
             # The capitalised form only: a lower-case login name is often an
-            # English word ("drew" the verb), and paths are caught above.
+            # English word (a past tense, say), and paths are caught above.
             shown = part[:1].upper() + part[1:]
             rules.append(("owner-name", re.compile(rb"\b" + (b"(?:" + re.escape(shown).encode() + b"|" + re.escape(shown.upper()).encode() + b")") + rb"\b")))
     return rules
@@ -170,7 +180,7 @@ def _scan_member(arguments):
         for rule, pattern in rules:
             # A short case token occurs by chance in compressed image bytes.
             # Other rules still inspect binaries for embedded paths.
-            if rule == "private-case" and b"\0" in data[:8192]:
+            if rule in SKIP_BINARY and b"\0" in data[:8192]:
                 continue
             if _content.sealed_exception(member, rule):
                 continue
@@ -278,7 +288,26 @@ def main(argv: list[str] | None = None) -> int:
                         help="another identity token to refuse (repeatable)")
     parser.add_argument("--allow-address", action="append", default=[],
                         help="a public IPv4 address that is meant to ship (repeatable)")
+    parser.add_argument("--private-patterns", type=Path,
+                        help=f"the private pattern file (default: ${_content.PRIVATE_ENV}); never packaged")
+    parser.add_argument("--require-private", action="store_true",
+                        help="refuse (exit 2) when no private pattern file is loaded: the seal runs this way")
     args = parser.parse_args(argv)
+    try:
+        if args.private_patterns is not None:
+            configure(args.private_patterns)
+    except RuntimeError as error:
+        print(f"HYGIENE {error}", file=sys.stderr)
+        return 2
+    if _content.PRIVATE_LOADED:
+        print(f"HYGIENE private patterns: {len(private_rules())} artifact and "
+              f"{len(_content.RULES) - len(_content.GENERIC_RULES)} content rules loaded", file=sys.stderr)
+    elif args.require_private:
+        print(f"HYGIENE no private pattern file (--private-patterns or ${_content.PRIVATE_ENV}): "
+              "without it this scan cannot see the project's private names", file=sys.stderr)
+        return 2
+    else:
+        print("HYGIENE private patterns: none loaded; the generic rules only", file=sys.stderr)
     if args.fix_export is not None:
         if args.engine_source is None:
             parser.error('--fix-export requires --engine-source')

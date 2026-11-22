@@ -345,8 +345,8 @@ def _installed_cupy_wheels() -> list[str]:
             name = distribution.metadata["Name"]
         except Exception:  # pragma: no cover - a malformed dist-info
             continue
-        if name and str(name).lower().startswith("cupy"):
-            names.append(str(name))
+        if name and str(name).lower().startswith("cupy-"):
+            names.append(str(name).lower())
     return sorted(set(names))
 
 
@@ -408,6 +408,41 @@ def check_gpu_runtime() -> list[Finding]:
         "required_runtime_version": "unreadable" if floor is None else floor,
         "driver_cuda_major": "unknown" if box_major is None else box_major,
     }
+
+    # THE BREAKAGE THIS PREVENTS (0.6.0, a fresh install from the published files, one RTX 5090, a
+    # fresh Python 3.14 venv): `pip install "recast-woof[gpu]"` and then `pip install "recast-woof[ad]"` left cupy-cuda12x AND
+    # cupy-cuda13x installed.  CuPy then warned on every command that it "may not function correctly because
+    # multiple CuPy packages are installed", import order picked the one that ran, and this check printed OK.
+    # pip cannot remove one wheel by installing another, so two CuPy packages are a required gap whose one
+    # command removes both and installs one extra.
+    installed = _installed_cupy_wheels()
+    if len(installed) > 1:
+        evidence["installed_cupy_distributions"] = ", ".join(installed)
+        # [ad] needs Python 3.14 and a CUDA 13 driver; without both, the forecast extra.
+        derivative = sys.version_info >= (3, 14) and (box_major is None or box_major >= 13)
+        extra = "ad" if derivative else matching
+        return [
+            Finding(
+                subject="cupy (the CUDA lane)",
+                status=MISSING,
+                detail=(
+                    f"{len(installed)} CuPy packages are installed ({', '.join(installed)}); CuPy may not work "
+                    f"with more than one, and import order, not intent, picks the one that runs"
+                ),
+                remedy=(
+                    "  # one environment holds ONE CuPy package.  [ad] (the derivative commands, on a CUDA 13\n"
+                    "  # driver) and [gpu] (forecasts) each bring their own, and pip removes\n"
+                    "  # neither when the other is installed: remove both, then install one extra\n"
+                    f'  pip uninstall -y {" ".join(installed)} && pip install "{DISTRIBUTION_NAME}[{extra}]"\n'
+                    + (f'  # for forecasts only: pip uninstall -y {" ".join(installed)} && '
+                       f'pip install "{DISTRIBUTION_NAME}[{matching}]"' if derivative else
+                       "  # the derivative commands need Python 3.14, a CUDA 13 driver and the [ad] extra "
+                       "in an environment of their own")
+                ),
+                required=True,
+                evidence=evidence,
+            )
+        ]
 
     ok, detail = _import_probe("cupy")
     if not ok:
@@ -833,7 +868,7 @@ def _check_seam_bytes(installed: str) -> Finding:
         )
 
     named = installed or engine_pin.version_from_moved(inspection.moved) or "this"
-    # INFO, not a blocking gap, since 2026-10-10 (owner ruling): this finding used to say "the forecast lane
+    # INFO, not a blocking gap, since 2026-10-10: this finding used to say "the forecast lane
     # refuses at launch", and it did.  A byte difference from the measured
     # engine names no breakage, so the forecast runs and its receipt records
     # the moved files (engine_pin.identity_of).
@@ -841,11 +876,16 @@ def _check_seam_bytes(installed: str) -> Finding:
         subject=_SEAM_SUBJECT,
         status=INFO,
         detail=(
-            f"woof {named} is installed and the engine this port was "
-            f"measured against is {wanted}: {len(inspection.moved)} of "
-            f"{inspection.checked} checkable seam files differ.  The "
-            "forecast runs on this install and its receipt records the "
-            "difference (arwen_engine_pin).  Moved: "
+            # 0.6.0 said "the engine this port was measured against is 2.9.7" on an install whose range is
+            # 3.0 only, beside a README naming two more engine versions.  The 2.9.7 is the seam manifest's own
+            # measurement, and the line now says that and names the range.
+            f"woof {named} is installed, inside this release's range "
+            f"({_requirement()}).  The seam manifest was last measured on "
+            f"woof {wanted}, and {len(inspection.moved)} of "
+            f"{inspection.checked} of its checkable files differ on this "
+            "engine: information, not a gate.  The forecast runs on this "
+            "install and its receipt records the difference "
+            "(arwen_engine_pin).  Moved: "
             + ", ".join(inspection.moved)
         ),
         evidence={
@@ -959,8 +999,8 @@ def _check_checkout_reach() -> Finding:
             f"all {total} pinned paths resolve from this install, so the "
             "forecast runs on it with no --gpuwm-checkout and its receipts "
             "name the install by version and pip's RECORD digest.  A git "
-            f"clone of woof at v{wanted} passed as --gpuwm-checkout is "
-            "named by commit instead." + tail
+            "clone of woof passed as --gpuwm-checkout is named by commit "
+            "instead." + tail
         ),
         evidence={"absent": [], "wanted": wanted},
     )
@@ -1040,19 +1080,21 @@ def _check_observation_scorer() -> Finding:
 
 
 def check_assets() -> list[Finding]:
-    """The mesh pair, which this distribution ships and fetches neither."""
+    """The mesh pair: this distribution carries none; `woof hex global` fetches its row's published mesh."""
 
     return [
         Finding(
             subject="mesh grid + static pair",
             status=INFO,
             detail=(
-                "external assets.  This distribution carries no mesh and has "
-                "no fetch path for one, so every door that needs a mesh takes "
-                "--grid and --static explicitly and refuses rather than guess "
-                "a default.  Two routes exist: generate a mesh of any "
-                "resolution with the staged rw_mpas_mesh and rw_mpas_static "
-                "binaries, or supply an existing grid/static pair."
+                "external assets.  This distribution carries no mesh.  "
+                "`woof hex global` fetches its row's published NCAR mesh "
+                "itself and builds the static from the geography; every other "
+                "door that needs a mesh takes --grid and --static explicitly "
+                "and refuses rather than guess a default.  Two routes exist "
+                "there: generate a mesh of any resolution with the staged "
+                "rw_mpas_mesh and rw_mpas_static binaries, or supply an "
+                "existing grid/static pair."
             ),
             evidence={"bridge_directory": str(engines.USER_BRIDGE_DIR)},
         )

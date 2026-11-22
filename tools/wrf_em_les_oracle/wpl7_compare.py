@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assemble the WP-L7 ArWen-vs-WRF comparison table.
 
-The WOOF column is transcribed from committed receipts on
+The WOOF-ArWen column is transcribed from committed receipts on
 feature/les-integration @ 85c24d6d; every entry carries its source so a reader
 can check it.  The WRF column comes from score_wrf_les.py, which imports no
 woof code.
@@ -16,7 +16,7 @@ import os
 
 # ---------------------------------------------------------------- ArWen side
 # Values transcribed from the CURRENT ArWen receipts,
-# docs/superpowers/receipts/les/cbl-2026-08-02/{km2,km3}/ on
+# docs/internal/receipts/les/cbl-2026-08-02/{km2,km3}/ on
 # feature/les-integration.  The five loose receipts one directory up are an
 # earlier code state; docs/public/LES.md:78-81 says explicitly that they do NOT
 # correspond to the current table, and an earlier revision of this lane wrongly
@@ -128,7 +128,7 @@ FINAL_SAMPLE_KEYS = {"wth_res_max_over_qs", "resolved_fraction_ml"}
 
 
 def wrf_value(w, key):
-    """Pull the WRF counterpart under WOOF's own convention for that metric."""
+    """Pull the WRF counterpart under WOOF-ArWen's own convention for that metric."""
     fs = w.get("final_sample", {})
     if key == "resolved_fraction_ml":
         if w.get("km_opt") != 2:
@@ -146,10 +146,10 @@ def main():
     out = sys.argv[2]
     lines = []
     A = lines.append
-    A("# WP-L7 comparison: WOOF CBL vs WRF v4.6.1 em_les oracle")
+    A("# WP-L7 comparison: WOOF-ArWen CBL vs WRF v4.6.1 em_les oracle")
     A("")
     A("WRF column: this lane's fresh em_les build, scored by score_wrf_les.py")
-    A("(no woof import). WOOF column: committed receipts on")
+    A("(no woof import). WOOF-ArWen column: committed receipts on")
     A("feature/les-integration @ 85c24d6d.")
     A("")
     A("No pass band is cut here. Differences are reported, not judged.")
@@ -168,9 +168,9 @@ def main():
           % (rid, w.get("km_opt"), w.get("dx_m"), w.get("nx"), w.get("ny"),
              w.get("nz")))
         A("")
-        A("WOOF source: %s" % a.get("_src", "-"))
+        A("WOOF-ArWen source: %s" % a.get("_src", "-"))
         A("")
-        A("| metric | WOOF | WRF em_les | diff | note |")
+        A("| metric | WOOF-ArWen | WRF em_les | diff | note |")
         A("|---|---|---|---|---|")
         for key in ORDER:
             av = a.get(key)
@@ -207,7 +207,7 @@ def main():
              sp.get("parseval_residual_rel", float("nan"))))
         A("")
         A("Unstagger-convention sensitivity (WRF side, same run): resolved "
-          "fraction %s (truncation, WOOF's) vs %s (averaging); tke_res_max "
+          "fraction %s (truncation, WOOF-ArWen's) vs %s (averaging); tke_res_max "
           "%s vs %s."
           % (fmt(w.get("resolved_fraction_ml_trunc")),
              fmt(w.get("resolved_fraction_ml_avg")),
@@ -217,7 +217,7 @@ def main():
     A("")
     A("## Grid refinement: does WRF move the same way?")
     A("")
-    A("| quantity | ArWen 100 m | ArWen 50 m | WOOF delta | WRF 100 m | "
+    A("| quantity | ArWen 100 m | ArWen 50 m | WOOF-ArWen delta | WRF 100 m | "
       "WRF 50 m | WRF delta |")
     A("|---|---|---|---|---|---|---|")
 
@@ -244,8 +244,8 @@ def main():
     A("")
     A("### WRF-only second refinement pair, 200 m -> 100 m")
     A("")
-    A("WOOF published nothing at 200 m, so this tests the property rather "
-      "than reproducing WOOF's numbers.")
+    A("WOOF-ArWen published nothing at 200 m, so this tests the property rather "
+      "than reproducing WOOF-ArWen's numbers.")
     A("")
     A("| quantity | WRF 200 m | WRF 100 m | delta | moves toward resolved? |")
     A("|---|---|---|---|---|")
@@ -265,22 +265,22 @@ def main():
               % (label, fmt(v2), fmt(v1), v1 - v2,
                  "yes" if v1 > v2 else "NO"))
     A("")
-    A("WOOF published refinement pairs (docs/public/LES.md:89-97): " +
+    A("WOOF-ArWen published refinement pairs (docs/public/LES.md:89-97): " +
       "; ".join("%s %.3f -> %.3f" % (k, v[0], v[1])
                 for k, v in ARWEN_REFINE.items()))
 
     # ------------------------------------------------- ArWen's own spread
     A("")
-    A("## Scale check: WOOF's own spread at fixed configuration")
+    A("## Scale check: WOOF-ArWen's own spread at fixed configuration")
     A("")
-    A("Two committed WOOF km_opt=2 receipts share nx/ny/nz/dx/ztop/dt/km_opt/"
+    A("Two committed WOOF-ArWen km_opt=2 receipts share nx/ny/nz/dx/ztop/dt/km_opt/"
       "run_seconds exactly and are not bit-identical (their mass drifts differ "
       "by 4x). The gap between them is a floor on what agreement can mean for "
       "a single-sample statistic, and the WRF column is this lane's "
       "final-sample value for the same run so the three are like-for-like.")
     A("")
-    A("| metric (final sample) | WOOF km2 A | WOOF km2 B | WOOF self-gap | "
-      "WRF km2 100 m | inside WOOF's own range? |")
+    A("| metric (final sample) | WOOF-ArWen km2 A | WOOF-ArWen km2 B | WOOF-ArWen self-gap | "
+      "WRF km2 100 m | inside WOOF-ArWen's own range? |")
     A("|---|---|---|---|---|---|")
     w2 = got.get("match_km2_100m", {})
     fs = w2.get("final_sample", {})
@@ -301,7 +301,7 @@ def main():
           % (k, fmt(va), fmt(vb), fmt(gap), fmt(wv), inside))
     A("")
     A("Note: resolved_fraction_ml is the metric that barely moves between "
-      "WOOF's two runs (0.8919 vs 0.8946, a gap of 0.0027), which is why it "
+      "WOOF-ArWen's two runs (0.8919 vs 0.8946, a gap of 0.0027), which is why it "
       "is the one that can carry a refinement claim; the entrainment minimum "
       "moves by 64% between the same two runs and cannot.")
 

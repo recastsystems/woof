@@ -19,7 +19,7 @@ Strict mode compares every output word. Default mode allows at most 0.000062 K o
 
 The engine call follows module_surface_driver.F:1792-1820: reset water TSK/first TSLB from bulk SST when sst_update is not 1; update skin with held surface fluxes; write TSK from SSTSK. This precedes SFCLAY and the LSM in the source. It occurs every model step even when those schemes are held at positive bldt. The registry still admits only sst_update=0 because no time-varying lower-boundary stream is ported here.
 
-The new state is allocated only for sst_skin=1. Generic restart fields carry SST, SSTSK and DTW without a separate serializer. Native input aliases restore supplied state; absent skin state starts at TSK and DTW zero. History exports SSTSK (K), DTW (C), and bulk SST (K). DTW is a restart-only WRF Registry row; its WOOF history export is intentional so the diurnal adjustment can be inspected.
+The new state is allocated only for sst_skin=1. Generic restart fields carry SST, SSTSK and DTW without a separate serializer. Native input aliases restore supplied state; absent skin state starts at TSK and DTW zero. History exports SSTSK (K), DTW (C), and bulk SST (K). DTW is a restart-only WRF Registry row; its WOOF-ArWen history export is intentional so the diurnal adjustment can be inspected.
 
 WOOF's own float32 math routines supply exp and pow, with its rounded sqrt primitive. Integer powers keep their multiply order. This check measures implementation conformance, not forecast skill.
 

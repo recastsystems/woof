@@ -105,8 +105,11 @@ def test_the_booby_trap_fires_when_the_device_set_is_withheld(monkeypatch):
     """
     from woof.core.dycore import step
 
+    # The host leaves are WRF's arithmetic, so correct-mode SN1 is named off
+    # (a host run with it on is refused before any leaf is called).
     state, cfg, driver = _build(nx=6, ny=4, water_columns=1,
-                                snow_mm=45.0, snow_depth_m=0.16)
+                                snow_mm=45.0, snow_depth_m=0.16,
+                                noahmp_melt_reset_esat=False)
     _booby_trap(monkeypatch)
     monkeypatch.setattr(runtime_module, "LEAF_BATCH_EVALUATOR",
                         runtime_module.evaluate_leaf_batch_on_host)
@@ -123,7 +126,8 @@ def test_the_env_override_also_reaches_the_host_path(monkeypatch):
     """
     from woof.core.dycore import step
 
-    state, cfg, driver = _build(nx=6, ny=4, water_columns=1)
+    state, cfg, driver = _build(nx=6, ny=4, water_columns=1,
+                                noahmp_melt_reset_esat=False)
     _booby_trap(monkeypatch)
     monkeypatch.setattr(runtime_module, "LEAF_BATCH_EVALUATOR",
                         runtime_module.evaluate_leaf_batch_on_device)
@@ -228,3 +232,18 @@ def test_every_device_batch_is_imported_from_the_runtime():
     assert offenders == {}, (
         "these Noah-MP leaves are not answered by a device batch module: "
         f"{offenders}")
+
+
+@requires_gpu
+def test_a_host_leaf_run_with_sn1_on_is_refused(monkeypatch):
+    """The host leaves carry WRF's stale-ESTG snowmelt reset.  Breakage
+    prevented: a host-authority run under the correct-mode default quietly
+    differing from the forecast route at every sunlit melting snow column."""
+    from woof.core.dycore import step
+
+    state, cfg, driver = _build(nx=6, ny=4, water_columns=1,
+                                noahmp_melt_reset_esat=True)
+    monkeypatch.setattr(runtime_module, "LEAF_BATCH_EVALUATOR",
+                        runtime_module.evaluate_leaf_batch_on_host)
+    with pytest.raises(ValueError, match="noahmp_melt_reset_esat"):
+        step(state, cfg)

@@ -46,8 +46,9 @@ pub const EXTERNAL_FIELD: &str = "terrain_height";
 /// `mapped_composition._SOIL_PAIR`.
 pub const SOIL_PAIR: [&str; 2] = ["soil_temperature", "volumetric_soil_moisture"];
 /// `mapped_composition._BOUND_GRID_ALIGNMENTS`.
-pub const BOUND_GRID_ALIGNMENTS: [&str; 4] = [
+pub const BOUND_GRID_ALIGNMENTS: [&str; 5] = [
     "exact_coordinate_subset", "exact_coordinate_strided_subset", "nearest_coordinate", crate::regrid::ALIGNMENT,
+    crate::regrid::EXACT_OR_REGRID,
 ];
 
 const COMPOSITION_KEYS: [&str; 7] = [
@@ -1451,7 +1452,8 @@ pub fn run_compose(invocation: &Invocation, progress: &mut dyn FnMut(Value)) -> 
         }
         let donor_files = &supplements[&binding.data_role];
         let mut decode_fields = binding.donor_fields();
-        if binding.grid_alignment == crate::regrid::ALIGNMENT
+        if (binding.grid_alignment == crate::regrid::ALIGNMENT
+            || binding.grid_alignment == crate::regrid::EXACT_OR_REGRID)
             && !decode_fields.iter().any(|name| name == "land_fraction") {
             decode_fields.push("land_fraction".to_owned());
         }
@@ -1498,8 +1500,28 @@ pub fn run_compose(invocation: &Invocation, progress: &mut dyn FnMut(Value)) -> 
         };
         let mut donor_collection = complete_donor_fields(&donor_partition, donor_collection, &decode_fields)?;
         crate::join::register_projected_subset(&mapping, &donor, &mut donor_collection)?;
-        let (mut donor_collection, regrid) = if binding.grid_alignment == crate::regrid::ALIGNMENT {
-            let (donor, receipt) = crate::regrid::align(donor_collection, stream.latitude(), stream.longitude())?;
+        // Under EXACT_OR_REGRID the donor is regridded only when it does
+        // not publish every primary point; on a shared lattice the borrow
+        // stays the exact subset, receipts and bytes unchanged.
+        let regrid_needed = binding.grid_alignment == crate::regrid::ALIGNMENT
+            || (binding.grid_alignment == crate::regrid::EXACT_OR_REGRID
+                && (crate::join::exact_subset_indices(
+                        &donor_collection.latitude, stream.latitude(), "latitude", false).is_err()
+                    || crate::join::exact_subset_indices(
+                        &donor_collection.longitude, stream.longitude(), "longitude", true).is_err()));
+        let (mut donor_collection, regrid) = if regrid_needed {
+            let edge = if binding.grid_alignment == crate::regrid::EXACT_OR_REGRID {
+                crate::regrid::EXACT_OR_REGRID_EDGE_CELLS } else { 0.0 };
+            let offsets = (
+                crate::regrid::lattice_offset(&donor_collection.latitude, stream.latitude(), false),
+                crate::regrid::lattice_offset(&donor_collection.longitude, stream.longitude(), true));
+            let (donor, mut receipt) = crate::regrid::align_with_edge(
+                donor_collection, stream.latitude(), stream.longitude(), edge)?;
+            if binding.grid_alignment == crate::regrid::EXACT_OR_REGRID {
+                receipt["reason"] = json!("donor does not publish every primary grid point");
+                receipt["max_distance_to_nearest_donor_point_deg"] =
+                    json!({"latitude": offsets.0, "longitude": offsets.1});
+            }
             progress(json!({"event": "horizontal_regrid", "binding": binding.name, "regrid": receipt}));
             (donor, Some(receipt))
         } else { (donor_collection, None) };

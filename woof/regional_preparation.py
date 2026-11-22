@@ -42,9 +42,27 @@ def validate_request(request):
         raise ValueError('Source inputs must map role names to existing file paths.')
 
 
+class PlanError(ValueError):
+    """A regional background request this preparation cannot honour."""
+
+    def __init__(self, message: str, *, code: str = "INVALID_PLAN", details=None):
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
+
+
 def _stamp(text):
-    from woof.local_da import utc
-    return utc(text)
+    """An ISO timestamp with a UTC offset, on a whole second, as UTC."""
+    try:
+        stamp = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise PlanError(f"epoch {text!r} is not an ISO timestamp; include a UTC offset.") from exc
+    if stamp.tzinfo is None:
+        raise PlanError("epoch has no timezone; append Z or an explicit UTC offset.")
+    stamp = stamp.astimezone(timezone.utc)
+    if stamp.microsecond:
+        raise PlanError("epoch has fractional seconds; choose a whole-second boundary.")
+    return stamp
 
 
 def _files(paths):
@@ -179,7 +197,6 @@ def review_background(request, rung, *, now=None, probe=None):
     from woof.background_contract import capability, plan
     from woof.source_adapters import get_source_adapter
     from woof.da.background import DEFAULT_BACKGROUND_SOURCE
-    from woof.local_da import PlanError
     from woof.background_contract import BackgroundWindowError
     validate_request(request)
     adapter = get_source_adapter(request.source or DEFAULT_BACKGROUND_SOURCE)

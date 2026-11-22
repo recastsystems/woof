@@ -56,7 +56,7 @@
       "terrain_height",
       "volumetric_soil_moisture"
     ],
-    "grid_alignment": "exact_coordinate_subset",
+    "grid_alignment": "exact_coordinate_subset_or_bilinear_mask_aware_nearest",
     "latitude_index_range": [
       83,
       0
@@ -83,7 +83,7 @@
   },
   "composition": {
     "name": "rw-wps-era5-model-level-l137-grib2.composition.json",
-    "sha256": "eab1fcd5c10a746ebdaf269e910e08ea77a40d0db9789539423cbda477201e62"
+    "sha256": "f8018559badbe5d974f19406d2b33b1d60942b726c58ced2d08fbcb20cf3833f"
   },
   "contributing_sources": [
     {
@@ -144,7 +144,7 @@
           "terrain_height",
           "volumetric_soil_moisture"
         ],
-        "grid_alignment": "exact_coordinate_subset",
+        "grid_alignment": "exact_coordinate_subset_or_bilinear_mask_aware_nearest",
         "latitude_index_range": [
           83,
           0

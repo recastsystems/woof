@@ -1,7 +1,8 @@
 use rustwx_core::{CanonicalField, FieldSelector, VerticalSelector};
 use rustwx_models::{PlotRecipe, RenderStyle};
 use rustwx_render::{
-    Color, ColorScale, ContourLayer, ContourLinePattern, DiscreteColorScale, DomainFrame,
+    Color, ColorScale, ContourFillLayer, ContourLayer, ContourLinePattern, DiscreteColorScale,
+    DomainFrame,
     DomainFrameSource, ExtendMode, LegendControls, LegendMode, LevelDensity, MapRenderRequest,
     ProductVisualMode, RenderDensity, WindStreamlineStyle,
     weather::{
@@ -216,6 +217,32 @@ fn vorticity_scale_for_hemisphere(hemisphere: Hemisphere) -> DiscreteColorScale 
     }
 }
 
+/// Signed wind component (kt), symmetric about zero: dark green at
+/// `-max`, white across zero, dark red at `+max`.  Zero sits on a bin
+/// boundary so calm is the two palest bins, never a coloured one.
+fn wind_component_scale((max_kt, step_kt): (f64, f64)) -> DiscreteColorScale {
+    let levels = range_step(-max_kt, max_kt + step_kt * 0.5, step_kt);
+    let bins = levels.len().saturating_sub(1).max(1);
+    let lerp = |a: u8, b: u8, t: f64| (a as f64 + (b as f64 - a as f64) * t).round() as u8;
+    let colors = (0..bins)
+        .map(|i| {
+            let centre = (levels[i] + levels[(i + 1).min(levels.len() - 1)]) * 0.5;
+            let t = (centre.abs() / max_kt).clamp(0.0, 1.0);
+            if centre < 0.0 {
+                Color::rgba(lerp(240, 0, t), lerp(250, 90, t), lerp(240, 30, t), 255)
+            } else {
+                Color::rgba(lerp(252, 120, t), lerp(240, 0, t), lerp(240, 10, t), 255)
+            }
+        })
+        .collect();
+    DiscreteColorScale {
+        levels,
+        colors,
+        extend: ExtendMode::Both,
+        mask_below: None,
+    }
+}
+
 pub fn operational_fill_scale_for_recipe(
     recipe: &PlotRecipe,
     filled_selector: FieldSelector,
@@ -407,6 +434,12 @@ pub fn operational_fill_scale_for_recipe_in(
             mask_below: Some(0.0),
         },
         RenderStyle::WeatherTerrain => terrain_elevation_scale(),
+        RenderStyle::WeatherWindComponent => wind_component_scale(match filled_selector.vertical {
+            VerticalSelector::IsobaricHpa(level) if level <= 300 => (120.0, 10.0),
+            VerticalSelector::IsobaricHpa(level) if level <= 500 => (90.0, 10.0),
+            VerticalSelector::IsobaricHpa(_) => (60.0, 5.0),
+            _ => (40.0, 4.0),
+        }),
         RenderStyle::WeatherIsothermHeight => isotherm_height_scale(),
         RenderStyle::WeatherSupercooledWaterPath => supercooled_water_path_scale(),
         RenderStyle::WeatherHydrometeorMixingRatio => hydrometeor_mixing_ratio_scale(),
@@ -509,6 +542,126 @@ pub fn operational_fill_scale_for_recipe_in(
         },
     };
     ColorScale::Discrete(discrete)
+}
+
+/// The environment switch for the UH overlay shading: `0`, `off`, `false` or
+/// `no` drops it and leaves the black contours alone, as every release up to
+/// 2.9.13 drew them; `bright` shades with a light magenta-to-white ladder
+/// instead of the default dark one; anything else (or unset) is the default.
+pub const UH_FILL_ENV: &str = "RUSTWX_UH_FILL";
+
+/// The translucent shading under an updraft-helicity overlay's contours
+/// (shading inside the UH contours, the way most sites
+/// draw UH tracks over reflectivity).  The ladder starts at the layer's
+/// lowest contour, so the shading sits inside the outline, and darkens in
+/// two more steps; the black outlines still draw on top.  2-5 km: 75, 150
+/// and 250 m2/s2 (outline at 75); 0-1 km: 10, 20 and 40; 0-2 and 0-3 km:
+/// 25, 50 and 75 (the outlines of [`operational_contour_layer_for_values`]).
+/// `None` for every other field, and for UH when [`UH_FILL_ENV`] is off.
+pub fn operational_contour_fill_for_values(
+    selector: FieldSelector,
+    values: &[f32],
+) -> Option<ContourFillLayer> {
+    if selector.field != CanonicalField::UpdraftHelicity {
+        return None;
+    }
+    let colors = match uh_fill_style() {
+        UhFillStyle::Off => return None,
+        UhFillStyle::Dark => uh_fill_colors(),
+        UhFillStyle::Bright => uh_fill_colors_bright(),
+    };
+    let levels = match selector.vertical {
+        VerticalSelector::HeightAboveGroundLayerMeters {
+            bottom_m: 2000,
+            top_m: 5000,
+        } => vec![75.0, 150.0, 250.0],
+        VerticalSelector::HeightAboveGroundLayerMeters {
+            bottom_m: 0,
+            top_m: 1000,
+        } => vec![10.0, 20.0, 40.0],
+        VerticalSelector::HeightAboveGroundLayerMeters {
+            bottom_m: 0,
+            top_m: 2000 | 3000,
+        } => vec![25.0, 50.0, 75.0],
+        _ => return None,
+    };
+    Some(ContourFillLayer {
+        data: values.to_vec(),
+        levels,
+        colors,
+    })
+}
+
+/// Black at 35, 42 and 50 percent opacity: a shadow over the radar colours
+/// that never reads as a reflectivity colour of its own.
+fn uh_fill_colors() -> Vec<Color> {
+    vec![
+        Color::rgba(0, 0, 0, 89),
+        Color::rgba(0, 0, 0, 107),
+        Color::rgba(0, 0, 0, 128),
+    ]
+}
+
+/// Light magenta to white at 45 percent opacity (`RUSTWX_UH_FILL=bright`):
+/// a highlight that lifts the tracks off dark radar colours.
+fn uh_fill_colors_bright() -> Vec<Color> {
+    vec![
+        Color::rgba(255, 150, 255, 115),
+        Color::rgba(255, 200, 255, 115),
+        Color::rgba(255, 255, 255, 115),
+    ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UhFillStyle {
+    Off,
+    Dark,
+    Bright,
+}
+
+fn uh_fill_style() -> UhFillStyle {
+    uh_fill_style_from(std::env::var(UH_FILL_ENV).ok().as_deref())
+}
+
+fn uh_fill_style_from(value: Option<&str>) -> UhFillStyle {
+    match value.map(|value| value.trim().to_ascii_lowercase()).as_deref() {
+        Some("0" | "off" | "false" | "no") => UhFillStyle::Off,
+        Some("bright") => UhFillStyle::Bright,
+        _ => UhFillStyle::Dark,
+    }
+}
+
+/// Below this a UH swath is not drawn, m2/s2: the weak-rotation haze that
+/// filled every 2.9.13 swath map with grey streaks (25 is the lowest UH
+/// threshold the operational ensembles chart).
+pub const UH_TRACK_FLOOR: f64 = 25.0;
+
+/// The UH tracks (2026-11-10, the companion of the shaded UH
+/// overlays of 2026-11-05): a 2-5 km UH maximum over 1 h, 3 h or the
+/// whole run (`uh_2to5km_1h_max`, `uh_2to5km_3h_max`, `uh_2to5km_run_max`)
+/// keeps the UH colour ramp, drops the haze below [`UH_TRACK_FLOOR`] and is
+/// outlined in black at 75 m2/s2, the line the shaded 2-5 km overlays draw
+/// round their shading, so a track reads the same on both maps.
+///
+/// Looked at on a 3 km Arkansas run (2023-03-31 18Z, F006): the overlays'
+/// translucent ladder on the swath maps' white ground gave three near-equal
+/// greys and threw the swath's intensity away, so the ramp stays.
+///
+/// Leaves `request` alone with [`UH_FILL_ENV`] off: the 2.9.13 look, byte for
+/// byte, as for the overlays.
+pub fn apply_uh_track_style(request: &mut MapRenderRequest, values: &[f32]) {
+    if uh_fill_style() == UhFillStyle::Off {
+        return;
+    }
+    let mut scale = request.scale.resolved_discrete();
+    scale.mask_below = Some(UH_TRACK_FLOOR);
+    request.scale = ColorScale::Discrete(scale);
+    request.contours = operational_contour_layer_for_values(
+        FieldSelector::height_layer_agl(CanonicalField::UpdraftHelicity, 2000, 5000),
+        values,
+    )
+    .into_iter()
+    .collect();
 }
 
 pub fn operational_contour_layer_for_values(
@@ -1033,6 +1186,121 @@ pub fn fit_isobaric_temperature_scale(
     DiscreteColorScale { levels: new_levels, colors, ..scale }
 }
 
+/// The fitted-scale table (data/fitted-scales.json): which fixed ladders are
+/// fitted to the field they colour, and how.
+const FITTED_SCALES_JSON: &str = include_str!("../data/fitted-scales.json");
+
+/// One row of the fitted-scale table: a filled field, and the fewest of its
+/// ladder's bands the field must span before the ladder is fitted to it
+/// (`min_bands` 0: fitted only when the field lies outside the ladder).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct FittedScaleRow {
+    pub field: String,
+    pub vertical: String,
+    #[serde(default)]
+    pub height_m: Option<u16>,
+    #[serde(default)]
+    pub min_bands: f64,
+    #[serde(default)]
+    pub min_step: Option<f64>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct FittedScaleTable {
+    rows: Vec<FittedScaleRow>,
+}
+
+impl FittedScaleRow {
+    /// Whether this row names the filled field `selector`.
+    pub fn names(&self, selector: FieldSelector) -> bool {
+        let field = match self.field.as_str() {
+            "temperature" => CanonicalField::Temperature,
+            _ => return false,
+        };
+        if selector.field != field {
+            return false;
+        }
+        match (self.vertical.as_str(), selector.vertical) {
+            ("isobaric", VerticalSelector::IsobaricHpa(_)) => true,
+            ("height_agl", VerticalSelector::HeightAboveGroundMeters(height)) => self.height_m == Some(height),
+            _ => false,
+        }
+    }
+}
+
+/// Every row of the fitted-scale table, parsed once.
+pub fn fitted_scale_rows() -> &'static [FittedScaleRow] {
+    static ROWS: std::sync::OnceLock<Vec<FittedScaleRow>> = std::sync::OnceLock::new();
+    ROWS.get_or_init(|| {
+        serde_json::from_str::<FittedScaleTable>(FITTED_SCALES_JSON)
+            .expect("data/fitted-scales.json is compiled in and parsed by a unit test")
+            .rows
+    })
+}
+
+/// The fitted-scale row for a filled field, if the table has one.
+pub fn fitted_scale_row(selector: FieldSelector) -> Option<&'static FittedScaleRow> {
+    fitted_scale_rows().iter().find(|row| row.names(selector))
+}
+
+/// A fixed ladder fitted to the field it colours, by its table row: a row
+/// with `min_bands` 0 is the isobaric rule (fit_isobaric_temperature_scale,
+/// unchanged); otherwise a field inside the ladder that spans fewer than
+/// `min_bands` bands is drawn on a finer ladder cut for it.
+pub fn fit_scale_to_field(scale: DiscreteColorScale, values: &[f32], row: &FittedScaleRow) -> DiscreteColorScale {
+    if !(row.min_bands > 0.0) {
+        return fit_isobaric_temperature_scale(scale, values);
+    }
+    let levels = &scale.levels;
+    if levels.len() < 3 {
+        return scale;
+    }
+    let mut finite: Vec<f32> = values.iter().copied().filter(|v| v.is_finite()).collect();
+    if finite.len() < 16 {
+        return scale;
+    }
+    let mut quantile = |q: f64| {
+        let index = ((finite.len() - 1) as f64 * q).round() as usize;
+        let (_, value, _) = finite.select_nth_unstable_by(index, |a, b| a.total_cmp(b));
+        f64::from(*value)
+    };
+    let (low, high) = (quantile(0.02), quantile(0.98));
+    let step = levels[1] - levels[0];
+    if !(step > 0.0) || high - low >= row.min_bands * step {
+        // Wide enough for the fixed ladder: the isobaric rule (unchanged
+        // inside the ladder, moved onto a field outside it).
+        return fit_isobaric_temperature_scale(scale, values);
+    }
+    let min_step = row.min_step.filter(|s| *s > 0.0).unwrap_or(step);
+    let fine = nice_step_at_most((high - low) / row.min_bands).max(min_step).min(step);
+    let fitted = ((high - low) * 1.6).max(row.min_bands * 1.6 * fine);
+    let middle = (low + high) * 0.5;
+    let start = ((middle - fitted * 0.5) / fine).floor();
+    let stop = ((middle + fitted * 0.5) / fine).ceil();
+    let count = (stop - start).max(1.0) as usize;
+    let decimals = (-fine.log10()).ceil().max(0.0) as i32;
+    let unit = 10f64.powi(decimals);
+    let new_levels: Vec<f64> = (0..=count)
+        .map(|i| ((start + i as f64) * fine * unit).round() / unit)
+        .collect();
+    let count = (new_levels.len() + scale.colors.len()).saturating_sub(levels.len());
+    let colors = resampled_palette(&scale.colors, count);
+    DiscreteColorScale { levels: new_levels, colors, ..scale }
+}
+
+/// The largest 1, 2 or 5 times a power of ten that is no more than `x`.
+fn nice_step_at_most(x: f64) -> f64 {
+    if !(x > 0.0) || !x.is_finite() {
+        return 0.0;
+    }
+    let base = 10f64.powf(x.log10().floor());
+    [5.0, 2.0, 1.0]
+        .into_iter()
+        .map(|m| m * base)
+        .find(|v| *v <= x * (1.0 + 1e-9))
+        .unwrap_or(base)
+}
+
 /// Keep strong surface winds visible instead of saturating the 60 kt bar.
 /// Inputs are already in the recipe's display units (knots). Ordinary-wind
 /// charts retain their exact scale; stronger fields extend to a 20 kt boundary.
@@ -1215,6 +1483,100 @@ mod isobaric_temperature_fit_tests {
         assert_eq!(fitted.levels[1] - fitted.levels[0], fixed.levels[1] - fixed.levels[0]);
         assert_eq!(fitted.colors.first(), fixed.colors.first());
         assert_eq!(fitted.colors.last(), fixed.colors.last());
+    }
+}
+
+#[cfg(test)]
+mod fitted_scale_table_tests {
+    use super::*;
+
+    fn ladder_2m() -> DiscreteColorScale {
+        let recipe = rustwx_models::plot_recipe("2m_temperature").unwrap();
+        let selector = FieldSelector::height_agl(CanonicalField::Temperature, 2);
+        match operational_fill_scale_for_recipe(recipe, selector) {
+            ColorScale::Discrete(scale) => scale,
+            _ => panic!("discrete"),
+        }
+    }
+
+    fn row_2m() -> &'static FittedScaleRow {
+        fitted_scale_row(FieldSelector::height_agl(CanonicalField::Temperature, 2)).expect("a 2 m row")
+    }
+
+    #[test]
+    fn every_row_parses_and_names_a_filled_field() {
+        assert!(!fitted_scale_rows().is_empty());
+        assert!(fitted_scale_row(FieldSelector::isobaric(CanonicalField::Temperature, 300)).is_some());
+        assert!(fitted_scale_row(FieldSelector::height_agl(CanonicalField::Temperature, 2)).is_some());
+        assert!(fitted_scale_row(FieldSelector::height_agl(CanonicalField::Temperature, 10)).is_none());
+        assert!(fitted_scale_row(FieldSelector::isobaric(CanonicalField::GeopotentialHeight, 500)).is_none());
+    }
+
+    #[test]
+    fn an_isobaric_row_is_the_isobaric_rule() {
+        let recipe = rustwx_models::plot_recipe("300mb_temperature_height_winds").unwrap();
+        let selector = FieldSelector::isobaric(CanonicalField::Temperature, 300);
+        let fixed = match operational_fill_scale_for_recipe(recipe, selector) {
+            ColorScale::Discrete(scale) => scale,
+            _ => panic!("discrete"),
+        };
+        let row = fitted_scale_row(selector).unwrap();
+        for values in [
+            (0..1000).map(|i| -60.0 + 25.0 * i as f32 / 999.0).collect::<Vec<f32>>(),
+            (0..1000).map(|i| -33.0 + 9.0 * i as f32 / 999.0).collect(),
+            (0..1000).map(|i| -45.0 + 0.5 * i as f32 / 999.0).collect(),
+        ] {
+            let by_row = fit_scale_to_field(fixed.clone(), &values, row);
+            let by_rule = fit_isobaric_temperature_scale(fixed.clone(), &values);
+            assert_eq!(by_row.levels, by_rule.levels);
+            assert_eq!(by_row.colors, by_rule.colors);
+        }
+    }
+
+    #[test]
+    fn a_wide_2m_field_keeps_the_fixed_ladder_byte_for_byte() {
+        let fixed = ladder_2m();
+        let values: Vec<f32> = (0..1000).map(|i| 40.0 + 30.0 * i as f32 / 999.0).collect();
+        let fitted = fit_scale_to_field(fixed.clone(), &values, row_2m());
+        assert_eq!(fitted.levels, fixed.levels);
+        assert_eq!(fitted.colors, fixed.colors);
+    }
+
+    #[test]
+    fn a_fine_grids_2m_field_spans_many_bands_not_one_colour() {
+        // A 15 km box at 111 m: 61.2..62.6 F, under two bands of the fixed 1 F ladder.
+        let fixed = ladder_2m();
+        let values: Vec<f32> = (0..18225).map(|i| 61.2 + 1.4 * (i % 135) as f32 / 134.0).collect();
+        let fitted = fit_scale_to_field(fixed.clone(), &values, row_2m());
+        let (lo, hi) = (fitted.levels[0], *fitted.levels.last().unwrap());
+        assert!(lo <= 61.2 && hi >= 62.6, "ladder {lo}..{hi} misses the field");
+        let step = fitted.levels[1] - fitted.levels[0];
+        assert!(step < 1.0 && step >= 0.1 - 1e-9, "step {step}");
+        assert!(1.4 / step >= 6.0, "the field spans {} bands", 1.4 / step);
+        assert_eq!(fitted.levels.len() - fitted.colors.len(), fixed.levels.len() - fixed.colors.len());
+        assert_eq!(fitted.colors.first(), fixed.colors.first());
+        assert_eq!(fitted.colors.last(), fixed.colors.last());
+        // Levels are whole multiples of the step, written without float dust.
+        assert!(fitted.levels.iter().all(|v| ((v / step).round() * step - v).abs() < 1e-9));
+    }
+
+    #[test]
+    fn a_uniform_2m_field_gets_the_finest_ladder_and_no_division_by_zero() {
+        let fixed = ladder_2m();
+        let values = vec![55.0f32; 400];
+        let fitted = fit_scale_to_field(fixed.clone(), &values, row_2m());
+        let step = fitted.levels[1] - fitted.levels[0];
+        assert!((step - 0.1).abs() < 1e-9, "step {step}");
+        assert!(fitted.levels[0] <= 55.0 && *fitted.levels.last().unwrap() >= 55.0);
+        assert!(fitted.levels.len() >= 7);
+    }
+
+    #[test]
+    fn nice_steps_are_one_two_five() {
+        assert_eq!(nice_step_at_most(0.25), 0.2);
+        assert_eq!(nice_step_at_most(0.83), 0.5);
+        assert_eq!(nice_step_at_most(1.0), 1.0);
+        assert_eq!(nice_step_at_most(0.0), 0.0);
     }
 }
 
@@ -1482,6 +1844,68 @@ mod tests {
         assert_eq!(layer.major_width, Some(2));
         assert!(layer.labels);
         assert!(!layer.show_extrema);
+    }
+
+    #[test]
+    fn uh_overlays_shade_inside_their_lowest_contour_and_nothing_else_is_shaded() {
+        let uh = |bottom_m, top_m| {
+            FieldSelector::height_layer_agl(CanonicalField::UpdraftHelicity, bottom_m, top_m)
+        };
+        for (selector, lowest) in [(uh(2000, 5000), 75.0), (uh(0, 1000), 10.0),
+                                   (uh(0, 2000), 25.0), (uh(0, 3000), 25.0)] {
+            let outline = operational_contour_layer_for_values(selector, &[0.0; 4])
+                .expect("UH outline");
+            let fill = operational_contour_fill_for_values(selector, &[0.0, 80.0, 160.0, 300.0])
+                .expect("UH shading");
+            // The shading starts at the outline, so it sits inside it.
+            assert_eq!(fill.levels[0], lowest);
+            assert_eq!(outline.levels[0], lowest);
+            assert_eq!(fill.levels.len(), 3);
+            assert_eq!(fill.colors.len(), 3);
+            assert_eq!(fill.data, vec![0.0, 80.0, 160.0, 300.0]);
+            assert!(fill.levels.windows(2).all(|pair| pair[0] < pair[1]));
+            // Translucent (about 35 to 50 percent), darkening up the ladder.
+            assert!(fill.colors.iter().all(|c| (80..=130).contains(&c.a)));
+            assert!(fill.colors.windows(2).all(|pair| pair[0].a < pair[1].a));
+        }
+        assert!(operational_contour_fill_for_values(
+            FieldSelector::mean_sea_level(CanonicalField::PressureReducedToMeanSeaLevel),
+            &[100000.0; 4],
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn uh_fill_switch_reads_off_bright_and_defaults_to_dark() {
+        for off in ["0", "off", " OFF ", "false", "no"] {
+            assert_eq!(uh_fill_style_from(Some(off)), UhFillStyle::Off);
+        }
+        assert_eq!(uh_fill_style_from(Some("bright")), UhFillStyle::Bright);
+        assert_eq!(uh_fill_style_from(None), UhFillStyle::Dark);
+        assert_eq!(uh_fill_style_from(Some("dark")), UhFillStyle::Dark);
+        let bright = uh_fill_colors_bright();
+        assert_eq!(bright.len(), uh_fill_colors().len());
+        assert!(bright.iter().all(|c| c.a == 115 && c.r == 255));
+    }
+
+    #[test]
+    fn uh_tracks_keep_the_ramp_drop_the_haze_and_outline_the_track_line() {
+        use rustwx_core::{Field2D, GridShape, LatLonGrid, ProductKey};
+        // The test environment leaves RUSTWX_UH_FILL unset (the default, dark).
+        let shape = GridShape::new(2, 2).expect("shape");
+        let grid = LatLonGrid::new(shape, vec![35.0, 35.0, 36.0, 36.0], vec![-91.0, -90.0, -91.0, -90.0])
+            .expect("grid");
+        let values = vec![0.0, 80.0, 300.0, 10.0];
+        let field = Field2D::new(ProductKey::named("uh"), "m^2/s^2", grid, values.clone()).expect("field");
+        let mut request = MapRenderRequest::for_core_weather_product(field, rustwx_render::WeatherProduct::Uh);
+        let ramp = request.scale.resolved_discrete();
+        apply_uh_track_style(&mut request, &values);
+        let tracks = request.scale.resolved_discrete();
+        assert_eq!(tracks.mask_below, Some(UH_TRACK_FLOOR));
+        assert_eq!((tracks.levels, tracks.colors), (ramp.levels, ramp.colors));
+        assert_eq!(request.contours.len(), 1);
+        assert_eq!(request.contours[0].levels, vec![75.0]);
+        assert_eq!(request.contours[0].color, Color::BLACK);
     }
 
     #[test]

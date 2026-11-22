@@ -160,7 +160,7 @@ def test_inherited_section_version_labels_match_resolved_literals_and_keep_gener
     def render(name, *extra):
         out = tmp_path / name
         args = ["render", str(source), "--engine", "rust", "--products", "xsec:tk",
-                "--timeidx", "0", "--out", str(out), "--source-label", "WOOF 2.8.6",
+                "--timeidx", "0", "--out", str(out), "--source-label", "WOOF-ArWen 2.8.6",
                 "--section", "36.2,-97.8,36.6,-97.2"]
         if layout == "fixed":
             args += ["--size", "640x480"]

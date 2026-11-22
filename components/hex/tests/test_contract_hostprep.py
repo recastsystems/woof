@@ -10,7 +10,14 @@ from woof.hex.drivers import run_cuda_regional_contract as deck
 from woof.hex.offcentering_v841 import build_v841_acoustic_offcentering
 from woof.hex.transport import (AdvectionCoefficients, _atmosphere_horizontal_edge_values,
     _atmosphere_vertical_flux, advance_scalars)
+import site_support
 from test_mesh_validation import graded_sphere_mesh
+
+
+@pytest.fixture
+def hostprep():
+    """The bitwise tests below run the real helper; a checkout without it skips by name."""
+    return site_support.contract_hostprep_or_skip()
 
 
 def bits(a, b):
@@ -48,7 +55,7 @@ def bundle(nl=7, nt=1, seed=214):
 
 
 @pytest.mark.parametrize("nl,nt,seed", [(2,1,12),(7,1,214),(19,3,729)])
-def test_horizontal_all_rings_and_signed_zero(nl, nt, seed):
+def test_horizontal_all_rings_and_signed_zero(nl, nt, seed, hostprep):
     b, co, _ = bundle(nl,nt,seed)
     # A specified edge is skipped before its sentinel cells can be read.
     edge = int(np.flatnonzero(b.masks.bdy_mask_edge > 5)[0])
@@ -61,7 +68,7 @@ def test_horizontal_all_rings_and_signed_zero(nl, nt, seed):
 
 
 @pytest.mark.parametrize("nl", [2,3,7,19])
-def test_vertical_endpoints_and_interior(nl):
+def test_vertical_endpoints_and_interior(nl, hostprep):
     b, _, _ = bundle(nl)
     expected = _atmosphere_vertical_flux(b.scalars_stage[0],b.saved.vertical_velocity,
         b.vertical.fzm,b.vertical.fzp,3,0.25)
@@ -69,7 +76,7 @@ def test_vertical_endpoints_and_interior(nl):
 
 
 @pytest.mark.parametrize("nt", [1,3])
-def test_finish_including_specified_cells(nt):
+def test_finish_including_specified_cells(nt, hostprep):
     b,co,_ = bundle(nt=nt)
     edges = rust.horizontal(b,co)
     flux = np.stack([_atmosphere_vertical_flux(stage,b.saved.vertical_velocity,
@@ -85,7 +92,7 @@ def test_finish_including_specified_cells(nt):
 
 
 @pytest.mark.parametrize("nl,regional,seed", [(2,False,1),(7,False,13),(7,True,14),(19,True,20)])
-def test_acoustic_all_output_fields(nl,regional,seed):
+def test_acoustic_all_output_fields(nl,regional,seed,hostprep):
     b,_,noise = bundle(nl,seed=seed)
     cells, edges, rows = (nl,b.ncells),(nl,b.nedges),(nl+1,b.ncells)
     b.masks.spec_zone_mask_cell = (b.masks.bdy_mask_cell>5).astype("f4") if regional else np.zeros(b.ncells,"f4")
@@ -109,7 +116,7 @@ def test_acoustic_all_output_fields(nl,regional,seed):
         bits(getattr(actual,name),getattr(expected,name))
 
 
-def test_vertical_subnormal_and_signed_zero_bits():
+def test_vertical_subnormal_and_signed_zero_bits(hostprep):
     b, _, _ = bundle(7)
     b.scalars_stage[:] *= np.float32(1.e-36)
     expected = _atmosphere_vertical_flux(b.scalars_stage[0],b.saved.vertical_velocity,
@@ -178,7 +185,8 @@ def test_append_schema_and_unwritable_ledger(monkeypatch,tmp_path):
 ])
 def test_ledger_card_is_a_c1_integer_or_null(monkeypatch,tmp_path,physical,visible,expected):
     import json
-    monkeypatch.delenv("GPU_MUTEX_CARDS", raising=False)
+    monkeypatch.delenv("CARD_QUEUE_CARDS", raising=False)
+    monkeypatch.setenv("WOOF_CARD_QUEUE_PREFIX", "")
     if physical is None:
         monkeypatch.delenv("WOOF_CARD", raising=False)
     else:
@@ -195,7 +203,7 @@ def test_ledger_card_is_a_c1_integer_or_null(monkeypatch,tmp_path,physical,visib
 def test_mutex_card_index_survives_uuid_visibility(monkeypatch,tmp_path):
     import json
     monkeypatch.delenv("WOOF_CARD", raising=False)
-    monkeypatch.setenv("GPU_MUTEX_CARDS", "4")
+    monkeypatch.setenv("CARD_QUEUE_CARDS", "4")
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-opaque")
     path = tmp_path / "ledger.jsonl"
     monkeypatch.setenv("WOOF_TIME_LEDGER", str(path))

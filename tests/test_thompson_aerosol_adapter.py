@@ -3839,7 +3839,7 @@ def test_rain_sedimentation_gets_wrfs_level_wise_working_rain_density():
     ``thompson_aerosol_sat.cu`` used to write the post-condensation density
     into its ``reference_density`` output unconditionally, before its own
     gates, and ``microphysics_aerosol.py`` hands that same buffer to
-    ``launch_rain_sedimentation`` -- so WOOF gave every level the :3568
+    ``launch_rain_sedimentation`` -- so WOOF-ArWen gave every level the :3568
     answer including the levels WRF never rewrote.
 
     ``aero-drop-evap`` is the cleanest witness: the :3501-3502 gate fires at
@@ -4685,7 +4685,7 @@ def test_thompson_aerosol_init_fill_is_idempotent_and_derives_nwfa2d():
     * ``nwfa2d`` is DERIVED from the filled profile at :510 and is the only
       2-D product -- ``nifa2d`` is not even a ``thompson_init`` dummy
       argument (:424-444) and stays exactly zero, which is WRF's behaviour and
-      not a WOOF shortcut;
+      not a WOOF-ArWen shortcut;
     * running it again is a NO-OP, because the guard now sees aerosol.  That
       is what makes it safe to call from an init path that may be re-entered,
       and it is the property that would break if it were ever moved into the

@@ -626,6 +626,20 @@ pub struct ContourLayer {
     pub major_width: Option<u32>,
 }
 
+/// A translucent banded fill drawn beneath a contour layer: a value at or
+/// above `levels[i]` (and below `levels[i + 1]`, if any) takes `colors[i]`;
+/// below `levels[0]`, NaN and non-finite values are left clear.  The colours
+/// carry their own alpha so the field underneath shows through.  It is
+/// drawn over the data raster and under linework and contour lines, so the
+/// outlines stay on top (UH tracks shaded over reflectivity, the shading
+/// inside the UH contours, 2026-11-05).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContourFillLayer {
+    pub data: Vec<f32>,
+    pub levels: Vec<f64>,
+    pub colors: Vec<Color>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ContourLinePattern {
     Solid,
@@ -874,6 +888,10 @@ pub struct MapRenderRequest {
     #[serde(default)]
     pub projected_points: Vec<ProjectedPointOverlay>,
     pub projected_lines: Vec<ProjectedLineOverlay>,
+    /// Translucent fills under the contour lines; empty draws nothing and
+    /// serialises nothing, so every request without one is unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contour_fills: Vec<ContourFillLayer>,
     pub contours: Vec<ContourLayer>,
     pub wind_barbs: Vec<WindBarbLayer>,
     #[serde(default)]
@@ -928,6 +946,7 @@ impl MapRenderRequest {
             projected_place_labels: Vec::new(),
             projected_points: Vec::new(),
             projected_lines: Vec::new(),
+            contour_fills: Vec::new(),
             contours: Vec::new(),
             wind_barbs: Vec::new(),
             wind_streamlines: Vec::new(),

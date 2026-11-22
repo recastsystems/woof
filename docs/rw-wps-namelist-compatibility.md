@@ -60,8 +60,8 @@ The following microphysics package inventories come directly from WRF v4.6.1
 This table is the whole of `woof/wrf_physics_inventory.py`'s
 `_INVENTORIES`, which is what the export refusal names when a scheme has no
 row. A selector absent from it is an EXPORT limit and says nothing about
-what WOOF runs: the native door (`woof import-namelist` then `woof run`)
-runs every scheme WOOF implements, and the report's `gpuwm_runtime` verdict
+what WOOF-ArWen runs: the native door (`woof import-namelist` then `woof run`)
+runs every scheme WOOF-ArWen implements, and the report's `gpuwm_runtime` verdict
 is computed from the engine's own implemented set, never from this table.
 
 All are WRF `real` fields: NetCDF float32 on
@@ -93,7 +93,7 @@ to `wrfbdy_d01` (WRF v4.7.1 `main/real_em.F:956`, `:1156`, `:1374`), and
 `have_bcs_moist` and `have_bcs_scalar` default to `.false.`
 (`Registry.EM_COMMON:2979-2980`), so every other moist species of a WRF run
 takes a flow-dependent boundary with zero inflow, and an analysed cloud or
-snow field drains out through the edges. WOOF's forecast carries every
+snow field drains out through the edges. WOOF-ArWen's forecast carries every
 hydrometeor mass the source publishes on each forcing time: the canonical
 hydrometeor fields its mapping declares, or a native row's
 `boundary_species` column (`hrrr`, `hrrr-prs` and `icon-d2` today), with the

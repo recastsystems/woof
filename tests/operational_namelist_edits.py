@@ -4,8 +4,8 @@ Two decisions of the namelist door changed what NOAA's own namelist
 (NOAA-EMC/HRRR v4.1.21 ``parm/conus/hrrr_wrf.nl``) becomes:
 
 * its HRRR-Smoke chemistry (``chem_opt = 18``) is no longer imported to
-  run with none.  It maps onto WOOF's ``smoke`` set, and the four smoke
-  settings WOOF does not carry are refused by name
+  run with none.  It maps onto WOOF-ArWen's ``smoke`` set, and the four smoke
+  settings WOOF-ArWen does not carry are refused by name
   (tests/test_operational_namelist_door.py pins that refusal).  A test
   that is about something else imports it through :func:`importable`,
   which changes exactly those four settings. HAILCAST remains enabled.
@@ -32,7 +32,7 @@ RIGID_LID_LINE = "\ntop_lid = true\n"
 
 def importable(text: str) -> str:
     """NOAA's namelist with the four refused smoke settings changed to the
-    spelling WOOF carries (smoke dry deposition off, no enhanced mixing,
+    spelling WOOF-ArWen carries (smoke dry deposition off, no enhanced mixing,
     no flaming fraction, no direct radiative feedback)."""
     for pattern, replacement in _SMOKE_EDITS:
         text, count = pattern.subn(replacement, text)

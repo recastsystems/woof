@@ -374,8 +374,11 @@ def extra_moist_species(state: DomainState) -> tuple[str, ...]:
                     if getattr(state, name, None) is not None)
     tracers = tuple(name for name in TRACER_NAMES
                     if getattr(state, name, None) is not None)
+    from woof.core.dyn_lightning import DYN_LIGHTNING_SCALARS
+    lights = tuple(name for name in DYN_LIGHTNING_SCALARS
+                   if getattr(state, name, None) is not None)
     return _extra_water_species(state) + (
-        ("qke_adv",) if getattr(state, "qke_adv", None) is not None else ()) + carried + tracers
+        ("qke_adv",) if getattr(state, "qke_adv", None) is not None else ()) + carried + tracers + lights
 
 
 def moist_species(state: DomainState) -> tuple[str, ...]:
@@ -945,8 +948,10 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
     pd = (final and cfg.moist_adv_opt == 1
           and not (cfg.open_x or cfg.open_y))
     eeps_scalars = pbl_scalar_species(state)
+    from woof.core.dyn_lightning import DYN_LIGHTNING_SCALARS
     scalar_pd = (final and (getattr(state, "qke_adv", None) is not None
-                            or bool(eeps_scalars))
+                            or bool(eeps_scalars)
+                            or getattr(state, "light_pe", None) is not None)
                  and cfg.scalar_adv_opt == 1
                  and not (cfg.open_x or cfg.open_y))
     tracer_pd = (final and (cfg.tracer_opt == 2 or cfg.madwrf_opt == 2) and cfg.tracer_adv_opt == 1
@@ -1161,7 +1166,8 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
             # QKE and EEPS follow scalar_adv_opt. Preserve every pre-existing
             # field's selector when the new carrier is absent.
             pd = (tracer_pd if name in TRACER_NAMES else
-                  scalar_pd if name == "qke_adv" or name in eeps_scalars else
+                  scalar_pd if (name == "qke_adv" or name in eeps_scalars
+                                or name in DYN_LIGHTNING_SCALARS) else
                   (final and cfg.moist_adv_opt == 1
                    and not (cfg.open_x or cfg.open_y)))
             q = getattr(state, name)
@@ -1223,7 +1229,8 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                     # nonnegative rounding-residual floor as hydrometeors.
                     # The strict _advance_species_wrf path above retains
                     # native signed tracer words for exact replay.
-                    clamp=name not in TR17_NAMES)
+                    clamp=(name not in TR17_NAMES
+                           and name not in DYN_LIGHTNING_SCALARS))
             else:
                 # flux_div_scalar accumulates; start from a clean buffer.
                 tend[...] = 0
@@ -1263,7 +1270,8 @@ def advance_scalars_stage(state: DomainState, cfg: RunConfig,
                              if physics_tendencies is not None else None),
                     fixed=(fixed_tendencies.get(name)
                            if fixed_tendencies is not None else None),
-                    clamp=(final and name not in TR17_NAMES))
+                    clamp=(final and name not in TR17_NAMES
+                           and name not in DYN_LIGHTNING_SCALARS))
     if cfg.specified:
         _apply_specified_scalar_flow_boundaries(
             state, cfg, ru, rv, {*held_lbc, *recomputed_lbc})

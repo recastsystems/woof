@@ -117,3 +117,19 @@ def test_the_background_history_handoff_carries_the_step():
     assert '"receipt": {"step": step}' in source
     writer = (Path(__file__).resolve().parents[1] / "../../woof/hex/drivers/run_cuda_v841_full_physics_x4.py").read_text()
     assert '(snapshot.get("receipt") or {}).get("step") == 0' in writer
+
+
+def test_the_view_carries_the_dry_specific_volume_nssl_reads():
+    """THE BREAKAGE THIS PREVENTS (2026-11-09): NSSL two-moment's reflectivity forms its air density as
+    ``1 / state.alt``; the view carried no ``alt`` and the forecast stopped at its first frame with
+    ``AttributeError: alt``.  The view holds the quotient the seam hands a step, shaped as its other fields."""
+    theta = np.full((6, 4), 300.0, dtype=np.float32)
+    pressure = np.full((6, 4), 9.0e4, dtype=np.float32)
+    rho = np.linspace(1.2, 0.4, 24, dtype=np.float32).reshape(6, 4)
+    species = {"qv": np.zeros((6, 4), dtype=np.float32)}
+    view = InitialReflectivityViewV841(theta=theta, pressure=pressure, species=species, melting=False, cp=np,
+                                       rho_dry=rho)
+    assert view.alt.shape == (6, 1, 4) and view.alt.dtype == np.float32
+    np.testing.assert_array_equal(view.alt[:, 0, :], np.float32(1.0) / rho)
+    plain = InitialReflectivityViewV841(theta=theta, pressure=pressure, species=species, melting=False, cp=np)
+    assert not hasattr(plain, "alt")

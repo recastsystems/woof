@@ -259,7 +259,11 @@ def _pbl_options(options):
              "bl_mynn_mixqt": 0, "bl_mynn_output": 0,
              "bl_mynn_tkeadvect": False, "icloud_bl": 1, "tke_budget": 0}
     selectors = {"bl_mynn_version": "wrf_461", "bl_mynn_gsd41_unsquared_qtke": False,
-                 "bl_mynn_cloud_tendency_form": "wrf_461"}
+                 "bl_mynn_cloud_tendency_form": "wrf_461",
+                 # Correct-mode MY1 (woof/core/mynn_pbl_v61.py): the member
+                 # wrapper passes it only where it runs, at wrf_461.
+                 "mynn_fixes_v61": False,
+                 "mynn_boulac_down_sign": False}
     allowed = set(fixed) | set(selectors) | {"bl_mynn_mixlength"}
     if set(options) - allowed:
         raise ValueError(f"MYNN PBL batch has no bound argument for {sorted(set(options) - allowed)}")
@@ -267,6 +271,14 @@ def _pbl_options(options):
     _mynn_version(result["bl_mynn_version"])
     if type(result["bl_mynn_gsd41_unsquared_qtke"]) is not bool:
         raise ValueError("MYNN PBL bl_mynn_gsd41_unsquared_qtke must be bool; another type binds no TKE conversion")
+    if type(result["mynn_fixes_v61"]) is not bool:
+        raise ValueError("MYNN PBL mynn_fixes_v61 must be bool; another type binds no kernel unit")
+    if result["mynn_fixes_v61"] and result["bl_mynn_version"] != "wrf_461":
+        raise ValueError("MYNN PBL mynn_fixes_v61 edits the wrf_461 unit; another generation is another source")
+    if type(result["mynn_boulac_down_sign"]) is not bool:
+        raise ValueError("MYNN PBL mynn_boulac_down_sign must be bool; another type binds no BouLac length form")
+    if result["mynn_boulac_down_sign"] and result["bl_mynn_version"] not in ("wrf_461", "gsd_41"):
+        raise ValueError("MYNN PBL mynn_boulac_down_sign is compiled into the wrf_461 and gsd_41 length kernels only")
     cloud = result["bl_mynn_cloud_tendency_form"]
     if type(cloud) is not str or cloud not in ("wrf_461", "gsd_41"):
         raise ValueError("MYNN PBL cloud tendency form must be wrf_461 or gsd_41")
@@ -419,7 +431,8 @@ def prepare_mynn_pbl_column_batch(atmosphere, fields, *, w, members, ny, nx,
         "options": options, "payload_bytes": storage.payload_bytes,
         "transient_reserved_bytes": mynn_pbl_transient_bytes(
             nz=nz, column_chunk=chunk, bl_mynn_version=options["bl_mynn_version"]),
-        "defines": [] if options["bl_mynn_version"] == "wrf_461" else [["MYNN_GSD41", 1]],
+        "defines": ([] if options["bl_mynn_version"] == "wrf_461" else [["MYNN_GSD41", 1]])
+            + ([["MYNN_BOULAC_DOWN_SIGN", 1]] if options["mynn_boulac_down_sign"] else []),
         "workspace_slots": len(buffers) - len(outputs),
         **_source_receipt("mynn_pbl", mynn_pbl_step, entry="ordinary MYNN wrapper column sequence")}
     return launch

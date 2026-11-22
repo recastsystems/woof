@@ -1,4 +1,4 @@
-"""Small WOOF CLI client. Queries and inspection only; no job mutations."""
+"""Small WOOF-ArWen CLI client. Queries and inspection only; no job mutations."""
 from __future__ import annotations
 
 import argparse
@@ -105,7 +105,7 @@ class RunReader:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--python", default=sys.executable, help="Interpreter from the WOOF installation")
+    parser.add_argument("--python", default=sys.executable, help="Interpreter from the WOOF-ArWen installation")
     parser.add_argument("--cwd", type=Path, help="Optional runtime working directory")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("sources")

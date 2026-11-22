@@ -417,7 +417,7 @@ gate. See the lane REPORT and sealed verdicts.
 The retained predecessor `3cd3702222a8681a1c538f7ae1ac4b8e8572cc97` differed
 in six words, only groundwater/total discharge. Its isolated witness identifies
 glibc2.43 exp versus NVRTC13.4 device exp on the same argument as the first
-one-ULP difference. The forward port fix uses WOOF's existing MIT Arm math
+one-ULP difference. The forward port fix uses WOOF-ArWen's existing MIT Arm math
 helper at that calculation, default-on in both modes. The same native fixture
 then passed; the original failing verdicts remain evidence of the exact defect.
 The referee's initialization audit subsequently confirmed undefined native

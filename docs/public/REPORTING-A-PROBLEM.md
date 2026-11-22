@@ -40,11 +40,11 @@ Everything that explains a failure, and nothing that is expensive:
 - **The failure itself** -- exception type, message and traceback, taken
   from the receipt that recorded it; failing that, from the last
   traceback in a collected log; failing that, from the last line the
-  product printed in its own voice. Most WOOF failures are one-line
+  product printed in its own voice. Most WOOF-ArWen failures are one-line
   refusals with no traceback, on purpose, so the manifest reports that
   line and says which of the three it came from. Plus the exit status
   if you passed `--exit-code`.
-- **The warnings the run printed and continued past.** WOOF warns
+- **The warnings the run printed and continued past.** WOOF-ArWen warns
   rather than blocking wherever it can, so what a run went *through* is
   often what explains where it ended up.
 - **The logs** -- the supervisor's `worker-NN.stderr.log` and
@@ -53,7 +53,7 @@ Everything that explains a failure, and nothing that is expensive:
   elided byte count marked, so both the invocation and the failure
   survive.
 - **Your resolved config**, and any namelist or command script beside it.
-- **What this install is** -- WOOF version, and either the commit of
+- **What this install is** -- WOOF-ArWen version, and either the commit of
   your checkout or the wheel's `RECORD` identity, through the same
   provenance resolver a run receipt uses.
 - **The stack** -- Python, NumPy, CuPy, netCDF4, matplotlib and wrf-rust
@@ -74,19 +74,19 @@ Everything that explains a failure, and nothing that is expensive:
 - **No identity.** See below.
 - **Nothing this product did not write.** See next.
 
-## It only reads what WOOF writes
+## It only reads what WOOF-ArWen writes
 
 Two rules, and neither of them is redaction.
 
 **It refuses to run anywhere that is not a run directory.** If the
-target holds nothing WOOF wrote -- no `report.json`, `progress.json`,
+target holds nothing WOOF-ArWen wrote -- no `report.json`, `progress.json`,
 `run-progress.json`, `failure-capsule.json`, certification capsule,
 `evidence/*.json`, `worker-*.log`, `gate.txt`, `wrfout*`, `gpuwmrst_*`,
 namelist or prepared cache -- it stops with one sentence and reads
 nothing. Pointing it at your home directory collects nothing, because
 your home directory is not a run.
 
-**Content is read only from files WOOF writes.** Collection is by
+**Content is read only from files WOOF-ArWen writes.** Collection is by
 allowlist, not by sweep. Anything else in the run directory is
 inventoried by name and size and never opened.
 
@@ -189,7 +189,7 @@ woof report --output /path/on/another/volume
 - `woof doctor` answers the other question -- "is my install and my
   data estate complete" -- and prints the command that closes each gap.
   Run it first if the problem is that a command will not start.
-- `woof version` answers "which copy of WOOF is actually executing",
+- `woof version` answers "which copy of WOOF-ArWen is actually executing",
   which is not always the one you installed. Worth running before you
   report a problem, because an editable install, a second environment
   or a shell sitting inside a source checkout all make the version

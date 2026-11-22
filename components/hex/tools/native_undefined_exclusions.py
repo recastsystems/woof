@@ -3,7 +3,7 @@
 Proof-bar ruling 1: such words are excluded from an MPAS-suite identity check
 only with a full witness (the measured run-to-run variation of the pinned
 strict native binary, plus a bounds-checked build naming the read) and the
-owner's sign-off for that specific case.  ``native_undefined_exclusions.json``
+recorded sign-off for that specific case.  ``native_undefined_exclusions.json``
 beside this module is the only source of such an exclusion.  Each entry names
 one unit, one case, one field and one exact word set; excluded words are a
 DECLARED RESIDUE and are never called identical.  Every other word of the field

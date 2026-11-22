@@ -148,7 +148,7 @@ point** [gallery:spectral-v2-20260818/captions.md]:
    bit); a calibrated gate set double-counts it. Open pin-owner item.
 
 **First real campaign** (preregistered, verdict deliberately `informational`
-because no known-good population exists for the pairing): two WOOF runs,
+because no known-good population exists for the pairing): two WOOF-ArWen runs,
 identical 300x300 3 km grid, identical physics, identical 6 h window, differing
 only in initialization (RRFS 3 km analysis vs GEFS ~25 km global), scored at 0,
 3, 6 h [gallery:spectral-v2-20260818/campaign/]:
@@ -165,7 +165,7 @@ only in initialization (RRFS 3 km analysis vs GEFS ~25 km global), scored at 0,
 - fail-closed on real data: at h0 vertical motion is exactly zero in both runs,
   and the tool reported those bands unresolved rather than dividing by zero.
 
-The claimable statement, printed as the limit it is: WOOF rebuilds most of the
+The claimable statement, printed as the limit it is: WOOF-ArWen rebuilds most of the
 small-scale energy a sharp start began with inside about 6 hours, but not the
 same small-scale weather; below about 200 km, changing the initialization gives
 a different forecast, not a shifted one.
@@ -212,7 +212,7 @@ that flag attached.
 **What is not claimable, with the same prominence:**
 
 - The 3 km readings (16.6 and 21.0 dx) are not measurements and must not be
-  quoted as WOOF's effective resolution at 3 km: no inertial range in the fit
+  quoted as WOOF-ArWen's effective resolution at 3 km: no inertial range in the fit
   band (free slopes -2.5 to -2.9), fit scatter exceeding the factor-2 criterion
   itself, no knee in the local slope profile, sensitivity spread 15-22x the
   stability bar, and the f02-f06 trajectory (10.2 to 16.6 dx, monotone, with

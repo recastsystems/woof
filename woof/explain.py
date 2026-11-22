@@ -356,6 +356,32 @@ def muted_warnings():
         _WARNINGS_MUTED.reset(token)
 
 
+#: The sentences already printed inside :func:`each_warning_once`, or None
+#: outside it.
+_WARNINGS_SAID = contextvars.ContextVar("warnings_said", default=None)
+
+
+@contextlib.contextmanager
+def each_warning_once():
+    """Print each distinct :func:`warn` sentence once inside, however often it is raised.
+
+    For a door that loads the file it writes more than once (``woof
+    domain`` round-trips its emitted bytes through the loader, then hands
+    the same file to ``woof check``): every load raised the file's loader
+    warnings again.  Observers still receive every call.  Nested uses share
+    the outermost record.
+    """
+
+    if _WARNINGS_SAID.get() is not None:
+        yield
+        return
+    token = _WARNINGS_SAID.set(set())
+    try:
+        yield
+    finally:
+        _WARNINGS_SAID.reset(token)
+
+
 def warn_once(key: str, action: str, why: str = "") -> None:
     """Emit a keyed advisory once in the current review, or once per direct call."""
     if _WARNINGS_MUTED.get():
@@ -399,9 +425,13 @@ def warn(action: str, why: str = "", *, once: bool = False) -> None:
     if _WARNINGS_MUTED.get():
         return
     action = " ".join(str(action).split())
-    if not (once and action in _PRINTED_ONCE):
+    said = _WARNINGS_SAID.get()
+    if not ((once and action in _PRINTED_ONCE)
+            or (said is not None and action in said)):
         if once:
             _PRINTED_ONCE.add(action)
+        if said is not None:
+            said.add(action)
         print(f"warning: {action}", file=sys.stderr)
         if why and _EXPLAIN_ACTIVE:
             for line in str(why).strip("\n").splitlines():
@@ -418,6 +448,7 @@ def warn(action: str, why: str = "", *, once: bool = False) -> None:
 
 __all__ = [
     "EXPLAIN_MARK", "add_explain_flag", "add_warning_observer",
+    "each_warning_once",
     "explain_enabled", "explain_scope", "layered", "muted_warnings",
     "reinvocation",
     "remove_warning_observer", "render", "set_explain",

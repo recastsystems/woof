@@ -284,4 +284,7 @@ def test_adaptive_keps_binding_does_not_reconstruct_elapsed_over_dt(monkeypatch)
     monkeypatch.setattr(keps, 'keps_step', call)
     atmosphere = {n: a for n in ('u','v','theta','qv','qc','dz','exner','p_interface')}
     driver._run_keps(atmosphere, cfg)
-    assert calls == [dict(dt=1., itimestep=3)]
+    # Correct-mode ML1's second key reaches the launcher only when on (the
+    # default outside a strict process).
+    assert calls == [dict(dt=1., itimestep=3,
+                          **({"down_sign": True} if cfg.pbl_boulac_down_sign else {}))]

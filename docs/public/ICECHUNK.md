@@ -24,7 +24,7 @@ The table's `scheduling` block keeps the writer below the model's CPU priority: 
 
 ## Repositories and arrays
 
-Each history directory gains `icechunk/d01`, `icechunk/d02`, and so on. Native hex cell history uses `icechunk/mesh`. Each ensemble member and each chained segment has its own repositories beneath its normal output directory. Selecting a store retains WOOF ensemble member history instead of its usual aggregate-only output.
+Each history directory gains `icechunk/d01`, `icechunk/d02`, and so on. Native hex cell history uses `icechunk/mesh`. Each ensemble member and each chained segment has its own repositories beneath its normal output directory. Selecting a store retains WOOF-ArWen ensemble member history instead of its usual aggregate-only output.
 
 `--icechunk-store /data/stores` or `--icechunk-store s3://bucket/prefix` sets a base. The writer appends relative member and segment directories, then the domain. Intermediate directory names `run`, `history`, `wrfout` and `chain` are omitted. The receipt lists the exact repository URLs, so consumers need not reconstruct the directory layout. A simple `run --outdir run --icechunk-store /data/stores` writes `/data/stores/d01`.
 

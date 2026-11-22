@@ -118,7 +118,7 @@ def diagnose(temperature, salinity, layer_bottom_m, wet, *, density=1025.,
 
 
 def arwen_fields(fields):
-    """Output-cadence views from WOOF's live ocean state."""
+    """Output-cadence views from WOOF-ArWen's live ocean state."""
     import cupy as cp
     wet=(fields.get('_pwp_land',fields['xland'])>1.5)&(fields.get('lakemask',0)<.5)
     return diagnose(cp.moveaxis(fields['om_tmp'],0,-1),cp.moveaxis(fields['om_s'],0,-1),

@@ -156,7 +156,10 @@ def test_the_checkpoint_echo_drops_both_at_their_default():
         "rrtmg_cloud_optics_form", "rrtmg_smoke_manifest",
         "surface_energy_diag", "cycling", "rrtmg_aer3_type_source",
         "bl_mynn_mixaerosols", "bl_mynn_mixnumcon", "tempo_ml_for_bl_nc",
-        "tempo_surface_emission_before", "thompson_table_dir",
+        "tempo_surface_emission_before",
+        # 3.0.0 (upstream L1): the TEMPO generation and its hail switch,
+        # keyword-only beside TEMPO's other selectors.
+        "tempo_version", "tempo_hailhyperaware", "thompson_table_dir",
         # 2.9.0 (golden/wrf-fixes): scalar advection selector, urban
         # canopy controls and the four WRF 4.7/4.8 fix selectors.
         "scalar_adv_opt", "urban_ucm_generation", "urban_treeoption",
@@ -178,6 +181,12 @@ def test_the_checkpoint_echo_drops_both_at_their_default():
         "wsm7_conservative_surface",
         # 2.9.7: HN1, the keyword-only hydrometeor handover numbers key.
         "hydrometeor_handover_numbers",
+        # SN1 (fix/noahmp-small-defects): the Noah-MP snowmelt-reset key.
+        "noahmp_melt_reset_esat",
+        # 3.0.3: ML1, the MYNN BouLac downward length sign key.
+        "mynn_boulac_down_sign",
+        # 3.0.3: ML1's second key, the BouLac and k-epsilon PBL length sign.
+        "pbl_boulac_down_sign",
         # 2.9.1: WRF's ocean mixed layer, appended after the correct-mode keys.
         "sf_ocean_physics",
         # development branch: the keyword-only 3-D PWP controls.

@@ -1,10 +1,10 @@
-"""WRF analysis bundle, version 1: an analysed atmosphere a WOOF forecast can start from.
+"""WRF analysis bundle, version 1: an analysed atmosphere a WOOF-ArWen forecast can start from.
 
 A bundle is one directory:
 
     manifest.json   schema "wrf-analysis-bundle/1" (below)
-    analysis.nc     the analysed state at the valid time, WRF-named, on WOOF's own grid
-    increment.nc    optional: analysis minus background, on WOOF's own staggering
+    analysis.nc     the analysed state at the valid time, WRF-named, on WOOF-ArWen's own grid
+    increment.nc    optional: analysis minus background, on WOOF-ArWen's own staggering
     noda.nc         optional: the matched no-assimilation state at the same valid time
 
 It is the one interface between whatever produced the analysis (an ensemble filter, a
@@ -18,14 +18,14 @@ where that one's is ``mesh``.
 ``analysis.nc``
     ``analysis.form = "wrfinput"`` (the default): a real.exe-shaped initial-conditions file
     of the run's grid, the form ``woof run --wrfinput`` starts from, with ``Times`` at the
-    valid time.  ``analysis.form = "wrfout"``: a history frame of the run (WOOF's or WRF's
+    valid time.  ``analysis.form = "wrfout"``: a history frame of the run (WOOF-ArWen's or WRF's
     wrfout) at the valid time.  It carries no base-state inputs a cold start needs, so it
     starts a forecast only as a cycling restart (``--restart`` or ``--restart-from``), which
     adds the increment to the restored state.
 
 ``increment.nc``
-    The analysis minus the background it was computed against, in WOOF's own prognostics
-    on WOOF's own staggering, under the WRF names: ``U`` (bottom_top, south_north,
+    The analysis minus the background it was computed against, in WOOF-ArWen's own prognostics
+    on WOOF-ArWen's own staggering, under the WRF names: ``U`` (bottom_top, south_north,
     west_east_stag), ``V``, ``W`` (bottom_top_stag ...), ``T`` (dry potential temperature
     perturbation), ``PH`` (perturbation geopotential), ``MU`` (perturbation dry column
     mass), ``QVAPOR`` (mixing ratio over dry air), and any other moisture species or number

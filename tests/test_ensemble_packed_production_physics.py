@@ -133,7 +133,8 @@ def test_inactive_unsquared_flag_retains_the_original_default_omitted_arguments(
         cfg.bl_mynn_gsd41_unsquared_qtke = True
     assert validate_production_physics_group(drivers, configs)["members"] == 2
     assert _mynn_pbl_selectors(configs[0]) == {"bl_mynn_version": "wrf_461",
-        "bl_mynn_gsd41_unsquared_qtke": False, "bl_mynn_cloud_tendency_form": "wrf_461"}
+        "bl_mynn_gsd41_unsquared_qtke": False, "bl_mynn_cloud_tendency_form": "wrf_461",
+        "mynn_fixes_v61": False, "mynn_boulac_down_sign": False}
 
 
 @pytest.mark.parametrize("version,unsquared,cloud", [("wrf_461", False, "wrf_461"),
@@ -175,7 +176,8 @@ def test_pbl_leaf_forwards_actual_generation_options_without_losing_default_omis
     assert owner._pbl(("pbl", 0), requests) == ({}, {})
     assert {name: seen[0][name] for name in _mynn_pbl_selectors(configs[0])} == {
         "bl_mynn_version": version, "bl_mynn_gsd41_unsquared_qtke": unsquared,
-        "bl_mynn_cloud_tendency_form": cloud}
+        "bl_mynn_cloud_tendency_form": cloud, "mynn_fixes_v61": False,
+        "mynn_boulac_down_sign": False}
     assert len(gathers) == 2
     requests[1][1]["bl_mynn_gsd41_unsquared_qtke"] = not unsquared
     with pytest.raises(ValueError, match="actual member configuration"):
@@ -353,3 +355,24 @@ def test_failed_leaf_clears_original_workspace_reuse_scope_before_original_recov
             with pytest.raises(ValueError, match="native leaf failed"):
                 future.result(timeout=2)
     assert owner.workspace_reuse.kind is None
+
+
+@pytest.mark.parametrize("version,on", [("wrf_461", True), ("gsd_41", False)])
+def test_pbl_leaf_carries_the_default_mynn_v61_fixes(version, on):
+    """Correct-mode MY1 (mynn_fixes_v61, on by default since 3.0.3) rides the
+    packed MYNN leaf where the member wrapper runs it (wrf_461), so a
+    default MYNN ensemble keeps the packed path with the dew fix instead of
+    being declined or silently packed without it.  Breakage prevented: a
+    packed member running the WRF 4.6.1 dew limiter its own config fixed."""
+    from woof.ensemble.batch_mynn import _pbl_options
+    _, configs = _group()
+    cfg = configs[0]
+    cfg.bl_mynn_version, cfg.mynn_fixes_v61, cfg.bl_pbl_physics = version, True, 5
+    if version == "gsd_41":
+        cfg.bl_mynn_cloud_tendency_form = "wrf_461"
+    assert _mynn_pbl_selectors(cfg)["mynn_fixes_v61"] is on
+    assert _pbl_options({"mynn_fixes_v61": True})["mynn_fixes_v61"] is True
+    with pytest.raises(ValueError, match="wrf_461 unit"):
+        _pbl_options({"mynn_fixes_v61": True, "bl_mynn_version": "gsd_41"})
+    with pytest.raises(ValueError, match="must be bool"):
+        _pbl_options({"mynn_fixes_v61": 1})

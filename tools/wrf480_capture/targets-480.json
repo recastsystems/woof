@@ -1,0 +1,10 @@
+[
+ {"file": "phys/module_radiation_driver.F", "subroutine": "calc_coszen"},
+ {"file": "phys/module_ra_rrtmg_sw.F", "subroutine": "RRTMG_SWRAD"},
+ {"file": "phys/GFL/WRF/module_cu_gfl_wrf.F90", "subroutine": "cu_grell_freitas_li"},
+ {"file": "phys/module_bl_ysu.F", "subroutine": "ysu"},
+ {"file": "phys/module_sf_sfclay.F", "subroutine": "SFCLAY"},
+ {"file": "phys/module_sf_sfclayrev.F", "subroutine": "SFCLAYREV"},
+ {"file": "phys/MYNN-EDMF/WRF/module_bl_mynnedmf_driver.F90", "subroutine": "mynnedmf_driver"},
+ {"file": "phys/MYNN-SFC/WRF/module_sf_mynnsfc_driver.F90", "subroutine": "mynnsfc_driver"}
+]

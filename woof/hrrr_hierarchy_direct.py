@@ -169,7 +169,7 @@ _DOMAIN_PREPARATION_OVERRIDES = frozenset({
     # a tree prepared with any value of these fields holds exactly the
     # prepared state every value of them runs from.  Provenance for the
     # ruling itself: controller decision 2026-08-03 under ArWen's standing
-    # delegation, docs/superpowers/receipts/les/
+    # delegation, docs/internal/receipts/les/
     # INFLOW-GENERATOR-ACCEPTANCE-V2.md item 10.  These stay
     # trajectory-RELEVANT inside experiment_fingerprint and the restart
     # identity; only the two preparation-side comparisons drop them, and

@@ -58,7 +58,7 @@ def correct(source: Path, destination: Path, wind_patch: Path | None = None):
                "corrected_driver_sha256": sha(corrected), "corrections": corrections,
                "changed_sources": {name: {"original_sha256": sha(old), "corrected_sha256": sha(new)}
                                    for name, (old, new) in source_changes.items()},
-               "scope": "constant native timestep reference; WOOF uses the actual integer calendar for variable timesteps",
+               "scope": "constant native timestep reference; WOOF-ArWen uses the actual integer calendar for variable timesteps",
                "cause": "solve_em increments itimestep before physics, while fire_model advances from time_start to time_start+dt"}
     (destination / "SFIRE_CORRECTIONS.json").write_text(json.dumps(receipt, indent=2) + "\n")
     return receipt

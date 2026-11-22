@@ -1,6 +1,6 @@
 """The GFS pressure ladder follows the case's model top, not a constant.
 
-WOOF's GFS route used to fetch a fixed 21-level ladder topping out at
+WOOF-ArWen's GFS route used to fetch a fixed 21-level ladder topping out at
 100 hPa.  Nothing said so: the flag did not exist, the manifest did not
 record it, and the refusal a user eventually hit came from the vertical
 contract three steps later ("source atmosphere stops at 10000 Pa but
@@ -146,7 +146,7 @@ def test_a_50_hpa_top_adds_a_level_strictly_above_the_model_top(
     """The reconciliation delta, stated as a gate.
 
     WRF-Runner's gfs.py requests five fields on 23 pressure levels with
-    p_top = 5000; WOOF requested 21 and stopped at 10000.  The two lists
+    p_top = 5000; WOOF-ArWen requested 21 and stopped at 10000.  The two lists
     now agree.
     """
 
@@ -401,7 +401,7 @@ def test_the_reconciliation_delta_itself(real_levels):
                        match="source atmosphere stops at 10000 Pa"):
         validate_explicit_eta_grid(
             eta, nz=80, p_top=5000.0, source_top_pressure_pa=old_top,
-            context="the ladder WOOF used to be able to fetch")
+            context="the ladder WOOF-ArWen used to be able to fetch")
 
     new_top = min(gfs_transport.levels_for_top(
         5000.0, available=real_levels)) * 100.0

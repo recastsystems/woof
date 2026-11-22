@@ -48,6 +48,26 @@ KERNEL_TILE_LINE='MynnArena arena{workspace+(unsigned long long)(column_index-co
 LANE_WIDTHS=(1,4,16)
 
 
+def allocated_dimensions(routine, name, var):
+    """Declared extents, or for an ALLOCATABLE local (v6 driver) the extents of its ALLOCATE statements."""
+    import re as _re
+    from translate_module import split_top
+    if not getattr(var, 'allocatable', False):
+        return var.dimensions
+    found = set()
+    for _, statement in routine.body:
+        match = _re.match(r"allocate\s*\((.*)\)$", statement)
+        if not match:
+            continue
+        for item in split_top(match[1]):
+            item_match = _re.fullmatch(r"(\w+)\s*\((.*)\)", item)
+            if item_match and item_match[1] == name:
+                found.add(tuple(split_top(item_match[2])))
+    if len(found) != 1:
+        raise ValueError(f'{routine.name}: allocatable {name} needs one ALLOCATE extent, found {sorted(found)}')
+    return list(found.pop())
+
+
 def workspace_frames(routines):
     """Arena frames and calls, including function references inside expressions.
 
@@ -56,7 +76,7 @@ def workspace_frames(routines):
     Keep all branches, chemistry and optional routines in the bound.
     """
     return {name: {
-        'arrays': [{'kind': v.kind, 'dimensions': v.dimensions}
+        'arrays': [{'kind': v.kind, 'dimensions': allocated_dimensions(routine, n, v)}
                    for n, v in routine.variables.items()
                    if n not in routine.arguments and v.dimensions],
         'calls': sorted({called for _, statement in routine.body
@@ -65,14 +85,37 @@ def workspace_frames(routines):
     } for name, routine in routines.items()}
 
 
-def emit(root,target,receipt, *, keep_intermediate=False, model_pin="1d6e370e", scheme_pin="c942418"):
-    module=root/'src/core_atmosphere/physics/physics_noaa/MYNN-EDMF'
-    paths=[module/'MPAS/module_bl_mynnedmf_common.F90',module/'module_bl_mynnedmf.F90',module/'MPAS/module_bl_mynnedmf_driver.F90']
-    temporary=receipt.with_suffix('.cuh')
-    text,routines=generate(paths,temporary,receipt)
+#: MYNN-EDMF v6 repository layout (NCAR/MYNN-EDMF v6.1.x, the unified WRF/MPAS/CCPP driver): files, in order.
+V6_FILES = ('src/MPAS/module_bl_mynnedmf_common.F90', 'src/module_bl_mynnedmf_diags.F90',
+            'src/module_bl_mynnedmf.F90', 'src/module_bl_mynnedmf_driver.F90')
+#: The MPAS build's preprocessor macros (MPAS Makefile: -Dmpas; EM_CORE and HARDCODE_VERTICAL are not defined).
+V6_MACROS = {'mpas': 1, 'EM_CORE': None, 'HARDCODE_VERTICAL': None}
+#: Memory upper bound of an assumed-shape dimension's MPAS actual (all MPAS physics arrays span ims:ime etc.).
+#: A dimension with no lower bound (``:``) takes its extent from the actual at launch.
+ASSUMED_UPPER = {'ims': 'ime', 'kms': 'kme', 'jms': 'jme'}
+
+
+def emit(root,target,receipt, *, keep_intermediate=False, model_pin="1d6e370e", scheme_pin="c942418", layout="mpas"):
+    import translate_module
+    if layout == "v6":
+        # root is a checkout of NCAR/MYNN-EDMF at scheme_pin; citations name that repository.
+        paths=[root/name for name in V6_FILES]
+        translate_module.MACROS = dict(V6_MACROS)
+        translate_module.OPTIONAL_SCALAR_REFS = True
+        translate_module.SOURCE_PATH = lambda path: str(path.relative_to(root))
+        translate_module.CITE_ROUTINE = translate_module.CITE_LINE = f"NCAR/MYNN-EDMF@{scheme_pin} "
+        header = f"// Generated from NCAR/MYNN-EDMF {scheme_pin} (MPAS build, -Dmpas); see translation receipt."
+        temporary=receipt.with_suffix('.cuh')
+        text,routines=generate(paths,temporary,receipt,entry='mynnedmf_driver',header=header)
+    else:
+        module=root/'src/core_atmosphere/physics/physics_noaa/MYNN-EDMF'
+        paths=[module/'MPAS/module_bl_mynnedmf_common.F90',module/'module_bl_mynnedmf.F90',module/'MPAS/module_bl_mynnedmf_driver.F90']
+        temporary=receipt.with_suffix('.cuh')
+        text,routines=generate(paths,temporary,receipt)
     if not keep_intermediate:
         temporary.unlink()
-    text = text.replace('RRFS 1d6e370e ', 'RRFS ' + model_pin + ' ').replace('MYNN-EDMF c942418;', 'MYNN-EDMF ' + scheme_pin + ';')
+    if layout != "v6":
+        text = text.replace('RRFS 1d6e370e ', 'RRFS ' + model_pin + ' ').replace('MYNN-EDMF c942418;', 'MYNN-EDMF ' + scheme_pin + ';')
     run=routines['mynnedmf_driver']
     params=['int batch_first','int batch_count','unsigned char* workspace','unsigned long long workspace_stride','int* error_flags']
     bindings=[];values=[]
@@ -87,6 +130,15 @@ def emit(root,target,receipt, *, keep_intermediate=False, model_pin="1d6e370e", 
             stride='1'
             for d,dim in enumerate(v.dimensions):
                 edges=dim.split(':');lo=edges[0] if len(edges)==2 else '1';hi=edges[-1]
+                if len(edges)==2 and not hi:
+                    # Assumed shape (v6 driver): MPAS actuals span the memory bounds; a bare ':' takes the
+                    # actual's extent, passed at launch.
+                    lo=lo or '1'
+                    if edges[0] in ASSUMED_UPPER:
+                        hi=ASSUMED_UPPER[edges[0]]
+                    else:
+                        params.append(f'int {n}_extent{d}')
+                        hi=f'({lo})+{n}_extent{d}-1'
                 bindings.append(f'a_{n}.lo[{d}]={lo};a_{n}.hi[{d}]={hi};a_{n}.stride[{d}]={stride};')
                 stride+=f'*({hi}-{lo}+1)'
             values.append('a_'+n)
@@ -100,7 +152,8 @@ def emit(root,target,receipt, *, keep_intermediate=False, model_pin="1d6e370e", 
     # W=4 is the throughput kernel. Cap only this width: capping W=1
     # regressed tiled call24, while W=16 already wins the small shape.
     # The strict image keeps its original register allocation.
-    bounds = '#ifdef HEX_NUMERICS_FAST\n#define MYNN_L4_REGS __maxnreg__(160)\n#else\n#define MYNN_L4_REGS\n#endif\n'
+    bounds = ('#if defined(HEX_NUMERICS_FAST) && !defined(__HIP_PLATFORM_AMD__)\n#define MYNN_L4_REGS __maxnreg__(160)\n'
+              '#else\n#define MYNN_L4_REGS\n#endif\n')
     kernel=bounds+'''
 // RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/module_bl_mynnedmf_driver.F90:17-653
 template<int MYNN_LANES> __device__ __forceinline__ void rrfs_mynnedmf_column('''+','.join(params)+''') {
@@ -123,11 +176,15 @@ MynnText message;int error_flag=0;
 '''+ '\n'.join(bindings)+'\ncolumn.f_mynnedmf_driver('+','.join(values)+');\nerror_flags[index]=error_flag;\n}\n'+''.join(
         f'extern "C" __global__ {"MYNN_L4_REGS " if w == 4 else ""}void rrfs_mynnedmf_run_l{w}('+','.join(params)+f') {{ rrfs_mynnedmf_column<{w}>('+','.join(names)+'); }\n'
         for w in LANE_WIDTHS)
+    if layout == "v6":
+        kernel = kernel.replace('RRFS 1d6e370e MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/MPAS/'
+                                'module_bl_mynnedmf_driver.F90:17-653',
+                                f'NCAR/MYNN-EDMF@{scheme_pin} {run.source}:{run.start}-{run.end}')
     kernel = kernel.replace('RRFS 1d6e370e ', 'RRFS ' + model_pin + ' ').replace(':17-653', f':{run.start}-{run.end}')
     schema={n:{k:getattr(v,k) for k in ('kind','dimensions','intent','optional')} for n in run.arguments for v in [run.variables[n]]}
     # Sum of all automatic arrays is a conservative allocation bound: frames
     # restore the cursor on return, so no call path can exceed this sum.
-    arrays=[{'kind':v.kind,'dimensions':v.dimensions} for r in routines.values() for n,v in r.variables.items() if n not in r.arguments and v.dimensions]
+    arrays=[{'kind':v.kind,'dimensions':allocated_dimensions(r,n,v)} for r in routines.values() for n,v in r.variables.items() if n not in r.arguments and v.dimensions]
     old=target.read_text()
     prefix=old.split('# BEGIN GENERATED RRFS MYNN-EDMF')[0]
     suffix=old.split('# END GENERATED RRFS MYNN-EDMF')[-1] if '# END GENERATED RRFS MYNN-EDMF' in old else ''
@@ -140,4 +197,7 @@ if __name__=='__main__':
     p.add_argument('--keep-intermediate',action='store_true')
     p.add_argument('--model-pin',default='1d6e370e')
     p.add_argument('--scheme-pin',default='c942418')
-    a=p.parse_args();emit(a.root,a.target,a.receipt,keep_intermediate=a.keep_intermediate,model_pin=a.model_pin,scheme_pin=a.scheme_pin)
+    p.add_argument('--layout',choices=('mpas','v6'),default='mpas',
+                   help='mpas: the RRFS fork tree (--root MPAS-Model); v6: a NCAR/MYNN-EDMF v6 checkout (--root MYNN-EDMF)')
+    a=p.parse_args();emit(a.root,a.target,a.receipt,keep_intermediate=a.keep_intermediate,model_pin=a.model_pin,scheme_pin=a.scheme_pin,
+                          layout=a.layout)

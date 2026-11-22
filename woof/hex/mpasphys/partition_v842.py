@@ -34,16 +34,19 @@ _REFERENCES = {
 def _maps(layout, partition):
     maps = {}
     for entity, (ids_name, owned_name) in _ENTITIES.items():
-        ids = np.asarray(getattr(partition, ids_name))
-        total = layout.dimensions[entity]
-        owned = getattr(partition, owned_name)
-        if (ids.ndim != 1 or ids.dtype.kind not in 'iu' or
-                not 0 <= owned <= len(ids) or np.any(ids < 0) or
+        raw_ids = np.asarray(getattr(partition, ids_name))
+        total = int(layout.dimensions[entity])
+        owned = int(getattr(partition, owned_name))
+        if raw_ids.ndim != 1 or raw_ids.dtype.kind not in 'iu':
+            raise ValueError(f'invalid {entity} partition map')
+        ids = np.asarray(raw_ids, dtype=np.int64)
+        if (not 0 <= owned <= len(ids) or np.any(ids < 0) or
                 np.any(ids >= total) or len(np.unique(ids)) != len(ids)):
             raise ValueError(f'invalid {entity} partition map')
-        inverse = np.full(total + 2, len(ids) + 1, dtype=np.int32)
+        inv_dtype = np.int64 if len(ids) + 1 >= (1 << 31) else np.int32
+        inverse = np.full(total + 2, len(ids) + 1, dtype=inv_dtype)
         inverse[0] = 0
-        inverse[ids + 1] = np.arange(1, len(ids) + 1, dtype=np.int32)
+        inverse[ids + 1] = np.arange(1, len(ids) + 1, dtype=inv_dtype)
         maps[entity] = (ids, owned, inverse)
     return maps
 
@@ -189,7 +192,7 @@ def project_payloads(layout: RegistryLayout, payload: Path, partitions, outputs,
     Each source field is decoded once for every partition, and the fields are projected, written and hashed on
     all cores.  THE COST THIS REMOVES: the MPAS LTS class executor projected the whole payload once per class,
     field after field (numpy take, file write, sha256), about 30 s before the first step of a storm-following
-    segment on box-aws2x and the largest part of a resumed segment's 90 s preparation
+    segment on a two-card cloud machine and the largest part of a resumed segment's 90 s preparation
     (MPAS-ROUTE-SPEED-2026-10-24).  The bytes and manifests written are project_payload's.
     """
     import os
@@ -276,7 +279,9 @@ def gather_owned_field(row, layout, partitions, buffers, *, maps=None):
         raise ValueError('one field buffer is required for each partition')
     if row['kind'] not in ('real', 'integer'):
         raise ValueError('owned field assembly requires a numeric Registry field')
-    if row['pool'] == 'mesh':
+    # Integer mesh words are local indices (cellsOnEdge, indexToCellID, ...) that need inverse remapping. Real mesh
+    # words (zgrid, areaCell) are owner words like any other field's; the JEDI background reads zgrid.
+    if row['pool'] == 'mesh' and row['kind'] == 'integer':
         raise ValueError('mesh fields require global connectivity reconstruction')
     axes = [(axis, entity) for axis, dim in enumerate(row['dimensions'])
             for entity in _ENTITIES if dim in (entity, entity + 'All', entity + 'Solve')]

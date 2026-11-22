@@ -1,8 +1,14 @@
 """GPU TEMPO microphysics runtime: blob loading, NVRTC module, 3-D launch.
 
-TEMPO (NCAR/TEMPO 9adf9ef, tempo_v3.0.3, the RRFS v2 pin; Apache-2.0, see
-kernels/tempo/NOTICE-TEMPO.txt) runs column by column.  This module owns
-the device side an engine adapter needs:
+TEMPO (NCAR/TEMPO; Apache-2.0) runs column by column, in one of two
+selectable generations (``TEMPO_VERSIONS``):
+
+* ``v3.2.5`` (c62699f, the latest release, the default): kernels/tempo325/
+  (NOTICE-TEMPO.txt there), hail-hyperaware on by default;
+* ``v3.0.3`` (9adf9ef, the RRFS v2 pin and the bitwise referee of the RRFS
+  claims): kernels/tempo/, unchanged byte for byte.
+
+This module owns the device side an engine adapter needs:
 
 * ``TempoBlob`` layout parsed from ``kernels/tempo/tempo_common.cuh`` (the
   single source of the layout) and filled from a named-record blob file
@@ -25,6 +31,24 @@ import cupy as cp
 import numpy as np
 
 KERNEL_DIR = Path(__file__).resolve().parent / "kernels" / "tempo"
+
+#: Selectable TEMPO generations, default first.  ``v3.0.3`` is the pinned
+#: RRFS v2 generation the bitwise claims and the landing gate are proven
+#: against; ``v3.2.5`` is the latest upstream release (the default).
+TEMPO_VERSIONS = ("v3.2.5", "v3.0.3")
+TEMPO_DEFAULT_VERSION = "v3.2.5"
+_KERNEL_DIRS = {"v3.0.3": KERNEL_DIR,
+                "v3.2.5": Path(__file__).resolve().parent / "kernels" / "tempo325"}
+_TEMPO_GEN = {"v3.0.3": 303, "v3.2.5": 325}
+
+
+def kernel_dir(version: str = TEMPO_DEFAULT_VERSION) -> Path:
+    """The header directory of one TEMPO generation."""
+    try:
+        return _KERNEL_DIRS[version]
+    except KeyError:
+        raise ValueError(f"tempo_version must be one of {TEMPO_VERSIONS}, got {version!r}; "
+                         "another name would run a generation nobody selected") from None
 
 
 def _source_fingerprint(directory=KERNEL_DIR):
@@ -55,6 +79,30 @@ CTX_DTYPE = np.dtype([
     ("cloud_condensation_flag", "<i4"), ("refl10cm_flag", "<i4"), ("re_cloud_flag", "<i4"),
     ("re_ice_flag", "<i4"), ("re_snow_flag", "<i4"), ("max_hail_diameter_flag", "<i4"),
     ("first_call_main", "<i4")])
+#: v3.2.5 TempoCtx (kernels/tempo325/tempo_common.cuh): two flags appended.
+CTX_DTYPE_325 = np.dtype(CTX_DTYPE.descr + [("hailhyperaware_flag", "<i4"),
+                                            ("diagnostic_aerosols_flag", "<i4")])
+
+
+def ctx_dtype(version: str = TEMPO_DEFAULT_VERSION, fast_float: bool = False) -> np.dtype:
+    kernel_dir(version)
+    dtype = CTX_DTYPE_325 if version == "v3.2.5" else CTX_DTYPE
+    if fast_float:
+        # woof.core.tempo_fast: TempoCtx's binary64 members are binary32.
+        dtype = np.dtype([(n, "<f4" if dtype[n] == np.float64 else dtype[n].str) for n in dtype.names])
+    return dtype
+
+
+def fast_float_selected(version: str) -> bool:
+    """Fast numerics runs TEMPO v3.2.5 in binary32 (woof.core.tempo_fast); strict never does.
+
+    ``WOOF_TEMPO_FAST_FLOAT=0`` keeps the binary64 column in a fast process
+    (the strict column with contraction allowed), for comparison runs.
+    """
+    import os
+    from woof import numerics
+    return (version == "v3.2.5" and numerics.mode() != "strict"
+            and os.environ.get("WOOF_TEMPO_FAST_FLOAT", "1").strip() != "0")
 
 _KERNEL = r"""
 #include "tempo_column.cuh"
@@ -156,7 +204,9 @@ extern "C" __global__ void tempo_columns(const double* blob, TempoCtx C, int nco
   if (i >= ncol) return;
   TempoParams P{reinterpret_cast<const TempoBlob*>(blob)};
   TempoCtx c = C;
+#if TEMPO_GEN < 325
   if (first_global_col + i != 0) c.first_call_main = 0;  // Fortran SAVE flag: first column only
+#endif
   ColState& s = S[i];
   tempo_main_column(P, c, nz, W[i], s.f[4], s.f[5], s.f[7], s.f[6], s.f[8], s.f[9], s.f[16],
                     s.f[10], s.f[11], s.f[12], s.f[15], s.f[13], s.f[14], s.f[0], s.f[1],
@@ -199,9 +249,17 @@ extern "C" __global__ void tempo_initial_refl(const double* blob, TempoCtx C,
     graupel_init(P, nz, W.rho, s.f[9], s.f[15], s.f[16]);
   graupel_check_and_update(P, C, nz, W.rho, W.l_qg, s.f[9], s.f[15], s.f[16],
     W.rg, W.ng, W.rb, W.idx_bg, W.qgten, W.ngten, W.qbten, W.ilamg, W.mvd_g);
+#if TEMPO_GEN >= 325
+  // The initial state carries no split hail: graupel holds it all.
+  for (int k = 0; k < TEMPO_NZP; ++k) W.l_qh[k] = false;
+  reflectivity_10cm(P, C, nz, C.refl10cm_from_melting_flag, W.temp,
+    W.l_qr, W.rr, W.nr, W.ilamr, W.l_qs, W.rs, W.smoc, W.smob, W.smoz,
+    W.l_qg, W.rg, W.ng, W.idx_bg, W.ilamg, W.l_qh, W.nh, W.ilamh, W.refl10cm);
+#else
   reflectivity_10cm(P, C, nz, C.refl10cm_from_melting_flag, W.temp,
     W.l_qr, W.rr, W.nr, W.ilamr, W.l_qs, W.rs, W.smoc, W.smob, W.smoz,
     W.l_qg, W.rg, W.ng, W.idx_bg, W.ilamg, W.refl10cm);
+#endif
   for (int k = 1; k <= nz; ++k)
     out[(long long)(k-1)*nt+c0+i] = (float)W.refl10cm[k];
 }
@@ -267,18 +325,39 @@ def load_blob(path: str | Path, layout: list[tuple[str, int]]) -> np.ndarray:
 
 def build_blob(table_dir: str | Path, *, hailaware: bool = True,
                refl10cm_from_melting: bool = False,
-               max_hail_diameter: bool = True) -> np.ndarray:
+               max_hail_diameter: bool = True,
+               version: str = TEMPO_DEFAULT_VERSION) -> np.ndarray:
     """TEMPO's tempo_init state from the Rust port (woof.core.tempo_rust),
     in TEMPO_FIELDS order; bitwise TEMPO's own Fortran init
-    (tests/test_tempo_rust_init.py)."""
+    (tests/test_tempo_rust_init.py).
+
+    The Rust init is v3.0.3's.  v3.2.5's initialize_parameters differs from
+    it in one value only (params.F90:451, v3.1.0 #32): ``roverrv = rdry / rv``
+    replaces the constant 0.622; the tables and every other parameter are
+    the same (the table builder changed only verbosity and plumbing).
+    """
     from woof.core import tempo_rust
 
     blob = tempo_rust.build_blob(table_dir, hailaware=hailaware,
                                  refl10cm_from_melting=refl10cm_from_melting,
                                  max_hail_diameter=max_hail_diameter)
-    if tempo_rust.layout() != blob_layout((KERNEL_DIR / "tempo_common.cuh").read_text()):
+    layout = blob_layout((kernel_dir(version) / "tempo_common.cuh").read_text())
+    if tempo_rust.layout() != layout:
         raise RuntimeError("rw-tempo blob layout differs from tempo_common.cuh; rebuild rw-tempo")
+    if version == "v3.2.5":
+        blob = with_v325_parameters(blob, layout)
     return blob
+
+
+def with_v325_parameters(blob: np.ndarray, layout) -> np.ndarray:
+    """v3.0.3 tempo_init state -> v3.2.5's (roverrv = rdry / rv, in float64)."""
+    offset, o = {}, 0
+    for name, n in layout:
+        offset[name] = o
+        o += n
+    out = np.array(blob, dtype=np.float64, copy=True)
+    out[offset["roverrv"]] = float(out[offset["rdry"]]) / float(out[offset["rv"]])
+    return out
 
 
 @dataclass(frozen=True)
@@ -296,6 +375,9 @@ class TempoConfig:
     max_hail_diameter: bool = True
     ml_for_bl_nc: bool = False
     surface_emission_before: bool = False
+    #: v3.2.x hail-hyperaware (graupel/hail split), TEMPO's default; read
+    #: by v3.2.5 only, and forced off without hail-aware as tempo_init does.
+    hailhyperaware: bool = True
 
 
 class TempoRuntime:
@@ -303,37 +385,79 @@ class TempoRuntime:
 
     def __init__(self, blob_path: str | Path | None = None, *, table_dir: str | Path | None = None,
                  hailaware: bool = True, nz_max: int = 100,
-                 max_work_bytes: int = 4 << 30, fmad: bool = False):
+                 max_work_bytes: int = 4 << 30, fmad: bool = False,
+                 version: str = TEMPO_DEFAULT_VERSION):
         """``table_dir`` (the four TEMPO table files) builds the blob through
         the Rust tempo_init (:func:`build_blob`); ``blob_path`` reads a
-        named-record blob file instead (the Fortran reference dump)."""
-        header = (KERNEL_DIR / "tempo_common.cuh").read_text()
+        named-record blob file instead (the Fortran reference dump of the
+        same generation).  ``version`` selects the TEMPO generation."""
+        self.version = version
+        directory = kernel_dir(version)
+        self.fast_float = fast_float_selected(version)
+        self.ctx_dtype = ctx_dtype(version, self.fast_float)
+        header = (directory / "tempo_common.cuh").read_text()
         self.layout = blob_layout(header)
         if (blob_path is None) == (table_dir is None):
             raise ValueError("TempoRuntime needs exactly one of blob_path or table_dir")
         if table_dir is not None:
-            self.blob = cp.asarray(build_blob(table_dir, hailaware=hailaware))
+            blob = build_blob(table_dir, hailaware=hailaware, version=version)
         else:
-            self.blob = cp.asarray(load_blob(blob_path, self.layout))
-        opts = ["-std=c++17", f"-I{KERNEL_DIR}", f"-DTEMPO_NZ_MAX={int(nz_max)}"]
+            blob = load_blob(blob_path, self.layout)
+        if self.fast_float:
+            from woof.core.tempo_fast import float_blob
+            blob = float_blob(blob, self.layout)
+        self.blob = cp.asarray(blob)
+        opts = ["-std=c++17", f"-I{directory}", f"-DTEMPO_NZ_MAX={int(nz_max)}"]
+        if version != "v3.0.3":
+            # The pinned generation compiles with exactly its old options.
+            opts.append(f"-DTEMPO_GEN={_TEMPO_GEN[version]}")
         # NVRTC/CuPy keys the cache on code and options, not included bytes.
         # A corrected header must never replay an older compiled kernel.
-        opts.append(f"-DTEMPO_SOURCE_FINGERPRINT=0x{_source_fingerprint()}")
+        opts.append(f"-DTEMPO_SOURCE_FINGERPRINT=0x{_source_fingerprint(directory)}")
         if not fmad:
             opts.append("--fmad=false")
-        self.module = cp.RawModule(code=_KERNEL, options=tuple(opts))
+        code = _KERNEL
+        if self.fast_float:
+            from woof.core.tempo_fast import kernel_source
+            code = kernel_source(directory)
+            opts.append("-DTEMPO_FAST_FLOAT=1")
+        self.module = cp.RawModule(code=code, options=tuple(opts))
         sizes = cp.zeros(4, dtype=cp.int64)
         self.module.get_function("tempo_sizes")((1,), (1,), (sizes,))
         self.work_bytes, self.col_bytes, ctx_bytes, self.nz_max = (int(x) for x in sizes.get())
-        if ctx_bytes != CTX_DTYPE.itemsize:
-            raise RuntimeError(f"TempoCtx size {ctx_bytes} != host {CTX_DTYPE.itemsize}")
+        if ctx_bytes != self.ctx_dtype.itemsize:
+            raise RuntimeError(f"TempoCtx size {ctx_bytes} != host {self.ctx_dtype.itemsize}")
         per_col = self.work_bytes + self.col_bytes
         self.batch = max(1, int(max_work_bytes // per_col))
         self.first_call = True
         self._work = None
         self._cols = None
+        self._pointers = {}
+        #: Columns per block of the column kernel (one thread per column).
+        self.threads_per_block = 64
+
+    def _pointer_tables(self, arrs, outs, which):
+        """Device copies of the field pointer tables, kept per pointer set.
+
+        Breakage this removes: three pageable host-to-device copies per call,
+        each of which waits for every kernel already queued (a host sync per
+        microphysics call on the forecast path).  A table holds the pointer
+        values themselves, so a hit is always the right table.
+        """
+        key = tuple(a.data.ptr for a in arrs) + tuple(a.data.ptr for a in outs)
+        tables = self._pointers.get(key)
+        if tables is None:
+            if len(self._pointers) >= 8:
+                self._pointers.clear()
+            tables = (cp.asarray(np.array([a.data.ptr for a in arrs], dtype=np.uint64)),
+                      cp.asarray(np.array([a.data.ptr for a in outs], dtype=np.uint64)),
+                      cp.asarray(np.array(which, dtype=np.int32)))
+            self._pointers[key] = tables
+        return tables
 
     def _buffers(self, n):
+        if self.fast_float:
+            n = -(-n // 32) * 32  # whole tiles (woof.core.tempo_fast)
         if self._work is None or self._work.size * 8 < n * self.work_bytes:
             self._work = cp.zeros(n * self.work_bytes // 8, dtype=cp.float64)
             self._cols = cp.zeros(n * self.col_bytes // 8, dtype=cp.float64)
@@ -364,7 +488,7 @@ class TempoRuntime:
                   "qg": state.qg, "ng": state.ng, "qb": state.volg}
         ptrs = cp.asarray(np.array([fields.get(n, state.qv).data.ptr
                                     for n in STATE_FIELDS], dtype=np.uint64))
-        ctx = np.zeros(1, dtype=CTX_DTYPE)
+        ctx = np.zeros(1, dtype=self.ctx_dtype)
         ctx["global_dt"] = float(cfg.dt)
         ctx["global_inverse_dt"] = 1 / float(cfg.dt)
         ctx["hailaware_flag"] = 1
@@ -436,14 +560,12 @@ class TempoRuntime:
         pack = self.module.get_function("tempo_pack_adapter" if adapter else f"tempo_pack_{suffix}")
         unpack = self.module.get_function("tempo_unpack_adapter" if adapter else f"tempo_unpack_{suffix}")
         kern = self.module.get_function("tempo_columns")
-        ptrs = cp.asarray(np.array([a.data.ptr for a in arrs], dtype=np.uint64))
         which = [STATE_FIELDS.index(n) for n in UPDATED_FIELDS]
-        out_ptrs = cp.asarray(np.array([fields[n].data.ptr for n in UPDATED_FIELDS], dtype=np.uint64))
-        which_d = cp.asarray(np.array(which, dtype=np.int32))
+        ptrs, out_ptrs, which_d = self._pointer_tables(arrs, [fields[n] for n in UPDATED_FIELDS], which)
         sfc = cp.zeros((len(SURFACE_DIAGS), ny, nx), dtype=cp.float64)
         coldiag = cp.zeros((len(COLUMN_DIAGS), nz, ny, nx), dtype=cp.float64)
 
-        ctx = np.zeros(1, dtype=CTX_DTYPE)
+        ctx = np.zeros(1, dtype=self.ctx_dtype)
         ctx["global_dt"] = dt
         ctx["global_inverse_dt"] = 1.0 / dt
         ctx["aerosolaware_flag"] = int(cfg.aerosolaware)
@@ -457,8 +579,12 @@ class TempoRuntime:
         ctx["re_snow_flag"] = int(cfg.re_snow)
         ctx["max_hail_diameter_flag"] = int(cfg.max_hail_diameter)
         ctx["first_call_main"] = int(self.first_call)
+        if self.version == "v3.2.5":
+            # tempo_init forces hyperaware off when hail-aware is off.
+            ctx["hailhyperaware_flag"] = int(cfg.hailaware and cfg.hailhyperaware)
+            ctx["diagnostic_aerosols_flag"] = 0
 
-        tpb = 64
+        tpb = self.threads_per_block
         for c0 in range(0, ncol, self.batch):
             n = min(self.batch, ncol - c0)
             cols, work = self._buffers(n)

@@ -3,7 +3,7 @@
 WHAT THIS CATCHES, and why it exists. ``ntiedtke_momentum_rescale``
 (cumastrn:996-1016) applies a per-column limiter to the mass flux and
 writes the result to ``zmfuus``/``zmfdus``. cumastrn:1026 hands THOSE to
-cududvn. WOOF's ``ntiedtke_cududvn`` declares its parameters ``pmfu`` and
+cududvn. WOOF-ArWen's ``ntiedtke_cududvn`` declares its parameters ``pmfu`` and
 ``pmfd`` -- the reference's own dummy names -- and the assembler binds
 arguments by name, so it found the slots literally called ``pmfu`` and
 ``pmfd`` and passed the UNSCALED flux. The rescale's output was written and

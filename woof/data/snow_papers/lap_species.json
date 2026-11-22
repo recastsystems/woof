@@ -1,0 +1,16 @@
+{
+  "schema": "gpuwm-snow-lap-species-v1",
+  "status": "re-implemented from published descriptions, not bitwise to upstream",
+  "meltwater_scavenging_source": "Flanner et al. 2007 JGR 112 D11202 sect. 2.4 and the CLM5 Technical Description (Lawrence et al. 2018, NCAR) snow-aerosol section: fraction of the layer mixing ratio carried by percolating meltwater",
+  "species": [
+    {"key": "bc_hydrophilic", "meltwater_scavenging": 0.20, "optics": "BC row of optics.bin (Bond & Bergstrom 2006); internally mixed with ice when snicar_snowbc_intmix"},
+    {"key": "bc_hydrophobic", "meltwater_scavenging": 0.03, "optics": "BC row of optics.bin, external"},
+    {"key": "oc_hydrophilic", "meltwater_scavenging": 0.20, "optics": "lap_optics.bin row 0 (Brown et al. 2018 eqs 1-3)"},
+    {"key": "oc_hydrophobic", "meltwater_scavenging": 0.03, "optics": "lap_optics.bin row 0"},
+    {"key": "dust1", "diameter_um": [0.1, 1.0], "meltwater_scavenging": 0.02, "optics": "lap_optics.bin row 1"},
+    {"key": "dust2", "diameter_um": [1.0, 2.5], "meltwater_scavenging": 0.02, "optics": "lap_optics.bin row 2"},
+    {"key": "dust3", "diameter_um": [2.5, 5.0], "meltwater_scavenging": 0.01, "optics": "lap_optics.bin row 3"},
+    {"key": "dust4", "diameter_um": [5.0, 10.0], "meltwater_scavenging": 0.01, "optics": "lap_optics.bin row 4"},
+    {"key": "dust5", "diameter_um": [10.0, 100.0], "meltwater_scavenging": 0.01, "optics": "lap_optics.bin row 5; scavenging of the coarsest published bin (5-10 um) carried to 10-100 um, declared assumption"}
+  ]
+}

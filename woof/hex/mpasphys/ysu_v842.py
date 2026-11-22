@@ -1,4 +1,4 @@
-"""MPAS-A v8.4.2 YSU boundary layer, independent of the pinned WOOF backend.
+"""MPAS-A v8.4.2 YSU boundary layer, independent of the pinned WOOF-ArWen backend.
 
 The complete MMM scheme is transcribed with one CUDA thread per column.
 Every executable statement carries its native source line. The MPAS WRF
@@ -34,6 +34,35 @@ DRIVER_SHA256 = '31610fde6a68c13101acf845ff728251336b6507d80cb297487cc4dd0337a46
 ARRAY_ARGUMENTS = ('dz8w2d', 'pi2d', 'tx', 'qvx', 'qcx', 'qix', 'qmix', 'utnp', 'vtnp', 'ttnp', 'qvtnp', 'qctnp', 'qitnp', 'qmixtnp', 'p2di', 'p2d', 'hpbl', 'dusfc', 'dvsfc', 'dtsfc', 'dqsfc', 'ust', 'znt', 'xland', 'hfx', 'qfx', 'wspd', 'br', 'psim', 'psih', 'psfcpa', 'kpbl1d', 'ux', 'vx', 'rthraten', 'ctopo', 'ctopo2', 'a_u', 'a_v', 'a_t', 'a_q', 'a_e', 'b_u', 'b_v', 'b_t', 'b_q', 'b_e', 'sfk', 'vlk', 'dlu', 'dlg', 'frcurb', 'exch_hx', 'exch_mx', 'u10', 'v10', 'uox', 'vox', 'wstar', 'delta')
 FLOAT_ARGUMENTS = ('dt', 'cp', 'g', 'rovcp', 'rovg', 'rd', 'xlv', 'rv', 'ep1', 'ep2', 'karman')
 INTEGER_ARGUMENTS = ('its', 'ite', 'kte', 'kme', 'ysu_topdown_pblmix', 'nmix', 'f_qc', 'f_qi', 'flag_bep')
+
+# MMM-physics generations other than the transcribed pin (mmm_version.py). Each row is a counted source
+# substitution on the pinned a4baf7f text, so the pinned kernel keeps the same bytes and machine code.
+#   550b5b4: NCAR/MMM-physics 550b5b494758 bl_ysu.F90:855 (WRF v4.8.0), the top-down entrainment cap
+#            (Zhang et al. 2024). bl_ysu.F90 a4baf7f -> 550b5b4 carries this one line and nothing else.
+MMM_SOURCE = {
+    "550b5b4": ((
+        "                    // MPAS line 855: ent_eff   = 0.2 * 8. * tmp1 +0.2\n"
+        "                    ent_eff = ysu_add(ysu_mul(0x1.99999a0000000p+0f, tmp1), 0x1.99999a0000000p-3f);\n",
+        "                    // MMM 550b5b4 bl_ysu.F90:855: ent_eff   = min(0.2 * 8. * tmp1, 0.4)\n"
+        "                    ent_eff = ysu_minf(ysu_mul(0x1.99999a0000000p+0f, tmp1), 0x1.99999a0000000p-2f);\n",
+        1),),
+}
+
+
+def _versioned_body(mmm_version: str) -> str:
+    """The transcribed body at one MMM-physics generation (the pin is the transcription itself)."""
+    from .mmm_version import PINNED, normalise
+    version = normalise(mmm_version)
+    if version == PINNED:
+        return _CUDA_BODY
+    body = _CUDA_BODY
+    for old, new, count in MMM_SOURCE[version]:
+        if body.count(old) != count:
+            # THE BREAKAGE THIS PREVENTS: a drifted pinned body would run the pin under the newer label.
+            raise RuntimeError(f"YSU MMM {version} substitution no longer matches the pinned source")
+        body = body.replace(old, new)
+    return body
+
 
 # MPAS v8.4.2 physics_mmm/bl_ysu.F90:56-1693
 _CUDA_BODY = r'''
@@ -2629,7 +2658,7 @@ def shared_device_math_header() -> str:
 
     The pinned MYNN header supplies expf/powf and the shared SFIRE header
     supplies glibc 2.43 CORE-MATH tanhf. These pins identify the tested math
-    implementation independently of the untouched WOOF YSU backend.
+    implementation independently of the untouched WOOF-ArWen YSU backend.
     """
     pins = {
         "mynn_libm.cuh": "bf5831efbdf1ddc1111e8f0bafc2e272b5597d7d2b12d8320675b8a938618fbb",
@@ -2652,8 +2681,11 @@ def shared_device_math_header() -> str:
 '''
 
 
-def cuda_source(device_math_header: str) -> str:
+def cuda_source(device_math_header: str, mmm_version: str = "a4baf7f") -> str:
     """Compose physics_mmm/bl_ysu.F90:56-1420 with shared glibc routines.
+
+    ``mmm_version`` selects the MMM-physics generation (mmm_version.py). The pin is the default here, so
+    module replays against native v8.4.2 name nothing; the routes always pass the run's choice.
 
     The header supplies mpas_ysu_powf/expf/tanhf/sqrtf/absf aliases to its
     shared implementation. There is no CUDA-libm fallback: that would change
@@ -2662,10 +2694,11 @@ def cuda_source(device_math_header: str) -> str:
     if not device_math_header.strip():
         raise ValueError("YSU requires the shared MPAS glibc 2.43 device math "
                          "header; CUDA libm would invalidate word identity")
-    return device_math_header + "\n" + _CUDA_BODY + _CUDA_LAUNCH + _CONVERSIONS
+    return device_math_header + "\n" + _versioned_body(mmm_version) + _CUDA_LAUNCH + _CONVERSIONS
 
 
-def validated_cuda_binary(path: Path, device_math_header: str, architecture: str) -> bytes:
+def validated_cuda_binary(path: Path, device_math_header: str, architecture: str,
+                          mmm_version: str = "a4baf7f") -> bytes:
     """Load compiled physics_mmm/bl_ysu.F90:56-1420 on the lane's run host.
 
     Source and option checks prevent a stale artifact or forced FTZ build
@@ -2676,7 +2709,7 @@ def validated_cuda_binary(path: Path, device_math_header: str, architecture: str
     expected = {
         'schema': 'mpas-ysu-v842/compiled-kernel-v1',
         'cuda_sha256': CUDA_SHA256,
-        'source_sha256': sha256(cuda_source(device_math_header).encode()).hexdigest(),
+        'source_sha256': sha256(cuda_source(device_math_header, mmm_version).encode()).hexdigest(),
         'device_math_sha256': sha256(device_math_header.encode()).hexdigest(),
         'compiler_options': list(_hex_numerics.options(COMPILER_OPTIONS)) + ['--gpu-architecture=sm_' + architecture],
     }
@@ -2693,7 +2726,7 @@ def validated_cuda_binary(path: Path, device_math_header: str, architecture: str
 # variants exceed it, and every rank then rebuilds its module each step (thompson_v842._module, 8 cards,
 # 2026-10-28: 1.28 s/step against 0.25 s with the cache fixed).
 @lru_cache(maxsize=None)
-def _kernels(device_math_header: str, device_id: int):
+def _kernels(device_math_header: str, device_id: int, mmm_version: str = "a4baf7f"):
     """Load scheme and conversions; physics_mmm/bl_ysu.F90:56-1420;
     mpas_atmphys_driver_pbl.F:309-420; physics_wrf/module_bl_ysu.F:450-461.
     """
@@ -2707,10 +2740,10 @@ def _kernels(device_math_header: str, device_id: int):
         artifact = os.environ.get('HEX_MPAS_YSU_CUDA_ARTIFACT')
         if artifact:
             binary = validated_cuda_binary(Path(artifact), device_math_header,
-                                           _compilation_target(device_id, xp=cp))
+                                           _compilation_target(device_id, xp=cp), mmm_version)
         else:
             binary, _ = compiler.compile_using_nvrtc(
-                cuda_source(device_math_header), options=_hex_numerics.options(COMPILER_OPTIONS),
+                cuda_source(device_math_header, mmm_version), options=_hex_numerics.options(COMPILER_OPTIONS),
                 cache_in_memory=True)
         module = function.Module()
         module.load(binary)
@@ -2754,9 +2787,9 @@ def workspace_tile(nz: int, ncol: int) -> int:
 def bl_ysu_run(arrays: Mapping[str, Any], constants: Mapping[str, float], *,
                dt: float, f_qc: bool, f_qi: bool,
                ysu_topdown_pblmix: bool, device_math_header: str,
-               flag_bep: bool = False, workspace_columns: int | None = None
-               ) -> dict[str, Any]:
-    """MPAS v8.4.2 physics_mmm/bl_ysu.F90:56-1420.
+               flag_bep: bool = False, workspace_columns: int | None = None,
+               mmm_version: str = "a4baf7f") -> dict[str, Any]:
+    """MPAS v8.4.2 physics_mmm/bl_ysu.F90:56-1420 (or a newer MMM generation, ``mmm_version``).
 
     Level arrays are (nz, ncol), interfaces (nz+1, ncol), and tracer arrays
     (nmix, nz, ncol), all C-contiguous float32. Surface arrays are (ncol,).
@@ -2820,7 +2853,8 @@ def bl_ysu_run(arrays: Mapping[str, Any], constants: Mapping[str, float], *,
     status = cp.zeros(ncol, cp.int32)
     if count:
         workspace = cp.empty(WORKSPACE_ARRAYS * (nz+2) * count, cp.float32)
-        kernel = _kernels(device_math_header, cp.cuda.Device().id)[0]
+        from .mmm_version import normalise
+        kernel = _kernels(device_math_header, cp.cuda.Device().id, normalise(mmm_version))[0]
         for offset in range(0, ncol, count):
             tile = min(count, ncol-offset)
             kernel(((tile+31)//32,), (32,),
@@ -2853,7 +2887,8 @@ _WRAPPER_OUTPUTS = {
 
 def ysu(arrays: Mapping[str, Any], constants: Mapping[str, float], *, dt: float,
         flag_qc: bool, flag_qi: bool, ysu_topdown_pblmix: int,
-        device_math_header: str, flag_bep: bool = False) -> dict[str, Any]:
+        device_math_header: str, flag_bep: bool = False,
+        mmm_version: str = "a4baf7f") -> dict[str, Any]:
     """MPAS v8.4.2 physics_wrf/module_bl_ysu.F:16-475.
 
     Horizontal/vertical copies are views in the device column layout. The
@@ -2877,12 +2912,14 @@ def ysu(arrays: Mapping[str, Any], constants: Mapping[str, float], *, dt: float,
     state.pop("qmixtnp", None)
     result = bl_ysu_run(state, constants, dt=dt, f_qc=flag_qc, f_qi=flag_qi,
                         ysu_topdown_pblmix=(ysu_topdown_pblmix == 1),
-                        flag_bep=flag_bep, device_math_header=device_math_header)
+                        flag_bep=flag_bep, device_math_header=device_math_header,
+                        mmm_version=mmm_version)
     out = {name: result[field] for name, field in _WRAPPER_OUTPUTS.items()}
     out["rthblten"] = cp.empty_like(result["ttnp"])
     size = result["ttnp"].size
     if size:
-        _kernels(device_math_header, cp.cuda.Device().id)[2](
+        from .mmm_version import normalise
+        _kernels(device_math_header, cp.cuda.Device().id, normalise(mmm_version))[2](
             ((size+255)//256,), (256,),
             (result["ttnp"], state["pi2d"], out["rthblten"], np.int32(size)))
     return out
@@ -2890,8 +2927,8 @@ def ysu(arrays: Mapping[str, Any], constants: Mapping[str, float], *, dt: float,
 
 def pbl_from_MPAS(carriers: Mapping[str, Any], *,
                   diag_physics: Mapping[str, Any], sfc_input: Mapping[str, Any],
-                  tend_physics: Mapping[str, Any], device_math_header: str
-                  ) -> dict[str, Any]:
+                  tend_physics: Mapping[str, Any], device_math_header: str,
+                  mmm_version: str = "a4baf7f") -> dict[str, Any]:
     """MPAS v8.4.2 mpas_atmphys_driver_pbl.F:309-420.
 
     General physics carriers (pres_hyd_p, t_p, etc.) are already prepared by
@@ -2924,7 +2961,8 @@ def pbl_from_MPAS(carriers: Mapping[str, Any], *,
     state["voce"] = cp.zeros(ncol, cp.float32)
     size = nz*ncol
     if size:
-        _kernels(device_math_header, cp.cuda.Device().id)[1](
+        from .mmm_version import normalise
+        _kernels(device_math_header, cp.cuda.Device().id, normalise(mmm_version))[1](
             ((size+255)//256,), (256,),
             (tend_physics["rthratenlw"], tend_physics["rthratensw"],
              state["rthraten"], np.int32(size)))
@@ -2955,14 +2993,14 @@ def driver_pbl(carriers: Mapping[str, Any], *, diag_physics: Mapping[str, Any],
                sfc_input: Mapping[str, Any], tend_physics: Mapping[str, Any],
                constants: Mapping[str, float], dt: float,
                config_ysu_pblmix: bool, f_qc: bool, f_qi: bool,
-               device_math_header: str) -> dict[str, Any]:
+               device_math_header: str, mmm_version: str = "a4baf7f") -> dict[str, Any]:
     """MPAS v8.4.2 mpas_atmphys_driver_pbl.F:805-852."""
     state = pbl_from_MPAS(carriers, diag_physics=diag_physics,
                           sfc_input=sfc_input, tend_physics=tend_physics,
-                          device_math_header=device_math_header)
+                          device_math_header=device_math_header, mmm_version=mmm_version)
     result = ysu(state, constants, dt=dt, flag_qc=f_qc, flag_qi=f_qi,
                  ysu_topdown_pblmix=int(config_ysu_pblmix), flag_bep=False,
-                 device_math_header=device_math_header)
+                 device_math_header=device_math_header, mmm_version=mmm_version)
     pbl_to_MPAS(result, diag_physics=diag_physics, tend_physics=tend_physics)
     return result
 
@@ -2982,6 +3020,7 @@ def launch_slot(call: Any) -> dict[str, Any]:
                "rd": "R_d", "rv": "R_v", "ep1": "ep_1", "ep2": "ep_2"}
     constant_names = ("cp", "g", "rovcp", "rovg", "rd", "xlv", "rv",
                       "ep1", "ep2", "karman")
+    from .mmm_version import of
     return driver_pbl(
         {name: prepared[name] for name in carrier_names},
         diag_physics=pools["diag_physics"], sfc_input=pools["sfc_input"],
@@ -2991,7 +3030,8 @@ def launch_slot(call: Any) -> dict[str, Any]:
         dt=call.dt, config_ysu_pblmix=call.options["config_ysu_pblmix"],
         f_qc=bool(pools["scalar_state"]["f_qc"]),
         f_qi=bool(pools["scalar_state"]["f_qi"]),
-        device_math_header=shared_device_math_header())
+        device_math_header=shared_device_math_header(),
+        mmm_version=of(call)["mmm_version"])
 
 
 def register(registry: Any, *, get_carriers: Any, device_math_header: str) -> None:
@@ -3003,9 +3043,11 @@ def register(registry: Any, *, get_carriers: Any, device_math_header: str) -> No
     """
     def invoke(call):
         """Native YSU dispatch; mpas_atmphys_driver_pbl.F:823-852."""
+        from .mmm_version import of
         return driver_pbl(**get_carriers(call), dt=call.dt,
                           config_ysu_pblmix=call.options["config_ysu_pblmix"],
-                          device_math_header=device_math_header)
+                          device_math_header=device_math_header,
+                          mmm_version=of(call)["mmm_version"])
 
     registry.register(SLOT, SCHEME, BACKEND, invoke)
 

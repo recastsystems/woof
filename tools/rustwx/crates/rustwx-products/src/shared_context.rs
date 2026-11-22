@@ -273,18 +273,89 @@ pub fn wind_streamline_request() -> Option<bool> {
     WIND_STREAMLINE_REQUEST.read().ok().and_then(|slot| *slot)
 }
 
+/// The environment variable that names a run's frame interval in minutes.
+///
+/// A caller drawing the frames of a sub-hourly run one call at a time (a
+/// live pass draws each frame as it lands) sets it, so a whole-hour frame
+/// knows it belongs to a run whose other frames carry minutes.
+pub const FRAME_MINUTES_ENV: &str = "RUSTWX_FRAME_MINUTES";
+
+/// A caller's explicit minute-clock choice; `None` leaves it to
+/// [`FRAME_MINUTES_ENV`].
+static MINUTE_CLOCK_OVERRIDE: std::sync::RwLock<Option<bool>> = std::sync::RwLock::new(None);
+
+/// Force the minute clock on or off, or hand it back to the environment.
+pub fn set_minute_clock(clock: Option<bool>) {
+    if let Ok(mut slot) = MINUTE_CLOCK_OVERRIDE.write() {
+        *slot = clock;
+    }
+}
+
+/// Whether a whole-hour frame writes its time to the minute (`F001:00 |
+/// Valid 12/18 13:00Z`) instead of to the hour (`F001 | Valid 12/18 13Z`).
+///
+/// THE BREAKAGE IT PREVENTS (WOOF, 2026-11-10: on the animated loops the
+/// title still jittered). Frames between hours are on the exact-time axis
+/// and read `F001:15 | Valid 12/18 13:15Z`; a whole-hour frame of the same
+/// run, drawn in a call of its own, read `F001 | Valid 12/18 13Z`. The
+/// header of a 15-minute loop changed length four times an hour, so every
+/// word after the time, and on a narrow frame the whole header, slid
+/// sideways. With the clock on, every frame of the run has a header of the
+/// same length and only the time's digits change.
+///
+/// On when a caller says so ([`set_minute_clock`]), else when
+/// [`FRAME_MINUTES_ENV`] names an interval that is not a whole number of
+/// hours. Hourly runs are unchanged.
+pub fn minute_clock() -> bool {
+    if let Some(clock) = MINUTE_CLOCK_OVERRIDE.read().ok().and_then(|slot| *slot) {
+        return clock;
+    }
+    static FROM_ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FROM_ENV.get_or_init(|| {
+        frame_minutes_need_minute_clock(std::env::var(FRAME_MINUTES_ENV).ok().as_deref())
+    })
+}
+
+/// Whether a frame interval (minutes, as text) is sub-hourly or off the hour.
+fn frame_minutes_need_minute_clock(minutes: Option<&str>) -> bool {
+    minutes
+        .and_then(|text| text.trim().parse::<u32>().ok())
+        .is_some_and(|minutes| minutes > 0 && minutes % 60 != 0)
+}
+
+/// The whole-hour lead token: `F001`, or `F001:00` on the minute clock.
+fn whole_hour_lead_label(forecast_hour: u16, minute_clock: bool) -> String {
+    if minute_clock {
+        format!("F{forecast_hour:03}:00")
+    } else {
+        format!("F{forecast_hour:03}")
+    }
+}
+
 pub fn model_time_subtitle(
     model: ModelId,
     date_yyyymmdd: &str,
     cycle_utc: u8,
     forecast_hour: u16,
 ) -> String {
-    model_time_subtitle_with_lead_label(
+    model_time_subtitle_clocked(model, date_yyyymmdd, cycle_utc, forecast_hour, minute_clock())
+}
+
+/// [`model_time_subtitle`] with the minute clock given rather than read.
+pub fn model_time_subtitle_clocked(
+    model: ModelId,
+    date_yyyymmdd: &str,
+    cycle_utc: u8,
+    forecast_hour: u16,
+    minute_clock: bool,
+) -> String {
+    model_time_subtitle_with_lead_label_clocked(
         model,
         date_yyyymmdd,
         cycle_utc,
         forecast_hour,
-        format!("F{forecast_hour:03}"),
+        whole_hour_lead_label(forecast_hour, minute_clock),
+        minute_clock,
     )
 }
 
@@ -295,7 +366,28 @@ pub fn model_time_subtitle_with_lead_label<S: AsRef<str>>(
     forecast_hour: u16,
     lead_label: S,
 ) -> String {
-    let valid = valid_time_label(date_yyyymmdd, cycle_utc, forecast_hour)
+    model_time_subtitle_with_lead_label_clocked(
+        model,
+        date_yyyymmdd,
+        cycle_utc,
+        forecast_hour,
+        lead_label,
+        minute_clock(),
+    )
+}
+
+/// [`model_time_subtitle_with_lead_label`] with the minute clock given: on,
+/// the valid time carries its minutes (`Valid 12/18 13:00Z`); the lead label
+/// is the caller's, a window (`F000-F001`) included.
+pub fn model_time_subtitle_with_lead_label_clocked<S: AsRef<str>>(
+    model: ModelId,
+    date_yyyymmdd: &str,
+    cycle_utc: u8,
+    forecast_hour: u16,
+    lead_label: S,
+    minute_clock: bool,
+) -> String {
+    let valid = valid_time_label(date_yyyymmdd, cycle_utc, forecast_hour, minute_clock)
         .unwrap_or_else(|| "unknown".to_string());
     let init = init_date_label(date_yyyymmdd).unwrap_or_else(|| date_yyyymmdd.to_string());
     // The `Init` token names when THIS model run started; `F` counts hours
@@ -324,11 +416,17 @@ pub fn source_subtitle(source: SourceId) -> String {
     format!("source: {}", source.as_str())
 }
 
-fn valid_time_label(date_yyyymmdd: &str, cycle_utc: u8, forecast_hour: u16) -> Option<String> {
+fn valid_time_label(
+    date_yyyymmdd: &str,
+    cycle_utc: u8,
+    forecast_hour: u16,
+    minute_clock: bool,
+) -> Option<String> {
     let date = NaiveDate::parse_from_str(date_yyyymmdd, "%Y%m%d").ok()?;
     let cycle_time = date.and_hms_opt(u32::from(cycle_utc), 0, 0)?;
     let valid_time = cycle_time + Duration::hours(i64::from(forecast_hour));
-    Some(valid_time.format("%m/%d %HZ").to_string())
+    let format = if minute_clock { "%m/%d %H:%MZ" } else { "%m/%d %HZ" };
+    Some(valid_time.format(format).to_string())
 }
 
 fn init_date_label(date_yyyymmdd: &str) -> Option<String> {
@@ -671,6 +769,44 @@ mod tests {
             model_time_subtitle(ModelId::Gfs, "20260424", 22, 4),
             "Init 04/24 22Z | F004 | Valid 04/25 02Z | GFS"
         );
+    }
+
+    /// A whole-hour frame of a sub-hourly run reads like its neighbours
+    /// between hours (`F001:15 | Valid 12/18 13:15Z`): same tokens, same
+    /// length, only the digits differ.
+    #[test]
+    fn the_minute_clock_writes_whole_hours_to_the_minute() {
+        let _guard = disclosure_guard();
+        set_initial_condition_disclosure(None);
+        assert_eq!(
+            model_time_subtitle_clocked(ModelId::Gfs, "19571218", 12, 1, true),
+            "Init 12/18 12Z | F001:00 | Valid 12/18 13:00Z | GFS"
+        );
+        assert_eq!(
+            model_time_subtitle_clocked(ModelId::Gfs, "19571218", 12, 1, false),
+            "Init 12/18 12Z | F001 | Valid 12/18 13Z | GFS"
+        );
+        // A window label is the caller's; only the valid time gains minutes.
+        assert_eq!(
+            model_time_subtitle_with_lead_label_clocked(ModelId::Gfs, "19571218", 12, 1, "F000-F001", true),
+            "Init 12/18 12Z | F000-F001 | Valid 12/18 13:00Z | GFS"
+        );
+    }
+
+    #[test]
+    fn only_a_sub_hourly_frame_interval_turns_the_minute_clock_on() {
+        for (minutes, on) in [
+            (Some("15"), true),
+            (Some(" 5 "), true),
+            (Some("90"), true),
+            (Some("60"), false),
+            (Some("120"), false),
+            (Some("0"), false),
+            (Some("quarter"), false),
+            (None, false),
+        ] {
+            assert_eq!(frame_minutes_need_minute_clock(minutes), on, "{minutes:?}");
+        }
     }
 
     /// C-03: a run started from a 174-hour forecast printed exactly what a

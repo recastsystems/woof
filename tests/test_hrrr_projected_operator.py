@@ -30,7 +30,7 @@ from woof.static.lambert import LambertGrid
 SOURCE_NY = 1059
 SOURCE_NX = 1799
 
-#: docs/superpowers/receipts/les/les.km3.toml, the committed 3-domain
+#: docs/internal/receipts/les/les.km3.toml, the committed 3-domain
 #: nest this operator's cost was measured on.  A real projection, so the
 #: donors and fractions under test are the ones production produces.
 NEST_REF_LAT = 46.35

@@ -51,7 +51,7 @@ does its damage.
 ## Am I affected
 
 Two things have to be true for this to be your problem: the version of
-WOOF actually executing does not refuse this pairing over a night
+WOOF-ArWen actually executing does not refuse this pairing over a night
 window, and your config uses the pairing. Check them in that order.
 The version question comes first because it is the one that gets
 answered wrongly -- the number you installed is not always the number
@@ -225,7 +225,7 @@ woof doctor
 ```
 
 The first line it prints is the same version headline as step 1a, so
-the report says which copy of WOOF produced it. Then look for these:
+the report says which copy of WOOF-ArWen produced it. Then look for these:
 
 ```
   ok      renderer rw_wrfbatch (rust render engine): /path/to/.woof/bridges/rw_wrfbatch -- probe --help exited 0 with its usage line; basemaps ...

@@ -1,7 +1,7 @@
 """The chem step: WRF-Chem's ``chem_driver`` as one operator per model step.
 
 WRF runs chemistry after the whole dynamics and physics step
-(``share/solve_interface.F``: ``solve_em`` then ``chem_driver``).  WOOF does
+(``share/solve_interface.F``: ``solve_em`` then ``chem_driver``).  WOOF-ArWen does
 the same from the end of :func:`woof.core.dycore.step`, after microphysics,
 so tiles and nests reach it through that step with no extra wiring.
 
@@ -9,7 +9,7 @@ Inside the step the order is WRF's (``chem/chem_driver.F``): emissions with
 plume rise (:818), optics on radiation steps (:926), deposition velocities
 and vertical mixing with deposition as its lower boundary (:1049), settling,
 the (GOCART sulfur) mechanism (:1242), aerosol aging (:1577), large-scale wet
-removal (:1620/:1689), then the Thompson coupling (a WOOF addition, DESIGN
+removal (:1620/:1689), then the Thompson coupling (a WOOF-ArWen addition, DESIGN
 6.7).  :data:`CHEM_STEP_ORDER` is that order as process keys; a process runs
 when an active row names it, and decides its own cadence (``chemdt``,
 radiation steps, WRF's ``ktau > 2`` for deposition) from ``ctx.clock``.  The

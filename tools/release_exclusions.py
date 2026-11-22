@@ -35,6 +35,33 @@ def matches(rel: str, rules: list[str]) -> str | None:
     return None
 
 
+# The private patterns (the DA system's names, the lab hosts' names) live in
+# work/release_private_markers.py, which never ships: a shipped guard that
+# spells what it guards against publishes it.  A public checkout has no work/
+# folder and nothing private to find, so it runs the public rules only.
+def _private_markers():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "work" / "release_private_markers.py"
+    if not path.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("_gpuwm_release_private_markers", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_PRIVATE = _private_markers()
+
+
+def private_test_controls() -> dict:
+    """The planted private names the release-guard tests feed their scans.
+
+    Empty in a published snapshot, where the tests that use them skip
+    (they need work/'s snapshot builder too).
+    """
+    return dict(getattr(_PRIVATE, "TEST_CONTROLS", {}))
+
 # ---------------------------------------------------------------------------
 # Private machine names and internal folder names in shipped files
 # ---------------------------------------------------------------------------
@@ -53,16 +80,13 @@ def matches(rel: str, rules: list[str]) -> str | None:
 # reads it.  Comments name the card and the date of a measurement ("test host
 # A, RTX 5070 Ti"), never the machine's own name.
 #
-# The patterns are assembled so this file carries no host name itself.
+# The host-name patterns live in the private markers file (below).
 
-#: ``(pattern, kind)``: the lab hosts' names (``node`` plus a hyphen and a
-#: number, and the same with a ``weather-`` prefix), a private IPv4 address,
-#: and an internal working folder (a capitalised ``Downloads`` followed by a
-#: path separator).  "node-wide", ``node_4`` and the engine's own lower-case
-#: ``downloads/`` cache folder are not these and do not match.
-PRIVATE_HOST_MARKERS = (
-    (re.compile(r"(?i)(?<![A-Za-z0-9_.-])(?:weather" + "-)?node" + r"-[0-9]+(?![A-Za-z0-9])"),
-     "private machine name"),
+#: ``(pattern, kind)``: a private IPv4 address and an internal working folder
+#: (a capitalised ``Downloads`` followed by a path separator; the engine's own
+#: lower-case ``downloads/`` cache folder does not match), plus the lab hosts'
+#: names from the private markers file when it is present.
+PRIVATE_HOST_MARKERS = tuple(getattr(_PRIVATE, "PRIVATE_HOST_MARKERS", ())) + (
     (re.compile(r"(?<![0-9.])192" + r"\.168\.[0-9]{1,3}\.[0-9]{1,3}(?![0-9])"),
      "private network address"),
     (re.compile(r"(?<![A-Za-z0-9_])Down" + r"loads(?:/|\\{1,2})"),
@@ -185,10 +209,8 @@ def pinned_record_digests(repo_root: str | Path) -> frozenset[str]:
 PINNED_KERNEL_SOURCES: dict[str, str] = {
     # flt32_expf_fma.cuh, kf.cu, lin_support.cuh and p3.cu were re-pinned by
     # their own edits in the 3.0.0 fix batch and their entries were dropped.
-    # noah.cu: 07eaae5abfe (2026-11-02) cites the -O2 referee disassembly in a
-    # comment naming one lab host; its bytes bind the 3.0.0 cold-start kernel
-    # packs (rel30-packs 62189113d77) and the Noah frame recordings, so
-    # the next edit to noah.cu rewords that comment and drops this entry.
+    # noah.cu's comment naming a lab host was reworded on
+    # fix/305-f31-private-names, which re-pinned it and dropped its entry.
 }
 
 
@@ -222,48 +244,9 @@ def private_host_kinds() -> frozenset[str]:
 # the engine's own local DA and are never matched, which is the allowance for
 # the public local-DA names.  Every pattern is assembled from fragments so
 # this file carries none of them.
-_J = "je" + "di"
-DA_TOOLING_MARKERS = (
-    (re.compile(r"(?i)(?<![a-z])" + _J + r"(?![a-z])"),
-     "JCSDA DA framework (the private DA system)"),
-    (re.compile(r"(?i)(?<![a-z])" + "io" + r"da(?![a-z])"),
-     "JCSDA observation-data format (the private DA system's writers)"),
-    (re.compile(r"(?i)woof[-_]" + "da(?![a-z])|woof" + "da"),
-     "private DA repository"),
-    (re.compile(r"(?i)hex[-_]radar|rw[-_]radar[-_]qc|radar_" + "qc|lane" + "kit|gpu-" + "slot"
-                r"|arwen_" + "cycle|obs_set_" + "passes|rapid5_" + "live|resident_" + "bench"),
-     "private DA tooling"),
-    (re.compile(r"(?i)column[-_ ]?letkf|letkf[-_]column"),
-     "private LETKF orchestration"),
-    (re.compile(r"(?i)enkf[-_]case|(?<![a-z-])da-(?:enkf|us-)"),
-     "private DA case row"),
-)
-
-#: Upstream names that contain a marker and name nobody's private code: the
-#: RRFS v2 workflow's application (it pins the physics hex and the engine
-#: port) and MPAS-Atmosphere's own namelist option.  A line is read with
-#: these masked, so anything else on it still counts.
-DA_TOOLING_ALLOWED_PHRASES = (
-    re.compile(r"(?i)rrfs-mpas-" + _J),
-    re.compile(r"(?i)(?<![a-z])(?:config_)?" + _J + r"_da(?![a-z])"),
-)
-
-#: Files that name the upstream JCSDA system as a fact, with the exact number
-#: of lines that do (``(lines, reason)``).  The allowance is the count, so a
-#: new line in one of these files is read like any other file's;
-#: tests/test_release_snapshot_machine_paths.py fails on an entry whose count
-#: no longer matches, so a spent entry cannot linger.
-DA_TOOLING_ALLOWED_FILES = {
-    "RELEASE-EXCLUDE.txt": (1, "the exclusion line that keeps the stock JCSDA build recipe out of the export"),
-    "docs/da-vs-wofs.md": (1, "states NSSL's published plan for WoFS v2"),
-    "docs/nwpsuite-plan-json.md": (1, "says the suite planner never fabricates a DA launch command"),
-    "woof/data/nwpsuite/rates.v1.json": (2, "the suite planner's stock upstream CPU DA solve rate (public since 2.9.0)"),
-    "woof/data/nwpsuite/receipts.v1.json": (6, "the stock upstream DA runs the planner's rates cite (public since 2.9.0)"),
-    "woof/data/nwpsuite/references.v1.json": (3, "the citations of those receipts (public since 2.9.0)"),
-    "woof/data/nwpsuite/shapes.v1.json": (10, "the stock upstream DA methods an agency suite shape may name (public since 2.9.0)"),
-    "woof/data/nwpsuite/suite.v1.schema.json": (4, "the schema enum of those methods (public since 2.9.0)"),
-    "woof/data/nwpsuite/templates/agency-2box.toml": (1, "the agency template's shadow DA row, stock upstream method (public since 2.9.0)"),
-}
+DA_TOOLING_MARKERS = tuple(getattr(_PRIVATE, "DA_TOOLING_MARKERS", ()))
+DA_TOOLING_ALLOWED_PHRASES = tuple(getattr(_PRIVATE, "DA_TOOLING_ALLOWED_PHRASES", ()))
+DA_TOOLING_ALLOWED_FILES = dict(getattr(_PRIVATE, "DA_TOOLING_ALLOWED_FILES", {}))
 
 
 def da_tooling_kind(line: str) -> str | None:

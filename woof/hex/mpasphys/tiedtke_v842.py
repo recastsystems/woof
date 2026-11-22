@@ -3,7 +3,7 @@
 Source: physics_wrf/module_cu_tiedtke.F:134-3086 and
 mpas_atmphys_driver_convection.F:405-621,624-860,863-988.
 The generated routines preserve source order and MPAS per-cell sigma levels.
-The existing WOOF cu6 adapter and its WRF constants are not used.
+The existing WOOF-ArWen cu6 adapter and its WRF constants are not used.
 """
 from __future__ import annotations
 

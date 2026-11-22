@@ -52,9 +52,9 @@ name with the physics each adds [docs/public/PHYSICS.md:189-264].
 
 NSSL variant handling illustrates the arbitrary-not-per-model posture: WRF's
 `mp_physics` 17/19/21/22 are compatibility spellings WRF rewrites onto 18 plus
-flags before any physics runs; WOOF performs the same rewrite, so a namelist
+flags before any physics runs; WOOF-ArWen performs the same rewrite, so a namelist
 naming any of them imports without substitution. Where WRF gets field absence for
-free, WOOF enforces it: fields the resolved mode excludes are pinned to zero at
+free, WOOF-ArWen enforces it: fields the resolved mode excludes are pinned to zero at
 domain build and on every microphysics step, ahead of the nested boundary ring
 [docs/public/PHYSICS.md:317-371].
 
@@ -121,7 +121,7 @@ arithmetic (SFCRUNOFF up to 505 ULP; water redistributed, not lost) and is WRF's
 under `GPUWM_WRF_EXACT=1`. Noah-MP refuses glacier columns
 during post-static initialization rather than silently skipping; sea ice takes WRF's
 own skip. RUC does not reproduce WRF's uninitialized-`ilnb` read on thin snow (a
-real WRF defect in which the answer depends on grid traversal order); WOOF passes
+real WRF defect in which the answer depends on grid traversal order); WOOF-ArWen passes
 the defined one-layer answer and documents the divergence (D11)
 [docs/public/PHYSICS.md:1007-1020].
 
@@ -174,7 +174,7 @@ the driver's own mixed precision (max 34 ULP, 3.8e-6 relative, no branch flips).
 The CUDA path holds that boundary with the beta-shape normalisation `fzu` PINNED
 from the capture, as the CPU suite pins it: transcribed glibc-2.39 float32
 `logf`/`expf`/`powf` bitwise against the live-glibc sweeps, while **gamma is a
-deliberate divergence since 2.7.0** -- WOOF's is correctly rounded and glibc's,
+deliberate divergence since 2.7.0** -- WOOF-ArWen's is correctly rounded and glibc's,
 which gfortran binds WRF's `gamma()` to, is not on 39.44 percent of its domain --
 and is graded against a 113-bit oracle instead. One ULP of `fzu` moves the deep
 mass flux by up to 7.3 percent, so it is pinned rather than tolerated; the whole

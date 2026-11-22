@@ -71,7 +71,7 @@ The runner keeps fifth-order open-boundary transport, the native hill,
 moist sounding, open top and moisture pressure coupling. Native ideal
 loading forces `hypsometric_opt=1` despite its pre-import metadata of 2.
 Inactive package defaults and identical binary32 registry defaults are
-recorded without falsely selecting disabled physics arms. WOOF's dry
+recorded without falsely selecting disabled physics arms. WOOF-ArWen's dry
 potential-temperature formulation is declared separately from native
 WRF's `use_theta_m=1` numerics.
 
@@ -105,8 +105,8 @@ before fire physics, and the fire driver then uses `itimestep*dt` as the
 starting time and advances another `dt`. The corrected driver starts at
 `max(itimestep-1,0)*dt`, preserving time zero during initialization and
 advancing each additional diagnostic test step correctly. This reference
-correction is for a constant timestep; WOOF uses its actual calendar.
-The open-boundary top geopotential donor is not corrected: WOOF follows
+correction is for a constant timestep; WOOF-ArWen uses its actual calendar.
+The open-boundary top geopotential donor is not corrected: WOOF-ArWen follows
 native WRF there (`rhs_ph_open/README.md`). Incremental build
 receipts hash the unchanged native libraries, compile each changed whole
 module with the baseline flags, and relink separate full `ideal` and `wrf`

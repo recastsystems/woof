@@ -6,6 +6,16 @@ No Icepack code is included. See README.md for equations and scope.
 from pathlib import Path
 import numpy as np
 from woof.core.device_cache import cuda_cache
+from contextvars import ContextVar
+
+#: True while a caller builds a domain holding ocean ice in row slabs
+#: (woof.ingest.prepared_store): :func:`initialize` then activates on every
+#: slab, as it activates on every column of a domain built whole.  Breakage it
+#: prevents: the HiresW Alaska row (1385 x 1133, 19 preparation slabs) died in
+#: preparation with "slab 12 produced carrier 'fields/ice_concentration_change'
+#: that slab 0 did not; the manifest is not slab-invariant" (2.9.12, 2026-11-06):
+#: slab 0 (no ice) left the model off, the Arctic slabs turned it on.
+DOMAIN_OCEAN_ICE = ContextVar("seaice_domain_ocean_ice", default=False)
 
 STATE = ("ice_volume", "ice_snow_mass", "ice_skin", "ice_ocean_mask",
          "ice_rain", "ice_snowfall", "ice_growth", "ice_melt",
@@ -66,7 +76,7 @@ def initialize(fields, cfg):
     if not cfg.seaice_prognostic or not cfg.sf_surface_physics:
         return
     mask = ((fields["xice"] > 0) & (fields["lakemask"] < .5))
-    if not bool(cp.any(mask)):
+    if not bool(cp.any(mask)) and not DOMAIN_OCEAN_ICE.get():
         return
     for key in STATE:
         fields[key] = cp.zeros_like(fields["tsk"])
@@ -179,7 +189,7 @@ _FREEZE_COLUMN = ("ice_ocean_mask", "xice", "ice_volume", "ice_skin",
 def _freeze_pwp(fields, new_ice_thickness, water_capacity, dt):
     """Apply the ice step's ocean heat to the 3D PWP mixed layer and freeze it.
 
-    The 3D PWP owner (sf_ocean_physics=2, the multi-day default) carries no
+    The 3D PWP owner (sf_ocean_physics=2; the multi-day default through 3.0.1) carries no
     OML ``tml``/``hml`` slab: its mixed layer is the level-major ``om_tmp``
     profile over the layer bottoms ``om_depth`` down to ``om_ml``. Reading the
     OML slab here was KeyError 'tml' at the first surface step of every run of

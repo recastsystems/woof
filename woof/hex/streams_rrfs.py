@@ -37,6 +37,9 @@ def field_definition(name: str, *, physics: bool = True, registry=None) -> dict:
     try:
         return registry['fields'][name]
     except KeyError:
+        from .streams_v842 import PR1409_FIELDS
+        if name in PR1409_FIELDS:
+            return PR1409_FIELDS[name]
         raise ValueError(f'{name}: unknown fork Registry field') from None
 
 

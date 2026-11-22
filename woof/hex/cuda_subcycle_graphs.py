@@ -309,7 +309,7 @@ class SubcycleGraphs:
         self.boundaries: dict[tuple[str, int], Any] = {}
         self.tendencies: dict[str, Any] = {}
         self.pool: dict[int, Any] = {}
-        self.counter_delta = (0, 0, 0)
+        self.counter_delta: tuple[int, ...] = (0, 0, 0)
         self.disabled_key = None
         self.disabled_error = None
         self.subcycle = 0
@@ -368,18 +368,39 @@ class SubcycleGraphs:
         self._fallback(state, reason, error)
         return eager(state, **kwargs)
 
-    def _counters(self) -> tuple[int, int, int]:
+    def _counters(self) -> tuple[int, ...]:
         regional = self.driver.regional_v841
+        lts = getattr(self.driver, "local_timestep", None)
         return (self.driver.mixing_calls_v841,
                 0 if regional is None else regional.discipline.scrubs,
-                0 if regional is None else getattr(regional.discipline, "fused_launches", 0))
+                0 if regional is None else getattr(regional.discipline, "fused_launches", 0),
+                # --local-timestep (woof.hex.cuda_driver_lts): its receipt counts the class launches a
+                # subcycle makes, so a replay adds the captured subcycle's counts like the others
+                # (fork jacobbieker/woof PR 473).
+                *(() if lts is None else tuple(lts.launch_counts[name] for name in sorted(lts.launch_counts))))
 
-    def _set_counters(self, value: tuple[int, int, int]) -> None:
+    def _set_counters(self, value: tuple[int, ...]) -> None:
         self.driver.mixing_calls_v841 = value[0]
         if self.driver.regional_v841 is not None:
             self.driver.regional_v841.discipline.scrubs = value[1]
             if hasattr(self.driver.regional_v841.discipline, "fused_launches"):
                 self.driver.regional_v841.discipline.fused_launches = value[2]
+        lts = getattr(self.driver, "local_timestep", None)
+        if lts is not None:
+            for name, count in zip(sorted(lts.launch_counts), value[3:]):
+                lts.launch_counts[name] = count
+
+    def _tracker_state(self) -> Any:
+        """The LTS stage tracker's position (woof.hex.cuda_driver_lts._StageTracker), or None."""
+        lts = getattr(self.driver, "local_timestep", None)
+        return None if lts is None else (lts.tracker.stage_index, lts.tracker.observed)
+
+    def _restore_tracker(self, value: Any) -> None:
+        # A pass that stops mid-stage (scratch OOM, a failed capture) leaves the tracker mid-stage;
+        # the next eager subcycle restarts at RK1 and would be refused as a mis-scheduled stage.
+        if value is not None:
+            lts = self.driver.local_timestep
+            lts.tracker.stage_index, lts.tracker.observed = value
 
     def _refresh_boundaries(self) -> None:
         regional = self.driver.regional_v841
@@ -500,6 +521,7 @@ class SubcycleGraphs:
             before = self._counters()
             before_pool = {} if regional is None else dict(regional.discipline._unit_pool)
             preparation_error = None
+            tracker_before = self._tracker_state()
             try:
                 with graph_launch_scope(), self._boundary_scope():
                     prepared = eager(self.inputs["state"], **{
@@ -517,6 +539,7 @@ class SubcycleGraphs:
                 self.stats["prepare_seconds"] += time.perf_counter() - mark
             if preparation_error is not None:
                 cp.cuda.get_current_stream().synchronize()
+                self._restore_tracker(tracker_before)
                 self.disabled_key = key
                 self.disabled_error = _error_detail(preparation_error)
                 self.inputs = None
@@ -537,6 +560,7 @@ class SubcycleGraphs:
             before = self._counters()
             before_pool = {} if regional is None else dict(regional.discipline._unit_pool)
             warm_memory_failure = False
+            tracker_before = self._tracker_state()
             try:
                 with cp.cuda.using_allocator(allocations), tables.scope(), graph_launch_scope(), self._boundary_scope():
                     warm = eager(self.inputs["state"], **{
@@ -548,6 +572,7 @@ class SubcycleGraphs:
             if warm_memory_failure:
                 cp.cuda.get_current_stream().synchronize()
                 self._set_counters(before)
+                self._restore_tracker(tracker_before)
                 if regional is not None:
                     regional.discipline._unit_pool.clear()
                     regional.discipline._unit_pool.update(before_pool)
@@ -558,6 +583,7 @@ class SubcycleGraphs:
                 self.stats["capture_seconds"] += time.perf_counter() - mark
                 return self._eager(eager, state, kwargs, "scratch_memory_exhausted")
             after = self._counters()
+            tracker_after = self._tracker_state()
             self.counter_delta = tuple(a - b for a, b in zip(after, before))
             if regional is not None:
                 self.pool = dict(regional.discipline._unit_pool)
@@ -593,6 +619,7 @@ class SubcycleGraphs:
                     raise RuntimeError("subcycle scratch allocation count changed")
             except (RuntimeError, cp.cuda.runtime.CUDARuntimeError) as error:
                 self._set_counters(after)
+                self._restore_tracker(tracker_after)  # the warm pass's subcycle is the one published
                 if regional is not None:
                     regional.discipline._unit_pool.clear()
                     regional.discipline._unit_pool.update(self.pool)

@@ -1106,8 +1106,15 @@ FROZEN_MODULE_DIGESTS = {
         # Review: fork CASE(1) and its buoyancy flux now follow the fork.
         # The stock preprocessed source is unchanged, checked by the sibling test.
         # Wave3: export arm folded from sibling; default tokens unchanged.
-        '0a3cc76ddc7fbdfc9b59d8db1c1365746cc4fd649a1bd7b7ae30c6e455643ba0',
-        'cf6678981492e29c5d58e8c269f6cf247d5b00118cffa47e97d71014cd471342'),
+        # ML1 (fix/mynn-boulac-down-sign): the BouLac downward length's
+        # constant-theta branch takes NCAR/MYNN-EDMF 399f50f's sign under
+        # MYNN_BOULAC_DOWN_SIGN only (correct mode).  Without the define the
+        # PTX is byte-identical to rel/3.0.2 84f22b9076 at compute_89 and
+        # compute_120 under both loader option sets
+        # (tools/kernel_ptx_identity/receipts/mynn-boulac-down-sign-ml1-default.json).
+        # Previously 0a3cc76d/cf667898.
+        '17c4f8c5abb445b2213382c609bfa96ddae9d1c965b28d237b607d9b8b95c58c',
+        'ec6cc52fd9fd9456c8d0a0b16d00b6318b8381d4d9eb784bd96ca58976965455'),
     'mynn_surface': (
         # Re-pinned by the cat6 fix, 2026-11-02: 51bb93111ee (export hygiene)
         # rewrote comments only in glibc_flt32.cuh, flt32_expf_fma.cuh, kf.cu,
@@ -1186,9 +1193,6 @@ FROZEN_MODULE_DIGESTS = {
         # IEEE-correctly.  Previously 6584d2be/ab4befec.
         '784e7c0e0b1f077bbccc9ceef2833c147548e6973a8aad6dc3001e64cfda7653',
         'fa42d757b211f33157ef13e24cdd4b8fd743794024ddb4d2bf012bc07fddaab1'),
-    # Re-pinned for the WOOF 1.0.0 text scrub: comments only (punctuation, host
-    # labels), proven equal with comments stripped; the preprocessor drops
-    # comments, so the compiled binary does not move.
     'noah': (
         # Re-pinned by the cat6 fix, 2026-11-02: 51bb93111ee (export hygiene)
         # rewrote comments only in glibc_flt32.cuh, flt32_expf_fma.cuh, kf.cu,
@@ -1275,11 +1279,22 @@ FROZEN_MODULE_DIGESTS = {
         # on its 24 x 3 oracle columns; the release short case (ICON-EU, two
         # domains, Noah, no sea ice) is byte-identical to integrate/2.9.0
         # 0bf505764 in all 21,885,246 history words.
-        'b902d6628c998706a792cea101275387322ed24e3d8e3418f48ab6d9bd20d9ac',
-        'a8b1e6b2ff327f0898682c70861ab67433a08b551930a0f75fd97473eecf0315'),
+        #
+        # RE-PINNED by fix/305-f31-private-names (2026-11-15), a COMMENT-ONLY
+        # edit: one comment that named a lab host now names the card ("RTX
+        # 4090 test host").  No code token changed, so the compiled kernel is
+        # the same; only the file and compile-string digests move.
+        # Previously ef57884c/42ed557f.
+        'd9d199694c222ffc69aa6b7f53709480999dda8d661b03c5669a7fb9f96988ff',
+        'c1bd4ab2e64f06ac4ead990def78122ecfcd7d07d4097d3b956eca0fcbc8b1a3'),
+    # fix/noahmp-small-defects (2026-11-09): correct-mode SN1, the Noah-MP
+    # snowmelt reset re-evaluating ESTG at the reset TG, compiled only under
+    # GPUWM_NOAHMP_MELT_RESET_ESAT.  Without it the arithmetic is unchanged
+    # (colo 3 km 9 h and c1 12 km 1 h, SN1 off: 0 of 338,307,610 and
+    # 0 of 24,142,130 history words differ from rel/2.9.13).
     'noahmp_bareflux': (
-        '54fb5065e95b24d4cf676e2deda29bae44b3e9305d3d98cbc1abf5ed55f444ce',
-        'fbb19fc8b5668ea2edbcc1270f8ffe367475124ffa0ce99d3bc34639f3f31e9f'),
+        '883cd6f2cbc8cbf56671469bc0ff08126bc5f7b56573869d336a5c85d7feb916',
+        '18bce629727038d680911ebb57f4e2aa37639dcbaf030d8fada6f4d64f7b9cf4'),
     'noahmp_driver': (
         'bd555be10ccade5a5bdddcaf4c56b7f4353dae1208fc48a5586fb7ce7d32d643',
         'f1913fe0054adb74188effa6499b799e989cfb1e96ecd676edcd43df0083030e'),
@@ -1349,9 +1364,14 @@ FROZEN_MODULE_DIGESTS = {
     # selector.  The default-route arithmetic is unchanged; the
     # composed-unit frame row is re-read for it in
     # kernel_frame_recordings.  Previously 295e9541/c3271c5a.
+    # fix/noahmp-small-defects (2026-11-09): correct-mode SN1, the Noah-MP
+    # snowmelt reset re-evaluating ESTG at the reset TG, compiled only under
+    # GPUWM_NOAHMP_MELT_RESET_ESAT.  Without it the arithmetic is unchanged
+    # (colo 3 km 9 h and c1 12 km 1 h, SN1 off: 0 of 338,307,610 and
+    # 0 of 24,142,130 history words differ from rel/2.9.13).
     'noahmp_vegeflux': (
-        'd55c402a21caf3f52e5aed05a0dd727df76b747906a3e0d082446e6a7bcab014',
-        '0d23b367d88497bb45a2e895e6d85abc826caf2f4467b8b47c7ba7be32d3a9b4'),
+        'b35620d804880453d8cc5b68c03cc0cd15fa6a4c432c53c555d1d4b2fd363d8b',
+        'ecfcaf8d5e8ae09d127a37ca8ecb75ebebfad942f00becdd8d63197e96cb9ce9'),
     'noahmp_vegprecip': (
         '9ce5667599d111be0efc7cb0871e5719d70259bb95b30fbe923e01964b75c26c',
         '599e85f0fe59a28ae5fd5437e47db7f41c31abd21783979f66b987b212f1f41a'),
@@ -1911,8 +1931,17 @@ FROZEN_MODULE_DIGESTS = {
         # physics-on step.  Graded against the strict-recipe oracle
         # (tools/sfclayrev_wrf461_oracle/build_strict.sh).  sfclay is not an
         # mp=8 translation unit.  Previously 09ff5be4/010efce3.
-        '2110f93e4f5ca9fcdee9c2b41844f81082b333af6081133c7078d8d02c82cbb6',
-        '1cbeb1fe01a272288a8afc2a0980182016180c8ec640be8d0fd98fa05044537d'),
+        # Re-pinned port/wrf-480 L07 (WRF v4.8.0 kim_tofd): sfclay.cu gains the
+        # KIM turbulent orographic form drag inside #ifdef GPUWM_SFCLAY_TOFD,
+        # compiled only into the new sfclay_tofd unit.  Reading: the sfclay and
+        # sfclay_dx2d images (fast and strict) are byte-identical to the
+        # previous source's; the WRF 4.6.1 fixture stays 0 ULP; the 4.8.0
+        # referee-object oracle (tools/sfclayrev_wrf480_oracle) is 0 of
+        # 267,960 words under strict numerics.  Previously 2110f93e/1cbeb1fe.
+        # 3.0.0 export hygiene: a comment-only rewrite (a report path in
+        # the dx_factor note became a short name); previously f6932fd1.
+        '29be8e5edf5feac9af91b2bc6702ff09fed7be5f0f5414840b4fa5d539fdcca2',
+        'ad66c56a04b440112ebc6fdfcf1d1d972ac7b86eef48941a3a00feb406fed25b'),
     'smag2d': (
         # Re-pinned by the cat6 fix, 2026-11-02: 51bb93111ee (export hygiene)
         # rewrote comments only in glibc_flt32.cuh, flt32_expf_fma.cuh, kf.cu,

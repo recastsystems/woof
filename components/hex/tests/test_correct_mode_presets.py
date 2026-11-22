@@ -1,6 +1,6 @@
 """Correct mode is the preset rows' default; exact stays one flag away.
 
-Owner ruling 2026-10-13: correct mode is the standard. Every shipped forecast preset row
+Correct mode is the standard. Every shipped forecast preset row
 (woof.hex.forecast_preset) declares physics.mode "correct", and the forecast
 door takes the row's mode when the command line names none.
 

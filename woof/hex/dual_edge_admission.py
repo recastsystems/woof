@@ -13,7 +13,7 @@ potential-vorticity gradient in ``pv_apvm_v841_f32``
 so a tangential gradient across such an edge is amplified by ``dcEdge/dvEdge``
 relative to a normal gradient across the same cell pair.
 
-Measured on the registered generated mesh ``v15.150.38857`` (the proving RTX 5070 Ti, RTX
+Measured on the registered generated mesh ``v15.150.38857`` (an RTX 5070 Ti, RTX
 5070 Ti, 2026-08-24): edge 19786 carries ``dvEdge`` 6.514 m against
 ``dcEdge`` 38,657 m, ratio 1.685e-04, amplification 5,935x.  A per-launch
 non-finite probe over the first outer step puts every runaway magnitude at

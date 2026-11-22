@@ -200,7 +200,7 @@ def test_relayed_boundaries_carry_no_cpu(tmp_path, monkeypatch):
 
 def test_stage_meter_records_cores():
     # Contention comes and goes on a shared Stage-1 host: 2.9.12 pass be38e676 R5 read the spin at 0.58 of a core
-    # (cpu 0.72 s over 1.25 s wall, a development machine load ~170 and MemAvailable down to ~3 GiB) while the single calibration
+    # (cpu 0.72 s over 1.25 s wall, shared host load ~170 and MemAvailable down to ~3 GiB) while the single calibration
     # spin afterwards got a whole one, so the test failed on the host, not the meter.  Up to three readings, as the
     # CLI and C1 tests take, with the calibration beside each missed reading; a reading above 1.3 cores stays red.
     for _attempt in range(3):

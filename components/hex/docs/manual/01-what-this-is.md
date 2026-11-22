@@ -78,10 +78,10 @@ Measured, not promised (the README states each measurement):
   physics off on the listed meshes; the all-GPU MPAS physics match is one
   24-hour forecast on the 480 km mesh, one process; every other MPAS scheme is
   bitwise on captured inputs. Correct mode differs from native wherever a fix
-  acts, by design. Or it is the WOOF engine's suite (`--physics-suite
+  acts, by design. Or it is the WOOF-ArWen engine's suite (`--physics-suite
   arwen_mpas_column`), reached through a pinned seam, so woof hex and the
   `woof` distribution share one physics implementation.
-- **WOOF's physics is not MPAS's.** On the WOOF route a full-physics
+- **WOOF-ArWen's physics is not MPAS's.** On the WOOF-ArWen route a full-physics
   forecast is not identical to native MPAS, and the dycore check does not
   qualify one. Beyond the expected chaos-shaped divergence there are **three
   measured, one-signed differences**, the declared divergences of chapter 3.
@@ -98,13 +98,56 @@ Measured, not promised (the README states each measurement):
   meteorological data. `verify-dycore` downloads only its small public test
   mesh and builds its native reference. Chapter 2 states
   plainly where each asset comes from.
-- **Not long-range on the WOOF route.** The measured upper-level warm drift
+- **Not long-range on the WOOF-ArWen route.** The measured upper-level warm drift
   (chapter 3) disqualifies that route for multi-day stratospheric work; it is
   bounded and fine at 24 h.
 - **A run can stop early.** When a step fails validation (for example a
   vertical-velocity spike past 200 m/s) the model refuses to publish the
   step and stops rather than writing output it does not trust. A refusal is
   designed behavior, not a crash (chapter 3).
+
+## The differentiable engine: what it can and cannot do
+
+woof hex 0.6.2 carries the tangent-linear and adjoint model of its forecast
+step, reached through four commands (`tangent`, `adjoint-test`,
+`sensitivity`, `param-grad`; [the differentiable engine](../differentiable/README.md)).
+They are of the exact-mode forecast (`--physics-mode exact`), not of the
+correct-mode forecast a plain `woof hex forecast` runs, and they run on Linux
+on one NVIDIA card of compute capability 12.0 (GeForce RTX 50 series, RTX PRO
+Blackwell). The dynamics are differentiated whole. Of the physics, the cloud
+microphysics (TEMPO), the land surface (RUC) and the boundary layer are
+differentiated, but the boundary layer's derivative is of MYNN-EDMF c6d08709
+(the code NOAA's RRFS 44c0849 runs), not of the v6.1.1 a plain hrrrv5
+forecast runs, and each example row holds named parts of it at the forecast's
+values; on the 12 km example that is why the gradient falls about 2 to 4 per
+cent short for moisture near the ground. The cumulus scheme (New Tiedtke) and
+the mountain-drag closure are held, radiation is held on the default 120 km
+row (it is in on that row's full-physics twin), and the lateral-boundary
+driving data have a zero tangent. Every receipt names what its row holds
+(`row_what`), and [the limits](../differentiable/LIMITS.md) list each measured
+limit. The commands' own checks show that the adjoint is the transpose of the
+tangent-linear model within 4 single-precision roundings, and compare the
+gradient's prediction with the real model's change against a 1 per cent bar.
+How far a gradient predicts the forecast was measured separately: about 3 hours
+at 120 km, and on the 3 km storm box 5 to 15 minutes for temperature
+(depending on the perturbation) and at most 10 minutes for moisture; six hours
+is claimed on no mesh. The largest
+example is the 120 km global one (40,962 cells, 3 steps, a card with 73,156 MiB
+free); the 3 km storm box (38,278 cells, 59 steps) needs a 96 GB card and
+about 250 GiB of host memory; the 12 km cut (2,890 cells, 15 steps) runs on a
+32 GB card. A gradient runs on one card: splitting it over several
+(`--cards`) is experimental and has not been shown equal to the one-card
+gradient, and recordings as several rank threads on one card (`record --ranks
+N`) are off by default and claimed for nothing. The learned-correction slot
+(`WOOF_HEX_LEARNED_CORRECTION=checkpoint.pt`, with the `[torch]` extra) adds
+a network's four tendencies (potential temperature, water vapour and the two
+winds) to a forecast at every step, on one card. No weights ship. A network
+whose weights are all zero gives the plain forecast word for word (the 120 km
+global over 24 hours, 2,523,239,725 words). The slot's gradient has been
+checked against finite differences only on the package's stand-in engine
+(`python -m woof.hex.torch_bridge.proofs`), and training a network through the
+real engine's adjoint is not a command of this release, so this release makes
+no claim about what a trained correction does to a forecast.
 
 ## What hardware it needs
 

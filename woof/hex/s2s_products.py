@@ -130,9 +130,16 @@ def integrate_window(xp, samples, cadence_hours, days):
 
 def read_native(path):
     from woof.netcdf_bridge import open_dataset
-    names = ("t2", "rainc", "rainnc", "pressure", "theta", "qv")
+    names = ("rainc", "rainnc", "pressure", "theta", "qv")
     with open_dataset(path) as ds:
         result = {name: ds.variables[name][0] for name in names}
+        # 2 m temperature is t2 on the ArWen-physics route and MPAS-A's own t2m on the MPAS-physics route (the hex
+        # default). THE BREAKAGE (hex 0.4.15 fit16-rows, verification host, 2026-11-07): a 7-day 60 km S2S run on the MPAS
+        # route finished its forecast and export, then the products stage stopped with KeyError: 't2'.
+        name = next((key for key in ("t2", "t2m") if key in ds.variables), None)
+        if name is None:
+            raise S2SError(f"{path}: missing 2 m temperature (t2 or t2m); write full histories")
+        result["t2"] = ds.variables[name][0]
         for component, aliases in (("u", ("u_zonal", "uReconstructZonal")),
                                    ("v", ("v_meridional", "uReconstructMeridional"))):
             name = next((key for key in aliases if key in ds.variables), None)

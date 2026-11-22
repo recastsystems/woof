@@ -135,7 +135,8 @@ def test_a_drawn_polygon_takes_the_grown_ladder_at_the_asked_spacing(tmp_path):
              [29.0, -104.5], [31.3, -111.0], [32.5, -117.5], [40.0, -125.0]]}
     path = tmp_path / "conus.json"
     path.write_text(json.dumps(conus))
-    value = plan(args(tmp_path, "--polygon", str(path), "--fine-dx-m", "3000", "--background-km", "96"))
+    value = plan(args(tmp_path, "--polygon", str(path), "--fine-dx-m", "3000", "--background-km", "96",
+                      "--geometry", "1"))   # the ladder (geometry 2, the default, builds the outline as one zone)
     spec = region_specification(value["row"])
     assert [r["spacing_km"] for r in spec["regions"]] == [48.0, 24.0, 12.0, 6.0, 3.0]
     assert [r["transition_km"] for r in spec["regions"]] == [864.0, 432.0, 216.0, 108.0, 54.0]

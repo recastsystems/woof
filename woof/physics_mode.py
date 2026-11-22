@@ -1,7 +1,7 @@
 """The physics-fidelity axis and the divergence ledger it resolves.
 
-WOOF ships one physics identity today: every selector is transcribed from
-WRF v4.6.1 and pinned against it.  A *patch* is a place where WOOF would
+WOOF-ArWen ships one physics identity today: every selector is transcribed from
+WRF v4.6.1 and pinned against it.  A *patch* is a place where WOOF-ArWen would
 deliberately do something else because the physics is believed to be better,
 and the only accurate way to find out is to score both against observations.
 This module is the machinery that lets one configuration file express both
@@ -65,7 +65,7 @@ DEFAULT_PATCHSET = "v1"
 
 @dataclass(frozen=True)
 class LedgerEntry:
-    """One divergence-ledger entry: a place WOOF may diverge on purpose.
+    """One divergence-ledger entry: a place WOOF-ArWen may diverge on purpose.
 
     ``entry_id`` is the ledger's own label (``"L3"``), stable across
     patch-set versions.  ``key`` is the mechanism-named configuration key

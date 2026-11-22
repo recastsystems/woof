@@ -30,6 +30,108 @@ use libm::{acos, asin, atan, atan2, cos, log10, pow, sin, tan};
 
 use crate::error::{MpasError, MpasResult};
 
+/// How far past a pole a cell latitude may sit and still be read as the pole.
+///
+/// MPAS meshes store `latCell` as float32, and the float32 nearest pi/2 is
+/// 1.5707963705062866 rad, 4.37e-8 rad (2.5e-6 degree) PAST the pole: every
+/// global mesh with a cell on a pole (x1.40962 cells 2 and 8) carries one.
+/// That is rounding, not a position off the sphere, so a latitude within this
+/// tolerance of +-90 is clamped to +-90. 1e-4 degree is about 11 m on the
+/// ground, forty times the float32 overshoot and far under any mesh spacing;
+/// a latitude further out than that is a broken file and is still refused.
+pub const POLE_ROUNDING_TOLERANCE_DEGREES: f64 = 1.0e-4;
+
+/// The cell latitudes with any pole-rounding overshoot clamped to +-90, or a
+/// refusal naming the first cell that sits clearly outside [-90, 90]. Borrows
+/// the input untouched when no cell needs clamping. Non-finite values pass
+/// through for the caller's own by-name refusal.
+fn pole_clamped_latitudes<'a>(
+    latitude_degrees: &'a [f64],
+    role: &str,
+) -> MpasResult<std::borrow::Cow<'a, [f64]>> {
+    let mut clamped: Option<Vec<f64>> = None;
+    for (i, &lat) in latitude_degrees.iter().enumerate() {
+        // NaN and infinity are left for the caller's "not finite" refusal; a
+        // NaN would otherwise pass both comparisons and be clamped to a pole.
+        if !lat.is_finite() || lat.abs() <= 90.0 {
+            continue;
+        }
+        if lat.abs() > 90.0 + POLE_ROUNDING_TOLERANCE_DEGREES {
+            return Err(MpasError::Refusal(format!(
+                "{role} {i} sits at latitude {lat}, outside [-90, 90] by more than the \
+                 {POLE_ROUNDING_TOLERANCE_DEGREES} degree pole-rounding tolerance"
+            )));
+        }
+        clamped.get_or_insert_with(|| latitude_degrees.to_vec())[i] = 90.0_f64.copysign(lat);
+    }
+    Ok(match clamped {
+        Some(v) => std::borrow::Cow::Owned(v),
+        None => std::borrow::Cow::Borrowed(latitude_degrees),
+    })
+}
+
+#[cfg(test)]
+mod pole_rounding_tests {
+    use super::{pole_clamped_latitudes, Window, POLE_ROUNDING_TOLERANCE_DEGREES};
+
+    /// latCell of x1.40962 cells 2 and 8 as the file stores them (float32 +-pi/2).
+    fn float32_pole_degrees() -> f64 {
+        (std::f32::consts::FRAC_PI_2 as f64).to_degrees()
+    }
+
+    #[test]
+    fn float32_pole_latitude_is_clamped_to_the_pole() {
+        let north = float32_pole_degrees();
+        assert!(north > 90.0 && north < 90.0 + 1.0e-5, "{north}");
+        let lat = [north, -north, 45.0, -89.9];
+        let out = pole_clamped_latitudes(&lat, "mesh cell").unwrap();
+        assert_eq!(&*out, &[90.0, -90.0, 45.0, -89.9]);
+        let odd = pole_clamped_latitudes(&[f64::NAN, f64::INFINITY], "mesh cell").unwrap();
+        assert!(odd[0].is_nan() && odd[1].is_infinite(), "non-finite values must reach the caller");
+        let inside = [90.0, -90.0, 0.0];
+        assert!(matches!(
+            pole_clamped_latitudes(&inside, "mesh cell").unwrap(),
+            std::borrow::Cow::Borrowed(_)
+        ));
+    }
+
+    #[test]
+    fn latitude_clearly_past_the_pole_is_still_refused_by_name() {
+        let past = 90.0 + 2.0 * POLE_ROUNDING_TOLERANCE_DEGREES;
+        let err = pole_clamped_latitudes(&[0.0, -past], "mesh cell").unwrap_err().to_string();
+        assert!(err.contains("mesh cell 1") && err.contains("outside [-90, 90]"), "{err}");
+    }
+
+    #[test]
+    fn mesh_with_a_float32_pole_cell_gets_a_window() {
+        // A mesh refined near the north pole whose refined cells include the
+        // float32 pole cell, the rest coarse. Before the clamp this refused
+        // with "mesh cell 0 sits at latitude 90.00000250447816, outside [-90, 90]".
+        let pole = float32_pole_degrees();
+        let mut lat = vec![pole];
+        let mut lon = vec![0.0];
+        let mut spacing = vec![3_000.0];
+        for k in 0..10 {
+            lat.push(88.0);
+            lon.push(10.0 * k as f64);
+            spacing.push(3_000.0);
+        }
+        for k in 0..36 {
+            lat.push(-30.0);
+            lon.push(-180.0 + 10.0 * k as f64);
+            spacing.push(60_000.0);
+        }
+        let window = Window::mesh_focus(&lat, &lon, &spacing).unwrap();
+        let (grid_lat, grid_lon) = window.coordinates().unwrap();
+        assert!(!grid_lat.is_empty());
+        assert!(grid_lat.iter().all(|v| v.is_finite() && v.abs() <= 90.0));
+        assert!(grid_lon.iter().all(|v| v.is_finite()));
+        let cap = 11;
+        let regional = Window::regional_focus(&lat[..cap], &lon[..cap], &spacing[..cap]).unwrap();
+        assert!(regional.coordinates().unwrap().0.iter().all(|v| v.abs() <= 90.0));
+    }
+}
+
 #[cfg(test)]
 mod regional_focus_tests {
     use super::Window;
@@ -80,6 +182,27 @@ const DEG: f64 = 180.0 / PI;
 pub const LAMBERT_SPEC_PREFIX: &str = "lambert:";
 
 pub const MESH_FOCUS_REFINEMENT_FACTOR: f64 = 2.0;
+
+/// The factor a given mesh's refined region is cut at: the standing 2.0, or
+/// the geometric mean of the mesh's own finest and coarsest spacing when that
+/// is smaller.
+///
+/// THE BREAKAGE THIS PREVENTS (gpuwm-hex zoom globes, worker zoomna and
+/// zoom36, 2026-11-14): a zoom globe refined by 2x (120 to 60 km, 192 to
+/// 96 km, 72 to 36 km) has a background that is not uniform -- the
+/// generator's background runs about 0.8 to 1.05 of its nominal spacing, finer
+/// around the icosahedron's twelve corners -- so at 2.0x the minimum the
+/// corner patches (100 to 110 km on the 120 to 60 km globe, against a 103 km
+/// cut) were taken as refined, the selection spanned the planet, and
+/// `--window mesh` refused with "the refined region reaches 162.36 degrees of
+/// arc". The products door then drew no map of the fine region on any 2x zoom
+/// globe. The geometric mean sits halfway (in ratio) between the core and the
+/// background, so it takes the core and the inner transition and never the
+/// background. For a mesh refined 4x or more the mean is past 2.0 and the cut
+/// is the standing 2.0x, unchanged.
+pub fn mesh_refinement_factor(min_spacing_m: f64, max_spacing_m: f64) -> f64 {
+    MESH_FOCUS_REFINEMENT_FACTOR.min((max_spacing_m / min_spacing_m).sqrt())
+}
 
 /// The derived whole-sphere window: a lat-lon grid at the mesh's OWN
 /// spacing (see [`Window::global_at_mesh_spacing`]).
@@ -783,6 +906,7 @@ impl Window {
                 cell_spacing_m.len()
             )));
         }
+        let latitude_degrees = &*pole_clamped_latitudes(latitude_degrees, "mesh cell")?;
         for i in 0..n {
             if !latitude_degrees[i].is_finite() || !longitude_degrees[i].is_finite() {
                 return Err(MpasError::Refusal(format!(
@@ -790,12 +914,6 @@ impl Window {
                      non-finite coordinate poisons the unit-vector mean and every derived \
                      corner with it",
                     latitude_degrees[i], longitude_degrees[i]
-                )));
-            }
-            if latitude_degrees[i].abs() > 90.0 + 1.0e-6 {
-                return Err(MpasError::Refusal(format!(
-                    "mesh cell {i} sits at latitude {}, outside [-90, 90]",
-                    latitude_degrees[i]
                 )));
             }
             if !cell_spacing_m[i].is_finite() || cell_spacing_m[i] <= 0.0 {
@@ -809,12 +927,13 @@ impl Window {
 
         // --- the refined region -------------------------------------------
         let min_spacing = cell_spacing_m.iter().copied().fold(f64::INFINITY, f64::min);
+        let max_spacing = cell_spacing_m.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let selected = Self::refined_region(cell_spacing_m)?;
         let median_spacing_m = Self::median_spacing_of(cell_spacing_m, &selected);
         let selection = format!(
             "{} of {n} cells carry spacing at or under {:.2}x the mesh minimum {:.3} km and              are taken as the refined region",
             selected.len(),
-            MESH_FOCUS_REFINEMENT_FACTOR,
+            mesh_refinement_factor(min_spacing, max_spacing),
             min_spacing / 1000.0,
         );
 
@@ -842,10 +961,10 @@ impl Window {
                 "a regional render window needs one position and spacing per cell".to_string(),
             ));
         }
+        let latitude_degrees = &*pole_clamped_latitudes(latitude_degrees, "regional cell")?;
         for i in 0..n {
             if !latitude_degrees[i].is_finite()
                 || !longitude_degrees[i].is_finite()
-                || latitude_degrees[i].abs() > 90.0
                 || !cell_spacing_m[i].is_finite()
                 || cell_spacing_m[i] <= 0.0
             {
@@ -978,7 +1097,7 @@ impl Window {
                 max_spacing / min_spacing
             )));
         }
-        let threshold = MESH_FOCUS_REFINEMENT_FACTOR * min_spacing;
+        let threshold = mesh_refinement_factor(min_spacing, max_spacing) * min_spacing;
         let selected: Vec<usize> = (0..n).filter(|&i| cell_spacing_m[i] <= threshold).collect();
         // Unreachable while the minimum is a member of the mesh, but a
         // silently empty selection would divide by zero downstream.
@@ -2140,9 +2259,57 @@ mod tests {
             Window::mesh_focus(&lat, &lon, &[30_000.0, 60_000.0, 45_000.0]).is_err(),
             "a 2.000x ratio is uniform to within the factor"
         );
+        // A hair past the factor the mesh is refined, and its cut is the geometric mean of
+        // its own extremes (1.41x here), so the 45 km cell is not the core.
         let window =
             Window::mesh_focus(&lat, &lon, &[30_000.0, 60_001.0, 45_000.0]).unwrap();
-        assert!(window.description().contains("2 of 3 cells"), "{}", window.description());
+        assert!(window.description().contains("1 of 3 cells"), "{}", window.description());
+        assert!(window.description().contains("1.41x"), "{}", window.description());
+    }
+
+    /// A 2x zoom globe whose background is finer near the icosahedron's
+    /// corners frames its core, not the planet. The case that forced this:
+    /// the 120 to 60 km zoom globe over North America (zoomna, 2026-11-14),
+    /// spacing 51.7 to 126 km, with 100 to 110 km corner patches that the
+    /// 2.0x cut (103 km) took as refined; the door refused with "the refined
+    /// region reaches 162.36 degrees of arc".
+    #[test]
+    fn a_2x_zoom_globe_with_finer_corner_patches_frames_its_core() {
+        let mut lat = Vec::new();
+        let mut lon = Vec::new();
+        let mut spacing = Vec::new();
+        // the core over North America, 52 to 62 km
+        for i in 0..10 {
+            for j in 0..10 {
+                lat.push(30.0 + 2.0 * i as f64);
+                lon.push(-115.0 + 3.0 * j as f64);
+                spacing.push(52_000.0 + 1_000.0 * ((i + j) % 10) as f64);
+            }
+        }
+        // the background, 120 to 126 km, and two corner patches at 100 to 104 km
+        // on the far side of the planet
+        for k in 0..36 {
+            lat.push(-60.0 + 3.0 * (k % 12) as f64);
+            lon.push(60.0 + 10.0 * (k / 12) as f64);
+            spacing.push(120_000.0 + 6_000.0 * (k % 2) as f64);
+        }
+        for (la, lo) in [(-30.0, 120.0), (10.0, 80.0)] {
+            lat.push(la);
+            lon.push(lo);
+            spacing.push(100_000.0);
+            lat.push(la + 1.0);
+            lon.push(lo);
+            spacing.push(104_000.0);
+        }
+        let window = Window::mesh_focus(&lat, &lon, &spacing).unwrap();
+        assert!(window.description().contains("100 of 140 cells"), "{}", window.description());
+    }
+
+    /// A mesh refined 4x or more keeps the standing 2.0x cut.
+    #[test]
+    fn a_4x_zoom_globe_keeps_the_standing_cut() {
+        assert_eq!(mesh_refinement_factor(52_700.0, 253_400.0), MESH_FOCUS_REFINEMENT_FACTOR);
+        assert!((mesh_refinement_factor(51_700.0, 126_000.0) - 1.561).abs() < 1.0e-3);
     }
 
     /// Every degenerate input names what it broke.

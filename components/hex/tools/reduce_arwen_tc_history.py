@@ -1,4 +1,4 @@
-"""Reduce WOOF history for the same observation scoreboard used by hex."""
+"""Reduce WOOF-ArWen history for the same observation scoreboard used by hex."""
 import argparse,hashlib,json
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor

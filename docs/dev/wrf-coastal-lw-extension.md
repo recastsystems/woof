@@ -1,6 +1,6 @@
 # Longwave radiation extension spacing
 
-WOOF extends the model column above its top before calling legacy RRTMG
+WOOF-ArWen extends the model column above its top before calling legacy RRTMG
 longwave radiation. WRF 4.7.1 uses 4 hPa steps and overwrites the final
 interface with zero. The layer count remains WRF's rounded count, including
 its positive half-way rounding.
@@ -30,7 +30,7 @@ The coastal forecast retest uses the original Light-ECT reference,
 registration and thresholds. Matching this preparation boundary alone
 is not a claim that the full forecast passes that test.
 
-The admitted RTX 5090 replay first reproduces all 29 recorded WOOF
+The admitted RTX 5090 replay first reproduces all 29 recorded WOOF-ArWen
 preparation arrays and its surface longwave flux. On native input words,
 the corrected guard then reproduces all 25 captured native preparation
 arrays, all eight solver output arrays and all 245 physical-layer heating

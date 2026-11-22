@@ -3,38 +3,76 @@
 Scan the proposed export, including unchanged files. Findings are handed to
 hygiene.plan inside the cut; executable data that cannot be rewritten stays
 an explicit finding in that stage, without creating another pass.
+
+This file ships, so it carries one generic rule only.  The rules that name
+what must not leave the project's own machines are data, read at run time
+from a pattern file that is never packaged: the path in the environment
+variable ``HEX_PRIVATE_PATTERNS`` (or ``configure(path)``).  THE BREAKAGE
+THIS PREVENTS (source packages of three candidates, found on 2026-11-15):
+the rules were written here, split across string literals, so every
+source package carried the very names its scans refuse.  Without a pattern
+file the scan runs the generic rule alone and says so (``PRIVATE_LOADED``);
+the release seal and the export cut refuse to run that way.
+
+Pattern file (JSON): ``content_rules`` is a list of objects with ``kind``
+and ``pattern`` (a regular expression, matched case-insensitively) and,
+optionally, ``sealed_ok`` (not a hit inside recorded compiler bytes),
+``skip_line`` with ``skip_line_suffix`` (a line that also matches it, in a
+file with that suffix or one of that list of suffixes, is not a hit), ``historical`` (a line that matches
+it is not a hit), ``public_contracts`` (public interoperability names are
+blanked first) and ``artifact`` (the rule also reads binary members);
+``public_contracts`` lists ``pattern`` objects; ``artifact_rules`` is read
+by release_hygiene.py.
 """
 from __future__ import annotations
 
+import json
+import os
 import re
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
-RULES = (
-    ("instruction filename", re.compile(r"\bCLA" + r"UDE\.md\b", re.I)),
-    ("internal box", re.compile(r"\b(?:g" + r"m1|v" + r"58|v(?:5090|8x|\d+x\d+))\b", re.I)),
-    ("private worktree", re.compile(r"\.cla" + r"ude[/\\]worktrees", re.I)),
-    ("private pool", re.compile(r"\bpool-" + r"v3\b", re.I)),
-    ("private ruling file", re.compile(r"\bd" + r"rew-ruling\.json\b", re.I)),
-    ('delivery path', re.compile(r'Down' + r'loads[\\/]')),
-    ('internal path', re.compile(r'/opt/gpu' + r'-mutex(?:/|\b)|(?:~/)?agent' + r'-scratch(?:/|\b)|evidence' + r'-gallery(?:/|\b)|PAPER' + r'-EVIDENCE(?:/|\b)', re.I)),
-    ('private case', re.compile(r'\bU' + r'AE\b|\bOU[ -]+Oman[ -]+U' + r'AE\b', re.I)),
-    ('internal host', re.compile(r'\b(?:weather-)?node-\d+\b', re.I)),
-    ('internal lane', re.compile(r'\b(?:lane' + r'kit|lane' + r'-start|mpas' + r'-lanes|astra' + r'-lanes)\b', re.I)),
-    ('private assimilation recipe', re.compile(r"(?:^|[/\"'])(?:je" + r"di[-])[A-Za-z0-9*]", re.I)),
-    ('private assimilation name', re.compile(r'\b(?:CUDA[ _-]*JE' + r'DI|JE' + r'DI[ _-]*CUDA)\b|\bsyn' + r'radar\b|\bsynthetic[- _]radar\s+DA\b|\bwoof[-_]?da\b', re.I)),
-    ('private assimilation tooling', re.compile(r'(?<![a-z0-9])(?:obs[-_]pipeline(?:s)?|da[-_](?:orchestrat[a-z]*|rows?|cases?|enkf|us-)|enkf[-_]case|column[-_ ]?letkf|letkf[-_]column|arwen_' + r'cycle|obs_set_' + r'passes|rapid5_' + r'live|resident_' + r'bench|rw[-_]radar[-_]qc|radar_' + r'qc)(?![a-z0-9])', re.I)),
-)
+PRIVATE_ENV = "HEX_PRIVATE_PATTERNS"
 
-# Explicit public scope, matched as tokens rather than exempting entire files.
-# group | token pattern | reason
-PUBLIC_CONTRACT_ALLOWLIST = (
-    ("native MPAS fields and streams", re.compile(r"\b(?:config_[A-Za-z0-9_]*(?:jedi|DA)[A-Za-z0-9_]*|jedi_da|da_state|mpasout)\b", re.I),
-     "BSD upstream Registry fields, stream tables and native model code remain public."),
-    ("NOAA source repository", re.compile(r"\brrfs-mpas-jedi\b", re.I),
-     "The public NOAA repository name identifies the upstream source and reference tools."),
-    ("stock MPAS state contract", re.compile(r"(?:(?:--)?jedi-(?:background|soil-levels)\b|--da-analysis\b|\b(?:hexcore\.)?jedi_contract\b|\bjedi-(?:ensemble-stream|contract)\b|\bjedi_[A-Za-z0-9_]+\b)", re.I),
-     "Existing background, analysis, mpasout and ensemble record interfaces are public interoperability contracts."),
+# The one generic rule: a delivery folder in a path names a person's machine, whatever the project.
+GENERIC_RULES = (
+    ('delivery path', re.compile(r'Down' r'loads[\\/]'), {}),
 )
+EXAMPLE_PATH = re.compile(r'[Cc]:[\\/]Users[\\/]someone[\\/]Down' r'loads[\\/]')
+
+RULES: tuple = GENERIC_RULES
+PUBLIC_CONTRACT_ALLOWLIST: tuple = ()
+PRIVATE: dict = {}
+PRIVATE_LOADED = False
+PRIVATE_SOURCE: str | None = None
+
+
+def configure(path: str | os.PathLike | None) -> bool:
+    """Load the private pattern file at ``path`` (None: the generic rule alone). Returns whether one loaded.
+
+    An unreadable or malformed file raises: a scan that silently lost its private rules would pass what it exists
+    to refuse."""
+    global RULES, PUBLIC_CONTRACT_ALLOWLIST, PRIVATE, PRIVATE_LOADED, PRIVATE_SOURCE
+    if path is None or str(path) == "":
+        RULES, PUBLIC_CONTRACT_ALLOWLIST, PRIVATE = GENERIC_RULES, (), {}
+        PRIVATE_LOADED, PRIVATE_SOURCE = False, None
+        return False
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        rules = tuple((row["kind"], re.compile(row["pattern"], re.I), row) for row in raw.get("content_rules", ()))
+        public = tuple((row.get("group", ""), re.compile(row["pattern"], re.I), row.get("reason", ""))
+                       for row in raw.get("public_contracts", ()))
+        for row in raw.get("content_rules", ()):
+            for key in ("skip_line", "historical"):
+                if row.get(key):
+                    re.compile(row[key], re.I)
+    except (OSError, ValueError, KeyError, TypeError, re.error) as error:
+        raise RuntimeError(f"the private pattern file {path} cannot be read: {error}") from error
+    RULES, PUBLIC_CONTRACT_ALLOWLIST, PRIVATE = GENERIC_RULES + rules, public, raw
+    PRIVATE_LOADED, PRIVATE_SOURCE = True, str(path)
+    return True
+
+
+configure(os.environ.get(PRIVATE_ENV))
 
 
 def private_recipe_text(line: str) -> str:
@@ -42,8 +80,9 @@ def private_recipe_text(line: str) -> str:
         line = pattern.sub("public_contract", line)
     return line
 
-HISTORICAL = re.compile(r'(?:2024.{0,60}U' + r'AE[- ]Oman|U' + r'AE[- ]Oman.{0,60}2024)', re.I)
-EXAMPLE_PATH = re.compile(r'[Cc]:[\\/]Users[\\/]someone[\\/]Down' + r'loads[\\/]')
+
+def _sealed_path(path: str) -> bool:
+    return any(part in path for part in ("compiler-recipes", "/mpasphys-maths/")) or path.endswith("rkind_libm.py")
 
 
 def scan(path: str, data: bytes) -> list[tuple[str, int, str, str]]:
@@ -53,20 +92,20 @@ def scan(path: str, data: bytes) -> list[tuple[str, int, str, str]]:
     lines = [(0, path)]
     if b'\0' not in data[:4096]:
         lines.extend(enumerate(data.decode('utf-8', 'replace').splitlines(), 1))
-    sealed = any(part in path for part in ("compiler-recipes", "/mpasphys-maths/")) or path.endswith("rkind_libm.py")
+    sealed = _sealed_path(path)
     hits = []
     for number, line in lines:
-        for kind, pattern in RULES:
-            checked = private_recipe_text(line) if kind == "private assimilation recipe" else line
+        for kind, pattern, options in RULES:
+            checked = private_recipe_text(line) if options.get("public_contracts") else line
             if not pattern.search(checked):
                 continue
-            if sealed and kind in {"internal host", "internal box", "instruction filename"}:
+            if sealed and options.get("sealed_ok"):
                 continue
-            if kind == "internal host" and re.search(r"\breturn\s+node-\d+;|=\s*node-\d+;", line):
+            skip = options.get("skip_line")
+            suffix = options.get("skip_line_suffix", "")
+            if skip and path.endswith(tuple(suffix) if isinstance(suffix, list) else suffix) and re.search(skip, line, re.I):
                 continue
-            if kind == "internal box" and re.search(r"\bv" + r"58\s*(?:=>|[,)]|\b)|transfer\(v" + r"58", line, re.I) and path.endswith(".f90"):
-                continue
-            if kind == 'private case' and HISTORICAL.search(line):
+            if options.get("historical") and re.search(options["historical"], line, re.I):
                 continue
             if kind == 'delivery path' and path.startswith(('tests/', 'tree/tests/')):
                 # Only the made-up Windows example used to test path refusal.
@@ -76,6 +115,21 @@ def scan(path: str, data: bytes) -> list[tuple[str, int, str, str]]:
     return hits
 
 
+def artifact_rules() -> list[tuple[str, re.Pattern[bytes], dict]]:
+    """The pattern file's byte rules for release artifacts, and the content rules marked ``artifact``."""
+    rows = []
+    for row in PRIVATE.get("artifact_rules", ()):
+        flags = 0 if row.get("case_sensitive") else re.I
+        rows.append((row["kind"], re.compile(row["pattern"].encode(), flags), row))
+    for kind, pattern, row in RULES:
+        if row.get("artifact"):
+            rows.append((kind, re.compile(pattern.pattern.encode(), re.I), row))
+    return rows
+
+
 def sealed_exception(path: str, kind: str) -> bool:
     """Temporary patch exception for exact recorded compiler and arithmetic bytes."""
-    return ("compiler-recipes" in path or "/mpasphys-maths/" in path or path.endswith("rkind_libm.py")) and kind in {"lab-host-name", "private-host"}
+    if not _sealed_path(path):
+        return False
+    return any(row.get("sealed_ok") and row["kind"] == kind
+               for row in tuple(PRIVATE.get("artifact_rules", ())) + tuple(PRIVATE.get("content_rules", ())))

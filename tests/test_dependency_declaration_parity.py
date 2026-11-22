@@ -155,6 +155,9 @@ _PROVIDERS: dict[str, tuple[str, ...]] = {
     "cdsapi": ("cdsapi",),
     # (WOOF 1.1.6) the rapidgzip command the hex global door runs (_GENERATED_SOURCE_CONSUMERS)
     "rapidgzip": ("rapidgzip",),
+    # (WOOF 1.1.7) the derivative recorder's CUPTI library and CUDA headers (_GENERATED_SOURCE_CONSUMERS)
+    "libcupti": ("nvidia-cuda-cupti",),
+    "cuda_crt_headers": ("nvidia-cuda-crt",),
     "setuptools": ("setuptools",),
     "xdist": ("pytest-xdist",),
     # tests/test_no_undefined_names.py locates the linter through the
@@ -218,6 +221,13 @@ _CONSTRAINTS: dict[str, tuple[str, str]] = {
         "kernel ULP row, frame recording or startup image is recorded for NVRTC 13.5 (2.9.13 GPU gate, "
         "tests/_toolchain_rows.py: no row for NVRTC 13.5 on sm_120).",
     ),
+    # (WOOF 1.1.7) [ad]: the toolkit the WOOF-HEX-A derivative examples' recorded plans replay byte for byte
+    "cuda-toolkit": (
+        "cupy-cuda13x",
+        "cupy-cuda13x[ctk] installs cuda-toolkit; [ad] pins it ==13.4.3 because the examples' recorded plans "
+        "replay cuBLAS of cuda-toolkit 13.4.3 byte for byte, and the derivative doors refuse another "
+        "(woof/hex/data/ad-doors.v1.json).",
+    ),
     "nvidia-nvjitlink": (
         "cupy-cuda13x",
         "cuda-toolkit 13.4.3 pins every component but nvJitLink (>=13.4.92,<14); [gpu-cu13] keeps it with NVRTC "
@@ -238,6 +248,34 @@ _GENERATED_SOURCE_CONSUMERS: dict[str, tuple[str, str, str]] = {
         "rapidgzip command the distribution installs, found on PATH and never "
         "imported; without the declaration a fresh `woof hex global` refused at "
         "its mesh stage (\"rapidgzip is missing\").",
+    ),
+    # (WOOF 1.1.7) pyshp, recorded rather than waved through.  Nothing WOOF ships imports shapefile: the engine's
+    # consumer is tools/gui_basemap.py, the ArWen GUI WOOF does not carry, and engine 3.0.0 removed the DA
+    # nowcast renderer.  woof.capabilities.SHAPEFILE_READER still probes it in every capability document and
+    # tests/test_doctor.py holds it a runtime dependency, so 1.1.7 keeps the install set 1.1.6 shipped; retiring
+    # the declaration and the probe together is 1.1.8's (named in the round-2 reds record).
+    "shapefile": (
+        "woof/capabilities.py",
+        'module="shapefile"',
+        "woof.capabilities.SHAPEFILE_READER probes the pyshp reader in every capability document; no shipped "
+        "module imports it since the ArWen GUI basemap was left out of WOOF and DA was removed in 3.0.0. "
+        "Kept for 1.1.7; the declaration and the probe retire together in 1.1.8.",
+    ),
+    # (WOOF 1.1.7) [ad]: the derivative recorder loads CUPTI by path and compiles its C recorder against the
+    # CUDA headers beside it; neither is a Python import.
+    "libcupti": (
+        "woof/hex/ad/record/env.py",
+        'glob("libcupti.so*")',
+        "The WOOF-HEX-A recorder (woof.hex.ad.record) links libcupti from the nvidia-cuda-cupti wheel of the "
+        "CUDA major it runs on and reads cupti.h beside it; without the wheel every --init recording refuses "
+        "(\"CUPTI is not installed\").",
+    ),
+    "cuda_crt_headers": (
+        "woof/hex/ad/record/build.py",
+        'f"-I{cupti_include}"',
+        "The recorder's C build compiles driver_trace_cupti_held.c against nvidia/cu13/include, and the crt/ "
+        "headers that cuda.h and cupti.h reach are the nvidia-cuda-crt wheel's (woof/hex/ad/record/README.md: "
+        "\"CUPTI and its headers\").",
     ),
     "psutil": (
         "tests/test_prepare_hrrr_wrf.py",
@@ -326,7 +364,7 @@ _OPTIONAL_BY_DESIGN: dict[str, str] = {
         "woof/output_formats.py imports woof.hex.forecast_door only for a store "
         "whose engine is woof hex (self.engine == 'woof hex'), i.e. on a "
         "machine where woof hex wrote the run; woof hex depends on woof, not "
-        "the reverse, and a WOOF store never reaches the import."
+        "the reverse, and a WOOF-ArWen store never reaches the import."
     ),
     "earth2studio": _EARTH2_INTERPRETER,
     "torch": _EARTH2_INTERPRETER,
@@ -639,16 +677,6 @@ _TEST_TREE_IMPORT_SITES: dict[str, tuple[str, ...]] = {
     # helpers so the timing runs on the inputs the suite certifies.
     # Checkout-only by the same construction as the two above.
     "tools/rrtmg_prep_device_check.py": ("test_rrtmg_legacy_prep_device",),
-    # The packed DA member-leg proof (69a8b88ad, 098816bc9): it binds the
-    # established public GPU fixture -- the cycle-join and nested-forecast
-    # suites' experiment, wiring, terrain and land builders -- and hashes
-    # those two suites' bytes as the proof's source identity, so the proof
-    # and the suites cannot drift apart.  Its GPU arms refuse without the
-    # node operator's OWNER check and one complete card UUID, and the import
-    # sits inside that guard (_fixture_imports).  Checkout-only by the same
-    # construction as the three above.
-    "tools/da_member_leg_proof.py": ("test_da_cycle_join_gpu",
-                                     "test_da_nested_forecast_gpu"),
     # These numerical review tools explicitly insert the checkout's tests
     # directory. Their fixture helpers are verified by the liveness gate
     # below and are not runtime dependencies of an installed distribution.
@@ -941,6 +969,16 @@ def test_all_covers_every_extra_a_forecast_user_needs(declaration, pyproject):
                 "aggregate but tests/test_static_highres_warp_routing.py, "
                 "which makes rasterio/pyproj/affine unimportable and "
                 "requires the default terrain build to still answer.",
+        "ad": "(WOOF 1.1.7) WOOF-HEX-A's derivative commands: a Python 3.14 "
+              "environment of its own, pinning cupy-cuda13x and cuda-toolkit "
+              "to what the recorded plans replay. [all-cu12] brings "
+              "cupy-cuda12x and pip does not remove one CuPy for the other, "
+              "so an aggregate carrying [ad] would install two (README, "
+              "project/pyproject.toml's [ad] comment).",
+        "torch": "(WOOF 1.1.7 round 4) gpuwm-hex 0.6.2's learned correction and "
+                 "network options: PyTorch on top of [ad], so it is excused "
+                 "for [ad]'s reason (two CuPy packages beside [all-cu12]), and "
+                 "every option it serves is off by default.",
         "hydro-conus": "the LGPL-2.1+ 7z decoder for the CONUS NHDPlus hydro "
                        "source archives; hydro is opt-in and the worldwide "
                        "fabric covers CONUS without it, and [all] stays on "
@@ -1109,6 +1147,8 @@ def test_no_shipped_module_imports_a_sibling_by_bare_name(pyproject):
     nobody has package-qualified it yet.
     """
 
+    from tools.import_sweep import SCRIPT_MODULES as _SCRIPT_MODULES
+
     shipped = _shipped_sources(pyproject)
     module_names = {p.stem for p in shipped}
     stdlib = set(sys.stdlib_module_names)
@@ -1126,6 +1166,10 @@ def test_no_shipped_module_imports_a_sibling_by_bare_name(pyproject):
                           r"from\s+(?:tools|woof)[\w.]*\s+import\s+([^\n(]+)",
                           source)
                       for name in line.split(",")}
+        # (WOOF 1.1.7) a program run by its path, never imported (tools/import_sweep.py SCRIPT_MODULES: the hex
+        # recorder's tools): Python puts the script's own folder first on sys.path, which is where its siblings are
+        if rel[:-3].replace("/", ".") in _SCRIPT_MODULES:
+            continue
         for name, lineno in _top_level_imports(path):
             if name in stdlib or name in _FIRST_PARTY or name in _PROVIDERS:
                 continue
@@ -1166,7 +1210,7 @@ def test_the_shipped_surface_matches_the_packaging_declaration(pyproject):
     # consumer hashes sixteen engine files by REPOSITORY path against both
     # a checkout and site-packages, and this was the one key no
     # distribution placed anywhere. It is anchored (`docs`, never `docs*`)
-    # precisely so the receipt trees under docs/superpowers, which do carry
+    # precisely so the receipt trees under docs/internal, which do carry
     # .py, stay out of the wheel; a bare name means `docs/*.py` only, and
     # the assertion below holds that at none.
     assert include == ["woof", "woof.*", "tools", "tilestream*",
@@ -1179,7 +1223,7 @@ def test_the_shipped_surface_matches_the_packaging_declaration(pyproject):
     # `docs` is the second DATA entry, on the same terms as `configs*`
     # below: the scanner walks it for `.py` and must keep finding none. A
     # Python file dropped at docs/ top level would join the shipped import
-    # surface, and -- because the anchor exists to keep docs/superpowers
+    # surface, and -- because the anchor exists to keep docs/internal
     # out -- would do it while looking like documentation.
     assert not any("/docs/" in p.as_posix() for p in shipped), (
         "docs/ now carries top-level Python, so it is part of the shipped "
@@ -1193,7 +1237,7 @@ def test_the_shipped_surface_matches_the_packaging_declaration(pyproject):
         "configs/ now carries Python, so it is part of the shipped import "
         "surface; it was declared as a data directory only")
     assert any(p.as_posix().endswith("woof/cli.py") for p in shipped)
-    assert any(p.as_posix().endswith("tools/da_nowcast.py") for p in shipped)
+    assert any(p.as_posix().endswith("tools/obs_radar_grid_build.py") for p in shipped)
     assert any(p.as_posix().endswith("tilestream/harness.py") for p in shipped)
     assert not any("ftz_receipt" in p.as_posix() for p in shipped), (
         "tools/ subpackages have no __init__ route into the wheel; the "

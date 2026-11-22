@@ -4,8 +4,8 @@
 No woof import, by construction: this is the oracle-side instrument and it
 must be able to disagree with the engine it is scoring.
 
-Metric definitions are transcribed from the WOOF CBL case so the comparison is
-like-for-like; where WOOF makes a convention choice that is not forced by the
+Metric definitions are transcribed from the WOOF-ArWen CBL case so the comparison is
+like-for-like; where WOOF-ArWen makes a convention choice that is not forced by the
 physics (unstaggering by truncation vs averaging) BOTH are computed and
 reported, so a definitional difference can never be mistaken for a physics one.
 
@@ -54,7 +54,7 @@ def unstagger_x_avg(u):
 
 
 def unstagger_x_trunc(u, nx):
-    """(nz, ny, nx+1) -> (nz, ny, nx) by truncation (WOOF convention)."""
+    """(nz, ny, nx+1) -> (nz, ny, nx) by truncation (WOOF-ArWen convention)."""
     return u[:, :, :nx]
 
 

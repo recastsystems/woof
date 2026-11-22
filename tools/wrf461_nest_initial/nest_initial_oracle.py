@@ -5,7 +5,7 @@ usage: python nest_initial_oracle.py INPUT_DIR NATIVE_RUN [I_PARENT_START J_PARE
 INPUT_DIR holds the real.exe wrfinput_d01/d02 the native two-domain run read;
 NATIVE_RUN holds that wrf.exe 4.6.1 strict run's wrfout_d02 frames.  The script
 rebuilds the nest's first history frame from the input files alone, by WRF's
-own transaction, and compares it word for word (the transaction WOOF's door
+own transaction, and compares it word for word (the transaction WOOF-ArWen's door
 has to perform; see the reference run).
 
 What WRF does to an input-file nest before the nest's t = 0 history, as

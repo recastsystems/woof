@@ -302,7 +302,7 @@ def test_plot_context_is_the_second_title_line():
 
     assert plot_context("d02", 3_000.0, "1974-04-03_18:00:00",
                         DEFAULT_SOURCE_LABEL) == (
-        "d02-3km | Δx 3 km | valid 1974-04-03_18:00:00 | WOOF")
+        "d02-3km | Δx 3 km | valid 1974-04-03_18:00:00 | WOOF-ArWen")
     # No DX in the file: the segment is absent, never invented.
     assert plot_context("d02", None, "1974-04-03_18:00:00", "WRF-ARW") == (
         "d02 | valid 1974-04-03_18:00:00 | WRF-ARW")
@@ -335,7 +335,7 @@ def test_titles_carry_the_spacing_and_the_source_label(wrfout, tmp_path,
         "2 m temperature\nd02-1km | Δx 1 km | "
         f"valid 1974-04-03_18:00:00 | {render.default_source_label()}"]
     # ... and that it really did carry a version, not the bare brand.
-    assert render.default_source_label().startswith("WOOF ")
+    assert render.default_source_label().startswith("WOOF-ArWen ")
 
     titles.clear()
     rc = cli.main(["render", "--engine", "matplotlib", str(wrfout),

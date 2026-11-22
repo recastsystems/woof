@@ -14,7 +14,7 @@ The scalar call uses three times the momentum diffusivity. The direct operator
 cases here match the effective per-field K. They do not compare the same
 namelist K or the different RK schedules as if those contracts were equal.
 
-WOOF explicitly defines this utility as the physical-space constant
+WOOF-ArWen explicitly defines this utility as the physical-space constant
 Laplacian in `woof/core/diffusion.py:1-26` and `kernels/diffusion.cu:5-15`.
 It uses physical base-state heights, periodic coordinate-surface stencils,
 and zero-flux top and bottom cell boundaries. It multiplies the primitive
@@ -43,7 +43,7 @@ The vertical differences are also directly localized. WRF u/v copy the first
 interior flux into the bottom flux and do not update the last mass level
 (`:3459-3472`, `:3560-3573`). WRF theta copies the bottom flux as well
 (`:3349-3364`). WRF w sets its last interior flux to zero (`:3135-3144`).
-WOOF applies its documented physical zero-flux cell boundaries. WRF's vertical
+WOOF-ArWen applies its documented physical zero-flux cell boundaries. WRF's vertical
 v routine also leaves the redundant high-side periodic row untouched, whereas
 the product writes a duplicate of row zero, as its storage convention declares.
 

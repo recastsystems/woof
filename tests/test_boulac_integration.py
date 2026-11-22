@@ -44,8 +44,8 @@ def _cfg(**overrides) -> RunConfig:
 def test_boulac_is_admitted_over_every_surface_layer_wrf_allows():
     from woof.config import WRF_UNPORTED_SCHEME_REASONS
     assert BOULAC_PBL_SCHEME not in WRF_UNPORTED_SCHEME_REASONS["bl_pbl_physics"]
-    # isfc = 1 (revised and classic MM5) and isfc = 2 (Eta).
-    for sfclay in (1, 91, 2):
+    # isfc = 1 (revised and classic MM5) and isfc = 2 (Eta and GFS).
+    for sfclay in (1, 91, 2, 3):
         validate_run_config(_cfg(sf_sfclay_physics=sfclay))
 
 
@@ -112,12 +112,14 @@ def test_the_registry_option_is_the_selector():
     assert option["selectors"] == {"bl_pbl_physics": BOULAC_PBL_SCHEME}
     assert option["implemented"] is True
     assert sorted(option["constraints"]["requires_components"][
-        "surface_layer"]) == ["classic-mm5", "eta-similarity", "revised-mm5"]
+        "surface_layer"]) == [
+            "classic-mm5", "eta-similarity", "gfs", "revised-mm5"]
     assert option["consumers"]["restart_algorithm_identity"] == \
         "boulac-pbl-wrf-v4.7.1-v3"
     sl = registry["components"]["surface_layer"]["options"]
-    assert "boulac" in sl["eta-similarity"]["constraints"][
-        "requires_components"]["pbl"]
+    for layer in ("eta-similarity", "gfs"):
+        assert "boulac" in sl[layer]["constraints"][
+            "requires_components"]["pbl"]
     urban = registry["components"]["urban"]["options"]
     for option_id in ("bep", "bep-bem"):
         assert "boulac" in urban[option_id]["constraints"][

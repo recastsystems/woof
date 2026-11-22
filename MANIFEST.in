@@ -96,17 +96,9 @@ exclude tests/test_branch_dispositions.py
 exclude tests/test_regional_packing_bench.py
 exclude tests/test_timeline_qualification.py
 
-# The snapshot already excludes these private campaign receipts. Direct
-# sdist builds also inherit configs' package-data, so exclude them here too.
-prune configs/da_rerun_286
-exclude configs/da_rerun_286/recent/active-241/case-plan.json
-exclude configs/da_rerun_286/recent/active-241/authority/authority-receipt.json
-exclude configs/da_rerun_286/recent/large-601-center32p2/case-plan.json
-exclude configs/da_rerun_286/recent/large-601-center32p2/authority/authority-receipt.json
-exclude configs/da_rerun_286/recent/requested-601-center31/case-plan.json
-exclude configs/da_rerun_286/recent/requested-601-center31/authority/authority-receipt.json
-exclude configs/da_rerun_286/recent/native-linux-pricing.json
-exclude configs/da_rerun_286/recent/native-linux-pricing-241.json
+# Files the export drops from the public tree are named only in
+# RELEASE-EXCLUDE.txt (which the export also drops): setup.py filters them out
+# of every sdist and wheel built from any tree, so this public file names none.
 
 # The README's extracted-source install must have its entry points, and
 # its documentation links must resolve in the sdist.  The CHANGELOG's
@@ -134,12 +126,10 @@ include docs/amd-backend.md docs/rocm-license-audit.json
 include tools/amd_qualification.sh
 include docs/benchmark.md docs/cells.md docs/cumulus-new-tiedtke.md
 include docs/public-cumulus-aerosol.md docs/cumulus-mskf.md docs/mp40-aerosol-status.md
-include docs/da-nowcast-quickstart.md docs/da-vs-wofs.md
 include docs/desktop-package-launcher.md
 include docs/dev/a65-preparation-peaks.md docs/dev/mynn-gsd41.md docs/dev/verify-exact.md
 include docs/ensemble-output-contract.md docs/ensemble-wrf-stochastic-import.md
 include docs/gf_gamma_known_delta.md docs/grib2-export.md docs/install.md
-include docs/local-da-companion-protocol.md
 include docs/migrating-from-wps.md docs/ml-export.md docs/mpas-seam.md
 include docs/native_source_adapters.md docs/nowcast-frames.md docs/obs-scorecard.md
 include docs/run-output-folders.md docs/run-plan.md
@@ -168,6 +158,8 @@ recursive-include woof/data/keps/oracle *
 recursive-include woof/data/lake/oracle *
 recursive-include woof/data/mrf/oracle *
 recursive-include woof/data/mynn/oracle *
+recursive-include woof/data/mynn471/images *
+recursive-include woof/data/mynn480/images *
 recursive-include woof/data/noah/oracle *
 recursive-include woof/data/noah/seaice_oracle *
 recursive-include woof/data/noah/ua_oracle *

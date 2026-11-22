@@ -20,6 +20,14 @@
 # The source is the official Unidata release tarball, pinned by SHA-256.  Its
 # copyright notice ships in the wheel as woof/hex/data/licenses/netcdf-c-COPYRIGHT.
 set -euo pipefail
+# THE BREAKAGE THIS PREVENTS (hex 0.6.0 candidate dist43, 2026-11-14): netCDF-C
+# stamps __DATE__/__TIME__ into its version string, and this script pinned no
+# date, so the three helpers linked against this archive (gpuwm-hex-netcdf-copy,
+# rw_hex_chem_sources, rw_mpas_physics_pool) came out different in every build
+# of one commit.  A SOURCE_DATE_EPOCH given by the builder is kept, as
+# build_gpmetis.py does; otherwise 2026-11-14 03:53:40 UTC, the moment the
+# 0.6.0 candidate's helpers carry.  GCC uses it for __DATE__ and __TIME__.
+export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1794628420}
 prefix=${1:?PREFIX}
 version=4.9.3
 sha256=a474149844e6144566673facf097fea253dc843c37bc0a7d3de047dc8adda5dd

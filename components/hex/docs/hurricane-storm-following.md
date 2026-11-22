@@ -3,8 +3,8 @@
 A concentric variable-resolution member is a **whole global mesh**. Its fine cap
 moves by rotating the template, preparing new static fields, sealing the old
 forecast and conservatively transferring its state to the new global member.
-There is no lateral boundary. This mechanism predates the hurricane lane; the
-lane repairs controller rendezvous, carrier storage, executed sea-ice census
+There is no lateral boundary. This mechanism predates the hurricane work; that
+work repairs controller rendezvous, carrier storage, executed sea-ice census
 validation and ill-conditioned overlap reconciliation.
 
 ```sh

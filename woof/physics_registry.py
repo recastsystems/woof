@@ -2057,6 +2057,77 @@ def _issue(code: str, path: str, message: str) -> dict[str, str]:
     return {"code": code, "path": path, "message": message}
 
 
+class _RunDoorSettings:
+    """A plan's resolved settings, read the way the run door reads them.
+
+    A run-door law asks ``cfg.<field>``.  Here a field the plan resolved is
+    its value, and a field it leaves unset is ``RunConfig``'s default, which
+    is what the run's own ``RunConfig`` will hold.  A named microphysics
+    scheme is resolved to its number and the MYNN generation to the one the
+    run will hold, as ``RunConfig`` does.  A name that is
+    not a ``RunConfig`` field is an AttributeError, so a law that reads one
+    fails loudly rather than seeing an invented value.
+    """
+
+    def __init__(self, settings) -> None:
+        self._settings = settings
+
+    def __getattr__(self, name: str):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        from dataclasses import MISSING
+        from woof.config import RunConfig
+        if name in self._settings:
+            value = self._settings[name]
+        else:
+            field = RunConfig.__dataclass_fields__.get(name)
+            if field is None:
+                raise AttributeError(name)
+            if field.default is not MISSING:
+                value = field.default
+            elif field.default_factory is not MISSING:
+                value = field.default_factory()
+            else:
+                raise AttributeError(name)
+        if name == "mp_physics" and not isinstance(value, int):
+            try:
+                from woof.microphysics_schemes import resolve_mp_physics
+                value = resolve_mp_physics(value)
+            except (ValueError, KeyError, TypeError):
+                pass
+        if name == "bl_mynn_version":
+            # RunConfig promotes wrf_461 to wrf_471 when a 4.7.1-only
+            # control is named; the run judges the generation it holds.
+            from woof.config import resolve_mynn_version
+            value = resolve_mynn_version(self, value)
+        return value
+
+
+def _run_door_laws():
+    """(issue code, law) for each run-door law plan review asks as is.
+
+    Each law is the function ``validate_run_config`` calls; plan review asks
+    it of the settings a plan resolves (:class:`_RunDoorSettings`).  The
+    prepared-tree route offers every one of these settings as a free
+    per-domain parameter, and plan review carried none of the laws, so the
+    reachable-plan walk of tests/test_authority_agreement.py found 728
+    plans (1,456 domains) called launchable that the run refused
+    (2026-11-12).
+    """
+    from woof.config import (validate_bmj_rad_feedback_config,
+                              validate_mynn_option_identity,
+                              validate_shalconv_config,
+                              validate_tke_budget_config)
+    from woof.fddaobs.config import validate_settings as observation_nudging
+    return (
+        ("bmj-feedback-dependency", validate_bmj_rad_feedback_config),
+        ("observation-nudging-settings", observation_nudging),
+        ("shalconv-consumer", validate_shalconv_config),
+        ("mynn-option-identity", validate_mynn_option_identity),
+        ("tke-budget-closure", validate_tke_budget_config),
+    )
+
+
 def _is_json_scalar(value: object) -> bool:
     if value is None or isinstance(value, (str, bool, int)):
         return True
@@ -3539,6 +3610,13 @@ def validate_physics_plan(
                 spp_pbl=settings.get("spp_pbl", 0),
                 spp_lsm=settings.get("spp_lsm", 0),
                 cu_physics=settings.get("cu_physics", 0),
+                # The Grell-Freitas generation validate_spp_config reads
+                # once cu_physics is 3 (spp_conv is consumed by GFDRV,
+                # wrf_461, only).  It was missing here, so the one pairing
+                # that has a consumer -- spp_conv=1 with Grell-Freitas --
+                # ended plan review in an AttributeError instead of a
+                # verdict.  Resolved as RunConfig resolves it.
+                cu_gf_version=_resolved_cu_gf_version(settings),
                 bl_pbl_physics=settings.get("bl_pbl_physics", 0),
                 sf_sfclay_physics=settings.get("sf_sfclay_physics", 0),
                 sf_surface_physics=settings.get("sf_surface_physics", 0)))
@@ -3583,6 +3661,41 @@ def validate_physics_plan(
                 cu_physics=settings.get("cu_physics", 0)))
         except ValueError as exc:
             errors.append(_issue("lightning-dependency", base_path, str(exc)))
+        # The shallow-cumulus pairings, by the same law: every prepared
+        # route offers shcu_physics as a free per-domain setting, and the
+        # run door refuses UW without an ice-carrying microphysics, Deng
+        # without MYJ or MYNN, any shallow scheme under MYNN's EDMF, and
+        # NSCV beside NSAS.  Plan review carried none of it and called
+        # 3,936 of 84,932 reachable plans launchable
+        # (tests/test_authority_agreement.py), so it asks the run door's
+        # own function, with RunConfig's defaults for what a plan leaves
+        # unset and its resolution of a named microphysics scheme.
+        from woof.config import (SHALLOW_CUMULUS_FIELDS, RunConfig,
+                                  validate_shallow_cumulus_config)
+        shallow = {name: settings.get(
+                       name, RunConfig.__dataclass_fields__[name].default)
+                   for name in SHALLOW_CUMULUS_FIELDS}
+        if not isinstance(shallow["mp_physics"], int):
+            try:
+                from woof.microphysics_schemes import resolve_mp_physics
+                shallow["mp_physics"] = resolve_mp_physics(
+                    shallow["mp_physics"])
+            except (ValueError, KeyError, TypeError):
+                pass
+        try:
+            validate_shallow_cumulus_config(SimpleNamespace(**shallow))
+        except ValueError as exc:
+            errors.append(_issue("shallow-cumulus-pairing", base_path, str(exc)))
+        # The rest of the run door's per-domain laws on settings the route
+        # offers freely: BMJ radiative feedback, observation nudging,
+        # shalconv, MYNN's option identity and the TKE budget.  Same
+        # construction, one function per law (_run_door_laws).
+        run_door_view = _RunDoorSettings(settings)
+        for code, law in _run_door_laws():
+            try:
+                law(run_door_view)
+            except (ValueError, NotImplementedError, TypeError) as exc:
+                errors.append(_issue(code, base_path, str(exc)))
 
         # AUDIT R-005, and it runs HERE -- after every source of a setting
         # and before the constraint battery below -- because the value it
@@ -4256,6 +4369,25 @@ def resolve_lateral_forcing_dataset(
         "searched": [str(entry)
                      for entry in getattr(resolution, "candidates", ())],
     }
+
+
+def _resolved_cu_gf_version(settings: Mapping[str, object]) -> object:
+    """``cu_gf_version`` as ``RunConfig`` would hold it for these settings.
+
+    The field's own default, and the one switch ``RunConfig.__post_init__``
+    makes: Grell-Freitas on the default generation with PR92 lightning from
+    the cumulus cloud top (lightning_option 11) runs the wrf_461 GFDRV.
+    """
+
+    from woof.config import GRELL_FREITAS_CU_PHYSICS, RunConfig
+
+    default = RunConfig.__dataclass_fields__["cu_gf_version"].default
+    version = settings.get("cu_gf_version", default)
+    if (settings.get("cu_physics", 0) == GRELL_FREITAS_CU_PHYSICS
+            and version == default
+            and settings.get("lightning_option", 0) == 11):
+        return "wrf_461"
+    return version
 
 
 def resolve_asset_requirement(

@@ -1,11 +1,11 @@
 # Modified 2026-10-28: experimental HRRR-like profile and aerosol route support.
-"""MPAS-A v8.4.2 radiation support, independent of the WOOF driver.
+"""MPAS-A v8.4.2 radiation support, independent of the WOOF-ArWen driver.
 
 Device arrays use float32 C-contiguous (column, bottom-up level) storage.
 Ozone monthly tables use (column, ozone level, month); radii are meters.
 Ozone input records are authenticated and decoded by the shared framework
 reader. The remaining bindings allocate buffers and launch CUDA. No default
-suite or WOOF implementation is changed by importing this module.
+suite or WOOF-ArWen implementation is changed by importing this module.
 """
 from __future__ import annotations
 
@@ -807,6 +807,23 @@ def load_ozone_resources(resources, device):
     return decode_ozone_tables(resources, device)
 
 
+OZONE_MONTHS_KNOB = "WOOF_HEX_OZONE_MONTHS"
+
+
+def ozone_month_pair_form(environ=None) -> bool:
+    """``WOOF_HEX_OZONE_MONTHS``: ``pair`` (default) uploads the two months this calendar interval reads and
+    launches ozone_time_pair; ``all`` binds the twelve-month pool field and launches ozone_time. The interpolated
+    words are the same (tests/test_ozone_streamed_months.py). THE BREAKAGE THIS PREVENTS: the differentiable engine
+    holds radiation by a list of kernel names that has ozone_time and not ozone_time_pair, so a plan the adjoint door
+    recorded from --init was refused in its window ("ozone_time_pair: no derivative row and no rule", x1.40962,
+    2026-11-11); the door records with the twelve-month form (ad-doors.v1.json record_env)."""
+    import os
+    value = (os.environ if environ is None else environ).get(OZONE_MONTHS_KNOB, "pair").strip().lower()
+    if value not in ("pair", "all"):
+        raise ValueError(f"{OZONE_MONTHS_KNOB} must be pair or all, got {value!r}")
+    return value == "pair"
+
+
 def bind_native_ozone_pools(provider, call):
     """mpas_atmphys_o3climatology.F:234-275: time-update public pool binding."""
     shared=getattr(provider,'radshared_v842_state',None)
@@ -817,7 +834,7 @@ def bind_native_ozone_pools(provider, call):
     pools={'nCellsSolve':nc,'diag_physics':provider['diag_physics'],
            'julian':calendar['julian'],'current_date':calendar['current_date'],'radshared':shared}
     from ..device_memory_release import shared_card_memory
-    if provider.resident and shared_card_memory():
+    if provider.resident and shared_card_memory() and ozone_month_pair_form():
         # Initialization published all months into native host storage. They
         # never change during integration. Upload only the adjacent months
         # consumed by this calendar interval, once per pair and provider.

@@ -17,8 +17,13 @@ GLO-30, terrain only. Coarser domains keep the 30-arc-second baseline, so
 a 2.25 km parent over a 750 m child keeps its terrain and the child takes
 GLO-30. Copernicus is the default source because 3DEP stages no tile over
 the sea or outside the United States, and one source serves every sub-km
-domain of the tree. Land use and soil stay on the baseline; the default
-land-cover file alone is 2.28 GB.
+domain of the tree. Land use and soil stay on the baseline down to 600 m
+(the default land-cover file alone is 2.28 GB). A domain at 600 m or
+finer also takes land cover and soil at source resolution (CGLC-MODIS-LCZ
+100 m and SoilGrids 250 m), as a downscaled child that fine does: a
+30-arc-second cell covers 1.5 or more of its cells, and its land use, and
+the 2 m temperature over it, would otherwise show as 1 km rectangles.
+Domains between 600 m and 1 km keep terrain only.
 
 Before it downloads anything the console says what it will fetch:
 

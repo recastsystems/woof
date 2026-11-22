@@ -6,10 +6,13 @@
 set -euo pipefail
 ROOT=$1; MESH=$2; INIT=$3; BUILD=$4; ARM=$5; RANKS=$6; DUR=$7; OUT=$8; DT=${9:-360.0}
 HERE=$(dirname "$(readlink -f "$0")")
-# IDENTITY_DEPS / IDENTITY_VENV relocate the MPI runtime and Python on another host.
-DEPS=${IDENTITY_DEPS:-/work/hex-dycore-claim/deps}; VENV=${IDENTITY_VENV:-/work/hex-dycore-claim/venv}
-export PATH=$VENV/bin:$DEPS/bin:$PATH
-export LD_LIBRARY_PATH=$DEPS/lib:${LD_LIBRARY_PATH:-}
+# The MPI runtime (mpiexec) and Python come from PATH. IDENTITY_DEPS names another MPI prefix (its bin/ and lib/
+# go first) and IDENTITY_VENV another Python environment (its bin/ goes first of all); neither has a default.
+if [ -n "${IDENTITY_DEPS:-}" ]; then
+  export PATH=$IDENTITY_DEPS/bin:$PATH
+  export LD_LIBRARY_PATH=$IDENTITY_DEPS/lib:${LD_LIBRARY_PATH:-}
+fi
+if [ -n "${IDENTITY_VENV:-}" ]; then export PATH=$IDENTITY_VENV/bin:$PATH; fi
 START=${START:-2023-03-31_12:00:00}
 t0=$(date +%s)
 MESH=$MESH START=$START INIT_FILE="$INIT" MIXING=${MIXING:-smag} SMDIV=${SMDIV:-0.1} XNUTR=${XNUTR:-0.2} DT=$DT DUR=$DUR OUT=$OUT RANKS=$RANKS \

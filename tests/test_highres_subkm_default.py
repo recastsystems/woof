@@ -223,3 +223,90 @@ def test_a_declared_block_s_refusal_still_names_its_own_key(
             _baseline(), _grid(999.8), config=config, domain_id=1,
             case_date=__import__("datetime").date(2026, 9, 25),
             landuse_attrs=MODIS21_ATTRS, urlopen=_no_network)
+
+
+# ---------------------------------------------------------------------------
+# Land cover and soil on grids at 600 m or finer.  Breakage (WOOF
+# run_16ac1140cf20cde6, 2026-11-11, a 1 km -> 333 m -> 111 m HRRR tree): the
+# 111 m grid's LU_INDEX was 30-arc-second blocks of 7 x 8-9 cells, and its
+# 2 m temperature showed them as sharp-edged warm rectangles 1-2 km across.
+# ---------------------------------------------------------------------------
+
+def test_the_default_widens_to_land_cover_on_a_grid_at_600_m_or_finer():
+    config = production.default_static_highres([1000.0, 333.333, 111.111])
+    assert config.fields == "terrain"
+    assert production.LAND_COVER_DEFAULT_MAX_DX_M == 600.0
+    for dx in (600.0, 333.333, 111.111):
+        widened = production.grid_highres_config(config, _grid(dx))
+        assert widened.fields == "auto" and widened.landcover_source == "auto"
+        # Everything else is the row's: terrain source, scope, cache.
+        assert widened.terrain_source == config.terrain_source
+        assert widened.max_dx_m == config.max_dx_m
+        assert widened.cache_root == config.cache_root
+    for dx in (1000.0, 750.0, 600.5):
+        assert production.grid_highres_config(config, _grid(dx)) is config
+
+
+def test_the_widening_follows_the_row_s_settings_not_where_it_was_written(
+        tmp_path):
+    """A block that writes the row's own settings (as the WOOF worker does
+    to move the cache) runs the default, so it widens too; any other
+    declared block is taken as written."""
+    row_written = production.parse_static_table(
+        {"highres": {"enabled": True, "cache_root": str(tmp_path),
+                     "fields": "terrain",
+                     "terrain_source": "copernicus-dem-glo30",
+                     "on_refuse": "error", "max_dx_m": 1000.0}},
+        source="case.toml", base_dir=tmp_path)
+    assert production.grid_highres_config(
+        row_written, _grid(111.111)).fields == "auto"
+    unscoped = production.parse_static_table(
+        {"highres": {"enabled": True, "cache_root": str(tmp_path),
+                     "fields": "terrain",
+                     "terrain_source": "copernicus-dem-glo30"}},
+        source="case.toml", base_dir=tmp_path)
+    assert production.grid_highres_config(
+        unscoped, _grid(111.111)) is unscoped
+    assert production.grid_highres_config(None, _grid(111.111)) is None
+
+
+def test_a_fine_grid_builds_land_cover_and_a_kilometre_grid_terrain_only(
+        monkeypatch):
+    config = production.default_static_highres([1000.0, 333.333, 111.111])
+    seen = {}
+
+    def fake_apply(baseline, grid, *, config, **_kwargs):
+        seen[round(float(grid.dx))] = (config.fields, config.landcover_source)
+        return baseline, {"mode": "terrain" if config.fields == "terrain"
+                          else "all",
+                          "terrain_source": {"source_id": "x"},
+                          "landcover": {"source_id": "y"},
+                          "cells_replaced": {"total": 0, "cell_count": 0},
+                          "coverage": {"fields": {}},
+                          "terrain_only_reason": "-"}
+
+    monkeypatch.setattr(production, "require_geography_stack", lambda: None)
+    monkeypatch.setattr(production, "_apply", fake_apply)
+    monkeypatch.setattr(production, "_write_receipt",
+                        lambda config, receipt: "receipt.json")
+    import woof.static.terrain_autosmooth as autosmooth
+    monkeypatch.setattr(autosmooth, "prepare_fields",
+                        lambda fields, grid, **_kwargs: fields)
+    monkeypatch.setattr(autosmooth, "bind_receipt",
+                        lambda fields, detail: detail)
+    receipts = {}
+    for dx in (1000.0, 333.333, 111.111):
+        _, receipts[round(dx)] = apply_highres_statics(
+            _baseline(), _grid(dx), config=config, domain_id=1,
+            case_date=__import__("datetime").date(2026, 11, 11),
+            landuse_attrs=MODIS21_ATTRS, urlopen=_no_network)
+    assert seen == {1000: ("terrain", "auto"), 333: ("auto", "auto"),
+                    111: ("auto", "auto")}
+    # The receipt records what the grid was built with, and a prepared
+    # overlay is checked against the same widened carrier.
+    assert receipts[111]["config"]["fields"] == "auto"
+    assert receipts[1000]["config"]["fields"] == "terrain"
+    receipts[111]["status"] = "APPLIED"
+    production.require_prepared_highres(
+        {"highres": receipts[111]}, _grid(111.111), config=config,
+        domain_id=1, case_date=__import__("datetime").date(2026, 11, 11))

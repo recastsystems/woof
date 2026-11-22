@@ -55,7 +55,7 @@ def test_connected_spp_consumers_step_through_rk3(monkeypatch):
     from woof.ensemble.stochastic import StochasticTimestepHook
     original_config = fixture.RunConfig
     monkeypatch.setattr(fixture, "RunConfig", lambda **kw: original_config(
-        **kw, cu_physics=3, spp_conv=1, spp_pbl=1, spp_lsm=1))
+        **kw, cu_physics=3, cu_gf_version="wrf_461", spp_conv=1, spp_pbl=1, spp_lsm=1))
     state,cfg,driver = fixture._build(nx=16,ny=12,nz=40,
                                      sf_sfclay_physics=5,bl_pbl_physics=5)
     hook = StochasticTimestepHook((13,17), dx=cfg.dx,dy=cfg.dy,dt=cfg.dt,
@@ -111,7 +111,7 @@ def test_disabled_spp_provider_n1_is_byte_identical_to_bare_forecast(monkeypatch
     from woof.core.dycore import step
     from woof.ensemble.stochastic import StochasticTimestepHook
     original_config = fixture.RunConfig
-    monkeypatch.setattr(fixture,"RunConfig",lambda **kw: original_config(**kw,cu_physics=3))
+    monkeypatch.setattr(fixture,"RunConfig",lambda **kw: original_config(**kw,cu_physics=3, cu_gf_version="wrf_461"))
     plain = fixture._build(nx=8,ny=6,nz=40,sf_sfclay_physics=5,bl_pbl_physics=5)
     member = fixture._build(nx=8,ny=6,nz=40,sf_sfclay_physics=5,bl_pbl_physics=5)
     state,cfg,driver = member

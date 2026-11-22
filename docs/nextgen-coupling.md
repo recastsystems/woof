@@ -1,7 +1,7 @@
 # NextGen coupling and continuation
 
 The runtime attaches one resident hydro driver to each forecast member's root
-physics driver. The current attachment requires `grid_id = 1` and WOOF
+physics driver. The current attachment requires `grid_id = 1` and WOOF-ArWen
 Noah-MP, selected with `sf_surface_physics = 4`. Moving child nests keep their
 own atmospheric state and do not acquire another hydro state.
 
@@ -26,7 +26,7 @@ supply the physical inputs described below.
 On each actual parent land-surface interval, the physics loop performs:
 
 1. `hydro.before_lsm(stream=...)` enqueues the prepared stages before the LSM.
-2. WOOF advances its parent Noah-MP land surface.
+2. WOOF-ArWen advances its parent Noah-MP land surface.
 3. `hydro.advance(dt_seconds, stream=...)` enqueues the prepared exchange and
    hydro stages after the LSM.
 

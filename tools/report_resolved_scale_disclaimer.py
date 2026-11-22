@@ -9,7 +9,7 @@ Two receipts come out of this tool, and the split is deliberate:
     added-lines-only case-identity scan, the Markdown structure and width
     measurements, and the cross-reference check.
 
-``docs/superpowers/receipts/perf-gate-sentence.json``
+``docs/internal/receipts/perf-gate-sentence.json``
     the internal half: the performance-gate sentence added to the private
     design spec, its substring measurements, and the two-sided proof that
     the subtree it lives in is release-excluded.  It is written under a
@@ -68,7 +68,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_RECEIPT = REPO_ROOT / "docs" / "public" / "receipts" / (
     "resolved-scale-disclaimer.json"
 )
-INTERNAL_RECEIPT = REPO_ROOT / "docs" / "superpowers" / "receipts" / (
+INTERNAL_RECEIPT = REPO_ROOT / "docs" / "internal" / "receipts" / (
     "perf-gate-sentence.json"
 )
 
@@ -139,12 +139,12 @@ GATE_BLOCK_CITED_PATHS = (
 )
 #: Quotations the block attributes to DETERMINISM.md sections 1 and 3.
 DETERMINISM_QUOTATIONS = (
-    "WOOF version and git commit",
+    "WOOF-ArWen version and git commit",
     "comparing a run against itself or against a cached artifact",
 )
 
 GATE_BLOCK_MARKER = "GATE (Phase-6 performance pass):"
-INTERNAL_SPEC = "docs/superpowers/specs/2026-07-13-gpuwm-design.md"
+INTERNAL_SPEC = "docs/internal/specs/2026-07-13-gpuwm-design.md"
 ANNOUNCEMENT_DRAFT = "docs/public/ANNOUNCEMENT-DRAFT.md"
 
 #: The two-arm control that turns the gate sentence into a gate.  It is not
@@ -616,7 +616,7 @@ def _last_commit_files(path: str) -> dict:
 def public_clone_proof(clone: Path | None) -> dict:
     """The half of the internal-only proof a public-repo holder can run.
 
-    ``git ls-files docs/superpowers`` executed in the published clone.  Any
+    ``git ls-files docs/internal`` executed in the published clone.  Any
     tracked path there would mean the performance-gate sentence ships, and
     the edit would have to be relocated or dropped.
     """
@@ -625,7 +625,7 @@ def public_clone_proof(clone: Path | None) -> dict:
             "status": "not-run",
             "reason": "no public clone supplied on this invocation",
         }
-    listing = run(["git", "ls-files", "docs/superpowers"], cwd=clone)
+    listing = run(["git", "ls-files", "docs/internal"], cwd=clone)
     head = run(["git", "log", "-1", "--format=%H %s"], cwd=clone)
     tracked = listing["stdout"].split()
     return {
@@ -672,16 +672,16 @@ def build_internal_receipt(
         "edit_c_commit": _last_commit_files(INTERNAL_SPEC),
         "public_markdown_touched_by_the_branch": public_touched,
         "release_exclusion": run(
-            ["git", "grep", "-n", "docs/superpowers", "--", "RELEASE-EXCLUDE.txt"]
+            ["git", "grep", "-n", "docs/internal", "--", "RELEASE-EXCLUDE.txt"]
         ),
         "development_tree_tracked_files": run(
-            ["git", "ls-files", "docs/superpowers"]
+            ["git", "ls-files", "docs/internal"]
         ),
         "public_clone_proof": public_clone_proof(clone),
         "private_path_rule": (
             "no claim here rests on a release-excluded snapshot builder, "
             "which a public-repo holder can neither read nor run; the public "
-            "half of the proof is `git ls-files docs/superpowers` executed in "
+            "half of the proof is `git ls-files docs/internal` executed in "
             "the published clone, recorded above"
         ),
         "instrument_qualification": INSTRUMENT_QUALIFICATION,
@@ -715,7 +715,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         help=(
             "checkout of the published repository; the internal-only proof "
-            "runs `git ls-files docs/superpowers` there"
+            "runs `git ls-files docs/internal` there"
         ),
     )
     args = parser.parse_args(list(argv) if argv is not None else None)

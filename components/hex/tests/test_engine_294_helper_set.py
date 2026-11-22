@@ -29,12 +29,15 @@ def test_294_source_set_is_admitted_on_the_ordinary_route():
 #: the 2.9.10 floor needs no new row. gpuwm 2.9.11 moved rrtmg_sw.py and wrf_ozone.py (the
 #: downstream table checks and the wind-farm row), so the 0.4.11 floor runs on engine-2.9.11-source,
 #: measured at the 2.9.11 public commit 82e16d580a.
-FLOOR_HELPER_SET = {"2.9.10": "engine-2.9.7-source", "2.9.11": "engine-2.9.11-source", "2.9.12": "engine-2.9.12-source"}
+#: gpuwm 3.0.0 (rel/3.0.0 15370d23f9) carries the six helper sources of engine-2.9.12-source byte for byte
+#: (measured on the installed 3.0.0 wheel, 2026-11-10), so the 3.0.0 floor needs no new row.
+FLOOR_HELPER_SET = {"2.9.10": "engine-2.9.7-source", "2.9.11": "engine-2.9.11-source", "2.9.12": "engine-2.9.12-source",
+                    "3.0.0": "engine-2.9.12-source"}
 
 
 def test_the_floor_engine_has_an_admitted_helper_set():
     floor = engine_pin.gpuwm_floor()
     # The patch candidate advances the declared engine floor.
-    assert floor == "2.9.12"
+    assert floor == "3.0.0"
     assert FLOOR_HELPER_SET[floor] in scope.ADMITTED_SOURCE_SETS
     assert FLOOR_HELPER_SET[floor] in scope.PUBLISHED_MODES

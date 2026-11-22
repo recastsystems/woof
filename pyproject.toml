@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recast-woof"
-version = "1.1.6"
-description = "Recast WOOF: GPU-native regional weather forecasting with WRF-class physics, data assimilation and native preprocessing, plus the hex model (a GPU port of MPAS-Atmosphere v8.4.2) and its global configuration"
+version = "1.1.7"
+description = "Recast WOOF: WOOF-ArWen (WRF-ARW on NVIDIA GPUs, for regions you draw) and WOOF-HEX-A (MPAS-Atmosphere v8.4.2 and NOAA's hrrrv5 configuration on hexagonal meshes, regional and global), with native preprocessing and maps"
 readme = "README.md"
 license = "Apache-2.0"
 # Every licence whose terms ask for its text to travel with the copy ships
@@ -20,19 +20,20 @@ requires-python = ">=3.11"
 # threadpoolctl: preparation workers size the numeric thread pools they load.
 # psutil: host memory and process accounting (the engine's own base set).
 # recast-woof-data: reference tables and map assets, pinned to this version.
+# (1.1.7) gpuwm 3.0.4 is folded, so its two companions are pinned at 3.0.4.
 # (1.1.6) gpuwm-kernels, gpuwm-kernels-startup: engine 2.9.12 moved its compiled kernel packs and the
 # verification oracles out of the main wheel into these two data-only companions (PyPI's 100 MB per-file
 # limit); woof reads them by those names (woof.kernel_aot, woof.data_assets), so it takes the published
 # companions of the engine it folds, pinned exactly.
 dependencies = ["numpy>=2.0", "netCDF4>=1.6", "matplotlib>=3.8",
                 "jsonschema>=4.0", "threadpoolctl>=3.1",
-                "scipy>=1.11", "pyshp>=2.3", "cdsapi>=0.7.7", "psutil>=5.9", "recast-woof-data==1.1.6",
-                "gpuwm-kernels==2.9.13", "gpuwm-kernels-startup==2.9.13",
+                "scipy>=1.11", "pyshp>=2.3", "cdsapi>=0.7.7", "psutil>=5.9", "recast-woof-data==1.1.7",
+                "gpuwm-kernels==3.0.4", "gpuwm-kernels-startup==3.0.4",
                 # (1.1.6) hex 0.4.12's global door decodes the MPAS mesh archives with the rapidgzip
                 # command (woof.hex.global_door); gpuwm-hex declares it, this list did not, so a fresh
                 # `woof hex global` refused at its mesh stage ("rapidgzip is missing")
                 "rapidgzip>=0.16.0"]
-keywords = ["WRF", "WPS", "GRIB", "NetCDF", "weather", "CUDA", "MPAS", "data-assimilation"]
+keywords = ["WRF", "WPS", "GRIB", "NetCDF", "weather", "CUDA", "MPAS", "hrrrv5"]
 classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
     "Intended Audience :: Science/Research",
@@ -73,6 +74,16 @@ hydro-conus = ["py7zr>=1.0"]
 all-cu12 = ["recast-woof[gpu-cu12]", "recast-woof[render]"]
 all-cu13 = ["recast-woof[gpu-cu13]", "recast-woof[render]"]
 all = ["recast-woof[all-cu12]"]
+# (1.1.7) gpuwm-hex 0.6.1's `ad` extra, for the WOOF-HEX-A derivative commands (`woof hex tangent`, `adjoint-test`,
+# `sensitivity`, `param-grad`): the CuPy and CUDA toolkit versions the examples' recorded plans replay, and CUPTI and
+# the CUDA runtime headers the recorder builds against.  Python 3.14, in an environment of its own: it brings
+# cupy-cuda13x, and pip does not remove the cupy-cuda12x that `all-cu12` brings.
+ad = ["recast-woof[gpu-cu13]", "cupy-cuda13x==14.2.0", "cuda-toolkit==13.4.3", "nvidia-cuda-cupti>=13.0,<14",
+      "nvidia-cuda-crt>=13.0,<14"]
+# (1.1.7 round 4) gpuwm-hex 0.6.2's `torch` extra: PyTorch (BSD-3) as a dependency only, for the learned column
+# correction (WOOF_HEX_LEARNED_CORRECTION) and the networks of the surface and boundary-layer options; it rides `ad`
+# because training runs the reverse.  Off by default; no weights ship.
+torch = ["recast-woof[ad]", "torch>=2.9"]
 # (1.1.6) engine 2.9.12's experimental AMD backend (opt-in, --backend amd)
 rocm = ['cupy-rocm-7-0==14.2.0; sys_platform == "linux" and platform_machine == "x86_64"']
 
@@ -148,8 +159,13 @@ woof = [
 # (1.1.2) native/*.c as gpuwm-hex ships it: the whole-step submission source woof.hex.native_step builds from
 # (1.1.6) hex 0.4.12's TC climate door (woof.hex.tc_climate) reads recipes.json and pi-reference.json beside
 # itself and ships the tcpypi licence; hex's own wheel carries all three, this list had none of them
+# (1.1.7) hex 0.6.1's list adds the differentiable engine's recorder (woof.hex.ad.record): the C sources it builds,
+# its shipped lists and digests
 "woof.hex" = ["*.json", "**/*NOTICE*.txt", "data/*", "data/**/*", "libexec/*", "native/*.rs", "native/*.c", "*.cu", "*.cuh", "**/*.cu", "**/*.cuh",
-              "tc_climate/*.json", "tc_climate/LICENSE.*"]
+              "tc_climate/*.json", "tc_climate/LICENSE.*",
+              "ad/record/native/*", "ad/record/data/*", "ad/record/data/**/*", "ad/record/README.md",
+              # (1.1.7) hex 0.6.1's runnable derivative examples, which `woof hex examples` prints or copies
+              "examples/differentiable/*"]
 tools = ["prepare_hrrr_*.sh", "hydro_world/data/sources.v1.json", "hydro_world/data/recipes.v1.json",
          "hydro_world_params/data/params.v1.json"]
 tilestream = ["output-scaling.json"]
@@ -168,6 +184,9 @@ woof = [
     "data/lake/oracle/*",
     "data/mrf/oracle/*",
     "data/mynn/oracle/*",
+    # (1.1.7) as engine 3.0.3: the WRF 4.7.1 and 4.8.0 MYNN module images ship in the companion too
+    "data/mynn471/images/*",
+    "data/mynn480/images/*",
     "data/noah/oracle/*",
     "data/noah/seaice_oracle/*",
     "data/noah/ua_oracle/*",
@@ -186,6 +205,8 @@ woof = [
     "data/thompson/oracle-hail/*",
     "data/ysu/oracle/*",
 ]
+# (1.1.7) as hex 0.6.1: kernel packs ship as release assets, never as wheel data
+"woof.hex" = ["data/kernel-pack*.json", "release-assets/**/*"]
 
 [tool.pytest.ini_options]
 markers = ["gpu: requires a CUDA GPU + cupy",

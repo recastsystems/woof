@@ -1,13 +1,13 @@
-"""The met_em/wrfinput differential oracle: WOOF's own real-data ingest
+"""The met_em/wrfinput differential oracle: WOOF-ArWen's own real-data ingest
 scored, field by field, against the ``real.exe`` that read the same met_em.
 
-WHY THIS EXISTS.  Until the wrfinput door landed, WOOF had exactly one way
+WHY THIS EXISTS.  Until the wrfinput door landed, WOOF-ArWen had exactly one way
 to turn weather into an initial state (``rw_wps``: GRIB straight to internal
 state), so :mod:`woof.ingest.real` -- 3400 lines of WRF-real transcription --
 had nothing independent to be checked against.  A matched
 ``met_em`` + ``wrfinput_d01`` pair closes that: ``real.exe`` produced the
 wrfinput FROM the met_em, and :func:`woof.ingest.real.initialize_real` claims
-to do the same job from the same input.  This module runs WOOF on the met_em
+to do the same job from the same input.  This module runs WOOF-ArWen on the met_em
 and diffs the result against the wrfinput, per field.
 
 This initializer comparison reads the actual ``ZNW`` from wrfinput and
@@ -67,7 +67,7 @@ def _var(ds, name, dtype=np.float32):
 
 
 def read_metem(path) -> MetEmCase:
-    """Split one met_em frame into WOOF's real-data forcing inventory.
+    """Split one met_em frame into WOOF-ArWen's real-data forcing inventory.
 
     Selects the lane real.exe would select: FLAG_SH=1 means metgrid supplied
     SPECHUMD, and real.exe converts it to qv and then re-diagnoses RH from it
@@ -115,13 +115,41 @@ def read_metem(path) -> MetEmCase:
             for name in ("QC", "QR", "QI", "QS", "QG"):
                 if name in ds.variables:
                     fields[name] = _var(ds, name)[sl]
+        elif np.any(np.ptp(pres[sl].reshape(pres[sl].shape[0], -1), axis=1) > 1.0):
+            # RH on levels that are not isobaric (a model-level source).
+            # Reading it on the flat ladder below would flatten its 3-D
+            # pressure.  real.exe forms qv from RH, TT and the 3-D p_gc
+            # with rh_to_mxrat1 (module_initialize_real.F:1113-1142); that
+            # qv is carried here as specific humidity on the PRES lane.
+            # Transcribed from WRF, not imported from woof.ingest, so the
+            # oracle stays independent of the reader it scores.
+            lane = "relative-humidity-3d-pressure"
+            tt = _var(ds, "TT", np.float64)
+            rh = np.clip(_var(ds, "RH", np.float64), 0.0, 100.0)
+            es = 0.01 * rh * 6.112 * np.exp(17.67 * (tt - 273.15) / (tt - 29.65))
+            qv = np.where(es < pres / 100.0,
+                          np.maximum(0.622 * es / (pres / 100.0 - es), 1.0e-6),
+                          1.0e-6)
+            qv = np.where((pres < 10000.0) & (qv > 1.0e-5), 3.0e-6, qv)
+            specific = (qv / (1.0 + qv)).astype(np.float32)
+            fields["PRES"] = _var(ds, "PRES")[sl]
+            fields["SPFH"] = specific[sl]
+            fields["Q2"] = specific[SURFACE_LEVEL_INDEX]
+            for name in ("QC", "QR", "QI", "QS", "QG"):
+                if name in ds.variables:
+                    fields[name] = _var(ds, name)[sl]
         else:
             lane = "relative-humidity"
             fields["RH"] = _var(ds, "RH")[sl]
             fields["RH2"] = _var(ds, "RH")[SURFACE_LEVEL_INDEX]
         times = ds.variables["Times"][0]
         stamp = b"".join(np.asarray(times).astype("S1").ravel()).decode()
-        valid = datetime.strptime(stamp.strip(), "%Y-%m-%d_%H:%M:%S")
+        # metgrid with nocolons = .true. writes YYYY-MM-DD_HH_MM_SS; real.exe
+        # reads both.  Parsed here, not through the door's reader, so the
+        # oracle stays independent of the code it scores.
+        stamp = stamp.strip()
+        valid = datetime.strptime(
+            stamp, "%Y-%m-%d_%H_%M_%S" if stamp[13:14] == "_" else "%Y-%m-%d_%H:%M:%S")
         return MetEmCase(
             valid_time=valid,
             levels_hpa=(pres[sl, 0, 0] / 100.0).astype(np.float64),
@@ -165,7 +193,7 @@ def eta_ladder_comparison(znw_real, *, stretch_grid=None):
 
     This diagnostic does not exercise WRF automatic generation. A large
     difference says those alternate grids cannot be compared level by level
-    with this input, not that WOOF cannot generate the requested WRF grid.
+    with this input, not that WOOF-ArWen cannot generate the requested WRF grid.
     """
     znw_real = np.asarray(znw_real, dtype=np.float64)
     nz = znw_real.size - 1
@@ -215,7 +243,7 @@ def field_stats(name, arwen, wrf, unit=""):
 def run_differential(metem_path, wrfinput_path, *, mp_physics=None,
                      base_temp=290.0, preprocess_backend="cpu",
                      column_workers=4, preprocess_workers=4):
-    """Ingest the met_em with WOOF and diff every comparable field.
+    """Ingest the met_em with WOOF-ArWen and diff every comparable field.
 
     ``mp_physics=None`` takes the scheme from the wrfinput.  An explicit
     value SUBSTITUTES a scheme, which is legitimate only for the
@@ -247,6 +275,9 @@ def run_differential(metem_path, wrfinput_path, *, mp_physics=None,
         snapshot, cfg, coord, case.terrain, landmask=case.landmask,
         source_orography=case.source_orography, p_top=grid["p_top"],
         sfcp_to_sfcp=True, use_sh_qv=False, column_workers=column_workers,
+        # real.exe makes its FLAG_SH surface test only on a FLAG_SH file.
+        flag_sh_surface_fallback=(
+            False if case.lane == "relative-humidity-3d-pressure" else None),
         preprocess_backend=preprocess_backend,
         preprocess_workers=preprocess_workers, state_backend="preprocess")
 

@@ -177,6 +177,41 @@ def test_direct_physics_pack_serves_bytes_and_corruption_uses_exact_fallback(tmp
     assert calls == [("source", dict(options=tuple(entry["options"]), arch="120", filename="physics.cu"))]
 
 
+@pytest.mark.parametrize("mode", ["strict", "fast"])
+@pytest.mark.parametrize("version", ["600", "610"])
+@pytest.mark.parametrize("waves", [False, True])
+def test_rrfs_mynn_surface_inventory_matches_live_compile_request(monkeypatch, mode, version, waves):
+    """The runtime surface launcher must select a declared image, without a GPU."""
+    import importlib
+    cupy = pytest.importorskip("cupy")
+    from woof.hex import numerics
+    from woof.hex.cuda_backend.aot import recipe
+    from woof.hex.cuda_backend.aot_build import physics_inventory, selection
+
+    surface = importlib.import_module("woof.hex.mpasphys.rrfs.sf_mynnsfc_v" + version)
+    rows = physics_inventory(mode)
+    monkeypatch.setattr(numerics, "mode", lambda: mode)
+    monkeypatch.setattr(surface, "_MODULES", {})
+    monkeypatch.setattr(surface, "_compilation_target", lambda *args, **kwargs: "120")
+    captured = []
+
+    class Captured(Exception):
+        pass
+
+    def compile_(source, **kwargs):
+        captured.append(recipe({"source": source, "route": "direct-nvrtc",
+                                "filename": "kern.cu", **kwargs}))
+        raise Captured
+
+    monkeypatch.setattr(cupy.cuda.runtime, "getDevice", lambda: 0)
+    monkeypatch.setattr(cupy.cuda.compiler, "compile_using_nvrtc", compile_)
+    with pytest.raises(Captured):
+        surface.module(waves=waves)
+    matches = [row for row in rows if selection(row) == selection(captured[0])]
+    assert len(matches) == 1
+    assert matches[0]["physics_family"] == "rrfs_sf_mynnsfc"
+
+
 def test_direct_physics_inventory_covers_both_surface_variants_and_numerics():
     """Wheel discovery must include the raw NVRTC sites omitted by the old AST scan."""
     from woof.hex.cuda_backend.aot_build import physics_inventory
@@ -184,15 +219,19 @@ def test_direct_physics_inventory_covers_both_surface_variants_and_numerics():
         rows = physics_inventory(mode)
         families = [row["physics_family"] for row in rows]
         # Fast numerics also runs TEMPO as the phase modules P and S (tempo_phase_v303); strict never compiles them.
-        fast_only = {"tempo_rrfs_phase", "tempo_rrfs_tail"} if mode == "fast" else set()
-        # TEMPO's state reflectivity (tempo_refl_v303) compiles its strict text under both numerics: declared once.
-        strict_only = {"tempo_rrfs_refl"} if mode == "strict" else set()
+        fast_only = ({"tempo_rrfs_phase", "tempo_rrfs_tail", "tempo_rrfs_phase_v325", "tempo_rrfs_tail_v325"}
+                     if mode == "fast" else set())
+        # TEMPO's state reflectivity (tempo_refl_v303) asks for its strict text under both numerics; a fast process
+        # selects it without --fmad=false (the engine drops it), so each mode declares its own row.
+        both_modes = {"tempo_rrfs_refl", "tempo_rrfs_refl_v325", "regional_lbc", "rrfs_ruc_lsm"}
         assert set(families) == {"bl_mynn_adapter", "bl_mynn", "bl_mynnedmf", "sf_mynn", "sfclay_mm5",
-                                 "rrtmg_lw", "rrtmg_sw", "noah_shared_tables", "gf_mpas", "thompson", "thompson_workspace", "thompson_aero_workspace", "tempo_rrfs",
-                                 "rrfs_sfclay_mm5", "noah_seaice", "rrfs_noah_seaice",
-                                 "wsm6", "wsm6_workspace", "rrfs_wsm6_radar", "rrfs_wsm6_relhum", "ntiedtke", "ysu", "ysu_gwdo", "ugwp_ngw",
-                                 "rrfs_smoke", "nssl_rrfs", "rrfs_cu_gfl_bf6a4b0", *fast_only, *strict_only}
+                                 "rrtmg_lw", "rrtmg_sw", "noah_shared_tables", "gf_mpas", "thompson", "thompson_workspace", "thompson_aero_workspace", "tempo_rrfs", "tempo_rrfs_v325",
+                                 "rrfs_sfclay_mm5", "rrfs_sf_mynnsfc", "noah_seaice", "rrfs_noah_seaice",
+                                 "wsm6", "wsm6_workspace", "rrfs_wsm6_radar", "rrfs_wsm6_relhum", "ntiedtke", "ysu", "ysu_gwdo", "kim_gwdo", "ugwp_ngw",
+                                 "rrfs_smoke", "nssl_rrfs", "rrfs_cu_gfl_bf6a4b0", *fast_only, *both_modes}
         assert families.count("sf_mynn") == families.count("sfclay_mm5") == 2
+        assert families.count("rrfs_sf_mynnsfc") == 4
+        assert families.count("rrfs_ruc_lsm") == 2 and families.count("regional_lbc") == 1
         # MYNN: exact text and every correct-mode text set (RP7, the MPAS-route default).
         from woof.hex.mpasphys.bl_mynn_v842 import MYNN_TEXT_CORRECTIONS
         assert families.count("bl_mynn") == 2 ** len(MYNN_TEXT_CORRECTIONS) >= 2
@@ -204,7 +243,10 @@ def test_direct_physics_inventory_covers_both_surface_variants_and_numerics():
         assert all(row["compiler_route"] == ("raw-nvrtc" if row["physics_family"] in {"gf_mpas", "rrfs_smoke", "nssl_rrfs", "rrfs_cu_gfl_bf6a4b0"}
                                                else "direct-nvrtc") for row in rows)
         expected = "--fmad=false" if mode == "strict" else "--fmad=true"
-        assert all(expected in row["options"] for row in rows)
+        refl = {"tempo_rrfs_refl", "tempo_rrfs_refl_v325"}
+        assert all(expected in row["options"] for row in rows if mode == "strict" or row["physics_family"] not in refl)
+        assert all(not any(option.startswith("--fmad") for option in row["options"])
+                   for row in rows if mode == "fast" and row["physics_family"] in refl)
         noah = next(row for row in rows if row["physics_family"] == "noah_shared_tables")
         assert "--ftz=false" in noah["options"]
         from woof.hex.mpasphys import ugwp_ngw_v842 as ngw
@@ -220,6 +262,35 @@ def test_direct_physics_inventory_covers_both_surface_variants_and_numerics():
         assert all(row["compile_request"] == {
             "route": "direct-nvrtc", "filename": "ysu_gwdo_v842.cu", "cache_in_memory": True}
             for row in rows if row["physics_family"] == "ysu_gwdo")
+
+
+@pytest.mark.parametrize("mode", ["strict", "fast"])
+def test_inventory_declares_the_direct_modules_a_fresh_install_compiled_at_every_run(mode):
+    """THE BREAKAGE THIS PREVENTS (hex 0.5.0 gate, 2026-11-09): a fresh install compiled the limited-area boundary
+    module in every rank and worker process (8 x 1.8 s), the RUC land surface (7.3 s) and TEMPO's reflectivity
+    (2.2 s) at every run, with the pack present; none of the three is cached on disk."""
+    from woof.hex import numerics
+    from woof.hex.cuda_backend.aot import recipe
+    from woof.hex.cuda_backend.aot_build import physics_inventory, selection
+    from woof.hex.cuda_regional_v841 import CUDA_REGIONAL_SOURCE, REGIONAL_CUDA_OPTIONS
+    from woof.hex.mpasphys.rrfs import ruc_lsm_8c9f1a8 as ruc, tempo_refl_v303 as refl
+    rows = physics_inventory(mode)
+
+    def served(family, source, options, **request):
+        # what the direct bridge selects on: "nvrtc.direct.<digest>", the final options, the compile request
+        asked = recipe({"source": source, "options": list(options), "route": "direct-nvrtc",
+                        "filename": "kern.cu", **request})
+        matches = [row for row in rows if selection(row) == selection(asked)]
+        assert len(matches) == 1 and matches[0]["physics_family"] == family, (family, len(matches))
+
+    served("regional_lbc", CUDA_REGIONAL_SOURCE, numerics.options(REGIONAL_CUDA_OPTIONS, numerics=mode))
+    for context in ((), ("-DRUC_ICE_ENTRY_CONTEXT",)):
+        served("rrfs_ruc_lsm", ruc.shared_math_source() + ruc.CUDA_SOURCE,
+               (*numerics.options(ruc.CUDA_OPTIONS, keep_ftz=True, numerics=mode), *context), cache_in_memory=True)
+    # the engine's final options in a fast process: --fmad=false dropped (woof.numerics.effective_options)
+    final = [option for option in refl.module_options() if mode == "strict" or option != "--fmad=false"]
+    for version, family in (("v3.0.3", "tempo_rrfs_refl"), ("v3.2.5", "tempo_rrfs_refl_v325")):
+        served(family, refl.module_source(59, version), final, cache_in_memory=True)
 
 
 def test_incremental_build_preserves_other_images_and_compiles_only_missing(tmp_path, monkeypatch):
@@ -461,7 +532,7 @@ def test_shipped_pack_covers_every_declared_module_on_every_architecture(family)
     """THE BREAKAGE: a kernel edited without rebuilding the pack JITs on every fresh box.
 
     Checked per numerics mode with the exact options the pack selects on: a pack holding only
-    strict rows misses every hex kernel of a default (fast) run (owner ruling 2026-10-16).
+    strict rows misses every hex kernel of a default (fast) run (2026-10-16).
     Rebuild every pack with: python tools/build_kernel_packs.py <tree> --out <dir> --base <previous packs>
     --tag kernel-packs-v<version> (one venv per NVRTC; only changed kernels compile).
     """
@@ -967,3 +1038,40 @@ def test_mynn_inventory_matches_the_forecast_source(mode, corrections, monkeypat
     rows = [r for r in physics_inventory(mode) if r.get('physics_family') == 'bl_mynn']
     expected = numerics.options(bl.MYNN_CUDA_OPTIONS, numerics=mode)
     assert any(r['source'] == module._source and tuple(r['options']) == expected for r in rows)
+
+
+@pytest.mark.parametrize('mode', ['strict', 'fast'])
+@pytest.mark.parametrize('corrections', [frozenset(), frozenset({'RP7'})])
+def test_pinned_replay_mynn_inventory_selects_its_own_source(mode, corrections, monkeypatch):
+    import sys
+    import types
+    from woof.hex import numerics
+    from woof.hex.cuda_backend.aot_build import physics_inventory
+    from woof.hex.mpasphys import bl_mynn_v842 as bl
+    header = '// replay math header with independently pinned bytes\n'
+    monkeypatch.setattr(numerics, '_mode', mode)
+    with monkeypatch.context() as stub:
+        stub.setitem(sys.modules, 'cupy', sys.modules.get('cupy') or types.ModuleType('cupy'))
+        module = bl.MynnCudaModule(shared_math_source=header, corrections=corrections)
+    supplied = physics_inventory(mode, mynn_math_source=header)
+    defaults = physics_inventory(mode)
+    matching = [r for r in supplied if r['source'] == module._source]
+    assert len(matching) == 1
+    assert matching[0]['options'] == list(numerics.options(bl.MYNN_CUDA_OPTIONS, numerics=mode))
+    assert not any(r['source'] == module._source for r in defaults)
+    assert [r for r in supplied if r['physics_family'] != 'bl_mynn'] == [
+        r for r in defaults if r['physics_family'] != 'bl_mynn']
+
+
+def test_replay_mynn_header_refuses_wrong_pin_before_compiling(tmp_path):
+    import pathlib
+    import subprocess
+    import sys
+    header = tmp_path / 'math.cuh'
+    header.write_text('// pinned replay math\n')
+    tool = pathlib.Path(__file__).resolve().parents[1] / 'tools/build_hex_aot.py'
+    result = subprocess.run([sys.executable, str(tool), '--physics-family', 'bl_mynn',
+                             '--mynn-math-source', str(header), '--mynn-math-sha256', '0' * 64],
+                            text=True, capture_output=True)
+    assert result.returncode == 2
+    assert 'MYNN replay math header SHA-256 mismatch' in result.stderr

@@ -326,7 +326,7 @@ def _launch(kernel: Any, total: int, args: tuple[Any, ...]) -> None:
 def _upload_spec(cp: Any, spec: np.ndarray, weight: np.ndarray) -> tuple[Any, Any]:
     """A fill spec and its weights on the device, complete before any stream reads them.
 
-    BREAKAGE WITHOUT THE WAIT (2026-10-26, 3-zone multi-zoom globe, WOOF route, two LTS blocks on one
+    BREAKAGE WITHOUT THE WAIT (2026-10-26, 3-zone multi-zoom globe, WOOF-ArWen route, two LTS blocks on one
     card, ``--samehost-devices=0,0``): the spec cache is per CARD and keyed by class, so the two blocks of
     one class on one card share it.  The block that builds an entry queues its host-to-device copy on its
     own rank stream; the other block, on another stream, found the entry and launched its fill before the

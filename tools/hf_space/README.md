@@ -13,21 +13,21 @@ license: apache-2.0
 
 # WOOF weather samples
 
-Browse forecasts from WOOF, the CUDA WRF-ARW model (`woof`), and hex,
+Browse forecasts from WOOF-ArWen, the CUDA WRF-ARW model (`woof`), and hex,
 the CUDA MPAS model (`woof hex`). Choose a sample, variable and lead time.
 Maps are drawn by the engine's Rust renderer and saved before you open the viewer.
 
 | Sample | Model grid | Initial conditions | Valid times |
 | --- | --- | --- | --- |
-| WOOF CONUS 3 km | 796 × 636 cells, 49 levels, 3 km | GFS, 17 October 2026 at 00 UTC | 00 and 01 UTC |
+| WOOF-ArWen CONUS 3 km | 796 × 636 cells, 49 levels, 3 km | GFS, 17 October 2026 at 00 UTC | 00 and 01 UTC |
 | hex 60 km global | 163,842 cells, 55 levels, nominal 60 km | GFS, 17 October 2026 at 00 UTC | 00 and 01 UTC |
 
-The WOOF sample covers part of CONUS. Its display grid is 602 × 1065 at
+The WOOF-ArWen sample covers part of CONUS. Its display grid is 602 × 1065 at
 0.03 degree, about 3.336 km. Points outside the source domain are masked.
 The hex display grid is 664 × 333 at about 60.277 km. Display grids describe
 the saved maps; the table gives each model's grid.
 
-The Soundings tab shows WOOF profiles at 35.30 N, 97.50 W and
+The Soundings tab shows WOOF-ArWen profiles at 35.30 N, 97.50 W and
 40.00 N, 100.00 W. Each window includes a skew-T, hodograph, wind barbs
 and diagnostic tables. Open fullscreen to read the tables. Profile and
 diagnostic JSON is available to download.

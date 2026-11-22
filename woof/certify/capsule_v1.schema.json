@@ -155,7 +155,7 @@
               }
             }
           ],
-          "description": "WOOF version and git commit",
+          "description": "WOOF-ArWen version and git commit",
           "properties": {
             "reason": {
               "type": "string"
@@ -753,6 +753,6 @@
     "output",
     "receipts"
   ],
-  "title": "WOOF certification capsule",
+  "title": "WOOF-ArWen certification capsule",
   "type": "object"
 }

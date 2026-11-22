@@ -1,7 +1,7 @@
 """Integer-tick clock hierarchy and flat schedule executor (Phase 5, L2).
 
 Implements section C of the RATIFIED Phase-5 nesting architecture
-(docs/superpowers/specs/2026-07-16-phase5-nesting-architecture.md, 2026-07-16
+(docs/internal/specs/2026-07-16-phase5-nesting-architecture.md, 2026-07-16
 controller amendment): ``fractions.Fraction`` at CONFIG-RESOLUTION time
 only, integer TICKS at runtime.
 

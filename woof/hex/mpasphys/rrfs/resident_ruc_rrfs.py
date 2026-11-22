@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import closures as _closures
 from . import ruc_lsm_8c9f1a8 as ruc
 from .glue_plan import CopyPlan
 
@@ -41,6 +42,8 @@ def resident_slot(provider, call, entry):
     """The persistent slot for the resident facade route, or None (native library route, or unsupported)."""
     from .resident_rrfs import ResidentFrameworkFacade
     if not FUSED or not isinstance(getattr(provider, 'native', None), ResidentFrameworkFacade):
+        if entry == _LAND:
+            _closures.require_resident('land', provider)
         return None
     slots = provider.__dict__.setdefault('_rrfs_ruc_resident', {})
     slot = slots.get(entry)
@@ -50,6 +53,8 @@ def resident_slot(provider, call, entry):
         except _Unsupported:
             slot = False
         slots[entry] = slot
+    if not slot and entry == _LAND:
+        _closures.require_resident('land', provider)
     return slot or None
 
 
@@ -448,6 +453,17 @@ class ResidentRucSlot:
 
     # ------------------------------------------------------------------ one call
     def run(self, call):
+        closure = _closures.ACTIVE if self.entry == _LAND else None
+        if closure is None:
+            return self._run(call)
+        # The run's surface closure (rrfs/closures): its transient skin shift undone before RUC steps, its flux and
+        # skin shifts laid on after, before the surface diagnostics and MYNN-EDMF read them.
+        closure.before_land_step(self.provider)
+        result = self._run(call)
+        closure.after_land_step(self.provider, call)
+        return result
+
+    def _run(self, call):
         cp = self.cp
         dt = self.dt if self.dt is not None else call.dt
         signature = (self._resolve(), dt)

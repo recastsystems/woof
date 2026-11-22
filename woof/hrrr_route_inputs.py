@@ -1435,7 +1435,7 @@ def route_input_paths(config_path: Path) -> dict[str, Path]:
 #: same edit in the importer's words with no way out.
 ROUTE_SHARED_DOMAIN_KEYS = ("bldt", "diff_6th_opt", "isfflx",
                             "mp_physics", "sf_sfclay_physics",
-                            "mynn_sfclay_variant", "ysu_version", "terrain_clock",
+                            "mynn_sfclay_variant", "ysu_version", "shinhong_version", "terrain_clock",
                             "diff_6th_form", "upper_wind_limiter_form",
                             "mp_zero_out", "mp_zero_out_thresh",
                             "mp_zero_out_all", "ruc_irrigation", "ruc_snow",
@@ -1564,6 +1564,11 @@ ROUTE_FORECAST_TOML_FIELDS: Mapping[str, str] = MappingProxyType({
     "cellcount_method": "woof/core/lightning.py, the lightning driver",
     "cldtop_adjustment": "woof/core/lightning.py, the lightning driver",
     "do_radar_ref": "woof/core/refl.py, the reflectivity diagnostic",
+    # The boundary hydrometeor envelope (ARWEN item 10): read when the
+    # forecast serves the root's ring, from the bound TOML; WRF has no key
+    # for it, so the pair cannot spell it.
+    "lbc_hydrometeor_envelope_km": (
+        "woof/ingest/lateral_bc.py ring_cell_radius, the ring hold"),
     # The wind-farm turbine table and its resolution limit: loaded with the
     # forecast's wind-farm scheme from the bound TOML; the pair spells no
     # turbine table.

@@ -599,17 +599,7 @@
         "source": "gpuwm/obs/nexrad.py:1"
       }
     },
-    "obs": {
-      "conventional": {
-        "source": "gpuwm/data/nwpsuite/receipts.v1.json#stock-mpas-jedi-30km-cycling-2026-10-04"
-      },
-      "gnssro": {
-        "source": "gpuwm/data/nwpsuite/receipts.v1.json#stock-mpas-jedi-30km-gnssro-radiance-2026-10-11"
-      },
-      "radiance": {
-        "source": "gpuwm/data/nwpsuite/receipts.v1.json#stock-mpas-jedi-30km-gnssro-radiance-2026-10-11"
-      }
-    },
+    "obs": {},
     "products": {
       "standard": {
         "door_products": "all",

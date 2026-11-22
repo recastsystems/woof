@@ -56,7 +56,7 @@ fall-through.
 | --- | --- |
 | `rw_mpas_init` | `--engine`, `$WOOF_HEX_RW_MPAS_INIT`, `$RW_MPAS_INIT`, `$WOOF_RW_MPAS_INIT`, woof bridge directories, `PATH` |
 | `rw_mpas_convert` | `--convert-exe`, `$WOOF_HEX_RW_MPAS_CONVERT`, `$MPAS_PORT_RW_MPAS_CONVERT`, `$WOOF_RW_MPAS_CONVERT`, woof bridge directories, `PATH` |
-| `rw_mpas_mesh` | `--mesh-exe` (`--engine` on `cull`), `$WOOF_HEX_RW_MPAS_MESH`, `$RW_MPAS_MESH`, `$WOOF_RW_MPAS_MESH`, woof bridge directories, `PATH` |
+| `rw_mpas_mesh` | `--mesh-exe` (`--engine` on `cull`), `$WOOF_HEX_RW_MPAS_MESH`, `$RW_MPAS_MESH`, `$WOOF_RW_MPAS_MESH`, this wheel's `woof/hex/libexec` (from 0.6.2 the wheel carries the geometry 2 generator), woof bridge directories, `PATH` |
 | `rw_wrfbatch` | `--renderer-exe`, `$WOOF_HEX_RW_WRFBATCH`, `$MPAS_PORT_RW_WRFBATCH`, `$WOOF_RW_WRFBATCH`, woof bridge directories, `PATH` |
 | `rw_mpas_geometry` | `$WOOF_HEX_RW_MPAS_GEOMETRY`, `$RW_MPAS_GEOMETRY`, `$WOOF_RW_MPAS_GEOMETRY`, this wheel's `woof/hex/libexec`, woof bridge directories, `PATH` |
 | `rw_mpas_stream` | `$WOOF_HEX_RW_MPAS_STREAM`, `$WOOF_RW_MPAS_STREAM`, this wheel's `woof/hex/libexec`, woof bridge directories, `PATH` |
@@ -146,7 +146,7 @@ by omission.
 - Distribution and command: `woof hex`. Import namespace: `woof.hex`,
   renamed from `mpas_port` at 0.2.0 and settled there (README, *The import
   namespace*). There is no alias shim.
-- Engine range: `gpuwm>=2.9.12,<2.10` is what pip enforces, inside the 2.9
+- Engine range: `gpuwm>=3.0.0,<3.1` is what pip enforces, inside the 3.0
   minor, derived from a measured table in `woof.hex.engine_pin` rather than
   typed. The floor is the engine whose bytes this release measured against
   the sixteen-file seam manifest; an engine inside the minor whose radiation
@@ -182,12 +182,12 @@ by omission.
   and the Arm and CORE-MATH maths (MIT). `NOTICE`, `THIRD-PARTY-NOTICES.txt`
   and `licenses/` state them. UGWP's CUDA ports ship and the RRFS stage runs
   the fork's NOAA GSL physics with no opt-in: the project treats them as US
-  Government code (owner ruling 2026-10-14; `NOTICE` sections 8 and 9).
+  Government code (2026-10-14; `NOTICE` sections 8 and 9).
   Withheld from the public distribution: the Noah-MP v5.0 CUDA port (UCAR
   terms forbid sale). No default runs code that cannot be sold: a selection
   of `config_lsm_scheme='sf_noahmp'` is refused unless the run names the
   terms with `--licence-opt-in ucar-noahmp` (`WOOF_HEX_LICENCE_OPT_IN`), and
-  such a run says so on its console and in `physics.licence_opt_in`. The Noah-MP that runs by default is the WOOF
+  such a run says so on its console and in `physics.licence_opt_in`. The Noah-MP that runs by default is the WOOF-ArWen
   suite's WRF-lineage v4.x (WRF public-domain notice), not MPAS-bitwise. This
   is not the version available from LANS and UCAR, and neither they nor their
   contributors endorse it.

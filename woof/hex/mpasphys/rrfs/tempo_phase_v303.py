@@ -79,18 +79,18 @@ def _float_shim(source: str) -> str:
 
 
 @lru_cache(maxsize=None)
-def _fast_column(tiny: str) -> str:
+def _fast_column(tiny: str, corrections: tuple = ()) -> str:
     from woof.hex.mpasphys.rrfs import tempo_v303 as t
-    return t._column_source("fast")
+    return t._column_source("fast", corrections)
 
 
-def fast_column() -> str:
+def fast_column(corrections: tuple = ()) -> str:
     """The fast column of tempo_v303 (rrfs/tempo-yolo: fixed-speed register sedimentation, a1 binary32
     arithmetic, the all-binary32 layer with its binary32 blob, constant-bank parameters and intrinsics, tiny
     graupel absent). The all-float layer already holds the blob in binary32, so the phase split's own blob and
     shim edits (_float_blob, _float_shim) are not applied over it."""
     import os
-    return _fast_column(os.environ.get("WOOF_HEX_TEMPO_TINY_MASS", "graupel").strip().lower())
+    return _fast_column(os.environ.get("WOOF_HEX_TEMPO_TINY_MASS", "graupel").strip().lower(), tuple(corrections))
 
 
 _SHAPE_OLD_START = "#ifndef TEMPO_WARP\n#define TEMPO_WARP 0\n#endif"
@@ -204,7 +204,7 @@ def _replace_once(source: str, old: str, new: str, what: str) -> str:
     return source.replace(old, new)
 
 
-def phase_column(column: str) -> str:
+def phase_column(column: str, corrections: tuple = ()) -> str:
     """The fast column for the (level, cell) phase kernels: level views, phase level loops, column steps out."""
     a = column.index(_SHAPE_OLD_START)
     b = column.index(_SHAPE_OLD_END) + len(_SHAPE_OLD_END)
@@ -277,8 +277,10 @@ TEMPO_HDN inline void get_t1_subl_one(const TempoParams& P, int nz, TPV<float> r
     cut = src.rfind("\n", 0, cut) if cut > 0 else src.index(marker)
     src = src[:cut] + one + src[cut:]
     # cloud_condensation: the serial RETURN at the first level with |ssatw| < eps, as a column stop level.
-    src = _replace_once(src, "    if (fabs(ssatw[k]) < PS(eps)) return;",
-                        "    if (k >= tempo_kstop) return;", "cloud_condensation RETURN")
+    # Correct mode TP1 (tempo_v303.corrected_sources) has no RETURN: the stop level is passed and not read.
+    if "TP1" not in corrections:
+        src = _replace_once(src, "    if (fabs(ssatw[k]) < PS(eps)) return;",
+                            "    if (k >= tempo_kstop) return;", "cloud_condensation RETURN")
     src = _replace_once(src, "    const float* rc, const float* nc, TempoTend& T) {\n  float clap;",
                         "    const float* rc, const float* nc, TempoTend& T, int tempo_kstop) {\n  float clap;",
                         "cloud_condensation signature")
@@ -679,13 +681,18 @@ def _tail_minblocks(variant: str) -> int:
 DEFAULT_INLINE = ""
 
 
-def phase_source(device_math_source: str, max_levels: int, inline: str = "") -> str:
+def phase_source(device_math_source: str, max_levels: int, inline: str = "", corrections: tuple = ()) -> str:
     """Module P: the phase column and the (level, cell) phase kernels."""
-    col = _inline(phase_column(fast_column()), "P" in inline.split("MB")[0].replace("TM", ""))
+    col = _inline(phase_column(fast_column(corrections), corrections), "P" in inline.split("MB")[0].replace("TM", ""))
     work, tend = layout(col)
     binding, words = _work_binding(work, tend)
     return (f"#define TEMPO_NZ_MAX {max_levels}\n" + _shared_pow(device_math_source) + device_math_source
-            + col + layout_macros(words, "TM" in inline) + binding + _PHASES)
+            + col + layout_macros(words, "TM" in inline) + binding + _tp6_phases(_PHASES, corrections))
+
+
+def _tp6_phases(phases: str, corrections) -> str:
+    from woof.hex.mpasphys.rrfs import tempo_v303 as t
+    return t.tp6_phases(phases, corrections)
 
 
 def _shared_pow(device_math_source: str) -> str:
@@ -954,16 +961,17 @@ extern "C" __global__ void TEMPO_TAIL_LB tempo_phase_tail(int nz, int cells, int
 """
 
 
-def tail_source(device_math_source: str, max_levels: int, inline: str = "") -> str:
+def tail_source(device_math_source: str, max_levels: int, inline: str = "", corrections: tuple = ()) -> str:
     """Module S: the binary32-blob fast column in the warp shape, the warp kernel and the phase tail."""
     from woof.hex.mpasphys.rrfs import tempo_v303 as t
-    col = _inline(fast_column(), "S" in inline.split("MB")[0].replace("TM", ""))
+    col = _inline(fast_column(corrections), "S" in inline.split("MB")[0].replace("TM", ""))
+    warp = t.corrected_sources(corrections)[2]
     work, tend = layout(col)
     words = len(work) + len(tend) + 1
     mb = _tail_minblocks(inline)
     lb = f"#define TEMPO_TAIL_LB __launch_bounds__(32, {mb})\n" if mb else ""
     return (f"#define TEMPO_NZ_MAX {max_levels}\n#define TEMPO_WARP 1\n" + lb + _shared_pow(device_math_source)
-            + device_math_source + col + t._WARP + layout_macros(words, "TM" in inline) + _tail_kernel(col, work, tend)
+            + device_math_source + col + warp + layout_macros(words, "TM" in inline) + _tail_kernel(col, work, tend)
             + t._mpas_source("fast"))
 
 
@@ -977,7 +985,7 @@ def _options():
 
 
 @lru_cache(maxsize=None)
-def _modules(device: int, device_math_source: str, max_levels: int, inline: str = ""):
+def _modules(device: int, device_math_source: str, max_levels: int, inline: str = "", corrections: tuple = ()):
     import cupy as cp
     from cupy.cuda import compiler, driver, function, runtime
     from woof.hex.cuda_backend.aot import direct_image
@@ -985,7 +993,8 @@ def _modules(device: int, device_math_source: str, max_levels: int, inline: str 
     with cp.cuda.Device(device):
         arch = compiler._get_arch()
         mods = []
-        for src in (phase_source(device_math_source, max_levels, inline), tail_source(device_math_source, max_levels, inline)):
+        for src in (phase_source(device_math_source, max_levels, inline, corrections),
+                    tail_source(device_math_source, max_levels, inline, corrections)):
             image = direct_image(src, _options(), arch)
             module = function.Module()
             module.load(image)
@@ -1002,7 +1011,7 @@ def _modules(device: int, device_math_source: str, max_levels: int, inline: str 
             from woof.backend import active_blocks_per_multiprocessor
             blocks = active_blocks_per_multiprocessor(kern.ptr, t.WARP_BLOCK, 0)
             resident[name] = max(1, sms * blocks) * (t.WARP_BLOCK // 32)
-        col = fast_column()
+        col = fast_column(corrections)
         work, tend = layout(col)
         words = len(work) + len(tend) + 1
         return mp, ms, sizes, resident, words
@@ -1052,7 +1061,7 @@ def _areas(device: int, nz: int, ntiles: int, words: int):
 
 
 def launch_steps(*, device, nz, cells, steps, dt, f, bl, s, profiles, tables, flags, first, presence, radii,
-                 device_math_source, force_warp=False):
+                 device_math_source, force_warp=False, first_column=True, corrections=()):
     """One fast TEMPO slot (all n_microp substeps): phases A, B, C per chunk, then the warp tail.
 
     Falls back to the binary32-blob warp kernel where the column has serial setup work the phases do not
@@ -1061,7 +1070,7 @@ def launch_steps(*, device, nz, cells, steps, dt, f, bl, s, profiles, tables, fl
     """
     import cupy as cp
     from woof.hex.mpasphys.rrfs import tempo_v303 as t
-    mp, ms, sizes, resident, words = _modules(device, device_math_source, nz, inline_mode())
+    mp, ms, sizes, resident, words = _modules(device, device_math_source, nz, inline_mode(), tuple(corrections))
     blob = float_blob(tables)
     aero, hail, ml_bl, melt = (int(bool(v)) for v in flags)
     tiles = -(-cells // 32)
@@ -1072,7 +1081,8 @@ def launch_steps(*, device, nz, cells, steps, dt, f, bl, s, profiles, tables, fl
         ms.get_function("tempo_warp_steps")((blocks,), (t.WARP_BLOCK,), (
             np.int32(nz), np.int32(cells), np.int32(steps), np.float32(dt), f,
             bl if bl is not None else np.uint64(0), s, profiles, blob,
-            np.int32(aero), np.int32(hail), np.int32(ml_bl), np.int32(melt), np.int32(bool(first)), np.int32(presence),
+            np.int32(aero), np.int32(hail), np.int32(ml_bl), np.int32(melt),
+            np.int32(bool(first) and bool(first_column)), np.int32(presence),
             states, work, blwork, np.uint64(0), np.uint64(0), np.int32(bool(radii))))
         return "warp"
     chunk = min(tiles, CHUNK_TILES)

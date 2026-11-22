@@ -234,7 +234,7 @@ class RustSoundingIO:
     def _run(self, *args, payload=None):
         import subprocess
         if self.executable is None:
-            raise RuntimeError("rw_mpas_soundings is missing: build the lane's rw-mpas sounding bridge")
+            raise RuntimeError("rw_mpas_soundings is missing: build the rw-mpas sounding bridge")
         return subprocess.run([str(self.executable),*map(str,args)],input=payload,
             stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True).stdout
 

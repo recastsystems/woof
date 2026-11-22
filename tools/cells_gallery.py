@@ -53,14 +53,14 @@ def stamp_of(path: str) -> str | None:
     return f"{m.group(1)}{m.group(2)}{m.group(3)}T{m.group(4)}{m.group(5)}{m.group(6)}Z"
 
 
-captions = ["# Storm cells over WOOF reflectivity\n",
+captions = ["# Storm cells over WOOF-ArWen reflectivity\n",
             f"Series root: `{root}`\n",
-            "Each image is WOOF's composite reflectivity for one frame, drawn by the "
+            "Each image is WOOF-ArWen's composite reflectivity for one frame, drawn by the "
             "Rust renderer (rw_wrfbatch), with the storm cells titan identified in "
             "that frame outlined in colour by track (thick line = the cell's footprint "
             "now; thin line in the same colour = titan's forecast footprint at the first "
             "lead). The label at each centroid is the track id, the cell's lifetime so "
-            "far in minutes, and WOOF's peak updraft inside the footprint in m/s.\n",
+            "far in minutes, and WOOF-ArWen's peak updraft inside the footprint in m/s.\n",
             "| frame | cells | tracks | strongest updraft | caption |",
             "|---|---|---|---|---|"]
 timings = []

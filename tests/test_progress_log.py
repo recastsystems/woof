@@ -1464,6 +1464,9 @@ def test_the_worker_doors_carry_the_progress_flags(tmp_path, monkeypatch):
                         lambda run, text, **kwargs: None)
     monkeypatch.setattr(metem_door, "check_analyzed_scalar_capabilities",
                         lambda run: None)
+    monkeypatch.setattr(metem_forecast, "announce_ocean",
+                        lambda run, run_seconds=None: None)
+    monkeypatch.setattr(metem_forecast, "lake_plan_lines", lambda run, **kwargs: ["lake state: stub"])
     inputs = SimpleNamespace(experiment=SimpleNamespace(
         start_time=datetime(2026, 5, 17, 18)), prepared_root=tmp_path / "prepared")
     # The substitution announcement reads the preparation's import record,
@@ -1542,6 +1545,9 @@ def test_the_worker_doors_publish_markers_with_no_flags_at_all(tmp_path, monkeyp
                         lambda run, text, **kwargs: None)
     monkeypatch.setattr(metem_door, "check_analyzed_scalar_capabilities",
                         lambda run: None)
+    monkeypatch.setattr(metem_forecast, "announce_ocean",
+                        lambda run, run_seconds=None: None)
+    monkeypatch.setattr(metem_forecast, "lake_plan_lines", lambda run, **kwargs: ["lake state: stub"])
     inputs = SimpleNamespace(experiment=SimpleNamespace(
         start_time=datetime(2026, 5, 17, 18)), prepared_root=tmp_path / "prepared")
     # The substitution announcement reads the preparation's import record,

@@ -29,7 +29,7 @@ exactly like a right one.
 
 CONVENTIONS are :mod:`woof.render`'s, imported rather than restated:
 the domain+resolution filename token (``d02-3km``), the subtitle line
-(``d02-3km | dx 3 km | valid ... | WOOF``), the recessive-axes panel,
+(``d02-3km | dx 3 km | valid ... | WOOF-ArWen``), the recessive-axes panel,
 the NWS 5-dBZ reflectivity scale, and the claims-map refusal that made
 v1.0.1 stop silently overwriting one nest's PNG with another's.  On top
 of them this module adds the two facts an ensemble product must carry:

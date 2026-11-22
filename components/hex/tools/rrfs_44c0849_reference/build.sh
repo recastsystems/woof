@@ -6,7 +6,14 @@ BUILD=$(realpath -m "$2")
 CORE=$3
 HERE=$(dirname "$(realpath "$0")")
 LEGACY="$HERE/../native_physics_reference/rrfs"
-OPT=${RRFS_FORK_CPU_OPT:?set RRFS_FORK_CPU_OPT to the fork CPU toolchain prefix (holds mpich/)}
+# RRFS_FORK_CPU_OPT: a prefix holding mpich/ (bin, lib) and pnetcdf/ (lib, bin) built with this gfortran.
+# The reference of record used MPICH 4.3.2 (ch4:ofi) and PnetCDF 1.14.1 with GNU Fortran 15.2.0; toolchain.txt
+# records what yours is. NETCDF is the netCDF-C/Fortran prefix (default /usr). RRFS_BUILD_CPUS pins the build to
+# those processors with taskset (for example 8-23); unset, the build uses every processor.
+OPT=${RRFS_FORK_CPU_OPT:?set RRFS_FORK_CPU_OPT to a prefix holding mpich/ and pnetcdf/ (see the lines above)}
+NETCDF_PREFIX=${NETCDF:-/usr}
+PIN=()
+if [ -n "${RRFS_BUILD_CPUS:-}" ]; then PIN=(taskset -c "$RRFS_BUILD_CPUS"); fi
 export PATH="$OPT/mpich/bin:$PATH"
 export LD_LIBRARY_PATH="$OPT/mpich/lib:${LD_LIBRARY_PATH:-}"
 export MPICH_FC=gfortran MPICH_CC=gcc MPICH_CXX=g++
@@ -28,14 +35,14 @@ export RRFS_COMPILE_RECEIPT="$BUILD/compile-commands.jsonl"
     gfortran --version | head -1
     "$OPT/mpich/bin/mpichversion"
     getconf GNU_LIBC_VERSION
-    taskset -pc $$
+    taskset -pc $$ 2>/dev/null || true
     sha256sum "$OPT/pnetcdf/lib/libpnetcdf.a"
     nf-config --all
 } > "$BUILD/toolchain.txt"
 export PATH="$BUILD/compiler-shim:$PATH"
 cd "$BUILD"
 ulimit -s unlimited
-timeout 3600 nice -n 10 taskset -c 8-23 make -j 8 gfortran CORE="$CORE" PRECISION=single MUSICA=false STOCHASTIC_PHYSICS=false PNETCDF="$OPT/pnetcdf" NETCDF=/usr > build.log 2>&1
+timeout 3600 nice -n 10 "${PIN[@]}" make -j 8 gfortran CORE="$CORE" PRECISION=single MUSICA=false STOCHASTIC_PHYSICS=false PNETCDF="$OPT/pnetcdf" NETCDF="$NETCDF_PREFIX" > build.log 2>&1
 test -x "${CORE}_model"
 python3 "$LEGACY/audit_flags.py" "$BUILD" --recipe gnu-strict --core "$CORE" --out "$BUILD/flag-audit.json"
 sha256sum "${CORE}_model" > executable.sha256

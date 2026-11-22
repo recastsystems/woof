@@ -110,7 +110,7 @@ renderer theme accepts an explicit `colormaps.levels` row in displayed units;
 use the same row for every arm and time, for example:
 
 ```json
-{"text":{"model_label":"WOOF"},"colormaps":{"levels":{
+{"text":{"model_label":"WOOF-ArWen"},"colormaps":{"levels":{
   "wind_speed_10m_agl":[0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160]
 }}}
 ```

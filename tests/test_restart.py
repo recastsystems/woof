@@ -1278,7 +1278,7 @@ def test_the_advective_forcing_pair_roundtrips_and_only_where_it_exists(
     consumer must not gain two archive members, or every checkpoint on
     disk for every other configuration would stop resuming.
     """
-    cfg = _cfg(moist=True, mp_physics=10, cu_physics=3, cudt_minutes=0.0)
+    cfg = _cfg(moist=True, mp_physics=10, cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=0.0)
     state, _ = _grell_freitas_shim_state(cfg, monkeypatch)
     _fill_setup(state)
     _fill_serialized(state, seed=20260820)
@@ -1316,7 +1316,7 @@ def test_a_checkpoint_predating_the_advective_export_is_refused_by_name(
     difference by eye and then guess whether it was recoverable.  Refusals
     name the breakage AND the remedy.
     """
-    cfg = _cfg(moist=True, mp_physics=10, cu_physics=3, cudt_minutes=0.0)
+    cfg = _cfg(moist=True, mp_physics=10, cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=0.0)
     state, _ = _grell_freitas_shim_state(cfg, monkeypatch)
     _fill_setup(state)
     _fill_serialized(state, seed=20260820)
@@ -4732,7 +4732,7 @@ def _grell_freitas_tree(monkeypatch, *, seed=61):
 
     def build(grid_id, nested, payload):
         cfg = _cfg(grid_id=grid_id, nested=nested, moist=True,
-                   cu_physics=3, cudt_minutes=0.0, run_seconds=60.0)
+                   cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=0.0, run_seconds=60.0)
         state, driver = _shim_driver_state(cfg, monkeypatch)
         _fill_setup(state)
         _fill_serialized(state, payload)
@@ -5273,7 +5273,7 @@ def _grell_freitas_state(cp):
         # radt 6 min on a 60 s step -> stepra 6, so radiation is due at
         # itimestep % 6 == 1 and the step-20 checkpoint is OFF its calendar.
         ra_physics=4, radt_minutes=6.0, bldt=0.0,
-        cu_physics=3, cudt_minutes=0.0, ishallow=1))
+        cu_physics=3, cu_gf_version="wrf_461", cudt_minutes=0.0, ishallow=1))
     coord = make_vertical_coord(cfg.nz)
 
     def theta(z):

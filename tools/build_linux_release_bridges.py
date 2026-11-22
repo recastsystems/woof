@@ -3,6 +3,14 @@
 This script also runs inside the same image under a daemonless container runner.
 The source checkout, compiler copy, Cargo target and qualified output are explicit;
 the script never obtains native artifacts from a checkout's target directories.
+
+To rebuild a shipped bridge byte for byte, run this script at the commit the
+binary's own ``GPUWM_BRIDGE_SOURCE_REV=`` stamp names: the public release commit
+(a clone of the public repository), not the private release branch, whose
+comments and line numbers differ, with that clone mounted at ``/src``
+(``RELEASE_SOURCE``) in the pinned image.  The Cargo profile the release builds
+under (``RELEASE_PROFILE``) is applied here, so a run by hand gives the cut's
+bytes.  The report's ``release_reproducible`` says whether a build was set up so.
 """
 from __future__ import annotations
 
@@ -37,6 +45,24 @@ WORKSPACES = ("tools/aerosol_grid", "tools/grib1_bridge", "tools/region_global_d
               "tools/ocean_prepare", "tools/waves_data", "tools/rw-bathy", "tools/wind-table",
               "tools/dfi-runtime", "tools/tslist_bridge",
               "tools/storm_merge", "tools/tc_frames_io", "tools/tc_vitals", "tools/tc-verify")
+# The Cargo profile overrides every release bridge is built under: the same
+# table as tools/release/cut/native.py WHEEL_PROFILE, which the cut passes in
+# the environment (tools/release/cut/test_native_profile.py holds the two
+# equal).  Applied when the caller sets no CARGO_PROFILE_* of its own, and
+# written into the report either way.  Breakage this prevents (2026-11-13): run
+# by hand at 2.9.13 this script built without the cut's fat LTO, and its
+# rw_wrfbatch (27,841,184 bytes) could not be compared with the shipped one
+# (25,137,824 bytes), so the shipped renderer could not be rebuilt from its
+# recipe.  --crate-profile builds under the crates' own release profile.
+RELEASE_PROFILE = {"CARGO_PROFILE_RELEASE_LTO": "fat"}
+PROFILE_PREFIX = "CARGO_PROFILE_"
+# Where the cut mounts the source checkout (tools/release/cut/native.py
+# build_linux).  The bytes depend on it even though the path is remapped in
+# the binaries' strings: at 2.9.13's public commit, fat LTO, the same image and
+# toolchain, a checkout mounted at /usr/src/gpuwm gave rw_wrfbatch 9d5c6933 and
+# one mounted here gave the shipped 6818d9f2 (2026-11-13).  Any path builds;
+# only this one reproduces a release, and the report says which it was.
+RELEASE_SOURCE = "/src"
 CONTEXT_NAME = ".arwen-manylinux-build-context.json"
 CONTEXT_SCHEMA = "arwen.manylinux.build-context.v1"
 
@@ -355,6 +381,24 @@ def emit_artifacts(output: Path, artifacts: list[dict]) -> list[dict]:
     return result
 
 
+def cargo_profile_settings(environment: dict[str, str], *, crate_profile: bool = False) -> dict[str, str]:
+    """The Cargo profile overrides this build runs under, sorted.
+
+    The caller's own CARGO_PROFILE_* settings win (the cut passes its table);
+    with none, RELEASE_PROFILE, unless ``crate_profile`` asks for the crates' own.
+    """
+    given = {name: value for name, value in environment.items() if name.startswith(PROFILE_PREFIX)}
+    if not given and not crate_profile:
+        given = dict(RELEASE_PROFILE)
+    return dict(sorted(given.items()))
+
+
+def release_reproducible(source: Path, cargo_profile: dict[str, str]) -> dict[str, bool]:
+    """Whether this build is set up as the cut sets up a release's (see RELEASE_SOURCE)."""
+    return {"source_at_release_path": source.as_posix() == RELEASE_SOURCE,
+            "release_cargo_profile": cargo_profile == dict(sorted(RELEASE_PROFILE.items()))}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=Path(__file__).resolve().parents[1])
@@ -367,6 +411,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--image", default=IMAGE)
     parser.add_argument("--jobs", type=int, default=16)
     parser.add_argument("--reuse-target", action="store_true")
+    parser.add_argument("--crate-profile", action="store_true",
+                        help="build under the crates' own release profile, not RELEASE_PROFILE "
+                             "(the bytes then differ from a release's)")
     parser.add_argument("--workspace", action="append", choices=WORKSPACES,
                         help="build and qualify only this workspace's artifacts (repeatable); "
                              "the release cut reuses the others from a build whose inputs are unchanged")
@@ -398,6 +445,8 @@ def main(argv: list[str] | None = None) -> int:
                        GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="safe.directory", GIT_CONFIG_VALUE_0=str(source),
                        GIT_OPTIONAL_LOCKS="0")
     environment["CARGO_BUILD_JOBS"] = str(args.jobs)
+    cargo_profile = cargo_profile_settings(environment, crate_profile=args.crate_profile)
+    environment.update(cargo_profile)
     environment["CARGO_ENCODED_RUSTFLAGS"] = "\x1f".join((
         f"--remap-path-prefix={Path.home()}=/users",
         f"--remap-path-prefix={source}=/usr/src/gpuwm",
@@ -409,7 +458,12 @@ def main(argv: list[str] | None = None) -> int:
     report = {"schema": "arwen.manylinux.release-build.v1", "status": "FAILED",
               "image": args.image, "helper": file_identity(Path(__file__).resolve()),
               "image_binding": "The invoking Docker digest or daemonless runtime receipt binds the image; this process verifies its glibc and toolchain.",
-              "started_utc": now(), "source_revision": args.revision, "commands": commands.records}
+              "started_utc": now(), "source_revision": args.revision, "cargo_profile": cargo_profile,
+              "release_reproducible": release_reproducible(source, cargo_profile),
+              "commands": commands.records}
+    if not all(report["release_reproducible"].values()):
+        print("note: these bytes will not equal a release's: " + json.dumps(report["release_reproducible"]),
+              flush=True)
     marker = context = None
     try:
         require(sys.platform == "linux", "this helper must run inside the Linux baseline image")

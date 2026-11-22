@@ -8,6 +8,8 @@ package activation and native attributes. File I/O is rw_mpas_stream Rust.
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -210,7 +212,15 @@ class HistoryStreamOptions:
 
     @property
     def netcdf_format(self) -> str:
+        if os.environ.get("WOOF_HEX_NETCDF_64BIT", "0").strip().lower() in ("1", "true", "yes", "on"):
+            return "NETCDF4" if self.io_type == "netcdf4" else "NETCDF3_64BIT_DATA"
         return {"netcdf4":"NETCDF4", "pnetcdf,cdf5":"NETCDF3_64BIT_DATA"}.get(self.io_type,"NETCDF3_64BIT_OFFSET")
+
+    def netcdf_format_for_max_var_bytes(self, max_var_bytes: int) -> str:
+        fmt = self.netcdf_format
+        if fmt == "NETCDF3_64BIT_OFFSET" and int(max_var_bytes) >= (1 << 31):
+            return "NETCDF3_64BIT_DATA"
+        return fmt
 
 
 def format_mpas_filename(template: str, valid_time: datetime | str) -> str:

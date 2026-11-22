@@ -23,47 +23,59 @@ from ..physics_suites import load_table
 SCHEMA = "mpas-port.physics-driver-v842/v1"
 _RELEASED_TENDENCIES = object()
 
-#: The correct-mode switch (the correct-mode key of 2026-10-13): ``config_physics_mode`` in
+#: The correct-mode switch: ``config_physics_mode`` in
 #: &nhyd_model, "exact" (default, MPAS-A v8.4.2 word for word) or "correct".  An optional
 #: ``config_physics_correct_skip`` lists finding ids to leave uncorrected inside correct mode (the
 #: per-correction observation A/B).  Any other mode value is refused by name.
 PHYSICS_MODES = ("exact", "correct")
 
-#: Corrections this driver knows, by finding id (TRIAGE.md cluster 4, mpas-rad-pbl-lsm-seaice).  "driver"
+#: Corrections this driver knows, by finding id (radiation, PBL, land-surface and sea-ice findings).  "driver"
 #: corrections are applied here; "slots" lists the (slot, schemes) whose implementation must declare the id
 #: when the correction is active, so a correct-mode run never silently executes an uncorrected scheme.  A
 #: native-cpu slot is pristine MPAS v8.4.2 and declares none; a hex-cuda slot declares what its table
 #: descriptor lists under "corrections".  When an active slot's implementation does not declare an active
-#: finding, the run is not refused (coordinator ruling 2026-10-14, default correct): the finding is left out
-#: of the run as a whole and listed as a NAMED GAP in the receipt and on the console.  "owners" names the
-#: follow-up owner of each such gap (the lane that owns the slot implementation; a dict when it depends on the
-#: scheme), from the 2026-10-13 radiation/PBL/LSM/sea-ice scheme review ("Scheme lanes still to do").
-#: Follow-up owners of the findings that act outside the MPAS suite route (rows with "hex_route" below).
+#: finding, the run is not refused (correct mode is the default): the finding is left out
+#: of the run as a whole and listed as a NAMED GAP in the receipt and on the console.  "owners" names, in a
+#: user's words, the part of hex that closes each such gap: the slot implementation that would have to declare
+#: the finding (a dict when it depends on the scheme).  The run record's gap rows carry it as ``owner``.
+#: Where the findings that act outside the MPAS suite route are closed (rows with "hex_route" below).
 _ENGINE_OWNER = "woof engine with woof.correct_mode (engine 2.9.0 and later)"
 _LBC_OWNER = "woof engine rw_mpas_lbc with --physics-mode (engine 2.9.0 and later)"
 _IAU_OWNER = "hex IAU door (woof.hex.iau_v842 correct kernels wired into the forecast)"
+#: The slot implementations named more than once in the table below.
+_PBL_MYNN = "hex MYNN-EDMF boundary-layer port (bl_mynn)"
+_SFCLAY_MM5 = "hex MM5 surface-layer port (sf_monin_obukhov, sf_monin_obukhov_rev)"
+_MP_WSM6 = "hex WSM6 microphysics port (mp_wsm6)"
 CORRECTIONS_V842: Mapping[str, Mapping[str, Any]] = MappingProxyType({
     # RP1: bl_mynn_post.F multiplies condensate by 1+sqv (not 1/(1-sqv)) and bl_mynn_pre.F divides snow by
     # 1+qs: with zero MYNN tendencies cloud water is lost every call (1.7 % per 900 s at dt 20 s).
     "RP1": {"slots": {"pbl": ("bl_mynn",)},
-            "owners": {"pbl": "p12-bl-mynn"},
+            "owners": {"pbl": _PBL_MYNN},
             "breakage": "MYNN removes cloud water, ice and snow on every call even with zero tendencies"},
     # RP3: mpas_atmphys_lsm_shared.F:42-52 feeds the blended skin temperature back as the ice temperature;
     # the surface layer's ice part uses the blend too (mpas_atmphys_driver_sfclayer.F:428).
     "RP3": {"slots": {"seaice": None, "surface_layer": None},
-            "owners": {"seaice": "p18-seaice",
-                       "surface_layer": {"sf_mynn": "p10-sf-mynn", "sf_monin_obukhov": "p9-sfclay-mm5",
-                                         "sf_monin_obukhov_rev": "p9-sfclay-mm5"}},
+            "owners": {"seaice": "hex sea-ice port (seaice slot)",
+                       "surface_layer": {"sf_mynn": "hex MYNN surface-layer port (sf_mynn)",
+                                         "sf_monin_obukhov": _SFCLAY_MM5, "sf_monin_obukhov_rev": _SFCLAY_MM5}},
             "breakage": "fractional sea-ice cells lose their ice temperature between calls (up to 29 K)"},
     # RP7: mynn_tendencies (bl_mynn_subroutines.F90:3102) takes the lowest layer's pressure thickness as the full
     # surface pressure minus the hydrostatic interface pressure; a near-surface non-hydrostatic deficit makes it
     # zero or negative and moisture_check (F90:4149-4150) divides by it (bl_mynn_v842.MYNN_TEXT_CORRECTIONS).
     "RP7": {"slots": {"pbl": ("bl_mynn",)},
-            "owners": {"pbl": "p12-bl-mynn"},
+            "owners": {"pbl": _PBL_MYNN},
             "breakage": "MYNN's lowest-layer pressure thickness can be zero, and 0/0 in its moisture check made the "
                         "vapour tendency NaN in one column; the dycore then refused the step with ~4,100 whole "
                         "columns non-finite (x1.40962 120 km plain hex, 2021-07-01 start at day 19.2 and 2020-01-01 "
                         "start at day 77.2)"},
+    # RP8: the BouLac downward length takes the wrong sign where two adjacent levels have equal theta
+    # (bl_mynn_subroutines.F90:1327 and 1482; NCAR/MYNN-EDMF PR 94, bl_mynn_v842.MYNN_TEXT_CORRECTIONS).  Only
+    # config_mynn_mixlength = 1 reaches it.
+    "RP8": {"slots": {"pbl": ("bl_mynn",)},
+            "owners": {"pbl": _PBL_MYNN},
+            "breakage": "with config_mynn_mixlength = 1 (the hrrr-like profile) the BouLac downward mixing length is "
+                        "short by twice the distance a parcel travels into a layer of equal theta (NCAR/MYNN-EDMF "
+                        "issue 93)"},
     # RP4: refused at resolution, see resolve_namelist (native correct mode refuses it too).
     "RP4": {"slots": {}, "owners": {},
             "breakage": "config_mynn_tkeadvect resets TKE to the never-advected qke_adv every call"},
@@ -74,11 +86,11 @@ CORRECTIONS_V842: Mapping[str, Mapping[str, Any]] = MappingProxyType({
     # since their last call (WRF RAINBL, module_surface_driver.F); the driver does that for every
     # implementation with the surface precipitation window (accumulate/open/close glue, see begin_step).
     "RP6": {"slots": {"land_surface": ("sf_noahmp",)},
-            "owners": {"land_surface": "p17-noahmp"},
+            "owners": {"land_surface": "hex Noah-MP land-surface port (sf_noahmp)"},
             "breakage": "config_pbl_interval integrates the surface and PBL schemes interval/dt times too long"},
     # Findings that act OUTSIDE the MPAS suite route: the ArWen column route's engine corrections and the
-    # IAU and boundary doors' findings.  One finding table for every route (integrator ruling 2026-10-14;
-    # lane H1).  "slots" and "owners" stay empty because no MPAS physics slot implements them, so the suite
+    # IAU and boundary doors' findings.  One finding table for every route.  "slots" and "owners" stay empty
+    # because no MPAS physics slot implements them, so the suite
     # route never activates them; "hex_route" says where each one acts, which woof.hex.correct_mode reads.
     "WB4": {"slots": {}, "owners": {},
             "hex_route": {"route": "arwen-column", "slot": "convection", "scheme": "ntiedtke",
@@ -118,8 +130,8 @@ CORRECTIONS_V842: Mapping[str, Mapping[str, Any]] = MappingProxyType({
     # the flat cell mean (mp_wsm6.F90:1984, :2254) while the remap moves it with a sloped profile; the
     # surface accounting then gains or loses water with the slope's sign.
     "WB5": {"slots": {"microphysics": ("mp_wsm6",)},
-            "owners": {"microphysics": "p2-wsm6"},
-            # WB5 also acts on the ArWen column route, in the engine (one row, lane H1).
+            "owners": {"microphysics": _MP_WSM6},
+            # WB5 also acts on the ArWen column route, in the engine (one row).
             "hex_route": {"route": "arwen-column", "slot": "microphysics", "scheme": "wsm6",
                           "lives": "engine (woof.correct_mode)", "owner": _ENGINE_OWNER,
                           "what": "WSM6 below-ground partial cell booked with the remap's own profile "
@@ -127,8 +139,11 @@ CORRECTIONS_V842: Mapping[str, Mapping[str, Any]] = MappingProxyType({
             "breakage": "WSM6 books the below-ground part of the falling cell at the flat mean while the remap "
                         "moves it with a sloped profile, so column plus surface water is not conserved"},
     "WB3": {"slots": {"microphysics": None},
-            "owners": {"microphysics": {"mp_wsm6": "p2-wsm6", "mp_thompson": "p3-thompson",
-                                        "mp_thompson_aerosols": "p4-thompson-aerosols", "mp_kessler": "p1-kessler"}},
+            "owners": {"microphysics": {"mp_wsm6": _MP_WSM6,
+                                        "mp_thompson": "hex Thompson microphysics port (mp_thompson)",
+                                        "mp_thompson_aerosols": "hex aerosol-aware Thompson microphysics port "
+                                                                "(mp_thompson_aerosols)",
+                                        "mp_kessler": "hex Kessler microphysics port (mp_kessler)"}},
             "breakage": "precipitable water divides the dry density by (1+qv) a second time (0.6 % low, up to 1.3 %)"},
 })
 #: The reason every slot gap carries, and what the run does instead.
@@ -137,10 +152,10 @@ NATIVE_CPU_GAP_NOTE = ("native-cpu slots run pristine MPAS v8.4.2 and can never 
                        "a hex-cuda implementation that declares the finding closes this gap")
 GAP_RUNS = "native MPAS v8.4.2 behaviour for this finding (as exact mode)"
 #: RP6 under a native-file restart: the surface precipitation window lives on the device and the pristine
-#: Registry restart stream cannot hold it (see runtime_v842.run_native_dynamics).  Owner from REPORT.md section 3.
+#: Registry restart stream cannot hold it (see runtime_v842.run_native_dynamics).
 RP6_RESTART_GAP = {"slot": "restart", "scheme": None, "backend": None,
                    "reason": "the port's native-file restart cannot hold the surface precipitation window",
-                   "owner": "MPAS integrator (with f3's checkpoint provider)"}
+                   "owner": "hex restart (a checkpoint that carries the surface precipitation window)"}
 #: RP6 (correct mode with config_pbl_interval): driver glue that hands the land-surface and sea-ice schemes the
 #: precipitation added up since their last call, as the native correct-mode build does with rainncv_bl, raincv_bl,
 #: snowncv_bl, graupelncv_bl and sr_bl (mpas_atmphys_lsm_shared.F precip_window_add/precip_window_reset).
@@ -180,6 +195,22 @@ class CpuSlot:
     def as_dict(self) -> dict[str, str]:
         return {"slot": self.slot, "scheme": self.scheme, "backend": str(Backend.NATIVE_CPU),
                 "reason": self.reason}
+
+
+def slot_cuda_entry(config: Any, rows: Mapping[str, Any], slot: str, scheme: str) -> Mapping[str, Any] | None:
+    """A slot's CUDA descriptor for this run: the table row's entry with the run's suite version laid over it.
+
+    ``rows`` is the route row's ``slots``.  A version (``config.mynn_version``, the row's ``mynn_versions``)
+    replaces only the keys it names for the slot/scheme it names; "pinned", and every other slot, return the
+    row's own entry unchanged."""
+    entry = (rows.get(slot, {}).get("cuda_entries") or {}).get(scheme)
+    version = getattr(config, "mynn_version", "pinned")
+    if entry is None or version == "pinned":
+        return entry
+    table = load_table()[getattr(config, "table_key", "mpasphys_v842")]
+    overlay = (table["mynn_versions"]["versions"][version].get("cuda_entries", {})
+               .get(slot, {}).get(scheme))
+    return {**entry, **overlay} if overlay else entry
 
 
 def gpu_port_absence(row_key: str, slot: str, scheme: str) -> str | None:
@@ -272,8 +303,8 @@ class CorrectionGap:
     note: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        # finding / slot / reason / owner are the names downstream readers key on (integrator, 2026-10-14);
-        # the rest is detail.  owner is the follow-up owner of the gap.
+        # finding / slot / reason / owner are the names downstream readers key on; the rest is detail.
+        # owner names, in a user's words, the part of hex that closes the gap.
         result = {"finding": self.finding, "slot": self.slot, "reason": self.reason, "owner": self.owner,
                   "scheme": self.scheme, "backend": self.backend, "runs": GAP_RUNS,
                   "breakage": CORRECTIONS_V842[self.finding]["breakage"]}
@@ -302,6 +333,20 @@ class DriverConfig:
     tc_surface: Mapping[str, str] = field(default_factory=dict)
     #: --ocean-mode pwp on this route (woof.hex.mpasphys.ocean_pwp_v842): the PWP column table the OML slot runs.
     ocean_pwp: Mapping[str, Any] = field(default_factory=dict)
+    #: The selected MYNN suite version (``config_mynn_version``, the route table's ``mynn_versions``); "pinned"
+    #: is the row's own CUDA entries.  Never written into the native Registry.
+    mynn_version: str = "pinned"
+    #: MMM-physics generation for YSU and the revised MM5 layer (mmm_version.configure); None is the a4baf7f
+    #: pin.  Engine extension; never written into the native Registry.
+    mmm: Mapping[str, Any] | None = None
+    #: The KIM drag's choice (gwdo_version.configure: version and the MPAS PR #1409 knobs) when the run selects
+    #: bl_kim_gwdo; None on every other drag (the v8.4.2 pin).  Engine extension; gwdo_version never enters the
+    #: native Registry (the two knobs do, with bl_kim_gwdo, as PR #1409 adds them).
+    gwdo: Mapping[str, Any] | None = None
+    #: The learned or symbolic surface and boundary-layer closure the run selects (woof.hex.mpasphys.rrfs.closures
+    #: .configure); None, every option off, is the plain model.  Engine extension; never written into the native
+    #: Registry.
+    closure: Mapping[str, Any] | None = None
 
     def cpu_warning(self) -> str | None:
         """The loud start-up lines naming each active slot that runs on the CPU, or None when none does."""
@@ -328,15 +373,16 @@ class DriverConfig:
     def gap_warning(self) -> str | None:
         """The loud multi-line startup warning naming each gap, or None when there is none.
 
-        It begins ``CORRECT MODE: named gaps`` (the spelling downstream readers match, integrator 2026-10-14)
-        and every line carries the ``CORRECT MODE:`` prefix."""
+        It begins ``CORRECT MODE: named gaps`` (the spelling downstream readers match) and every line carries the
+        ``CORRECT MODE:`` prefix."""
         if self.mode == "exact" or not self.gaps:
             return None
         lines = [f"CORRECT MODE: named gaps ({len(self.gaps)}): WARNING, these corrections are NOT applied "
                  f"in this run, which runs {GAP_RUNS} instead:"]
         for gap in self.gaps:
             where = gap.slot if gap.scheme is None else f"{gap.slot}/{gap.scheme} ({gap.backend})"
-            lines.append(f"CORRECT MODE:   {gap.finding} on {where}: {gap.reason}; owner {gap.owner}. "
+            # The gap and its reason only; the run record's gap rows also say which part of hex closes it.
+            lines.append(f"CORRECT MODE:   {gap.finding} on {where}: {gap.reason}. "
                          f"Native defect left in: {CORRECTIONS_V842[gap.finding]['breakage']}.")
         lines.append(f"CORRECT MODE:   applied corrections: {', '.join(sorted(self.corrections)) or 'none'}; "
                      f"--physics-mode exact runs native MPAS v8.4.2 bit for bit.")
@@ -385,8 +431,8 @@ class DriverConfig:
         result = {"schema": SCHEMA, "suite": self.suite,
                   "selectors": dict(self.selectors), "options": dict(self.options),
                   "backends": {s: str(b) for s, b in self.backends.items()}}
-        # Service backends (the surface-update glue, i5) appear only when one is moved off its native-cpu
-        # default, so default and exact receipts stay word for word what they were (integrator, 2026-10-14).
+        # Service backends (the surface-update glue) appear only when one is moved off its native-cpu
+        # default, so default and exact receipts stay word for word what they were.
         if any(b != Backend.NATIVE_CPU for b in self.service_backends.values()):
             result["service_backends"] = {s: str(b) for s, b in self.service_backends.items()}
         if self.cpu_slots:
@@ -395,6 +441,17 @@ class DriverConfig:
             result["tc_surface"] = dict(self.tc_surface)
         if self.ocean_pwp:
             result["ocean_pwp"] = dict(self.ocean_pwp)
+        if self.mmm:
+            from .mmm_version import PINNED_OPTIONS
+            # A pinned choice leaves the receipt word for word what it was before the option existed.
+            if dict(self.mmm) != dict(PINNED_OPTIONS):
+                result["mmm"] = dict(self.mmm)
+        if self.gwdo:
+            # Only KIM runs carry it: a v8.4.2-drag receipt is word for word what it was before the knob existed.
+            result["gwdo"] = dict(self.gwdo)
+        if self.closure:
+            # Only runs with a closure on carry it: an off receipt is word for word what it was before the options.
+            result["closure"] = dict(self.closure)
         # Exact-mode receipts stay word for word what they were before the switch existed.
         if self.mode != "exact":
             result.update(physics_mode=self.mode, corrections=sorted(self.corrections),
@@ -435,6 +492,8 @@ def _active_corrections(selectors: Mapping[str, str], options: Mapping[str, Any]
     if on("pbl") and selectors["pbl"] == "bl_mynn":
         active.add("RP1")
         active.add("RP7")
+        if int(options.get("config_mynn_mixlength", 2)) == 1:
+            active.add("RP8")
     if on("seaice") and on("land_surface") and options.get("config_frac_seaice", False):
         active.add("RP3")
     if on("pbl") and selectors["pbl"] == "bl_mynn" and options.get("config_mynn_tkeadvect", False):
@@ -491,7 +550,9 @@ def _gap_owner(finding: str, slot: str, scheme: str | None) -> str:
     owner = CORRECTIONS_V842[finding].get("owners", {}).get(slot)
     if isinstance(owner, Mapping):
         owner = owner.get(scheme)
-    return owner or "MPAS integrator (no lane named for this slot)"
+    if owner:
+        return owner
+    return f"hex {slot} port ({scheme})" if scheme else f"hex {slot} port"
 
 
 def settle_corrections(config: DriverConfig, requested: Iterable[str],
@@ -501,7 +562,7 @@ def settle_corrections(config: DriverConfig, requested: Iterable[str],
 
     A finding is applied only when every active slot it lives in has an implementation that declares it;
     otherwise none of it is applied (no half-corrected finding) and each slot lacking it is a named gap.
-    Coordinator ruling 2026-10-14: a gap is listed in the receipt and printed loudly, never refused."""
+    A gap is listed in the receipt and printed loudly, never refused."""
     applied, gaps = set(), []
     for finding in sorted(requested):
         missing = []
@@ -530,7 +591,7 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
                      declarations: Declarations = table_declarations) -> DriverConfig:
     """MPAS control resolution; mpas_atmphys_control.F:92-332.
 
-    Only the native suite route uses this resolver. WOOF's resolver and its
+    Only the native suite route uses this resolver. WOOF-ArWen's resolver and its
     default remain separate. All physics Registry values travel to native hooks.
 
     ``default_backend`` None is the library default for module replays: every slot native-cpu and no
@@ -557,6 +618,9 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
         if not valid:
             raise ValueError(f"{name} requires MPAS Registry type {kind}")
         options[key] = float(value) if kind == "real" else value
+    # config_radt_mcica_seed: a misspelled rule refuses here, by name, before any card (mcica_seed_rule.mode).
+    from .mcica_seed_rule import mode as _mcica_seed_mode
+    _mcica_seed_mode(options)
     suite = options["config_physics_suite"].strip()
     if suite not in spec["suite_routes"]:
         raise ValueError(f"{suite!r} has no MPAS v8.4.2 driver suite route")
@@ -601,7 +665,7 @@ def resolve_namelist(text: str, *, backends: Mapping[str, str] | None = None,
     # A GPU route that updates SST, sea ice, greenness and deep soil from a surface series takes the
     # surface-update service on the GPU too. Left on its native-cpu table default, config_sst_update
     # made framework_only false, so the route asked for the native MPAS library and Fortran referee
-    # resources a user install does not carry (hex-hybrid-longrange 10-day run, 2026-10-26).
+    # resources a user install does not carry (seen on a 10-day run).
     # An explicit config_surface_update_backend still wins; module replays (library) keep native-cpu.
     if (not library and options.get("config_sst_update") and "surface_update" in services
             and str(default_backend) in services["surface_update"]["backends"]):
@@ -660,7 +724,7 @@ def route_namelist(text: str, *, physics_mode: str | None = None,
     """Explicit native-suite door route; mpas_atmphys_control.F:92-332.
 
     The table selects the backend row. A missing suite retains the existing
-    WOOF default. Returning None means the caller uses its existing resolver;
+    WOOF-ArWen default. Returning None means the caller uses its existing resolver;
     slot backend overrides require an explicitly selected native suite.
     ``default_backend`` (``--physics-default-backend``) replaces the row's default for every slot that
     names no backend of its own.
@@ -848,6 +912,9 @@ class SlotCall:
     #: Finding ids correct mode applies in this run (empty in exact mode); a slot implementation that
     #: declared an id at registration applies that correction when the id is present here.
     corrections: frozenset[str] = frozenset()
+    #: The run's MMM-physics choice (mmm_version.resolve: version, kim_tofd, tofd_factor) for YSU and the
+    #: revised MM5 surface layer; None is the a4baf7f pin (module replays, library resolutions).
+    mmm: Mapping[str, Any] | None = None
 
 
 class DriverHooks(Protocol):
@@ -900,7 +967,7 @@ class SlotRegistry:
         if missing:
             raise RuntimeError(f"MPAS physics slot implementations not registered: {missing}")
         # Correct mode: a finding a slot does not implement was settled at resolution into a NAMED GAP
-        # (settle_corrections; coordinator ruling 2026-10-14, never a refusal), so config.corrections holds
+        # (settle_corrections, never a refusal), so config.corrections holds
         # only findings every active slot implements.  What remains to check is that the registered
         # implementations are the ones that settlement read.  Breakage this prevents: a registry whose
         # implementation contradicts the declarations would run a finding uncorrected while the receipt
@@ -1209,7 +1276,7 @@ class PhysicsDriver:
                         "driver" if slot is None else c.selectors[slot],
                         glue_backend if slot is None else c.backends[slot],
                         step, time, float(self.manager.scheme_dt.get(slot, self.manager.dt)),
-                        flags, pools, MappingProxyType(options), c.corrections)
+                        flags, pools, MappingProxyType(options), c.corrections, getattr(c, "mmm", None))
         self.calls.append({"operation": operation, "slot": call.slot,
                            "backend": str(call.backend), "itimestep": step,
                            "time_seconds": time, "flags": asdict(call.flags)})

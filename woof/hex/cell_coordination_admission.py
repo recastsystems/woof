@@ -1,6 +1,6 @@
 """Cell-coordination admission for registered MPAS meshes.
 
-WHAT THIS PREVENTS, MEASURED (the proving, RTX 5090, 2026-08-26; evidence in
+WHAT THIS PREVENTS, MEASURED (an RTX 5090, 2026-08-26; evidence in
 ``evidence/graded-blowup-20260826/``).  ``v16.66.195630`` -- 195,630 cells,
 16.5 km core inside a 66 km background, the finest graded mesh this program
 has generated -- carries exactly ONE cell with four edges, cell 195615 at
@@ -205,7 +205,7 @@ def admit_cell_coordination(
         f"Cell {worst} has {int(counts[worst])} edges, below the admitted floor "
         f"{floor}; {below.size} of {counts.size} cells are below it "
         f"(histogram {histogram}). "
-        "THE BREAKAGE THIS PREVENTS, MEASURED (the proving RTX 5090, 2026-08-26, "
+        "THE BREAKAGE THIS PREVENTS, MEASURED (an RTX 5090, 2026-08-26, "
         "evidence/graded-blowup-20260826/): v16.66.195630 carries exactly one "
         "4-coordinated cell, 195615, inserted by the generator's "
         "count-changing defect surgery. At its declared 100 s the forecast "

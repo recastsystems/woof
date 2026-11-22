@@ -560,7 +560,7 @@ def geogrid_tbl_smoothing(path) -> TerrainSmoothing:
     entry, or ``smooth_passes <= 0`` (``do ipass=1,npass``), is no
     smoothing.
 
-    One key is WOOF's, not WPS's: ``smooth_precision = wps-float32`` in
+    One key is WOOF-ArWen's, not WPS's: ``smooth_precision = wps-float32`` in
     that entry selects WPS's own arithmetic for the default smoother
     (:data:`SMOOTH_PRECISIONS`).  It is contained in none of WPS's
     keywords, so geogrid.exe logs "unrecognized option" for it and smooths

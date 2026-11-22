@@ -44,7 +44,7 @@
 # ---------------------------------------------------------------------------
 # d01 and d02 run the 1-D YSU PBL with 2-D Smagorinsky horizontal mixing --
 # the same parent configuration the scored 250 m demonstration used
-# (docs/superpowers/receipts/les/nested-les-scored-2026-08-02.md).  The P4
+# (docs/internal/receipts/les/nested-les-scored-2026-08-02.md).  The P4
 # Shin-Hong (bl_pbl_physics = 11) gray-zone parent chain is deliberately NOT
 # used here: its AC-P4.2 partition screen reads OUT on every frame and
 # Finding 1 is unadjudicated.  That adjudication is explicitly NOT a gate on
@@ -68,7 +68,7 @@
 # ---------------------------------------------------------------------------
 # THE VERTICAL GRID -- the binding constraint, and what was done about it
 # ---------------------------------------------------------------------------
-# WOOF shares one vertical grid across every domain of a tree
+# WOOF-ArWen shares one vertical grid across every domain of a tree
 # (gpuwm/experiment.py:193 rejects per-domain vertical keys), so the 100 m
 # child runs its 3 km root's levels.  On the shipped 49-level ladder that is
 # 18 half levels below 1.7 km -- an effective dz of 96.7 m
@@ -394,7 +394,7 @@ mix_upper_bound = 0.1
 isfflx = 1
 # P3 inflow seeding, pilot amplitude, fixed committed seed.  Settings are the
 # pilot ON arm verbatim from
-# docs/superpowers/receipts/les/inflow-generator/les.km3.p3.on-7h.toml:166-169.
+# docs/internal/receipts/les/inflow-generator/les.km3.p3.on-7h.toml:166-169.
 # The generator is opt-in and OFF by default; the D90 fetch meter runs on the
 # output and the scored footprint is the fetch-clean interior only.
 inflow_perturbation = true

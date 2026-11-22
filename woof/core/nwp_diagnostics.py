@@ -96,6 +96,29 @@ def sample_helicity(state, cfg):
         state.scratch(plane, "uh_diag_use"), state.existing_scratch("up_heli_max"))
 
 
+def native_max_time_step(cfg):
+    """``max_time_step`` as module_diag_nwp reads it: WRF's ``-1`` already filled.
+
+    Under the adaptive clock the native window reset fires on the first step
+    whose time since the last history write is at most
+    ``1.05 * max_time_step / 60`` minutes.  WRF never reaches that test with
+    the namelist's ``-1``: start_em.F:939-953 replaces it with
+    ``NINT(8 * MIN(dx, dy) / 1000)`` first
+    (:func:`woof.core.adaptive_clock.wrf_default_clamps`).  Handing the raw
+    ``-1`` to the kernel made the reset test ``<= -0.0175`` minutes, which no
+    step meets, so on every adaptive run with the default limit all nine
+    windows (UP_HELI_MAX, WSPD10MAX, W_UP_MAX, W_DN_MAX, W_MEAN, GRPL_MAX,
+    REFD_MAX and the two PSD hail planes) kept the maximum since the start
+    of the run while history labelled it the last interval's.  A set value
+    passes through unchanged, exactly as the native module reads it.
+    """
+    value = int(cfg.max_time_step)
+    if value == -1:
+        from woof.core.adaptive_clock import wrf_default_clamps
+        value = int(wrf_default_clamps(cfg.dx, cfg.dy)[1])
+    return value
+
+
 def update(state, cfg):
     """Native end-of-step reset, non-PSD windows, then scheme-specific PSD."""
     if not active(cfg):
@@ -123,7 +146,7 @@ def update(state, cfg):
          zero if refl is None else refl, *(s(name.lower()) for name in FIELDS[:9]),
          np.int32(cfg.nz), np.int32(cfg.ny), np.int32(cfg.nx), np.float32(cfg.dt),
          np.float32(state.elapsed_seconds/60), np.int32(minutes), np.int32(step),
-         np.int32(cfg.use_adaptive_time_step), np.int32(cfg.max_time_step)))
+         np.int32(cfg.use_adaptive_time_step), np.int32(native_max_time_step(cfg))))
     mp = cfg.mp_physics
     kw = {}
     if mp in (8, 28, 38):

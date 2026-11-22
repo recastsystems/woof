@@ -1,7 +1,7 @@
 """Typed multi-domain experiment schema and TOML loader (Phase 5, lane L1).
 
 Implements section A of the RATIFIED Phase-5 nesting architecture
-(docs/superpowers/specs/2026-07-16-phase5-nesting-architecture.md): frozen
+(docs/internal/specs/2026-07-16-phase5-nesting-architecture.md): frozen
 :class:`DomainConfig`/:class:`ExperimentConfig` dataclasses over the
 existing :class:`woof.config.RunConfig`, the ``[experiment]`` /
 ``[shared]`` / ``[[domain]]`` / ``[projection]`` TOML shape, and every
@@ -308,6 +308,8 @@ _DOMAIN_RUN_OVERRIDES = (
     "lightning_option", "lightning_dt", "lightning_start_seconds",
     "flashrate_factor", "iccg_method", "iccg_prescribed_num",
     "iccg_prescribed_den", "cellcount_method", "cldtop_adjustment", "do_radar_ref",
+    "dyn_lightning_option", "coul_pos", "coul_neg", "coul_neu",
+    "j_pos", "j_neg", "j_neu",
     # clos_choice/ishallow ride with cu_physics: per-domain because the
     # scheme they configure is, and inert (validated zero) on any domain
     # that does not select cu_physics = 3.  On a tree that mixes
@@ -437,7 +439,10 @@ _DOMAIN_RUN_OVERRIDES = (
     # (woof.core.terrain_drag); the GSL suite tapers itself with each
     # domain's grid length, so a column is the natural shape.
     "topo_wind", "gwd_opt",
-    "wind_farm_scheme", "wind_farm_table", "wind_farm_max_dx_m", "wind_farms", "windfarm_tke_factor", "windfarm_ij", "windfarm_wake_model", "windfarm_overlap_method", "windfarm_deg", "windfarm_induction",
+    # WRF v4.8.0's gwd_opt = 1 keys are max_domains as well
+    # (Registry.EM_COMMON:2902-2903), and so is the generation they go with.
+    "gwdo_version", "gwd_dx_factor", "gwd_if_nonhyd",
+    "wind_farm_scheme", "wind_farm_table", "wind_farm_max_dx_m", "wind_farms", "windfarm_tke_factor", "windfarm_ij", "windfarm_wake_model", "windfarm_overlap_method", "windfarm_deg", "windfarm_induction", "windfarm_fitch_version",
     "windturbines_spec", "td_turbgridid", "td_hubheight", "td_diameter", "td_stdthrcoef", "td_cutinspeed", "td_cutoutspeed", "td_power", "td_turbpercell", "td_ewfx", "td_ewfy", "td_pwfx", "td_pwfy",
     "history_interval2_s", "history_interval_change_s",
     "prec_acc_dt", "prec_acc_dt1", "gsd_diagnostics", "reset_interval1",
@@ -3686,6 +3691,11 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
 
     # ---- [shared] ------------------------------------------------------
     shared = dict(raw.get("shared", {}))
+    # wrf_reference = "4.8.0" | "4.7.1" pins the scheme generations that
+    # WRF release runs, resolved here into the per-scheme keys (an explicit
+    # per-scheme key wins); absent, nothing changes (woof.wrf_reference).
+    from woof.wrf_reference import resolve_wrf_reference
+    resolve_wrf_reference(shared, where=f"[shared] of {source}")
     # Captured from the RAW table, before anything defaults it: whether
     # the author CHOSE radiation at all.  ra_physics defaults to 0 and
     # ra_lw/sw_physics to -1, so by RunConfig time "wrote ra_physics = 0"
@@ -4500,8 +4510,6 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
         # The full legacy invariant battery applies to every per-domain
         # RunConfig (p5t1 review F1): same checks, same messages as
         # load_config.
-        from woof.surface_ocean import apply_ocean_defaults
-        apply_ocean_defaults(kw)
         run = validate_run_config(RunConfig(**kw))
         bounds = {}
         for bound_key in ("starting_time_step", "max_time_step", "min_time_step"):
@@ -4623,7 +4631,7 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
     # it, and each domain's DomainState allocates its own zero TKE from its
     # own km_opt.  Under a parent carrying no TKE this tree has been run --
     # a 402x402 250 m km_opt=2 PBL-off child under a km_opt=4 750 m parent,
-    # 7 h, status PASS (docs/superpowers/receipts/les/
+    # 7 h, status PASS (docs/internal/receipts/les/
     # nested-les-km2-2026-08-02.md).  Under a km_opt=2 parent the child
     # does the same thing; the parent's TKE simply stays on the parent, as
     # it does in WRF.  That tree is admitted and the run says it is
@@ -4643,7 +4651,7 @@ def build_experiment(raw: dict, source: str) -> ExperimentConfig:
                     "f flag; woof/core/nest_fields.py carries no tke "
                     "row. The measured nested km_opt=2 tree had a "
                     "km_opt=4 parent "
-                    "(docs/superpowers/receipts/les/"
+                    "(docs/internal/receipts/les/"
                     "nested-les-km2-2026-08-02.md).")
 
     # SASE on a domain tree, uniform or per domain.  Each SASE domain runs
@@ -5256,7 +5264,7 @@ def _refuse_inflow_seeding_under_a_pbl_off_parent(
     nothing to define it with and
     :func:`woof.core.inflow_perturbation.build_inflow_perturbation`
     refuses.  That refusal is correct, it is ratified as G4 in
-    ``docs/superpowers/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md``,
+    ``docs/internal/specs/P6-LES-DECISIONS-RATIFIED-2026-08-05.md``,
     and it STAYS where it is -- a spawned or relocated nest is built
     outside the config path and must still hit it.
 
@@ -5308,7 +5316,7 @@ def _refuse_inflow_seeding_under_a_pbl_off_parent(
             "seeding here would double-count them.  The seeding belongs "
             "on the FIRST domain whose parent parameterizes turbulence "
             "(bl_pbl_physics != 0), which is where G4 rules it ON "
-            "(docs/superpowers/specs/"
+            "(docs/internal/specs/"
             "P6-LES-DECISIONS-RATIFIED-2026-08-05.md).  Refused at the "
             "config load rather than at the first nest bind because the "
             "same pairing used to be admitted, prepared and placed on "
@@ -5727,6 +5735,11 @@ def _public_config_value(value):
                                   # and the corrected default is written.
                                   ("solar_generation", "wrf_461"),
                                   ("ysu_version", "wrf_461"),
+                                  ("shinhong_version", "wrf_461"),
+                                  ("shinhong_nonlocal_flux", True),
+                                  ("shinhong_scu_mixing", False),
+                                  ("shinhong_ke_dissipation", False),
+                                  ("cu_gf_version", "wrf_461"),
                                   ("noahmp_snow_age", "wrf_461"),
                                   ("urban_water_balance", "wrf_471")):
                 if run_document.get(name, default) == default:
@@ -5735,8 +5748,41 @@ def _public_config_value(value):
             # scheme is off, so they leave such a document whatever they say.
             if run_document.get("bl_pbl_physics", 0) != 1:
                 run_document.pop("ysu_version", None)
+            if run_document.get("bl_pbl_physics", 0) != 11:
+                for _key in ("shinhong_version", "shinhong_nonlocal_flux",
+                             "shinhong_scu_mixing", "shinhong_ke_dissipation"):
+                    run_document.pop(_key, None)
+            if run_document.get("cu_physics", 0) != 3:
+                run_document.pop("cu_gf_version", None)
+            # The TEMPO generation: a document written before it ran v3.0.3,
+            # and the keys reach nothing while TEMPO is off.
+            if (run_document.get("mp_physics", 0) != 900
+                    or run_document.get("tempo_version", "v3.0.3") == "v3.0.3"):
+                run_document.pop("tempo_version", None)
+                run_document.pop("tempo_hailhyperaware", None)
+            if run_document.get("tempo_hailhyperaware", True) is True:
+                run_document.pop("tempo_hailhyperaware", None)
             if run_document.get("sf_surface_physics", 0) != 4:
                 run_document.pop("noahmp_snow_age", None)
+            # WRF 4.8.0 assembly and the MYNN v6.1 option, by the checkpoint
+            # echo's rules (woof.io.restart): dynamic lightning off, the
+            # gwd_opt = 1 generation and its two keys under gwd_opt != 1 or at
+            # wrf_471, the MYNN-SFC roughness keys at their Registry defaults
+            # and the v6.1 fixes off leave the document.  Named breakage: every
+            # default public document moved its bytes (3.0.0 pass 1,
+            # tests/test_chem_emitted_config_bytes.py).
+            from woof.core.dyn_lightning import drop_default_dyn_lightning
+            drop_default_dyn_lightning(run_document)
+            if (int(run_document.get("gwd_opt", 0) or 0) != 1
+                    or run_document.get("gwdo_version", "wrf_471") == "wrf_471"):
+                for _key in ("gwdo_version", "gwd_dx_factor", "gwd_if_nonhyd"):
+                    run_document.pop(_key, None)
+            for _key, _default in (("sf_mynn_sfcflux_land", 0),
+                                   ("sf_mynn_sfcflux_water", 1),
+                                   ("shalwater_z0", 0),
+                                   ("mynn_fixes_v61", False)):
+                if run_document.get(_key, _default) == _default:
+                    run_document.pop(_key, None)
             if int(run_document.get("sf_urban_physics", 0) or 0) != 1:
                 run_document.pop("urban_water_balance", None)
             # The ocean mixed layer (2.9.1): off, its selector and settings
@@ -5820,7 +5866,16 @@ def _nudging_from_tables(raw, domains):
     if row is None:
         return None
     from woof.spectral_nudging.config import from_mapping
-    return from_mapping(row, tuple(dc.grid_id for dc in domains))
+    options = from_mapping(row, tuple(dc.grid_id for dc in domains))
+    if options is not None:
+        # NUDGING_STEP_STRENGTH: every door (TOML, --nudging, WRF &fdda import,
+        # stock wrfinput) loads here, so a coefficient the explicit update
+        # overshoots is refused before any preparation or card time.
+        for dc in domains:
+            controls = options.for_domain(dc.grid_id)
+            if controls is not None:
+                controls.check_step(float(dc.run.dt), where=f"d{dc.grid_id:02d}")
+    return options
 
 
 def experiment_config_document(exp: ExperimentConfig) -> dict[str, object]:

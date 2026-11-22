@@ -1,6 +1,6 @@
 # WRF analysis bundle, version 1
 
-An analysis bundle is an analysed atmosphere a WOOF forecast can start from. It is the one
+An analysis bundle is an analysed atmosphere a WOOF-ArWen forecast can start from. It is the one
 interface between whatever produced the analysis (an ensemble filter, a variational system, a
 nudged run) and the forecast. The producer writes it; `woof run --wrfinput DIR --analysis BUNDLE`
 reads it. Nothing in the bundle or in the engine knows how the analysis was made.
@@ -18,7 +18,7 @@ A bundle is one directory:
 |---|---|---|
 | `manifest.json` | yes | schema `wrf-analysis-bundle/1`, below |
 | `analysis.nc` | yes | the analysed state at the valid time, WRF-named, on the run's own grid |
-| `increment.nc` | no | analysis minus background, on WOOF's own staggering |
+| `increment.nc` | no | analysis minus background, on WOOF-ArWen's own staggering |
 | `noda.nc` | no | the matched no-assimilation state at the same valid time (for side-by-side forecasts; the forecast never reads it) |
 
 No other file may be listed. A file present in the directory but not listed is refused, because
@@ -33,13 +33,13 @@ NetCDF-4 file is refused by name.
 
 - **`wrfinput`** (the default). A real.exe-shaped initial-conditions file of the run's grid, the
   form `woof run --wrfinput` starts from: one record, `Times` and `START_DATE` at `valid_time`.
-- **`wrfout`**. A history frame at `valid_time` (WOOF's or WRF's wrfout). It has no base-state
+- **`wrfout`**. A history frame at `valid_time` (WOOF-ArWen's or WRF's wrfout). It has no base-state
   inputs a cold start needs, so it starts a forecast only as a cycling restart (`--restart` or
   `--restart-from`), which adds the increment to the restored state; it needs `increment.nc`.
 
 ### `increment.nc`
 
-Analysis minus the background it was computed against, in WOOF's own prognostics on WOOF's own
+Analysis minus the background it was computed against, in WOOF-ArWen's own prognostics on WOOF-ArWen's own
 staggering, under the WRF names and dimensions:
 
 | Variable | Dimensions | Units |
@@ -137,7 +137,7 @@ door's own inputs, so the forecast runs the code a plain `--wrfinput` run does:
 | direct insertion | `--iau off`, the default without `increment.nc` | the run's wrfinput is `analysis.nc` |
 | IAU | `--iau on`, the default with `increment.nc` | the run's wrfinput is the background (analysis minus increment); the increment is forced over the window inside every RK stage (`woof.da.iau.IauForcing`, `--iau-mode 3d`) |
 | warm start | `--restart-from WRFRST` at `valid_time` | the WRF restart's state, the increment added at the restart instant or forced from it |
-| cycling restart | `--restart CHECKPOINT` at `valid_time` | the member's own WOOF checkpoint, the increment added or forced from the restored instant |
+| cycling restart | `--restart CHECKPOINT` at `valid_time` | the member's own WOOF-ArWen checkpoint, the increment added or forced from the restored instant |
 
 The same command with `--restart` at a checkpoint inside the window resumes an interrupted
 analysis leg: the forcing is rebuilt from the bundle and the model clock, and the leg continues

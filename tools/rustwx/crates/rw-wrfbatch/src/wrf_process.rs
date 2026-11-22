@@ -1297,6 +1297,10 @@ struct WrfSourcePlan {
     /// The file's grid spacing (`DX`, metres), which scales how closely two
     /// places' coordinates must agree on shared ground.
     dx_m: Option<f64>,
+    /// The ground under the file's first and last mass cells, `(lat, lon)`
+    /// each (raw wrfouts only): a nest fixed in a parent that moved keeps
+    /// its recorded place and changes only this ([`plan_nest_moves`]).
+    ground: Option<[(f32, f32); 2]>,
     /// Grid cells and (raw wrfouts only) levels, for the frame budget.
     cells: usize,
     levels: Option<usize>,
@@ -1333,18 +1337,34 @@ fn plan_nest_moves(plans: &[WrfSourcePlan]) -> Result<Option<NestMoves>, String>
     else {
         return Ok(None);
     };
-    if placements.iter().all(|placement| *placement == placements[0]) {
-        return Ok(None);
-    }
     let last_valid = |plan: &WrfSourcePlan| plan.records.iter().map(|r| r.valid_unix).max();
     let target_index = (0..plans.len())
         .max_by_key(|&index| last_valid(&plans[index]))
         .ok_or("a series with no source cannot move")?;
     let target = placements[target_index];
+    // A nest fixed in a parent that moves (a cyclone run's 1 km d03 in its
+    // following 3 km d02) records one place in that parent for the whole
+    // run while its ground moves with the parent: its earlier frames sit
+    // on other ground at the SAME recorded place, and are moved by the
+    // whole-cell move their coordinates give ([`move_hour_fields`]).
+    // Planned by recorded place alone, every hour in which the parent
+    // moved had no earlier frame on its grid and drew no 1 h rain
+    // (run_c12e1e07306546b4: 10 of 12 hours).
+    let target_ground = plans[target_index].ground;
+    let rode = |plan: &WrfSourcePlan| {
+        crate::nest_move::ground_differs(plan.ground, target_ground, plan.dx_m)
+    };
+    if placements.iter().all(|placement| *placement == placements[0])
+        && !plans.iter().any(|plan| rode(plan))
+    {
+        return Ok(None);
+    }
     let Some(mut shifts) = placements
         .iter()
-        .map(|placement| {
-            NestShift::between(*placement, target).map(|shift| (!shift.is_null()).then_some(shift))
+        .zip(plans)
+        .map(|(placement, plan)| {
+            NestShift::between(*placement, target)
+                .map(|shift| (!shift.is_null() || rode(plan)).then_some(shift))
         })
         .collect::<Option<Vec<_>>>()
     else {
@@ -1499,6 +1519,23 @@ fn move_hour_fields(
                     0,
                     "its recorded place, a whole nest width from the series' place",
                 ),
+                // The same recorded place on other ground: a nest fixed
+                // in a parent that moved.  Ground that shares no cell
+                // with the series' place holds nothing there; it is
+                // stored missing, as a place a whole width away is.  So
+                // is ground no whole-cell move lands on the series'
+                // place: no value of it is put on this place's cells,
+                // which is the breakage the refusal below prevents.
+                None if shift.is_null() => (
+                    crate::nest_move::NestShift::NOWHERE,
+                    0,
+                    if crate::nest_move::grids_disjoint(&fields.grid, &moves.target_grid) {
+                        "its coordinates, ground the series' place does not share (its \
+                         recorded place is in a parent that moved)"
+                    } else {
+                        "its coordinates, which no whole-cell move lands on the series' place"
+                    },
+                ),
                 None => {
                     return Err(format!(
                         "WRF {} ({label}) cannot be moved onto {}'s place: {err}, and no \
@@ -1526,15 +1563,18 @@ fn move_hour_fields(
     let from = placement
         .map(|p| format!("({}, {})", p.i_parent_start, p.j_parent_start))
         .unwrap_or_else(|| "?".to_string());
+    let by = if shift == crate::nest_move::NestShift::NOWHERE {
+        "stored missing".to_string()
+    } else {
+        format!("by ({}, {}) nest cells", shift.dx, shift.dy)
+    };
     fields.notes.push(format!(
         "{} ({label}): a moving nest's earlier place {from} in its parent, moved onto the \
-         place ({}, {}) of the series' last frame by ({}, {}) nest cells read from {read_from}; \
+         place ({}, {}) of the series' last frame {by} read from {read_from}; \
          {} of {} cells are shared ground and the rest are missing for this frame",
         display_name(path),
         moves.target.i_parent_start,
         moves.target.j_parent_start,
-        shift.dx,
-        shift.dy,
         shared,
         nx * ny
     ));
@@ -1600,6 +1640,7 @@ fn preflight_wrf_sources(
                 places.push((
                     crate::nest_move::NestPlacement::of(&file),
                     file.global_attr_f64("DX").ok(),
+                    crate::nest_move::corner_ground(&file),
                 ));
                 sizes.push((file.nx * file.ny, Some(file.nz)));
                 (WrfSourceKind::Raw, times, (file.nx, file.ny))
@@ -1622,7 +1663,7 @@ fn preflight_wrf_sources(
                 let shape = crate::local_import::netcdf_grid_shape(&nc, path).map_err(|err| {
                     format!("Read grid shape from {} failed: {err}", path.display())
                 })?;
-                places.push((None, None));
+                places.push((None, None, None));
                 sizes.push((shape.0 * shape.1, None));
                 (WrfSourceKind::Postprocessed, times, shape)
             }
@@ -1638,7 +1679,7 @@ fn preflight_wrf_sources(
     rustwx_products::shared_context::set_model_label(context.model_label.clone());
     let timeline = crate::local_import::ForecastHourTimeline::plan_all(&sources)?;
     let mut plans = Vec::with_capacity(sources.len());
-    for (index, ((((path, _), kind), (placement, dx_m)), (cells, levels))) in
+    for (index, ((((path, _), kind), (placement, dx_m, ground)), (cells, levels))) in
         sources.into_iter().zip(kinds).zip(places).zip(sizes).enumerate()
     {
         let records = timeline
@@ -1656,6 +1697,7 @@ fn preflight_wrf_sources(
             records,
             placement,
             dx_m,
+            ground,
             cells,
             levels,
         });
@@ -3020,6 +3062,24 @@ fn read_wrf_products(
         }
     }
 
+    // The named derived heat, fire and lightning products read wrf-core's
+    // memoized 3-D fields (temp, pres, QVAPOR, height_agl, PH, PHB, ua, va,
+    // wa, dbz). They are computed here, while the diagnostics above have left
+    // that cache warm, not after the volume build below has released it:
+    // after the release each of their reads rebuilt its whole chain (7.5 s of
+    // a 1400x981x59 hex window frame's 30 s import, 2026-11-15). Their part
+    // joins the hour where it always joined, after the volumes, so the hour
+    // holds the same fields in the same order.
+    let mut derived_part = WrfHourFields {
+        grid: fields.grid.clone(),
+        projection: fields.projection.clone(),
+        canonical: Vec::new(),
+        derived: Vec::new(),
+        volumes: Vec::new(),
+        notes: Vec::new(),
+    };
+    derived_diagnostics::compute(&mut derived_part, file, timeidx, &grid, projection.clone(), options);
+
     // Isobaric sounding volumes (temperature_iso/dewpoint_iso/u_iso/v_iso/
     // height_iso) so imported WRF runs produce skew-T soundings like the
     // downloaded models. Failure here never fails the hour: the 2D fields
@@ -3114,7 +3174,9 @@ fn read_wrf_products(
         }
     }
 
-    derived_diagnostics::compute(&mut fields, file, timeidx, &grid, projection.clone(), options);
+    fields.canonical.extend(derived_part.canonical);
+    fields.derived.extend(derived_part.derived);
+    fields.notes.extend(derived_part.notes);
 
     // Release wrf-core's per-timestep intermediate cache before the caller
     // writes the hour to the store. `getvar` memoizes every 3-D f64

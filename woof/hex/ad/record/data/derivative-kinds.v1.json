@@ -1,0 +1,1783 @@
+{
+ "schema": "hexad.derivative-kinds/v1",
+ "what": "kernel kinds that run in an example plan whose window passed this release's check; the recorder refuses a plan of its own that runs a kind outside this table, the window's rules by name and the rows' named holds (hexcore.ad.record.coverage); aliased_args: the pointer-argument pairs of the kind that shared one address in some launch of those plans, the only aliasing a plan of one's own may run the kind with",
+ "plans": [
+  {
+   "plan": "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+   "kinds": 246,
+   "launches": 22011,
+   "plan_json_digest": "ce4907262f8c8362"
+  },
+  {
+   "plan": "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+   "kinds": 234,
+   "launches": 329281,
+   "plan_json_digest": "ec7578ff820d342d"
+  },
+  {
+   "plan": "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz",
+   "kinds": 203,
+   "launches": 5485,
+   "plan_json_digest": "fac32ee413f67a40"
+  }
+ ],
+ "kinds": {
+  "acoustic_coefficients_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "acoustic_cofrz_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "acoustic_column_solve_regional_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ],
+   "aliased_args": [
+    [
+     10,
+     11
+    ]
+   ]
+  },
+  "acoustic_column_solve_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ],
+   "aliased_args": [
+    [
+     10,
+     11
+    ]
+   ]
+  },
+  "acoustic_prepare_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "acoustic_rs_ts_regional_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "acoustic_rs_ts_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "acoustic_ru_regional_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "acoustic_ru_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "add_inplace_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "add_lagged_diabatic_theta_v842_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cell_diagnostics_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cloud_condensate": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cloud_from": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "compute_diag_cols": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "cupy_arange__int_int_int32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_bitwise_and__bool_bool_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_bsum_shfl": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_concatenate_same_size": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__bool_float64": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__bool_int32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__float32_float32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__float32_float64": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__float64_float64": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__float_float32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__int32_float64": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__int32_int32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__int32_int64": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__int64_int32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__int64_int64": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__int_float32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__int_int32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_copy__uint32_uint32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "cupy_copy_where__float32_bool_float32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_cub_all_pass1": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_cub_all_pass2": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_cub_any_pass1": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_cub_any_pass2": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_equal__int64_int64_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_fill": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_greater__float32_float_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_greater_equal__float32_float_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_greater_equal__int64_int_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_invert__bool_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_less__float32_float32_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_less__int32_int_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_less__int64_int_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_less_equal__float32_float_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_maximum__float_float32_float32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_minimum__int64_int_int64": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_multiply__float32_float32_float32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_multiply__float32_float_float32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_nonzero_kernel_incomplete_scan": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_not_equal__int32_int_bool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_scan_naive": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_scatter_update": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_subtract__int32_int_int32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_take": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_true_divide__float32_float_float32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_where__bool_float_float32_float32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "cupy_where__bool_int32_int_int32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_where__bool_int64_int_int64": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "cupy_where__bool_int_int32_int32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "degrees": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "density_tendency_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ],
+   "aliased_args": [
+    [
+     0,
+     3
+    ]
+   ]
+  },
+  "divergence_damping_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "edge_fields_from_saved_u_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "enforce_rw_endpoints_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "euler_w_moist_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ],
+   "aliased_args": [
+    [
+     3,
+     9
+    ]
+   ]
+  },
+  "fct_boundary_residual_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "fct_copy_back_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "fct_edge_residual_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fct_finish_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fct_horizontal_low_order_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fct_limit_horizontal": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fct_limit_vertical": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fct_minmax_source": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fct_pool_density_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "fct_scale": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fct_vertical_low_order_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fixed_pressure_apply": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "fixed_pressure_count": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "fixed_pressure_scan": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "fork_albedo": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fork_interp": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "fork_minmax": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "hex_transport_species_levels": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "hex_transport_species_words": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "laplacian_divergence_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "laplacian_vorticity_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "layer_mean": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "mass_flux_divergence_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mixing_scaling_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "modified_theta_dynamics_rate_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "moist_cell_coefficients_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "moist_dpdz_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "moist_edge_coefficients_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "momentum_filter_lap4_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "momentum_filter_seed_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_layer_counts": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_layer_histogram": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_lw_mcica_gpoint": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_lw_mcica_seeds": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_lw_outputs": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_lw_prepare": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_output_diagnostics_v842": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_pressure_mb": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_rk_cells_v842_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_rk_edges_v842_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_aerosol_columns": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_aerosol_finish": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_aerosol_levels": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_diffuse": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_driver_times": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_gt_aod": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_mcica_gpoint": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_mcica_seeds": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_outputs": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_prep": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_sw_radconst": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_transport_handoff_v842_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_transport_source_baseline_v842_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mpas_vinterp_level_chain": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mynnsfc_columns": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mynnsfc_from_mpas": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mynnsfc_tables": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "mynnsfc_to_mpas": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "oracle_diags_sfcdiags_ruclsm": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "oracle_drivers_correct_tsk_over_seaice": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "oracle_drivers_driver_forcing": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "oracle_drivers_seaice_finish": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "oracle_drivers_seaice_prepare": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "oracle_ice_ruc_ice": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "oracle_land_ruc_land": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "ozone_time": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "prep_interfaces_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "prep_mass_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "prepare_interfaces": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "prepare_mass": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "prepare_vertices": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "pressure_gradient_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "profile_from_mpas": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "profile_to_mpas": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "project_edges_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "pv_apvm_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ],
+   "aliased_args": [
+    [
+     14,
+     15
+    ]
+   ]
+  },
+  "pv_cell_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "pv_edge_base_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "reconstruct_winds_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "recover_cells_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "recover_edge_velocity_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "recover_edges_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "recover_interfaces_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "recover_terrain_w_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "reference_wind_edge_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "regional_bdy_adjust_scalars_compute_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_clamp_negative_scalars_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_lbc_derive_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_lbc_rho_edge_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_lbc_state_at_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_lbc_tendency_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_relaxzone_filter_cell_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_relaxzone_filter_edge_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_relaxzone_rayleigh_cell_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_relaxzone_rayleigh_edge_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_reset_speczone_values_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_speczone_tend_cell_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_speczone_tend_edge_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "regional_speczone_u_ru_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ],
+   "aliased_args": [
+    [
+     4,
+     5
+    ]
+   ]
+  },
+  "regional_zero_speczone_w_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "reset_diag_pool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "rlw_cldprmc_coalesced": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rlw_inatm": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rlw_rtrn_accum_rows": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rlw_rtrn_final": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rlw_rtrn_march_coalesced": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rlw_rtrn_prol_gpoints": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rlw_rtrn_secdiff": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rlw_setcoef": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rlw_taumol_batched": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rlw_taut": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rrfs_glue_copy_plan": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rrfs_mynnedmf_run_l16": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rrfs_pbl_radiation_sum": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rrfs_post_transport_copy": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rrfs_radiation_unpack": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ],
+   "aliased_args": [
+    [
+     127,
+     136
+    ],
+    [
+     190,
+     199
+    ]
+   ]
+  },
+  "rrfs_surface_spacing": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rsw_cldprmc_b": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rsw_inatm_layers_b": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rsw_laysolfr_b": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rsw_post_b": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rsw_setcoef_b": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rsw_sfluxzen_b": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rsw_spc_accum_b": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rsw_spcvmc_gpt_b": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "rsw_taumol_b": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "ruc_land_tile_preflight": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "slp_columns": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "slp_finish": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz"
+   ]
+  },
+  "smagorinsky_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "smooth_helicity": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "solar": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "solve_region_scrub_columns_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "solve_region_validate_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "split_flux_add_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "split_flux_finish_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "split_flux_first_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "split_helicity_pool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tangential_velocity_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_emissions": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_from": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_order_hist": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_order_scan": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_order_scatter": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_precip": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_radar": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_to": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_warp_sizes": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tempo_warp_steps": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "tendency_w_to_omega": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "theta_edge_flux_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ],
+   "aliased_args": [
+    [
+     6,
+     7
+    ],
+    [
+     8,
+     9
+    ]
+   ]
+  },
+  "theta_filter_lap2_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "theta_filter_lap4_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "theta_finish_corrected_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "theta_finish_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "theta_vertical_flux_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ],
+   "aliased_args": [
+    [
+     3,
+     4
+    ],
+    [
+     5,
+     6
+    ]
+   ]
+  },
+  "transport_edge_values": {
+   "plans": [
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "transport_edge_values_mono_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "transport_edge_values_regional_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "transport_interpolate_target_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "transport_standard_finish_regional_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  },
+  "transport_standard_finish_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "transport_target_density_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "transport_vertical_flux": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "ugwp_oro_diff": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "ugwp_oro_dx": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "ugwp_oro_run": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "update_diag_pool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "validate_density_v841": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "validate_finite_array_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "validate_recovered_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "vector_momentum_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "vertex_diagnostics_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "vertex_helicity_gather_pool": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "vertical_u_finish_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "vertical_u_flux_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "w_edge_flux_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "w_filter_geometry_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "w_filter_lap2_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "w_filter_lap4_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "w_finish_v841_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "w_vertical_flux_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz",
+    "ad-plan-hrrrv5-x1.40962-20230331T12-p1-v4.tar.gz"
+   ]
+  },
+  "zero_speczone_lagged_diabatic_theta_v842_f32": {
+   "plans": [
+    "ad-plan-hrrrv5-q12.96.2890.n40.60w91.30-20240521T15-p1-v1.tar.gz",
+    "ad-plan-hrrrv5-q3.96.38278.n40.60w91.30-20230331T18-p1-v2.tar.gz"
+   ]
+  }
+ }
+}

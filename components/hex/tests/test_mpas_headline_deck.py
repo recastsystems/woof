@@ -157,7 +157,7 @@ def _repin_parent(args, parent, hex_command):
 
 
 def test_a_parent_that_names_physics_mode_exact_is_accepted_and_carried(case):
-    """Correct mode (coordinator 2026-10-14): every proof names exact; the headline keeps it, once."""
+    """Correct mode (2026-10-14): every proof names exact; the headline keeps it, once."""
     args, parent, _, _ = case
     _repin_parent(args, parent, ['woof hex', 'forecast', '--physics-mode', 'exact'])
     assert build_headline(args) == 0

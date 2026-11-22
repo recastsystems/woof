@@ -1,6 +1,6 @@
 # The pipeline, unbundled
 
-WOOF's pipeline is three stages, and each one runs on its own terms:
+WOOF-ArWen's pipeline is three stages, and each one runs on its own terms:
 
 | stage | command | takes | leaves |
 |---|---|---|---|
@@ -15,13 +15,13 @@ this page documents is that `go` is a **composition** of the three
 stages above, not the only way to reach them. Every stage is invocable
 alone, with inputs you supply, from a script you own.
 
-If you are integrating WOOF into an existing pipeline -- you pull your
+If you are integrating WOOF-ArWen into an existing pipeline -- you pull your
 own data, you author your own namelist, you have your own scheduler and
 your own plotting -- these three commands are your interface, and this
 page is the contract. You should not have to read our source to write
 to it.
 
-> WOOF is a research and educational tool, never a substitute for
+> WOOF-ArWen is a research and educational tool, never a substitute for
 > official warnings from your national meteorological service.
 
 ---

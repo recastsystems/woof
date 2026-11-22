@@ -1,0 +1,22 @@
+{
+  "source_sha256": "6140baf9bdaeb13278400dc554cc25264710fe5e1c34d380c4ff83eb3c3aafa5",
+  "image_sha256": "8b113c39e0606946697efe512c435e066eb42a5c91be0768b7a1d80b4878938f",
+  "mode": "strict",
+  "nz": 50,
+  "arch": "sm_89",
+  "command": [
+    "nvcc",
+    "--cubin",
+    "-std=c++17",
+    "-arch=sm_89",
+    "--ftz=false",
+    "--fmad=false",
+    "--prec-div=true",
+    "--prec-sqrt=true",
+    "--split-compile=4",
+    "-DGPUWM_WRF_EXACT=1",
+    "sm_89-nz50-strict-6140baf9bdaeb132.cu",
+    "-o",
+    "sm_89-nz50-strict-6140baf9bdaeb132.cubin"
+  ]
+}

@@ -82,7 +82,6 @@ def test_the_default_resolves_down_a_stated_chain_and_never_dies_on_a_door():
 
 
 def test_every_radar_door_defaults_dealias_on_and_spells_the_off_switch():
-    import tools.da_nowcast as nowcast
     import tools.obs_radar_grid_build as build
     import tools.obs_radar_grid_from_pack as from_pack
 
@@ -98,12 +97,6 @@ def test_every_radar_door_defaults_dealias_on_and_spells_the_off_switch():
         assert parser.parse_args(argv).dealias is True, module.__name__
         assert parser.parse_args(argv + ["--no-dealias"]).dealias is False, \
             module.__name__
-
-    run_argv = ["run", "--site", "qqqq", "--window-end", "latest",
-                "--out", "o"]
-    parser = nowcast.build_parser()
-    assert parser.parse_args(run_argv).dealias is True
-    assert parser.parse_args(run_argv + ["--no-dealias"]).dealias is False
 
 
 def test_both_doors_resolve_dealias_through_one_function():
@@ -146,19 +139,3 @@ def test_a_named_engine_that_cannot_run_is_still_refused_by_name():
     assert ENGINE_VAD_REGION in str(error.value)
     assert "not staged" in str(error.value)
 
-
-def test_a_receipt_that_did_not_dealias_replays_without_dealiasing():
-    """Otherwise the verification composites are built the other way."""
-
-    from tools.da_nowcast import DealiasChoice
-
-    assert DealiasChoice().on is True
-    off = DealiasChoice(on=False)
-    assert "--no-dealias" in off.argv_tail()
-    assert off.to_payload()["dealias"] is False
-    assert DealiasChoice.from_payload(off.to_payload()).on is False
-
-    on = DealiasChoice(on=True, engine="vad-region", refinement=False)
-    assert "--no-dealias" not in on.argv_tail()
-    assert on.argv_tail()[on.argv_tail().index("--dealias-engine") + 1] \
-        == "vad-region"

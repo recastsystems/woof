@@ -66,6 +66,7 @@
         "recipe": "fork-ruc9",
         "n_soil_layers": 9,
         "land_surface": "ruc",
+        "node_depths_m": [0.0, 0.01, 0.04, 0.10, 0.30, 0.60, 1.0, 1.60, 3.0],
         "first_guess_soil": "source-nodes",
         "first_guess_soil_source": "mpas_atmphys_initialize_real.F init_soil_properties_ruc: with nine first-guess levels (RUC's own nodes, as NCEP's RAP/HRRR carry them under SOILT000..SOILT300) the fork copies them level for level; with Noah's four it interpolates. An HRRR start hands it HRRR's nodes (woof hex intermediate --physics-suite)",
         "source": "mpas_atmphys_initialize_real.F init_soil_layers_depth (case 9) and init_soil_properties_ruc: nodes 0, .01, .04, .10, .30, .60, 1.0, 1.6, 3.0 m; zhave(nFGSoilLevels)=3.0; Noah-bucket rescale floored at 0.02; daytime factorsm"
@@ -89,7 +90,7 @@
         "source": "cases.F:4448-4905 at 1d6e370e (tc_vertical_grid, nsm 30, dzmin 0.3, blend_bdy_terrain, specified zeta levels L60); the fork hard-codes its hybrid constants at cases.F:4654-4701"
       },
       "case7": {
-        "tempo_rap": false,
+        "tempo_rap": true,
         "smoke": false,
         "dust": false,
         "nvegopt": 2,
@@ -218,6 +219,7 @@
         "recipe": "fork-ruc9",
         "n_soil_layers": 9,
         "land_surface": "ruc",
+        "node_depths_m": [0.0, 0.01, 0.04, 0.10, 0.30, 0.60, 1.0, 1.60, 3.0],
         "first_guess_soil": "source-nodes",
         "first_guess_soil_source": "mpas_atmphys_initialize_real.F init_soil_properties_ruc: with nine first-guess levels (RUC's own nodes, as NCEP's RAP/HRRR carry them under SOILT000..SOILT300) the fork copies them level for level; with Noah's four it interpolates. An HRRR start hands it HRRR's nodes (woof hex intermediate --physics-suite)",
         "source": "mpas_atmphys_initialize_real.F init_soil_layers_depth (case 9) and init_soil_properties_ruc: nodes 0, .01, .04, .10, .30, .60, 1.0, 1.6, 3.0 m; zhave(nFGSoilLevels)=3.0; Noah-bucket rescale floored at 0.02; daytime factorsm"
@@ -242,7 +244,7 @@
         "coordinate_recipe": "configured-hybrid"
       },
       "case7": {
-        "tempo_rap": false,
+        "tempo_rap": true,
         "smoke": false,
         "dust": false,
         "nvegopt": 2,

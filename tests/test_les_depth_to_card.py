@@ -8,7 +8,7 @@ THE BREAKAGES PINNED HERE (gate law: each test names what it prevents).
    1-D PBL grew w_max from 10.7 to 23 m/s and went non-finite (2026-09-19,
    fead4fee9a); the 2026-10-23 200 m nest-down ran MYNN at 200 m.
 2. ``woof domain`` skipped index 0 when writing the closure, so a
-   real-data top grid at LES spacing (the hex add-nest's single WOOF
+   real-data top grid at LES spacing (the hex add-nest's single WOOF-ArWen
    grid, an API single grid) kept the suite's 1-D PBL.
 3. The door's gray-zone advisory was computed before the closure was
    written and told a 3 -> 1 -> 0.333 -> 0.111 km tree that both

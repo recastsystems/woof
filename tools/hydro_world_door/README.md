@@ -1,6 +1,6 @@
 # Default-on hydro door
 
-Project ruling, 2026-10-18 08:40Z: hydro is default on for every WOOF forecast and every
+Project ruling, 2026-10-18 08:40Z: hydro is default on for every WOOF-ArWen forecast and every
 ensemble member whenever a hydrofabric covers the domain; `--hydro off` is the
 opt-out; where no fabric exists hydro is off and the receipt names the gap.
 

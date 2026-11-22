@@ -1,6 +1,6 @@
 """``woof sources``: the human door onto the source registry.
 
-Every fetch/prep/run refusal that has to say "this WOOF cannot do that
+Every fetch/prep/run refusal that has to say "this WOOF-ArWen cannot do that
 with that source" needs somewhere to send the reader, and until now the
 only place the whole registry was legible was ``woof run-plan
 --sources`` -- a JSON query flag on the machine-facing execution front
@@ -94,7 +94,7 @@ def _resolve(document: Mapping[str, Any], wanted: str) -> Mapping[str, Any]:
     raise ValueError(
         f"{wanted!r} is not a registered source id or alias.\n"
         f"  why: the source registry carries {known} rows and this is not "
-        "one of them, so nothing in this WOOF could fetch, prepare or run "
+        "one of them, so nothing in this WOOF-ArWen could fetch, prepare or run "
         "it -- a typo here becomes a refusal three commands later.\n"
         "  remedy: run `woof sources` with no argument for the whole "
         "list, then name a row's id.")

@@ -40,10 +40,13 @@ never inferred by the reader:
   does not arise for it.  ``fields = "auto"`` takes it only where the
   selected land-cover source reaches no part of the footprint (poleward
   of 78 N or 60 S for CGLC-MODIS-LCZ).
-- A domain whose footprint is continued past 180 degrees is refused
-  before anything is fetched, because the mosaic window writer still
-  emits the cut -180..180 frame; tile enumeration and source coverage
-  already cross the line, the window writer does not yet.
+- A domain whose footprint is continued past 180 degrees takes its
+  terrain built turned half a turn (tiles and grid together, which
+  changes no cell), where the cut -180..180 frame of the window writer
+  and the warp holds it.  Land cover and soil are not built across the
+  line yet: ``fields = "auto"`` takes terrain alone there and says why,
+  ``fields = "all"`` is refused before anything is fetched.  A footprint
+  that occupies every longitude is refused before anything is fetched.
 - Coverage is per source, not per program: each source declares its own
   envelope (:data:`woof.static.highres_fetch.TERRAIN_SOURCES`) and the
   footprint is checked against the source actually selected.  A named
@@ -102,6 +105,8 @@ from .highres_fetch import (COPERNICUS_DEM_VERTICAL_DATUM,
                             landcover_source as _landcover_row,
                             landcover_window_audit,
                             terrain_source_coverage,
+                            dateline_rotation_deg, rotate_footprint,
+                            rotate_tiles,
                             FootprintBBox, _require_cut_frame_window)
 from .projection import ProjectedGrid
 
@@ -303,7 +308,10 @@ class HighresDefaultRow:
 #: worldwide, where USGS 3DEP stages no tile over the sea and none outside
 #: the United States, so one source serves every sub-km domain of a nest
 #: tree.  Land use and soil stay on the baseline (the default land-cover
-#: file alone is 2.28 GB).  A domain coarser than every row keeps the
+#: file alone is 2.28 GB) down to :data:`LAND_COVER_DEFAULT_MAX_DX_M`,
+#: below which the 30-arc-second cells show as rectangles and
+#: :func:`grid_highres_config` widens the row to land cover and soil on
+#: that grid alone.  A domain coarser than every row keeps the
 #: baseline, and a configuration none of whose domains reaches a row runs
 #: exactly as it did before this table existed.
 HIGHRES_DEFAULT_BY_DX: tuple[HighresDefaultRow, ...] = (
@@ -311,6 +319,40 @@ HIGHRES_DEFAULT_BY_DX: tuple[HighresDefaultRow, ...] = (
                       terrain_source="copernicus-dem-glo30",
                       on_refuse="error", tile_megabytes=40),
 )
+
+
+#: The finest spacing at which the default keeps land use and soil on the
+#: 30-arc-second baseline.  A 30-arc-second cell is about 925 m north-south
+#: and 755 m east-west at 35 N, so at or below this spacing one baseline
+#: cell covers 1.5 or more grid cells and the grid's land shows as about
+#: 1 km rectangles.  A domain this fine that runs the engine's default row
+#: (declared by none, or written into the configuration with the row's own
+#: settings) also takes land cover and soil at source resolution
+#: (``fields = "auto"``: CGLC-MODIS-LCZ 100 m land cover and SoilGrids
+#: 250 m soil, terrain-only where the land cover reaches no part of the
+#: footprint), as a downscaled child this fine already does
+#: (:data:`woof.offline_child_geography.CHILD_LAND_COVER_MAX_DX_M`).
+#: Breakage it prevents (WOOF run_16ac1140cf20cde6, 2026-11-11, a 1 km ->
+#: 333 m -> 111 m HRRR domain tree): the 111 m grid's LU_INDEX was 7 x 8-9
+#: cell blocks of 30-arc-second land use, and its 2 m temperature at +1 h
+#: showed those blocks as sharp-edged warm rectangles 1-2 km across.
+LAND_COVER_DEFAULT_MAX_DX_M = 600.0
+
+
+def grid_highres_config(config, grid):
+    """The carrier ``config`` builds ``grid`` with.
+
+    The default row's terrain-only carrier, widened to land cover and soil
+    on a grid at :data:`LAND_COVER_DEFAULT_MAX_DX_M` or finer.  Any other
+    carrier, a declared one included, is returned as written, and so is
+    every grid coarser than the threshold, so a configuration with no
+    domain that fine builds exactly as before.
+    """
+    if (config is None or default_row_of(config) is None
+            or config.fields != "terrain"
+            or float(grid.dx) > LAND_COVER_DEFAULT_MAX_DX_M + _DX_TOLERANCE_M):
+        return config
+    return replace(config, fields="auto", landcover_source="auto")
 
 
 def default_highres_cache_root() -> Path:
@@ -733,9 +775,35 @@ def _bound(fetched, *, source_id: str, role: str, source_url: str,
         scale_factor=scale_factor)
 
 
+def _window_tiles(tiles, bbox: FootprintBBox, cache_root: Path,
+                  rotation: float, manifest: dict):
+    """(tiles, footprint) a window writer is given: the fetched tiles and
+    the footprint as they are, or, for a footprint continued past 180
+    degrees, both turned by ``rotation`` (:func:`rotate_tiles`), which the
+    manifest records."""
+    if not rotation:
+        return tiles, bbox
+    turned = rotate_tiles(tiles, rotation, cache_root)
+    window_bbox = rotate_footprint(bbox, rotation)
+    manifest["terrain_window_rotation"] = {
+        "longitude_turn_deg": rotation,
+        "window_footprint": window_bbox.as_dict(),
+        "why": ("the footprint is continued past 180 degrees; its tiles "
+                "and the grid are turned by the same angle, which changes "
+                "no cell's terrain, so the window is cut in -180..180"),
+        "turned_tiles": [item.receipt() for item in turned],
+    }
+    return turned, window_bbox
+
+
 def _fetch_terrain(bbox: FootprintBBox, cache_root: Path, coverage, *,
-                   grid=None, baseline=None, urlopen=None):
+                   grid=None, baseline=None, urlopen=None,
+                   rotation: float = 0.0):
     """Fetch/derive terrain for the selected source; return (bound, manifest).
+
+    ``rotation``: the turn a dateline footprint's window is cut in
+    (:func:`woof.static.highres_fetch.dateline_rotation_deg`); the tiles
+    are fetched for the footprint as it is.
 
     ``bound`` is ``None`` when the source publishes no tile over the
     footprint.  An unpublished tile -- an all-water square, a square
@@ -757,7 +825,9 @@ def _fetch_terrain(bbox: FootprintBBox, cache_root: Path, coverage, *,
                         item.bytes for item in tiles if not item.cache_hit)}
         if not tiles:
             return None, manifest
-        window = derive_terrain_window(tiles, bbox, cache_root)
+        window_tiles, window_bbox = _window_tiles(tiles, bbox, cache_root,
+                                                  rotation, manifest)
+        window = derive_terrain_window(window_tiles, window_bbox, cache_root)
         bound = _bound(
             window, source_id=coverage.source_id, role="terrain",
             source_url=THREE_DEP_SOURCE_URL,
@@ -799,8 +869,11 @@ def _fetch_terrain(bbox: FootprintBBox, cache_root: Path, coverage, *,
         return None, manifest
     with prep_stage("static_terrain_window", label="Build terrain source window",
                     count=len(tiles)):
+        window_tiles, window_bbox = _window_tiles(tiles, bbox, cache_root,
+                                                  rotation, manifest)
         window, window_audit = derive_global_terrain_window(
-            tiles, bbox, cache_root, sea_level_fill=None, source_nodata=nodata)
+            window_tiles, window_bbox, cache_root, sea_level_fill=None,
+            source_nodata=nodata)
     bound = _bound(
         window, source_id=coverage.source_id, role="terrain",
         source_url=coverage.source_url, license_id=coverage.license_id,
@@ -1091,6 +1164,7 @@ def apply_highres_statics(baseline, grid, *, config, domain_id: int,
         return baseline, None
     if not _scope_reaches(config, grid):
         return baseline, None
+    config = grid_highres_config(config, grid)
 
     # Before the footprint, before the plan, before the first byte is
     # requested.  See require_geography_stack: this is deliberately not
@@ -1249,24 +1323,29 @@ def _terrain_only_reason(config, landcover: LandcoverSource | None,
 def _apply_terrain_only(baseline, grid, *, config: HighresStaticConfig,
                         coverage, bbox: FootprintBBox, urlopen=None,
                         landcover: LandcoverSource | None = None,
-                        terrain_smoothing=WPS_DEFAULT):
+                        terrain_smoothing=WPS_DEFAULT,
+                        rotation: float = 0.0, reason: str | None = None):
     """Replace terrain alone from a near-global source.
 
     Land use, soil and every monthly climatology stay exactly as the
     30-arc-second baseline built them, and the receipt says so in
     ``fields_retained_30s`` so nobody can read this as a full overlay.
+    ``rotation`` is the turn a dateline footprint is built in
+    (:func:`woof.static.highres_fetch.dateline_rotation_deg`); ``reason``
+    replaces the stated reason for terrain alone.
     """
     try:
         terrain, fetch_manifest = _fetch_terrain(
             bbox, config.cache_root, coverage, grid=grid, baseline=baseline,
-            urlopen=urlopen)
+            urlopen=urlopen, rotation=rotation)
     except CoverageError as error:
         raise HighresRefusal("missing-source-coverage", str(error))             from error
 
+    rotation_kw = {"lon_rotation_deg": rotation} if rotation else {}
     with prep_stage("static_terrain_warp", label="Resample terrain onto domain"):
         overrides, source_audit = build_terrain_override(
             grid, terrain=terrain, halo=HALO, baseline=baseline,
-            terrain_smoothing=terrain_smoothing)
+            terrain_smoothing=terrain_smoothing, **rotation_kw)
     with prep_stage("static_terrain_merge", label="Merge terrain into static fields"):
         merged, merge_audit = merge_terrain_override(baseline, overrides)
 
@@ -1285,7 +1364,7 @@ def _apply_terrain_only(baseline, grid, *, config: HighresStaticConfig,
             "must not present itself as applied")
 
     fetch_manifest["bytes_fetched"] = fetch_manifest["terrain_bytes_fetched"]
-    reason = _terrain_only_reason(config, landcover, bbox)
+    reason = reason or _terrain_only_reason(config, landcover, bbox)
     detail = {
         "mode": "terrain",
         "terrain_only_reason": reason,
@@ -1373,14 +1452,36 @@ def _apply(baseline, grid, *, config: HighresStaticConfig,
            terrain_smoothing=WPS_DEFAULT):
     _require_projected_grid(grid)
     bbox = domain_footprint(grid, HALO)
-    # Plan review, before a single byte is requested: the window writers
-    # still emit the cut -180..180 frame, so a continued footprint has no
-    # mosaic and the run must stop here rather than after enumerating and
-    # downloading its tiles.  Both modes pass through this line, and the
-    # writers call the same function as a backstop.
-    _require_cut_frame_window(bbox)
+    # A footprint continued past 180 degrees is built turned half a turn,
+    # where the cut -180..180 frame the window writers and the warp read
+    # holds it (dateline_rotation_deg).  A footprint no turn holds (one
+    # that occupies every longitude) stops here, at plan review, before a
+    # single byte is requested; the writers call the same function as a
+    # backstop.
+    rotation = dateline_rotation_deg(bbox)
+    if not rotation:
+        _require_cut_frame_window(bbox)
     landcover_row = _select_landcover(config)
     mode, coverage = _resolve_plan(config, bbox)
+    reason = None
+    if rotation and mode == "all":
+        # Land cover is clipped from one global raster and soil is read in
+        # Goode Homolosine, which is not symmetric about the pole, so the
+        # turned build covers terrain alone.  THE BREAKAGE THIS NAMES: a
+        # land-cover window cut across 180 degrees is pasted a planet apart.
+        if config.fields == "all":
+            raise HighresRefusal(
+                "dateline-window-unbuilt",
+                f"fields = \"all\" needs high-resolution land cover and soil, "
+                f"and the domain+halo footprint {bbox.as_dict()} is "
+                "continued past 180 degrees: terrain is built across the "
+                "line, land cover and soil windows are not yet.  Set fields "
+                "= \"auto\" or \"terrain\" to take high-resolution terrain "
+                "here with land use and soil on the 30-arc-second baseline")
+        mode = "terrain"
+        reason = ("the domain+halo footprint crosses 180 degrees (longitudes "
+                  f"{bbox.lon_min:.2f}..{bbox.lon_max:.2f}), where land cover "
+                  "and soil windows are not built yet")
     if mode == "all":
         # The land-use leg targets one inventory: the crosswalk's category
         # numbers are only meaningful against MODIS 21.
@@ -1389,10 +1490,12 @@ def _apply(baseline, grid, *, config: HighresStaticConfig,
     if mode == "terrain":
         smoothing_kw = {} if terrain_smoothing.is_default else {
             "terrain_smoothing": terrain_smoothing}
+        rotation_kw = ({"rotation": rotation, "reason": reason}
+                       if rotation else {})
         return _apply_terrain_only(baseline, grid, config=config,
                                    coverage=coverage, bbox=bbox,
                                    urlopen=urlopen, landcover=landcover_row,
-                                   **smoothing_kw)
+                                   **smoothing_kw, **rotation_kw)
 
     soil_kw = ({} if config.soil_source == "soilgrids"
                else {"soil_source": config.soil_source})
@@ -1787,6 +1890,7 @@ def require_prepared_highres(receipt, grid, *, config, domain_id, case_date):
     """Reject mismatched overlays after the caller verifies the static digest."""
     if not overlay_active(config, grid):
         return
+    config = grid_highres_config(config, grid)
     overlay = receipt.get("highres") if isinstance(receipt, dict) else None
     allowed = {"APPLIED"}
     if (not isinstance(overlay, dict) or overlay.get("status") not in allowed
@@ -1814,6 +1918,7 @@ def apply_prepared_highres(baseline, grid, *, config, domain_id, case_date,
     if not overlay_active(config, grid):
         fields = prepare_fields(baseline, grid, domain_id=domain_id, run=run)
         return fields, bind_receipt(fields, baseline_receipt)
+    config = grid_highres_config(config, grid)
     previous = (baseline_receipt.get("highres")
                 if isinstance(baseline_receipt, dict) else None)
     if (isinstance(previous, dict) and previous.get("status") == "APPLIED"
@@ -1834,6 +1939,7 @@ def apply_prepared_highres(baseline, grid, *, config, domain_id, case_date,
 __all__ = [
     "HighresRefusal", "HighresStaticConfig", "RECEIPT_SCHEMA",
     "HIGHRES_DEFAULT_BY_DX", "HighresDefaultRow",
+    "LAND_COVER_DEFAULT_MAX_DX_M", "grid_highres_config",
     "default_highres_cache_root", "default_static_highres",
     "overlay_active", "raw_domain_spacings", "resolve_static_highres",
     "US_COVERAGE_ENVELOPE", "apply_highres_statics", "parse_static_table",

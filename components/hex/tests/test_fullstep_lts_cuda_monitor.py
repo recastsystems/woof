@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-pytestmark=pytest.mark.skipif(os.environ.get('HEX_LTS_GPU_TESTS') != '1',reason='requires explicit GPU mutex job')
+pytestmark=pytest.mark.skipif(os.environ.get('HEX_LTS_GPU_TESTS') != '1',reason='requires an explicit GPU job (HEX_LTS_GPU_TESTS=1)')
 
 
 def test_cuda_donor_matches_independent_cpu_and_is_deterministic():

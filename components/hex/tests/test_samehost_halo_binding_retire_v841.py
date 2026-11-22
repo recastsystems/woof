@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import pytest
 import sys
 
 import numpy as np
@@ -95,3 +96,9 @@ def test_the_exchanger_retires_at_every_step_end():
         exchanger.begin_step(step)
         exchanger.end_step()
     assert calls == [3, 3, 3]
+
+
+@pytest.fixture(autouse=True)
+def _speed_word_off(monkeypatch):
+    """These tests state the law with WOOF_HEX_HALO_TABLE_CACHE off (it is on by default since 19 Nov; speed_words)."""
+    monkeypatch.setenv("WOOF_HEX_HALO_TABLE_CACHE", "0")

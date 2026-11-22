@@ -79,6 +79,8 @@ OPTIONAL_MODULES: dict[str, str] = {
     "pyproj": "recast-woof[geog]",
     "affine": "recast-woof[geog]",
     "huggingface_hub": "recast-woof[publish]",
+    # (WOOF 1.1.7 round 4) gpuwm-hex 0.6.2's torch bridge (the learned correction and its trainer)
+    "torch": "recast-woof[torch]",
     "h5py": "recast-woof[publish]",
     # The Rust extension modules, which are built rather than pip-installed.
     "rw_odim": "cargo build --release (tools/rustwx)",
@@ -86,10 +88,68 @@ OPTIONAL_MODULES: dict[str, str] = {
 }
 
 #: Script-only modules are enumerated and reported without importing their
-#: program bodies. No such module remains in the shipped packages.
+#: program bodies.
 #: tests/test_import_sweep.py exercises this contract with a synthetic program
 #: and checks that future exclusions exist and have no library callers.
-SCRIPT_MODULES: dict[str, str] = {}
+#: (WOOF 1.1.7) gpuwm-hex 0.6.0 ships its differentiable recorder's command
+#: line and its audit and observation tools inside the package, as its own
+#: wheel does: the tools import their siblings by bare name and read their
+#: arguments at import, so importing one is running it.
+SCRIPT_MODULES: dict[str, str] = {
+    "woof.hex.ad.record.tools.audit_cublas_geam": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.audit_library_bindings": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.audit_library_calls": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.audit_lw_global_candidates": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.audit_module_global_launches": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.catalog_v10": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.classify_d2h_checked": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.classify_r2_r3": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.correlate_v10": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.d2h_pystack_sites": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.finalize_package": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.frame_snapshot": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.gen_immutable": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.host_inventory": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.host_inventory_v2": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.make_alloc_map": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.make_frame_states": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.make_layout_source": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.make_partial_plan": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.module_initializers": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.object_graph_inventory": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_callbacks": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_callbacks_v2": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_compiler_sources": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_copy_plans": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_cupti_host": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_cupti_outer": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_deep_census": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_frames": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_host_asarray": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_launch_sites": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_layer_groups": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_module_globals": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_owner_binding": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_ruc_pointers": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_seaice_pointers": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_slotted_census": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_species_pointers": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_stack_pointers": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.observe_tempo_pointers": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.p1fix_package": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.propose_library_replacements": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.prove_cindexer_pairs": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.record_observer": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.residue_witness": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.seal_phys_stage2": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.seal_phys_stage3": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.seed_payloads": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.tools.source_signatures": "hex recorder tool: a script run from its own folder",
+    # (WOOF 1.1.7 round 4) hex 0.6.2's recorder observer: it reads its arguments at import and reaches
+    # observe_cupti_outer by bare name from its own folder
+    "woof.hex.ad.record.tools.mdev_observer": "hex recorder tool: a script run from its own folder",
+    "woof.hex.ad.record.__main__": "the hex recorder command line",
+}
 
 #: The packages the wheel ships that are libraries rather than scripts.
 PACKAGES = ("woof", "tilestream")

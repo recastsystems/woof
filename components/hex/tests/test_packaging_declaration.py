@@ -17,6 +17,8 @@ import tomllib
 
 import pytest
 
+import site_support
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
@@ -37,8 +39,8 @@ def declaration() -> dict:
 # ---------------------------------------------------------------------------
 def test_the_version_is_stated_in_exactly_one_place(declaration: dict) -> None:
     declared = declaration["project"]["version"]
-    assert declared == "0.4.14", (
-        "0.4.14 is the candidate paired with woof 2.9.12; "
+    assert declared == "0.6.2", (
+        "0.6.2 is the defect release of 0.6.1 (paired with woof 3.0); "
         "moving it is a release decision, not an edit"
     )
 
@@ -132,7 +134,23 @@ def test_the_runtime_version_agrees_with_the_declaration(declaration: dict) -> N
             "PYTHONPATH=src checkout); the agreement is proven by the "
             "packaging tier, which installs the built wheel first"
         )
-    assert installed == declaration["project"]["version"]
+    declared = declaration["project"]["version"]
+    if installed != declared:
+        # A checkout imported over ANOTHER installed version (PYTHONPATH=src in a venv that still
+        # holds an older woof hex): the metadata read is that older install's, not this tree's.
+        # THE BREAKAGE THIS PREVENTS: on the release hosts the shared test venv held 0.5.1, so this
+        # test failed on every 0.6.0 candidate for a reason outside the package.  Where the import
+        # IS the installed distribution a disagreement is the defect, and it fails.
+        from importlib.metadata import distribution
+
+        shipped = distribution(woof.hex.DISTRIBUTION_NAME).locate_file("woof/hex/__init__.py")
+        if Path(str(shipped)).resolve() != Path(woof.hex.__file__).resolve():
+            pytest.skip(
+                f"this interpreter has woof hex {installed} installed while hexcore is imported "
+                f"from a {declared} checkout ({Path(woof.hex.__file__).resolve().parent}); the "
+                "agreement is proven by the packaging tier, which installs the built wheel first"
+            )
+    assert installed == declared
     assert woof.hex.__version__ == installed
 
 
@@ -211,7 +229,7 @@ def test_the_import_namespace_carries_no_other_project_name() -> None:
     name for a relationship this port holds over only half the model: the
     DYCORE numerics and MESH conventions implement MPAS-A v8.4.x and are
     pinned as a specification, while the physics is deliberately not MPAS's
-    at all -- it is WOOF's column-batch seam.  A name is a claim, and that
+    at all -- it is WOOF-ArWen's column-batch seam.  A name is a claim, and that
     one was wrong in the direction that matters, towards somebody else's
     trademarkable project.  ``woof.hex`` names what IS pinned, the hexagonal
     Voronoi mesh and the dycore, and it matches the distribution.
@@ -250,9 +268,18 @@ def test_the_import_namespace_carries_no_other_project_name() -> None:
 # ---------------------------------------------------------------------------
 # the dependency table
 # ---------------------------------------------------------------------------
+# A subpackage that is an optional extra's own code may import that extra's distributions at module scope: nothing
+# else in the package imports it, so `import woof.hex` and every other module still import without the extra (held by
+# test_extra_subpackages_are_imported_only_by_themselves).  THE BREAKAGE the plain rule would cause (2026-11-19): the
+# torch bridge, opt-in by design, could only be written with its imports hidden inside functions.
+_EXTRA_SUBPACKAGES = {"torch_bridge": {"torch"}}
+
+
 def _module_scope_third_party_imports() -> set[str]:
     found: set[str] = set()
     for path in sorted(PACKAGE.rglob("*.py")):
+        rel = path.relative_to(PACKAGE).parts
+        allowed = _EXTRA_SUBPACKAGES.get(rel[0], set()) if len(rel) > 1 else set()
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in tree.body:
             names: list[str] = []
@@ -266,8 +293,35 @@ def _module_scope_third_party_imports() -> set[str]:
                 top = name.split(".")[0]
                 if not top or top in sys.stdlib_module_names or top == "hexcore":
                     continue
+                # A script directory importing its own sibling by bare name (scripts that run with their own
+                # directory on sys.path) is our own file, not a distribution.  THE BREAKAGE (2026-11-09): 66 such
+                # imports read as undeclared dependencies.
+                if (path.parent / f"{top}.py").is_file():
+                    continue
+                if top in allowed:
+                    continue
                 found.add(top)
     return found
+
+
+def test_extra_subpackages_are_imported_only_by_themselves() -> None:
+    for path in sorted(PACKAGE.rglob("*.py")):
+        rel = path.relative_to(PACKAGE).parts
+        for sub in _EXTRA_SUBPACKAGES:
+            if rel[0] == sub:
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and not node.level:
+                    names = [node.module or ""] + [f"{node.module}.{a.name}" for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 1 and path.parent == PACKAGE:
+                    names = [f"hexcore.{node.module or ''}"] + [f"hexcore.{a.name}" for a in node.names]
+                assert not any(n == f"hexcore.{sub}" or n.startswith(f"hexcore.{sub}.") for n in names), (
+                    f"{path.relative_to(ROOT)} imports hexcore.{sub}, an optional extra's subpackage: the package "
+                    "would then need that extra to import"
+                )
 
 
 def test_every_module_scope_import_is_a_declared_dependency(
@@ -558,6 +612,7 @@ def test_kernel_packs_and_release_assets_are_outside_the_distributions(declarati
     assert "data/kernel-pack*.json" in excluded
     # Seed the file list as if a future broad graft or stale SOURCES.txt included
     # release assets. The manifest must actively remove them.
+    site_support.setuptools_or_skip("driving the sdist template engine over MANIFEST.in")
     from setuptools._distutils.filelist import FileList
     files = FileList()
     files.allfiles = ["release-assets/kernel-packs/kernel-pack-cuda13.json",

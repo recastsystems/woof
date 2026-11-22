@@ -52,6 +52,12 @@ def kernel_dir(root) -> Path:
 #: ``-ftz=true`` route must leave this list.
 FTZ_FALSE_SOURCES = frozenset({
     "afwa_buoyancy.cu", "afwa_severe.cu", "misc_diag_print.cu", "snow_papers.cu",
+    # clean-snicar-lap: compiled with snow_papers.cu through the same --ftz=false loader.
+    "snow_lap.cu",
+    # WRF v4.8.0 assembly: Shin-Hong 4.8.0 (in _NO_FTZ_MODULES, -fmad=false
+    # --ftz=false) and dynamic lightning (the default loader's --ftz=false
+    # options, kernels.module_options("dyn_lightning")).
+    "shinhong_480.cu", "dyn_lightning.cu",
     # FARMS already uses the solar direct-NVRTC no-FTZ route.
     "farms.cu",
     'pxsfclay.cu', 'ssib.cu', 'trajectory.cu', 'tslist.cu', 'wrf_stock_aer3.cu',
@@ -468,6 +474,16 @@ def inline_kernel_strings(source: str):
             yield node.lineno, node.value
 
 
+#: woof modules whose inline CUDA strings compile only through a --ftz=false
+#: route, so A146's -ftz=true reciprocal rewrite never reaches them.
+FTZ_FALSE_INLINE_MODULES = {
+    # WRF v4.8.0 GFL: kernels.compile_no_ftz(cuda_source(), ...) with
+    # COMPILER_OPTIONS = (..., "--fmad=false", "--ftz=false", ...); its
+    # relayout copy divides nothing.
+    "woof/core/gfl_873b414.py",
+}
+
+
 def inline_kernel_offenders(root) -> list[str]:
     """The same scan over the CUDA source strings of every ``woof`` module
     of the tree at ``root``."""
@@ -484,6 +500,8 @@ def inline_kernel_offenders(root) -> list[str]:
         text = path.read_text(encoding="utf-8")
         if "__global__" not in text and "__device__" not in text \
                 and not any(f in text for f in _KERNEL_FACTORIES):
+            continue
+        if path.relative_to(root).as_posix() in FTZ_FALSE_INLINE_MODULES:
             continue
         for lineno, kernel in inline_kernel_strings(text):
             for line, token in literal_divisions(kernel, common_names,

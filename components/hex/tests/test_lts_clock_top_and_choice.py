@@ -146,7 +146,7 @@ def test_the_step_cost_table_has_a_row_per_route():
 
 
 def test_the_arwen_route_prices_top_class_8_at_15_s_above_the_fixed_step():
-    """On the zoom globe the WOOF route's top class 8 at the clock's 15 s loses to the fixed step (84.3 vs 80.5,
+    """On the zoom globe the WOOF-ArWen route's top class 8 at the clock's 15 s loses to the fixed step (84.3 vs 80.5,
     measured 83.0 vs 80.2): priced alone it picks fixed; a coarse-dominated census still picks LTS."""
     from woof.hex.fullstep_lts_choice import route_choice
     choice = route_choice(ZOOM_CENSUS, route="arwen", fixed_dt_seconds=18.0, lts_dt_seconds=15.0)
@@ -164,7 +164,7 @@ def test_a_route_without_a_measured_row_is_refused_by_name():
 
 
 def test_the_arwen_door_runs_the_plain_fixed_step_where_lts_loses(tmp_path):
-    """The WOOF route's door hook: LTS requested on a mesh where it loses ends as the plain fixed run."""
+    """The WOOF-ArWen route's door hook: LTS requested on a mesh where it loses ends as the plain fixed run."""
     grid = _chain_mesh(tmp_path / "to96.nc", _graded(96))
     args = _args(grid=grid)
     assert forecast_door.lts_choice(args, route="arwen", fixed_dt=18.0, lts_dt=15.0, environ={}) == "fixed"
@@ -176,7 +176,7 @@ def test_the_arwen_door_runs_the_plain_fixed_step_where_lts_loses(tmp_path):
 def test_a_lower_top_class_that_keeps_the_step_can_win():
     """The class clock alone keeps the top class and shrinks the step (8 x 15 s on the zoom globe); a top class of
     4 keeps 18 s (4 x 18 s = 72 s divides 1800 s).  plan_choice prices both against the fixed step and keeps the
-    cheapest: with a per-step cost of 0.098 s and 1.95 us per cell-step (the zoom globe's WOOF pair with the hoisted
+    cheapest: with a per-step cost of 0.098 s and 1.95 us per cell-step (the zoom globe's WOOF-ArWen pair with the hoisted
     kernels, HEX-LTS-REGRESSION-2026-10-27) top class 4 at 18 s wins, top class 8 at 15 s does not."""
     from woof.hex.fullstep_lts_choice import plan_choice
     row = {"arwen": {"seconds_per_step": 0.0983, "seconds_per_cell_step": 1.9466e-6, "source": "test"}}

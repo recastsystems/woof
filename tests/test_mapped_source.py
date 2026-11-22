@@ -689,7 +689,7 @@ def test_mapping_rejects_bad_derivation_dependencies_and_cycles(tmp_path):
 def test_grib_soil_layers_follow_selector_order_not_duplicate_level_value():
     mapping = {
         "format": "grib1",
-        "coordinates": {"vertical": {"levels": [1000.0]}},
+        "coordinates": {"horizontal": {}, "vertical": {"levels": [1000.0]}},
         "fields": {
             "soil_temperature": {
                 "selectors": [
@@ -739,7 +739,7 @@ def test_grib2_bounded_soil_layers_require_and_follow_second_surface_selectors()
     ]
     mapping = {
         "format": "grib2",
-        "coordinates": {"vertical": {"levels": [100000.0]}},
+        "coordinates": {"horizontal": {}, "vertical": {"levels": [100000.0]}},
         "fields": {
             "soil_temperature": {
                 "selectors": selectors,
@@ -785,7 +785,7 @@ def test_grib2_bounded_soil_layers_require_and_follow_second_surface_selectors()
 def test_grib2_process_identity_may_change_between_forecast_times_only():
     mapping = {
         "format": "grib2",
-        "coordinates": {"vertical": {"levels": [100000.0]}},
+        "coordinates": {"horizontal": {}, "vertical": {"levels": [100000.0]}},
         "fields": {
             "surface_pressure": {
                 "selectors": [{

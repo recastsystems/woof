@@ -6,7 +6,7 @@ field four times an hour ahead of each forecast leg.  This tool makes those
 fields from raw NEXRAD Level-II volumes for a list of window end times:
 
 * discovery, listing and the causal volume choice are
-  ``tools/conus_da_observations.py``'s, reused rather than retold: every
+  ``tools/nexrad_archive.py``'s, reused rather than retold: every
   NEXRAD site whose 250 km disc touches the grid (the decoder's own site
   table), one S3 listing per site-day, candidates whose key time lies in
   ``[end - 900 s, end]``, no ``_MDM`` objects, and no object whose
@@ -52,7 +52,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.conus_da_observations import (MAX_AGE_S, RADAR_BUCKET, RANGE_KM,  # noqa: E402
+from tools.nexrad_archive import (MAX_AGE_S, RADAR_BUCKET, RANGE_KM,  # noqa: E402
                                          MAX_ELEVATION_DEG, download, iso,
                                          list_objects, object_time, save, sha,
                                          utc)
@@ -86,7 +86,7 @@ def window_ends(args) -> list[dt.datetime]:
 
 def candidates_for(listing, end, *, per_site: int):
     """Causal candidates for one site and window, newest key first."""
-    from tools.da_recent_observations import causal_object
+    from tools.nexrad_archive import causal_object
     rows = [row for row in listing
             if object_time(row["key"]) is not None
             and end - dt.timedelta(seconds=MAX_AGE_S) <= object_time(row["key"]) <= end

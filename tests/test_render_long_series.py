@@ -36,7 +36,7 @@ WINDOWS_COMMAND_LIMIT = 32_767
 def _long_folder(root: Path) -> Path:
     """Where an ordinary desktop install keeps one long forecast's frames."""
 
-    return (root / "Zoe Weather" / "Documents" / "WOOF forecasts"
+    return (root / "Zoe Weather" / "Documents" / "WOOF-ArWen forecasts"
             / "Oklahoma long forecast"
             / "run-20260926-190000Z_i202609260000Z" / "run" / "wrfout")
 

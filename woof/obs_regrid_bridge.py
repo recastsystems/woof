@@ -3,7 +3,7 @@
 The library is ``tools/rustwx/crates/obs-regrid``, the port target for
 :mod:`woof.verify.obs.regrid` -- both registered remap operators, the
 bounded neighbour search that used to be ``scipy.spatial.cKDTree``, and
-the validity remap that used to be ``numpy.add.at``.  WOOF's Python
+the validity remap that used to be ``numpy.add.at``.  WOOF-ArWen's Python
 boundary names "regrid/transform" as data-path processing, and this is
 where that half of the observation battery runs now.
 
@@ -30,7 +30,7 @@ the exception is what broke the build.  The Python fallback and the
 parity reference stay in :mod:`woof.verify.obs.regrid`; only the seam
 moved.
 
-Default-on contract (WOOF's fixed-means-default law): a bare
+Default-on contract (WOOF-ArWen's fixed-means-default law): a bare
 ``python -m tools.obs_battery_score`` builds and applies its remap plans
 here.  The pure-Python implementation stays importable as the parity
 reference and as an explicit fallback (``WOOF_OBSREGRID_PYTHON=1``),

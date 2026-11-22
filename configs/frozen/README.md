@@ -37,23 +37,30 @@ the remedy the project ruled on and ran (attempt #3).
 
 | file | sha256 on disk today | as-run sha256 | worst ratio when it ran | the receipts that name it |
 |---|---|---|---|---|
-| `les_nest_250m_km3.toml` | `52bd29d0a0c9a235aaa449642cdee154cd589e3e03c7af2bfdb29df2766c62e3` | `2a3a279b6de1cef84771245410a875f354f6867736507da24d2f1a98d49e7b55` | d03 0.702 | `docs/superpowers/receipts/les/nested-les-scored-2026-08-02.md`, `docs/superpowers/receipts/les/INFLOW-FETCH-D90-2026-08-03.md`, `docs/superpowers/receipts/grayzone/P4-CAMPAIGN-20260804.md` R1 |
-| `les_nest_250m_grayzone.toml` | `25c65cddd8a622a51103ca48ab4dc7a755eb63986e00dc3ff43ca83b31260fe4` | `d3eb6c70c06e462829372902d1b0ceabe22b8d0bc58df5b7f1f67600a2304a25` | d03 0.702 | `docs/superpowers/receipts/grayzone/P4-CAMPAIGN-20260804.md` R2/R3 |
-| `les_tornado_100m_mayfield_20211210.toml` | `037f9af7a4c3ffbe88f0522f268bd4c8342a7c5cf53f2701d02ad9851d270761` | `7aab68c6df535d63327218290b95743bc66580753e28d85a6791862180b34f73` | d03 0.169, d04 4.23 | `docs/les/ATTEMPT1-EXPECTATIONS.md` (registered before the run) |
+| `les_nest_250m_km3.toml` | `b3b1104876325dea10d412ebeb740738d2afdeb1772847ba9e183c14e878ffc6` | `2a3a279b6de1cef84771245410a875f354f6867736507da24d2f1a98d49e7b55` | d03 0.702 | `docs/internal/receipts/les/nested-les-scored-2026-08-02.md`, `docs/internal/receipts/les/INFLOW-FETCH-D90-2026-08-03.md`, `docs/internal/receipts/grayzone/P4-CAMPAIGN-20260804.md` R1 |
+| `les_nest_250m_grayzone.toml` | `8db558076a9779d28a0cc3b538dc85a0c128668737b860c0e2349ebeabbbf094` | `d3eb6c70c06e462829372902d1b0ceabe22b8d0bc58df5b7f1f67600a2304a25` | d03 0.702 | `docs/internal/receipts/grayzone/P4-CAMPAIGN-20260804.md` R2/R3 |
+| `les_tornado_100m_mayfield_20211210.toml` | `445e3f725f90eb84fdd627f013eef08d108254cf58291d2b149a81fbd46155c3` | `7aab68c6df535d63327218290b95743bc66580753e28d85a6791862180b34f73` | d03 0.169, d04 4.23 | `docs/les/ATTEMPT1-EXPECTATIONS.md` (registered before the run) |
 
-WOOF 1.0.0 re-pinned the on-disk digest of `les_nest_250m_km3.toml` (a comment
-names the engine WOOF), `les_tornado_100m_mayfield_20211210.toml` (a comment
-no longer names a person or cites an internal document; a comment names the
-engine WOOF). Only comments changed, so every value and every as-run digest is
-as it was.
+WOOF 1.0.0 re-pinned the on-disk digest of `les_nest_250m_grayzone.toml` (a
+comment cites the unpublished record folder by a neutral name),
+`les_nest_250m_km3.toml` (a comment names the engine WOOF-ArWen; a comment
+cites the unpublished record folder by a neutral name),
+`les_tornado_100m_mayfield_20211210.toml` (a comment no longer names a person
+or cites an internal document; a comment names the engine WOOF-ArWen; a
+comment cites the unpublished record folder by a neutral name),
+`les_tornado_100m_mayfield_20211210_attempt2.toml` (a comment cites the
+unpublished record folder by a neutral name),
+`les_tornado_100m_mayfield_20211210_attempt2b.toml` (a comment cites the
+unpublished record folder by a neutral name). Only comments changed, so every
+value and every as-run digest is as it was.
 
 ### Two digests, since 1.8.8, and they are different numbers
 
 The **as-run** column is what the committed receipts carry, and what
 they will keep carrying: no receipt was edited.
-`docs/superpowers/receipts/les/inflow-fetch/run_a_receipt.json`,
+`docs/internal/receipts/les/inflow-fetch/run_a_receipt.json`,
 `run_b_receipt.json` and
-`docs/superpowers/receipts/grayzone/p4/r1_run_receipt.json` each record
+`docs/internal/receipts/grayzone/p4/r1_run_receipt.json` each record
 `"experiment_config": "2a3a279b6d…"` as a machine-readable field, and
 those exact bytes stay retrievable with `git show
 4152fcb31:configs/les_nest_250m_km3.toml`. This directory was made by a
@@ -93,7 +100,7 @@ it is will be wrong about two files:
 
 | file | sha256 on disk today | as-run sha256 | worst ratio | why it is not here |
 |---|---|---|---|---|
-| `configs/les_tornado_100m_mayfield_20211210_attempt2.toml` | `e70081ef24d5e57ffbf177ea2d5a9ba79b0befecfcc81b3ece005010fa26e9e2` | `690c04fc753176cfec4e92552d1ef976215f724644bbe9dec52942674ef1921a` | d04 4.23 | attempt #2 revision a: the record of both the arm-a crash and the tornadic vortex that motivated the re-placement |
+| `configs/les_tornado_100m_mayfield_20211210_attempt2.toml` | `8b27d7426d85fdf228acdd40bf139dc419f2147b9fd04594bb81af85734a453e` | `690c04fc753176cfec4e92552d1ef976215f724644bbe9dec52942674ef1921a` | d04 4.23 | attempt #2 revision a: the record of both the arm-a crash and the tornadic vortex that motivated the re-placement |
 | `configs/les_tornado_100m_mayfield_20211210_attempt2b.toml` | `443efed35f837ac8c21a34abf005e5db1b2c1d31d0dbd024dc82a8835f43ec0e` | `3f3cbcb319412cee1b5ab29a57bbd8cbd104016b7d9d64f0c7600d986113c057` | d04 4.23 | attempt #2 revision b: the run that tripped at step 5467 with `w = 239.48 m/s` and produced the criterion; frozen BY NAME at that path in `configs/les_tornado_100m_mayfield_20211210_attempt3.toml`, so moving it would break the reference |
 
 Both of these moved at 1.8.8 for the same one reason as the three

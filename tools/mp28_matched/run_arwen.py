@@ -1,7 +1,7 @@
-"""Run the matched idealized periodic-boundary case in WOOF.
+"""Run the matched idealized periodic-boundary case in WOOF-ArWen.
 
 The companion of the WRF side of the ``mp_physics=28`` matched-trajectory
-comparison.  WOOF is initialised FROM WRF's own ``wrfinput_d01`` -- the file
+comparison.  WOOF-ArWen is initialised FROM WRF's own ``wrfinput_d01`` -- the file
 ``ideal.exe`` writes -- so the two models start from the same discrete state
 to float32, and the initialisation is removed as a source of divergence.
 What is NOT removed, and is measured instead, is everything downstream: the
@@ -9,7 +9,7 @@ dycore, the transport of the aerosol species, and the microphysics itself.
 
 The lateral boundaries are periodic in both models, so no boundary condition
 enters the comparison at all.  That is the whole reason the case exists: with
-specified boundaries there is no aerosol lateral BC in WOOF and the two
+specified boundaries there is no aerosol lateral BC in WOOF-ArWen and the two
 models would be integrating different problems within the hour.
 
 Usage:
@@ -46,10 +46,10 @@ def frame_fields(mp: int) -> dict[str, str]:
 
 
 def read_wrfinput(path: Path, frame: int = 0) -> dict:
-    """Everything the WOOF state needs, as float64 numpy, (nz, ny, nx).
+    """Everything the WOOF-ArWen state needs, as float64 numpy, (nz, ny, nx).
 
     ``frame`` selects a time index, so the same reader loads a ``wrfout``
-    history frame and WOOF can be restarted from a MATURE WRF state -- the
+    history frame and WOOF-ArWen can be restarted from a MATURE WRF state -- the
     only regime in which a "matched trajectory" can mean anything, because
     over a short window the two models have not had time to decorrelate.
     A flat idealized base state is time-invariant, so ``PHB``/``MUB``/
@@ -119,7 +119,7 @@ def build_state(cfg, w: dict):
     The base state is WRF's own (``MUB``/``PHB``/``PB``/``ALB``/``T_INIT``),
     the eta coordinate is WRF's own ``ZNW``, and the perturbations are read
     straight across.  ``T_INIT`` and ``T`` are WRF's ``theta - t0`` storage
-    convention; WOOF's ``thb``/``thp`` are absolute base theta and its
+    convention; WOOF-ArWen's ``thb``/``thp`` are absolute base theta and its
     perturbation, so ``t0 = 300`` is added back to the base and the
     perturbation is the difference of the two WRF fields.
     """

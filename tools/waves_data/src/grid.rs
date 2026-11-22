@@ -3,7 +3,11 @@ use rayon::prelude::*;
 use serde_json::Value;
 use std::path::Path;
 const EARTH:f64=6_371_008.8;
-pub struct Grid {pub lat:Vec<f32>,pub lon:Vec<f32>,pub area:Vec<f32>,pub cos:Vec<f32>,pub sin:Vec<f32>,pub mapfac:Vec<f32>,pub nx:usize,pub ny:usize,pub kind:String,pub dx:f64,pub dy:f64}
+pub struct Grid {pub lat:Vec<f32>,pub lon:Vec<f32>,pub area:Vec<f32>,pub cos:Vec<f32>,pub sin:Vec<f32>,pub mapfac:Vec<f32>,pub nx:usize,pub ny:usize,pub kind:String,pub dx:f64,pub dy:f64,
+    /// Optional atmosphere surface rows on a structured grid: water fraction
+    /// (1 water, 0 land), model surface height in m and ice fraction. They let
+    /// preparation find inland lakes; a grid without them prepares as before.
+    pub water:Option<Vec<f32>>,pub height:Option<Vec<f32>>,pub ice:Option<Vec<f32>>}
 impl Grid {
     pub fn len(&self)->usize{self.lat.len()}
     pub fn read(r:&Value)->Result<Self>{
@@ -33,9 +37,13 @@ impl Grid {
         let cos=field("cosalpha",1.)?;let sin=field("sinalpha",0.)?;let mapfac=field("map_factor",1.)?;
         let area=if kind=="points"{field("area",0.)?}else{(0..nx*ny).into_par_iter().map(|i|if kind=="latlon" {let half=dy/EARTH/2.;(EARTH*dx*((lat[i] as f64).to_radians()+half).min(std::f64::consts::FRAC_PI_2).sin()-EARTH*dx*((lat[i] as f64).to_radians()-half).max(-std::f64::consts::FRAC_PI_2).sin()) as f32}else{(dx*dy/(mapfac[i] as f64).powi(2)) as f32}).collect()};
         if (0..nx*ny).into_par_iter().any(|i|!lat[i].is_finite()||lat[i].abs()>90.||!lon[i].is_finite()||!area[i].is_finite()||area[i]<=0.||!mapfac[i].is_finite()||mapfac[i]<=0.||!cos[i].is_finite()||!sin[i].is_finite()||(cos[i]*cos[i]+sin[i]*sin[i]-1.).abs()>2e-4){return Err("invalid geometry, area, map factor or rotation".into());}
-        Ok(Self{lat,lon,area,cos,sin,mapfac,nx,ny,kind,dx,dy})
+        let optional=|key:&str|->Result<Option<Vec<f32>>>{if r[key].is_string()&&kind=="curvilinear"{Ok(Some(field(key,0.)?))}else{Ok(None)}};
+        let(water,height,ice)=(optional("water")?,optional("surface_height")?,optional("ice")?);
+        Ok(Self{lat,lon,area,cos,sin,mapfac,nx,ny,kind,dx,dy,water,height,ice})
     }
-    pub fn depth(&self,r:&Value)->Result<Vec<f32>>{
+    pub fn depth(&self,r:&Value)->Result<Vec<f32>>{Ok(self.bed(r)?.into_par_iter().map(|bed|(-bed).max(0.) as f32).collect())}
+    /// Bed elevation relative to the bathymetry datum (m, negative below it), at cell centres.
+    pub fn bed(&self,r:&Value)->Result<Vec<f64>>{
         let path=Path::new(text(r,"path")?);let digest=arrays::sha(path)?;
         if text(r,"sha256")?!=digest{return Err("bathymetry hash differs".into());}
         let lat=arrays::read_nc(path,r["latitude"].as_str().unwrap_or("lat"))?;let lon=arrays::read_nc(path,r["longitude"].as_str().unwrap_or("lon"))?;
@@ -63,7 +71,7 @@ impl Grid {
             let tile=tiles.iter().find(|t|ix>=t.0&&ix+1<t.1).ok_or("bathymetry tile gap")?;let nx=tile.1-tile.0;let j=(iy-y0)*nx+ix-tile.0;let z=&tile.2;
             let v=[z[j],z[j+1],z[j+nx],z[j+nx+1]];
             if v.iter().any(|v|!v.is_finite()||v.abs()>20000.){return Err("invalid bathymetry elevation".into());}
-            let bed=(1.-fy)*((1.-fx)*v[0]+fx*v[1])+fy*((1.-fx)*v[2]+fx*v[3]);Ok((-bed).max(0.) as f32)
+            Ok((1.-fy)*((1.-fx)*v[0]+fx*v[1])+fy*((1.-fx)*v[2]+fx*v[3]))
         }).collect()
     }
 }

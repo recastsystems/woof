@@ -1,6 +1,6 @@
 # Getting data
 
-WOOF downloads from **every registered source that has public bytes**
+WOOF-ArWen downloads from **every registered source that has public bytes**
 through one download front door, `woof fetch`, plus the static
 geography tree `woof fetch-geog` downloads and stages. `woof fetch
 --source` accepts:
@@ -15,7 +15,7 @@ geography tree `woof fetch-geog` downloads and stages. `woof fetch
 Registry aliases work everywhere a source id does: `gdps`, `ifs`,
 `hrrr-wrfprs`, `20cr`, `ai-gfs`. A registered source that is not
 runnable (`nam`, `href`, `rtma`, …) refuses naming its registry status,
-because nothing in this WOOF could read the bytes a download produced.
+because nothing in this WOOF-ArWen could read the bytes a download produced.
 
 This page covers each route end to end, the manifest handoff into the
 preprocessor, and accurate disk numbers (all measured).
@@ -255,7 +255,7 @@ assimilation system's best estimate of the atmosphere at that valid
 time -- rather than a forecast field carried forward by the model. For
 hindcast and case work, where the initial state is the whole point,
 that is the analysis-quality source at identical cost and in a
-container WOOF's decoder already reads. WOOF has not measured the
+container WOOF-ArWen's decoder already reads. WOOF-ArWen has not measured the
 forecast impact of analysis-versus-forecast initialization, so it makes
 no claim about one.
 
@@ -542,7 +542,7 @@ refuse at decode -- and nothing in the filename would have told you.
 Point this **experimental, runnable** route at NOAA-CIRES-DOE Twentieth
 Century Reanalysis version 3 member GRIB2 files you already hold, and it
 initializes a run from them. Getting hold of the files is the one part
-WOOF does not do for you: `woof fetch --source 20crv3` refuses by
+WOOF-ArWen does not do for you: `woof fetch --source 20crv3` refuses by
 name -- the every-member archive is not published on an anonymously
 readable endpoint, and only the ensemble-MEAN NetCDF distribution is --
 and points at `--source-root`, which takes a directory you filled
@@ -763,7 +763,7 @@ that bridge selects by exact field identity, not by file size. Full files also n
 immune to the provider-spelling divergence described under HRRR above.
 
 **Record counts.** Every download is checked against a record count
-derived from the live provider inventory, with the count this WOOF was
+derived from the live provider inventory, with the count this WOOF-ArWen was
 certified against (124 GFS/GDAS, 561 + 18 HRRR) retained as a
 tripwire. Agreement is silent. Disagreement names both numbers and
 stops -- an upstream inventory change is a re-certification event, not

@@ -71,6 +71,9 @@ static TempoCtx make_ctx(double dt, int first) {
   C.re_snow_flag = 1;
   C.max_hail_diameter_flag = 1;
   C.first_call_main = first;
+#if defined(TEMPO_GEN) && TEMPO_GEN >= 325
+  C.hailhyperaware_flag = 1;  // TEMPO v3.2.x default (ty_tempo_cfgs)
+#endif
   return C;
 }
 
@@ -103,8 +106,14 @@ int main(int argc, char** argv) {
     std::vector<double> sfc((size_t)8 * ncol), cd((size_t)4 * ncol * nz);
     for (int it = 1; it <= nsteps; ++it) {
       for (int c = 0; c < ncol; ++c) {
+#if defined(TEMPO_GEN) && TEMPO_GEN >= 325
+        // v3.2.5 tempo_run: is_first_step = (itimestep == 1), every column
+        TempoCtx C = make_ctx(dt, it == 1);
+        (void)first;
+#else
         TempoCtx C = make_ctx(dt, first);
         first = 0;
+#endif
         tempo_main_column(P, C, nz, *W, S(c, F_QV), S(c, F_QC), S(c, F_QI), S(c, F_QR), S(c, F_QS),
                           S(c, F_QG), S(c, F_QB), S(c, F_NI), S(c, F_NR), S(c, F_NC), S(c, F_NG),
                           S(c, F_NWFA), S(c, F_NIFA), S(c, F_T), S(c, F_P), S(c, F_W), S(c, F_DZ));

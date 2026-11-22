@@ -5,7 +5,7 @@ No device is opened here.  What is pinned:
 * the doors a user reaches the scheme through: the RunConfig key, the WRF
   namelist importer, and the registry option plan review reads;
 * WRF's one law for the scheme (isfc = 1, module_physics_init.F:
-  3892-3893) and the WOOF refusal (vapour without a cloud-water species),
+  3892-3893) and the WOOF-ArWen refusal (vapour without a cloud-water species),
   each naming its breakage;
 * the dispatch row, checkpoint identity, vertical bound, kernel-module
   row, VRAM terms and history names, each held to the one table it reads;

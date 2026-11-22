@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use rayon::prelude::*;
@@ -1697,7 +1697,7 @@ pub struct TileMapCacheReceipt {
 
 #[derive(Default)]
 struct TileMapCacheInner {
-    maps: HashMap<TileMapKey, CachedTileMap>,
+    maps: HashMap<TileMapKey, Arc<CachedTileMap>>,
     bytes: u64,
     hits: u64,
     misses: u64,
@@ -1734,18 +1734,27 @@ impl TileMapCache {
     }
 
     fn get(&self, key: &TileMapKey, len: usize) -> MpasResult<Option<Vec<i32>>> {
-        let mut inner = self.lock()?;
-        match inner.maps.get(key) {
-            Some(entry) => {
-                let decoded = entry.decode(len)?;
-                inner.hits += 1;
-                Ok(Some(decoded))
+        // Decode OUTSIDE the lock. THE BREAKAGE THIS ENDS: the decode (a
+        // 1.44 M-word fill per 30-second tile) ran while holding the cache
+        // mutex, so every dataset reusing a shared geometry's maps (soilcl1-4,
+        // soilcomp, snoalb) decoded its 648 tiles one at a time while the tile
+        // pool waited: about 0.45 s per dataset at ~2 cores on the 17,928-cell
+        // L8-L9 halo static (2026-11-09). The entry is shared by `Arc`; the
+        // lock guards only the lookup and the counters; the bytes are the same.
+        let entry = {
+            let mut inner = self.lock()?;
+            match inner.maps.get(key).cloned() {
+                Some(entry) => {
+                    inner.hits += 1;
+                    entry
+                }
+                None => {
+                    inner.misses += 1;
+                    return Ok(None);
+                }
             }
-            None => {
-                inner.misses += 1;
-                Ok(None)
-            }
-        }
+        };
+        Ok(Some(entry.decode(len)?))
     }
 
     fn insert(&self, key: TileMapKey, map: &[i32]) -> MpasResult<()> {
@@ -1763,7 +1772,7 @@ impl TileMapCache {
             return Ok(());
         }
         inner.bytes += bytes;
-        inner.maps.insert(key, encoded);
+        inner.maps.insert(key, Arc::new(encoded));
         Ok(())
     }
 
@@ -2996,6 +3005,10 @@ fn write_static(
     ] {
         vars.push(flt(name, vec![d_c], if name == "var2d" {"m"} else {"unitless"}, long));
     }
+    if !gwd.elvmax.is_empty() {
+        // MPAS-Model PR #1408 Registry: elvmax, nCells, m, "elevation maximum over a grid cell".
+        vars.push(flt("elvmax", vec![d_c], "m", "elevation maximum over a grid cell"));
+    }
     // The thirteen this builder adds beyond the published manifest.
     vars.extend([
         flt("cell_gradient_coef_x", vec![d_c, d_me], "m^-1", "Coefficients for computing the x (zonal) derivative of a cell-centered variable"),
@@ -3242,6 +3255,13 @@ fn write_static(
     for k in 0..4 {
         w.put(&format!("ol{}", k + 1), NcData::Floats(&f32_from_f64(&gwd.ol[k])))?;
     }
+    if !gwd.elvmax.is_empty() {
+        if gwd.elvmax.len() != mesh.n_cells {
+            return Err(MpasError::Refusal(format!(
+                "the drag band's elvmax has {} values, expected {}", gwd.elvmax.len(), mesh.n_cells)));
+        }
+        w.put("elvmax", NcData::Floats(&f32_from_f64(&gwd.elvmax)))?;
+    }
     }
 
     w.put("cell_gradient_coef_x", NcData::Floats(&operators.cell_gradient_coef_x))?;
@@ -3442,7 +3462,7 @@ pub fn build_static_reporting(
         .transpose()?;
     let gwd_topo = GeogDataset::open(cfg.native_gwd.as_ref().map_or(&cfg.geog.terrain, |gwd| &gwd.topo))?;
     let gwd_min_rows = if !cfg.stages.gwd { 0 } else { match &native_mesh {
-        Some(native) => native.minimum_band_rows()?,
+        Some(native) => native.minimum_band_rows_for(cfg.native_gwd.as_ref().map_or_else(Default::default, |g| g.recipe))?,
         None => crate::static_gwd::minimum_band_rows(&gwd_topo, &mesh.lat_cell, &dc_m)?,
     } };
     let gwd_rows = gwd_min_rows.max(GWD_PREFERRED_BAND_ROWS);
@@ -3866,10 +3886,9 @@ pub fn build_static_reporting(
         gwd_variance_smoothed_cells: gwd.smoothed_cells,
         mminlu: cfg.stages.landuse_label.clone().unwrap_or_else(||landuse_ds.index.mminlu.clone()),
         native_undefined_ol1_cells: native_mesh.as_ref().map_or_else(Vec::new, |m|
-            (0..m.lat.len()).filter(|&c|
-                crate::native_gwd::box_size(m.lat[c], m.dc[c]).1 < 4).collect()),
+            m.thin_box_cells(cfg.native_gwd.as_ref().map_or_else(Default::default, |g| g.recipe))),
         native_undefined_exclusion_status: native_mesh.as_ref().and_then(|m|
-            (0..m.lat.len()).any(|c| crate::native_gwd::box_size(m.lat[c], m.dc[c]).1 < 4)
+            (!m.thin_box_cells(cfg.native_gwd.as_ref().map_or_else(Default::default, |g| g.recipe)).is_empty())
                 .then(|| "PROPOSED FOR OWNER SIGN-OFF: case-specific sign-off required".into())),
     };
     let provenance_json = serde_json::to_string(&provenance)
@@ -3910,6 +3929,7 @@ pub fn build_static_reporting(
     .collect();
 
     if geo.tc_lakemask.is_some() { generated_fields.push("tc_lakemask".into()); }
+    if !gwd.elvmax.is_empty() { generated_fields.push("elvmax".into()); }
 
     let operator_provenance = BTreeMap::from([
         (
@@ -4844,6 +4864,7 @@ mod tests {
             con: vec![0.0; mesh.n_cells],
             oa: std::array::from_fn(|_| vec![0.0; mesh.n_cells]),
             ol: std::array::from_fn(|_| vec![0.0; mesh.n_cells]),
+            elvmax: Vec::new(),
             hlanduse: vec![1; mesh.n_cells],
             smoothed_cells: 0,
             smooth_skipped_boundary_cells: 0,

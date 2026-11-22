@@ -195,7 +195,7 @@ fetch/decode workers and three terrain workers; reductions and remapping ran
 on the GPU. The 7,039,848-byte normal was hashed and deleted after checking.
 This qualifies those operations, without a new forecast, full product-builder
 or renderer check, historical redraw, or sea-ice energy-balance qualification.
-Receipts: `evidence/surface-final-integration/gpu-terrain/` in the lane delivery.
+Receipts: `evidence/surface-final-integration/gpu-terrain/`, kept with the maintainers' records.
 
 `tools/audit_s2s_surface.py --static STATIC --grid GRID --series SERIES
 --source-receipt RECEIPT --history HISTORY --out OUT` prints daily global sea-ice
@@ -228,10 +228,10 @@ unavailable analyses and unsupplied ERA5 dates are recorded as missing.
 
 Measured on physical card 0, RTX PRO 6000, with surface updating, SPPT and SKEB ON,
 public timestep defaults, daily history and fast numerics. Each row is one 24-hour
-batch including process startup. Peak VRAM is this lane's process memory sampled
-at 1 Hz; other tenants are excluded from this VRAM number. Card 0 was shared
-with the speed lane, so wall times include the observed contention. Per-row receipts
-record the sampled other-tenant VRAM range. No five-day checkpoint occurs in these
+batch including process startup. Peak VRAM is this run's process memory sampled
+at 1 Hz; other processes are excluded from this VRAM number. Card 0 was shared
+with another job, so wall times include the observed contention. Per-row receipts
+record the sampled other-process VRAM range. No five-day checkpoint occurs in these
 batches. This is a one-day cost extrapolation.
 Exact commands: delivered `scripts/run-benchmarks.sh` and `scripts/benchmark-s2s.py`.
 Per-row evidence: delivered `evidence/remote/benchmarks/ROW-mN/cost-receipt.json`.
@@ -395,7 +395,7 @@ physical or seasonal-skill qualification. Preparation,
 products, checkpoint/restart and analysis skill are outside these arm timers.
 The controlled cost matrix above keeps its original scope.
 
-Receipt: `evidence/stochastic-cost-pair48/proof.json` in the lane delivery.
+Receipt: `evidence/stochastic-cost-pair48/proof.json`, kept with the maintainers' records.
 All six runtime source hashes and archived receipt hashes match. Own histories
 and surface forcing were consumed after acceptance; the borrowed shared init
 was left untouched. No additional month run was made for this comparison.

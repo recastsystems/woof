@@ -274,9 +274,9 @@ def test_declared_tier_never_asks_the_probe(tmp_path, monkeypatch):
     assert out.is_file()
 
 
-# gpu-mutex pool leases are matched by /proc/<pid>/stat birth ticks (core.device_probe); off Linux there is no
+# Card-queue pool leases are matched by /proc/<pid>/stat birth ticks (core.device_probe); off Linux there is no
 # such lease and pool_lease_budget_bytes returns None (public ci cpu windows-2025 read /proc and failed).
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="gpu-mutex pool leases exist only on Linux (/proc)")
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="card-queue pool leases exist only on Linux (/proc)")
 def test_pool_lease_budget_replaces_busy_card_free_for_sizing(tmp_path, monkeypatch):
     import json
     from woof.core import preflight
@@ -288,8 +288,8 @@ def test_pool_lease_budget_replaces_busy_card_free_for_sizing(tmp_path, monkeypa
     probe = dict(free_bytes=GIB, total_bytes=32 * GIB, profile=None)
     monkeypatch.setattr(preflight, "device_memory_probe_subprocess", lambda: probe)
     monkeypatch.setattr(domain_wizard, "device_memory_probe_subprocess", lambda: probe)
-    monkeypatch.setenv("GPU_MUTEX_DIR", str(tmp_path))
-    monkeypatch.setenv("GPU_MUTEX_CARDS", "3")
+    monkeypatch.setenv("CARD_QUEUE_DIR", str(tmp_path))
+    monkeypatch.setenv("CARD_QUEUE_CARDS", "3")
     assert memory_gate({"config": out})["refuse"]
     # Physical card 3 is visible as CUDA 0. An unrelated owner's budget
     # must not be used; the matching live ancestor supplies this lease.
@@ -297,7 +297,7 @@ def test_pool_lease_budget_replaces_busy_card_free_for_sizing(tmp_path, monkeypa
     owner = dict(pid=os.getpid(), birth=birth, mode="pool", budget_bytes=12000 * 2**20)
     ledger = tmp_path / "OWNER-3.json"
     def write_owner():
-        ledger.write_text(json.dumps(dict(schema="gpu-mutex.owner.v1", owners=[owner])))
+        ledger.write_text(json.dumps(dict(schema="card-queue.owner.v1", owners=[owner])))
     write_owner()
     gate = memory_gate({"config": out})
     assert not gate["refuse"], gate["verdict"]

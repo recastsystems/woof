@@ -1,0 +1,34 @@
+{
+  "schema": "gpuwm-snow-lap-sources-v1",
+  "note": "GOCART aerosol deposition collections. Bin 001 is hydrophobic and 002 hydrophilic for BC and OC; dust bins are given by particle RADIUS in GOCART (Colarco et al. 2010 JGR 115 D14207 table 1) and are redistributed onto the diameter bins of lap_species.json by log-uniform mass overlap. Dry = DP (+ SD for dust); wet = WT + SV, SV shared among bins in proportion to WT. A new source is a row here.",
+  "sources": {
+    "geos-fp": {
+      "licence": "NASA GMAO GEOS-FP, public, no use restrictions",
+      "url": "https://portal.nccs.nasa.gov/datashare/gmao/geos-fp/das/Y{Y}/M{m}/D{d}/GEOS.fp.asm.tavg3_2d_adg_Nx.{Y}{m}{d}_{H}{M}.V01.nc4",
+      "times": {"first_offset_minutes": 90, "step_minutes": 180},
+      "window_seconds": 10800,
+      "credentials": null,
+      "latitude": "lat", "longitude": "lon", "time": "time",
+      "bc": {"hydrophobic": {"dry": ["BCDP001"], "wet": ["BCWT001"]}, "hydrophilic": {"dry": ["BCDP002"], "wet": ["BCWT002"]}, "shared_wet": "BCSV"},
+      "oc": {"hydrophobic": {"dry": ["OCDP001"], "wet": ["OCWT001"]}, "hydrophilic": {"dry": ["OCDP002"], "wet": ["OCWT002"]}, "shared_wet": "OCSV"},
+      "dust": {"radius_um": [[0.1, 1.0], [1.0, 1.8], [1.8, 3.0], [3.0, 6.0], [6.0, 10.0]],
+               "dry": [["DUDP001", "DUSD001"], ["DUDP002", "DUSD002"], ["DUDP003", "DUSD003"], ["DUDP004", "DUSD004"], ["DUDP005", "DUSD005"]],
+               "wet": [["DUWT001"], ["DUWT002"], ["DUWT003"], ["DUWT004"], ["DUWT005"]],
+               "shared_wet": "DUSV"}
+    },
+    "merra-2": {
+      "licence": "NASA GMAO MERRA-2, no use restrictions; GES DISC download needs a free Earthdata login",
+      "url": "https://goldsmr4.gesdisc.eosdis.nasa.gov/data/MERRA2/M2T1NXADG.5.12.4/{Y}/{m}/MERRA2_{stream}.tavg1_2d_adg_Nx.{Y}{m}{d}.nc4",
+      "times": {"first_offset_minutes": 30, "step_minutes": 60, "per_file": "day"},
+      "window_seconds": 3600,
+      "credentials": "earthdata",
+      "latitude": "lat", "longitude": "lon", "time": "time",
+      "bc": {"hydrophobic": {"dry": ["BCDP001"], "wet": ["BCWT001", "BCSV001"]}, "hydrophilic": {"dry": ["BCDP002"], "wet": ["BCWT002", "BCSV002"]}, "shared_wet": null},
+      "oc": {"hydrophobic": {"dry": ["OCDP001"], "wet": ["OCWT001", "OCSV001"]}, "hydrophilic": {"dry": ["OCDP002"], "wet": ["OCWT002", "OCSV002"]}, "shared_wet": null},
+      "dust": {"radius_um": [[0.1, 1.0], [1.0, 1.8], [1.8, 3.0], [3.0, 6.0], [6.0, 10.0]],
+               "dry": [["DUDP001", "DUSD001"], ["DUDP002", "DUSD002"], ["DUDP003", "DUSD003"], ["DUDP004", "DUSD004"], ["DUDP005", "DUSD005"]],
+               "wet": [["DUWT001", "DUSV001"], ["DUWT002", "DUSV002"], ["DUWT003", "DUSV003"], ["DUWT004", "DUSV004"], ["DUWT005", "DUSV005"]],
+               "shared_wet": null}
+    }
+  }
+}

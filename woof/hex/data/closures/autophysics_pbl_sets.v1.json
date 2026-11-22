@@ -1,0 +1,12 @@
+{
+ "schema": "hexcore.closures.autophysics-pbl-sets.v1",
+ "law": "hexcore.mpasphys.rrfs.closures.autophysics_pbl.deltas (p0..p7: Bowen rh, rh offset, soil, soil offset, heat; nocturnal sensible, latent, skin)",
+ "sets": {
+  "v2": {"params": [0.18, 0.52, 0.10, 0.40, 0.09, -16.0, -0.22, -0.45], "night_gate": "both",
+         "source": "fitted through coupled 30 km MPAS runs on 10 training days against 47,483 ASOS reports (Iowa Environmental Mesonet)"},
+  "v3_bowen": {"params": [0.42, 0.45, 0.22, 0.35, 0.10, 0.0, -0.25, 0.0], "night_gate": "both",
+               "source": "daytime Bowen law only, no nocturnal cooling"},
+  "v2_warm_night": {"params": [0.18, 0.52, 0.10, 0.40, 0.09, -16.0, -0.22, -0.45], "night_gate": "warm",
+                    "source": "the v2 numbers with the nocturnal cooling gated to warm nights (the cold-night branch of phi_U removed), first run in the engine"}
+ }
+}

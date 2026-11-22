@@ -189,7 +189,7 @@ def _catalog_cmd(args) -> int:
 def register_cli(subparsers) -> None:
     parser = subparsers.add_parser(
         "cells",
-        help="storm cells as objects over WOOF history: export volumes "
+        help="storm cells as objects over WOOF-ArWen history: export volumes "
              "for the titan storm-cell engine, run it, and catalog every "
              "cell with the model's updraft, cloud and freezing-level "
              "attributes")
@@ -221,7 +221,7 @@ def register_cli(subparsers) -> None:
         help=f"titan threshold profile (default {_titan.DEFAULT_PROFILE})")
     analyze.add_argument(
         "--titan", type=Path, default=None, metavar="PATH",
-        help=f"the titan binary (a separate program WOOF does not ship; "
+        help=f"the titan binary (a separate program WOOF-ArWen does not ship; "
              f"without one, analyze is off); default resolves "
              f"${_titan.TITAN_ENV}, then the bridge directories, then PATH")
     analyze.add_argument(

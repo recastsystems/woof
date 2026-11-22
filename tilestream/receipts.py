@@ -1,6 +1,6 @@
 """Domain-wide FP64 receipts for a domain that is streamed, not resident.
 
-WOOF's conservation receipts are whole-domain SUMS, and that one word is
+WOOF-ArWen's conservation receipts are whole-domain SUMS, and that one word is
 what separates them from every other observer this transport has had to
 carry.  A max or an OR folds over tiles for free -- ``max`` is associative
 AND idempotent, so a tile overlap costs nothing and the tile order does not

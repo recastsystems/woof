@@ -298,7 +298,7 @@ class CFEGPU:
         self._identity = json.loads(json.dumps(dict(
             algorithm="NOAA-OWP-CFE-CUDA-v1", source_pin=SOURCE_PIN,
             numerics="strict" if self.strict else "fast", scalar_dtype="float64",
-            math={"groundwater_exp": "WOOF MIT Arm glibc_exp",
+            math={"groundwater_exp": "WOOF-ArWen MIT Arm glibc_exp",
                   "other_transcendentals": "CUDA libdevice"},
             field_order=FIELD_NAMES, option_order=OPTION_NAMES,
             offset_order=OFFSET_NAMES, period_seconds=self.period_seconds,

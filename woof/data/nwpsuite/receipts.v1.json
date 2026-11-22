@@ -166,31 +166,6 @@
         "references:meshes/x5.6488066"
       ]
     },
-    "stock-mpas-jedi-30km-cycling-2026-10-04": {
-      "kind": "measured",
-      "date": "2026-10-04",
-      "what": "stock MPAS-JEDI 4.0.1 3DEnVar on the 30 km x1.655362 mesh, 55 levels, 32 CPU ranks, six-hourly cycles from public prepBUFR (conventional observations): the 2026-10-04 18Z solve took 543 s; 240 GB peak resident across the ranks (230 GiB declared to the memory gate)",
-      "build": "MPAS-JEDI 4.0.1",
-      "values": {
-        "startup_s": 543,
-        "host_memory_mib": 245760
-      },
-      "used_by": [
-        "rates:da-stock-solve",
-        "rates:da-background-score-2",
-        "references:obs/conventional"
-      ]
-    },
-    "stock-mpas-jedi-30km-gnssro-radiance-2026-10-11": {
-      "kind": "measured",
-      "date": "2026-10-11",
-      "what": "stock MPAS-JEDI 4.0.1 3DEnVar on the 30 km global mesh with GEFS 20 members ran GNSS radio occultation and satellite radiance observation spaces end to end (335.18 s on 64 CPU ranks)",
-      "build": "MPAS-JEDI 4.0.1",
-      "used_by": [
-        "references:obs/gnssro",
-        "references:obs/radiance"
-      ]
-    },
     "hex-products-30km-48h-2026-10-11": {
       "kind": "measured",
       "date": "2026-10-11",

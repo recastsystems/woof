@@ -1,6 +1,6 @@
 # Chem WRF v4.7.1 column oracles
 
-The reference every chem port in WOOF is graded against: WRF-Chem v4.7.1's
+The reference every chem port in WOOF-ArWen is graded against: WRF-Chem v4.7.1's
 own Fortran, compiled byte-unmodified at `-O0` in the `-r4` configuration,
 driven through the cases a port must cover, and dumped word for word.
 

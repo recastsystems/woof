@@ -515,7 +515,7 @@ def test_the_gate_module_reaches_neither_restart_nor_the_device():
     ("snicar_snowshape_opt", 1), ("snicar_snowbc_intmix", False),
     ("snicar_snowdust_intmix", True), ("snicar_bc_ppb", 2.0),
     ("snicar_dust_ppm", 1.0), ("snicar_ice_density", 850.0),
-    ("snicar_bubble_radius_um", 800.0),
+    ("snicar_bubble_radius_um", 800.0), ("snicar_fresh_grain_opt", 2),
 ])
 def test_snow_controls_preserve_inactive_headers_and_bind_active_resumes(
         surface, albedo, name, value, tmp_path):

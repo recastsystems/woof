@@ -146,7 +146,7 @@ class GFDLEtaRadiation:
         put('glon',self.longitude_deg*np.float32(.01745329238474369))
         stepra=_physics_interval_steps(cfg.radt if cfg.radt>0 else cfg.radt_minutes,cfg.dt)
         nphs=_physics_interval_steps(cfg.bldt,cfg.dt)
-        julian,xtime,gmt=calendar_scalars(self.start_time,state.elapsed_seconds)
+        julian,xtime,gmt=calendar_scalars(self.start_time,state.elapsed_seconds,generation=getattr(cfg,'solar_generation','wrf_480'))
         valid=self.start_time+timedelta(seconds=float(state.elapsed_seconds))
         scalar={'dt':float(cfg.dt),'g':np.float32(9.8100004196166992),'gmt':gmt,'xtime':xtime,'julian':julian,'nstepra':stepra,'nphs':nphs,'itimestep':wrf_itimestep(state.elapsed_seconds,cfg.dt),'julyr':valid.year,'julday':valid.timetuple().tm_yday}
         scalar.update({k:1 for k in 'ids jds kds ims jms kms its jts kts ime jme ite jte'.split()})

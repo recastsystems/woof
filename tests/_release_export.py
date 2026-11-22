@@ -7,7 +7,7 @@ the commit the export builds from the private tree minus
 ``RELEASE-EXCLUDE.txt``.  A shipped test that reads a file the export drops
 passes in the development tree and fails at the exported commit.  Dry cut 4
 of 2.8.0 measured seven such cases: five evidence-pack cases that bind the
-nesting ledger under ``docs/superpowers/**``, the speed-anchor case that
+nesting ledger under ``docs/internal/**``, the speed-anchor case that
 opens its run report under ``evidence/**`` and the rescued-tools control
 that needs ``tilestream/rescued-tools/**`` on disk.  All seven are correct
 where their input exists and cannot run where it does not.  The speed-anchor

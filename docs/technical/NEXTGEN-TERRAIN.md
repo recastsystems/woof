@@ -4,7 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 
 This is an original numerical implementation. No external model source code,
 software ABI, or numerical fixtures are used. The equations describe physical
-laws; the discretization and boundary choices below are WOOF's own. This is
+laws; the discretization and boundary choices below are WOOF-ArWen's own. This is
 not a reproduction of CASC2D, GSSHA, HEC-RAS or WRF-Hydro.
 
 Julien, Saghafian and Ogden (1995), *Raster-based hydrologic modeling of
@@ -53,7 +53,7 @@ Infiltration, evapotranspiration and unsaturated-zone physics belong to the
 land-surface/runoff component; do not supply rainfall here if that component
 already supplied the same water as runoff.
 
-Coupled mode uses WOOF's existing atmosphere/Noah-MP forcing. It does not
+Coupled mode uses WOOF-ArWen's existing atmosphere/Noah-MP forcing. It does not
 require an additional external meteorological forcing or PET stage. At the
 parent routing exchange, `sfcheadrt` is surface-head **state in mm**;
 `infxsrt` and `soldrain` are **mm per LSM step**; `smois`/`sh2o` aliases

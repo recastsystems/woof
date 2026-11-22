@@ -46,7 +46,7 @@ also how the writing machine is checked for silent corruption.
 ## `mp28_matched_t0_readback_digest_mp08.json` / `_mp28.json` / `.md`
 
 The same schema and the same tool, over the matched-trajectory lane's
-idealized case: WOOF's t=0 read-back state (the `frame_t0.npz` its frame
+idealized case: WOOF-ArWen's t=0 read-back state (the `frame_t0.npz` its frame
 writer dumped at step 0) against the WRF build-A history frame it was
 initialised from (`--restart-from`, t = 1800 s of the short-window gate's
 continuous run). One receipt per scheme, mp=8 and mp=28. Both measure
@@ -85,7 +85,7 @@ Provenance, in full, because the run node is gone:
   receipts' `evaluator_commit`): every array byte-for-byte, the source
   archive's sha256 embedded in the staged file's global attributes.
 - `RAINNC` is present in the raw frames (all zero) and was NOT staged:
-  a WOOF run restarted mid-storm begins with a fresh accumulator while
+  a WOOF-ArWen run restarted mid-storm begins with a fresh accumulator while
   the frame carries 1800 s of accumulated rain, a comparison of two
   different quantities that `mp28-shortwindow-gate.md` section 3
   pre-declares as published-never-gated. The exclusion and this reason

@@ -687,13 +687,15 @@ def packaged_source_of(prepared_root: Path, *,
     schemas = source_schemas()
     observed_composition = _sha256(composition)
     mapping_bytes = mapping.read_bytes()
-    for source, profile_id in packaged_profile_sources().items():
-        pins = packaged_authority_sha256(profile_id)
-        if (observed_composition == pins["composition"]
-                and isinstance(manifest, Mapping)
-                and manifest.get("schema") == schemas.get(source)
-                and bound_mapping_refusal(profile_id, mapping_bytes) is None):
-            return source
+    from woof.source_authorities import packaged_profile_family
+    for source, family_head in packaged_profile_sources().items():
+        for profile_id in packaged_profile_family(family_head):
+            pins = packaged_authority_sha256(profile_id)
+            if (observed_composition == pins["composition"]
+                    and isinstance(manifest, Mapping)
+                    and manifest.get("schema") == schemas.get(source)
+                    and bound_mapping_refusal(profile_id, mapping_bytes) is None):
+                return source
     return None
 
 
@@ -1309,8 +1311,12 @@ def sim_main(args) -> int:
                        "output frame as it lands")
     else:
         render_note = f"no fetch; frame maps disabled (--render-products {requested})"
-    if os.environ.get("WOOF_VERIFY_VISUALS", "1").lower() not in {"0", "false", "off"}:
-        render_note += "; observation verification at finish as reports are available"
+    from woof.verification_visuals import requested as verification_requested
+    from woof.verification_visuals import verification_scope
+    verify = verification_requested(args)
+    if verify:
+        render_note += ("; observation verification at finish as reports are "
+                        "available (--no-verify-visuals skips it)")
     print(f"sim: {bundle.get('root', bundle['document'].parent)} -- "
           f"{bundle['schema']} "
           f"(source {bundle['source']}, "
@@ -1327,7 +1333,38 @@ def sim_main(args) -> int:
         from woof import prepared_domain_tree_forecast as runner_module
     else:
         from woof import prepared_single_domain_forecast as runner_module
-    return runner_module.main(command[3:])
+    # The runner's finish hook reads the variable; the scope carries this
+    # door's --no-verify-visuals to it, as `woof go` does.
+    with verification_scope(verify):
+        code = runner_module.main(command[3:])
+    if code == 0 and plots:
+        _finish_sim_pictures(outdir, requested, getattr(args, "render_dir", None),
+                             explain=explain_enabled(args))
+    return code
+
+
+def _finish_sim_pictures(outdir: Path, products: str, render_dir, *, explain: bool) -> None:
+    """The end of a ``woof sim`` run that drew pictures: ``woof go``'s render stage over the same folder.
+
+    The runner draws each frame as it lands with at most one hour of earlier frames beside it, so the maps that fold
+    the whole series (``uh_2to5km_run_max``, ``uh_2to5km_3h_max``, ``qpf_6h``, the run and daily extremes) were drawn
+    only by ``woof go``'s end-of-run windowed pass, which ``woof sim`` never ran.  THE BREAKAGE THIS PREVENTS (WOOF
+    canary run_6048ab38808a0625, 2026-11-10): a Hex with Regional 1 km nest, which runs through ``woof sim``, drew
+    ``uh_2to5km_run_max`` at F001 and F002 only and no ``uh_2to5km_3h_max``, while a ``woof go`` run of the same
+    request drew both at every hour.  The stage fills only what is missing: frames drawn while the forecast ran are
+    verified by digest and kept (measured: 1 s for a 7-frame 3 km run).  A failure here leaves the forecast's result
+    as it is and says so.
+    """
+
+    from woof import go_cli
+
+    render = Path(render_dir) if render_dir is not None else Path(outdir) / "png"
+    plan = {"run": Path(outdir), "render": render, "publish_root": render.parent / "www", "publish_cmd": None,
+            "hydro": "auto", "render_products": products, "restart": None, "render_section": None}
+    try:
+        go_cli._render_stage(plan, explain=explain, door="sim")
+    except Exception as error:  # noqa: BLE001 - the forecast finished; its pictures so far stand
+        print(f"sim: the end-of-run pictures were not drawn: {type(error).__name__}: {error}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -1438,6 +1475,8 @@ def register_cli(subparsers) -> None:
                           "history frame of every grid as it lands, while the "
                           "forecast runs: comma-separated catalog selectors, "
                           "'all', or 'none'. Omitted means no rendering")
+    from woof.verification_visuals import add_argument as add_verification_argument
+    add_verification_argument(sim)
     sim.add_argument("--render-dir", type=Path, default=None, metavar="DIR",
                      help="picture directory (default OUTDIR/png); "
                           "ignored without --render-products")

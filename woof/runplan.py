@@ -1457,6 +1457,25 @@ def prepared_chain_for_source(source: str, *, source_root=None) -> str:
         reason))
 
 
+def prepares_on_gfs_route(source, *, source_root=None) -> bool:
+    """Does a launch of this source prepare on the GFS route (woof.gfs_direct)?
+
+    That route alone reads ``[ingest] gfs_lake_ice`` and its two GFS
+    siblings; `woof domain` writes the key and `woof go --lake-ice`
+    accepts the flag exactly when this answers yes (door item 7).  Read
+    off the source's registry row through :func:`prepared_chain_for_source`,
+    so the two doors and the launch agree by construction.
+    """
+
+    if not source:
+        return False
+    try:
+        return prepared_chain_for_source(
+            str(source), source_root=source_root) == "prepared:go"
+    except PlanError:
+        return False
+
+
 def candidate_route_chain(source: object) -> str:
     """The chain a candidate emitted for this source will dispatch to.
 
@@ -9230,6 +9249,12 @@ def _execution_estimate(phases, exp, machine) -> dict[str, Any]:
     }
 
 
+def _ring_plan(exp, species, interval_seconds):
+    from woof.ingest.lateral_bc import hydrometeor_ring_plan
+
+    return hydrometeor_ring_plan(exp.domains[0].run, species, interval_seconds)
+
+
 def estimate_plan(plan: RunPlan) -> dict[str, Any]:
     """What this plan will cost, from measured machinery only.
 
@@ -9379,6 +9404,13 @@ def estimate_plan(plan: RunPlan) -> dict[str, Any]:
             # cadence so the figure can be repriced from the document.
             "boundary_species": list(source_boundary_species(boundary_source)),
         },
+        # What the root's ring will be fed of those hydrometeors: the
+        # envelope key and value (lateral_bc.hydrometeor_ring_plan); None
+        # when the source publishes none.
+        "lateral_boundary_hydrometeors": _ring_plan(
+            exp, source_boundary_species(boundary_source),
+            forcing_interval if forcing_interval is not None
+            else DEFAULT_FORCING_INTERVAL_SECONDS),
         # THE WHOLE DISK, the download and the preparation included: the
         # projection run-plan refuses on before its download.  This used to
         # be null beside a download that was "no [fetch] in this plan"
@@ -9946,7 +9978,7 @@ def physics_profile_menu() -> dict[str, Any]:
     2026-08-20: "why cant every model have multiple unique working
     default".
 
-    This exists because a picker had no way to ask.  WOOF Studio ships
+    This exists because a picker had no way to ask.  WOOF-ArWen Studio ships
     a physics list hand-typed out of gpuwm 1.7.1, which cannot know that
     the native HRRR route refuses every Kain-Fritsch suite, so it offers
     launches that refuse -- and the refusal a user then met named

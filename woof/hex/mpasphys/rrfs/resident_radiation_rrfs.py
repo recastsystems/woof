@@ -147,6 +147,12 @@ class ResidentRadiationSlot:
     def prepared(self, name, levels=None):
         return self.provider.prepared(name + '_p')[:self.nz if levels is None else levels, :self.nc]
 
+    def held_seed(self, config, call):
+        """config_radt_mcica_seed (mcica_seed_rule): None for MPAS's pressure rule (nothing read, nothing
+        launched); for the cell rule, the solve cells' global indices and this call's time step."""
+        from ..mcica_seed_rule import held
+        return held(config, lambda: self.provider['mesh']['indexToCellID'][:self.nc], call.itimestep)
+
     def degrees(self, name, source, degrad):
         from .radiation_rrfs import _launch
         out = self.buffer(name, (self.nc,))
@@ -211,6 +217,7 @@ class ResidentRadiationSlot:
         controls.update(gmt=calendar['gmt'], julday=calendar['julday'], icloud=1,
                         pin=pin, o3clim=ozone, aer_opt=3 if aware else 0, aerosol=aer)
         controls.update({n: flags[n] for n in ('has_reqc', 'has_reqi', 'has_reqs')})
+        controls.update(mcica_seed=self.held_seed(config, call))
         out = engine.rrtmg_swrad(fields, surface, p8w, t8w, **controls)
         copies = [(diag[n][:nc], out[n]) for n in SCALAR_OUTPUTS]
         copies.append((p['tend_physics']['rthratensw'][:, :nc], out['rthratensw'].T))
@@ -277,7 +284,8 @@ class ResidentRadiationSlot:
             icloud=1, julday=int(p.native.get_table('mpas_atmphys_manager.julday')[0][()]),
             cldovrlp=overlap, idcor=idcor,
             has_reqc=int(flags['has_reqc']), has_reqi=int(flags['has_reqi']), has_reqs=int(flags['has_reqs']),
-            o3input=o3input, pin=pin, ozone=ozone, retain_profiles=False)
+            o3input=o3input, pin=pin, ozone=ozone, retain_profiles=False,
+            mcica_seed=self.held_seed(config, call))
         copies = [(diag['olrtoa' if n == 'olr' else n][:nc], result[n]) for n in lw.FLUX_FIELDS]
         copies.append((p['tend_physics']['rthratenlw'][:, :nc], result['rthratenlw'].T))
         if o3vmr is not None:

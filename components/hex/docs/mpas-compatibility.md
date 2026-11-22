@@ -129,7 +129,7 @@ The execution is GPU resident CUDA/CuPy, with a NumPy dry reference path.
 It has different compiler and floating-point expression evaluation from
 native Fortran, even when the operators and schedule are the same.
 
-Physics comes from the WOOF/WOOF suite set, shared with the `woof`
+Physics comes from the WOOF/WOOF-ArWen suite set, shared with the `woof`
 distribution. Its verification standard is observations, including MRMS
 and ASOS, with case-specific results and limitations in `docs/obs-referee.md`
 and `docs/declared-divergences.md`. This dry comparison does not establish

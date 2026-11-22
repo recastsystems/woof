@@ -4,7 +4,7 @@ What breaks without this: wrf.exe reads all six from wrfinput and never
 recomputes them.  The exporter left CF1-3/CFN/CFN1 to a template prototype
 (another vertical grid's values) and rounded MF_VX_INV from a float64
 reciprocal, so wrf.exe 4.6.1 ran the nested-domain 9 km d01 with a foreign model-top
-extrapolation and, with every physics scheme off, differed from strict WOOF
+extrapolation and, with every physics scheme off, differed from strict WOOF-ArWen
 in 495,278 U words after one step (2026-10-29).  The expected words
 are gfortran's (-O2 -fno-fast-math -ffp-contract=off, the pinned strict
 recipe) evaluation of module_initialize_real.F:3734-3742 on that column.

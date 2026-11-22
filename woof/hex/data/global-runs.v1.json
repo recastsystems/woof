@@ -66,7 +66,7 @@
   },
   "physics": {
     "mpas": {
-      "about": "MPAS-A v8.4.2's own physics on the MPAS route, the hex default (owner ruling 2026-10-25): the suite the hex default table picks for the mesh (data/profiles/physics-default.v1.json; convection_permitting), passed to the forecast door as --physics-suite, in the default physics mode (correct). Its step is the forecast door's own for that suite's selectors (MYNN: no long-step cap).",
+      "about": "MPAS-A v8.4.2's own physics on the MPAS route, the hex default: the suite the hex default table picks for the mesh (data/profiles/physics-default.v1.json; convection_permitting), passed to the forecast door as --physics-suite, in the default physics mode (correct). Its step is the forecast door's own for that suite's selectors (MYNN: no long-step cap).",
       "route": "mpas",
       "overrides": {}
     },
@@ -95,6 +95,29 @@
       ],
       "max_dt_seconds": 300,
       "max_dt_why": "YSU over the surface layer makes single-layer hot spots at the boundary-layer top when the step is long: on the 120 km globe (GFS 2026-10-11 12Z, 24 h) a layer more than 5 K hotter than both neighbours in 3.2 cells per frame at 600 s (worst +24 K), 0.5 at 360 s (worst +23 K), 0.2 at 300 s (worst +5 K); native MPAS-A v8.4.2 mesoscale_reference shows 0.1 to 0.2 (worst +6 to +8 K). With Morrison and Grell-Freitas one runs away (381 K at 6.5 h, refused by RRTMGP). MYNN at 600 s shows none. The 300 s step scores the same as 600 s against sondes and the GFS analysis (z500 10.0 m, T850 1.11 K at f24) and draws the same weather. Cause: YSU applies its boundary-layer-top heat and vapour entrainment explicitly; at a long step it reaches across several layers, the receiving layer overshoots its donors, and microphysics condenses the extra vapour and heats that layer (MPAS's own YSU carries the same term). The engine bounds that term by its donor Courant number (identity ysu-wrf-v4.8.0-entrainment-courant-v2; gpuwm 2.9.0 lacks it). This arm keeps its cap on every engine: it runs Grell-Freitas, and its own row has not been run at the long step on a bounded engine."
+    }
+  },
+  "microphysics_step_caps": {
+    "about": "Long-step caps a microphysics scheme carries on the ArWen route (hexcore.global_door.microphysics_step_cap): a default step above the cap takes the cap, an explicit step above it is refused by name. Keyed by the config_microp_scheme value.",
+    "mp_tempo": {
+      "routes": [
+        "arwen"
+      ],
+      "max_dt_seconds": 150,
+      "max_dt_why": "TEMPO picked over an ArWen-route column suite goes non-physical when the model step is long. Measured on the 120 km globe (x1.40962, GFS 2026-11-09 00Z, 1 h, gpuwm 2.9.13 with the hex-mp-picks engine commits, arwen_mpas_column with config_microp_scheme=mp_tempo; WOOF-OPS hex-mp-picks-fix-2026-11-09 receipts tempo-long-step-RESULT.txt and matrix-RESULT.txt): at the mesh's own 600 s step the +30 min frame held rain water up to 0.90 kg/kg and 74 dBZ and the dycore refused a non-finite density at 2400 s (arwen_thompson_column the same); at 300 s the hour ended with rain water 0.16 kg/kg and 71 dBZ, still growing; at 150 s it stayed bounded (rain water at most 4.8e-4 kg/kg, 38 dBZ at +1 h). On the customer's 9 km zoom globe at a 50 s step TEMPO ran 12 h. rrfs_v2_dev (MYNN) ran the hour at 600 s but has no longer run; it takes the cap until one proves it. Likely cause, read from the code and not measured: the ArWen column steps TEMPO once over the whole model step, where MPAS-A sub-steps its microphysics (n_microp) on a long step. MPAS-A's own suites run TEMPO on the MPAS route and are not capped. The cap goes when an engine publishes every identity in max_dt_retired_by_engine.",
+      "max_dt_retired_by_engine": [
+        "tempo-arwen-column-long-step-v1"
+      ]
+    },
+    "mp_tempo_in": {
+      "routes": [
+        "arwen"
+      ],
+      "max_dt_seconds": 150,
+      "max_dt_why": "TEMPO picked over an ArWen-route column suite goes non-physical when the model step is long. Measured on the 120 km globe (x1.40962, GFS 2026-11-09 00Z, 1 h, gpuwm 2.9.13 with the hex-mp-picks engine commits, arwen_mpas_column with config_microp_scheme=mp_tempo; WOOF-OPS hex-mp-picks-fix-2026-11-09 receipts tempo-long-step-RESULT.txt and matrix-RESULT.txt): at the mesh's own 600 s step the +30 min frame held rain water up to 0.90 kg/kg and 74 dBZ and the dycore refused a non-finite density at 2400 s (arwen_thompson_column the same); at 300 s the hour ended with rain water 0.16 kg/kg and 71 dBZ, still growing; at 150 s it stayed bounded (rain water at most 4.8e-4 kg/kg, 38 dBZ at +1 h). On the customer's 9 km zoom globe at a 50 s step TEMPO ran 12 h. rrfs_v2_dev (MYNN) ran the hour at 600 s but has no longer run; it takes the cap until one proves it. Likely cause, read from the code and not measured: the ArWen column steps TEMPO once over the whole model step, where MPAS-A sub-steps its microphysics (n_microp) on a long step. MPAS-A's own suites run TEMPO on the MPAS route and are not capped. The cap goes when an engine publishes every identity in max_dt_retired_by_engine.",
+      "max_dt_retired_by_engine": [
+        "tempo-arwen-column-long-step-v1"
+      ]
     }
   },
   "rows": [

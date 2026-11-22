@@ -4,9 +4,9 @@ All weather pictures are unaltered `woof.rustwx` → `rw_wrfbatch` output, 1400 
 
 ## Handoff, 2026-10-16 00:00 UTC
 
-The first gallery section compares the 60 km hex export with initialized 3 km WOOF at the same UTC, at 1,000 m AGL, with reflectivity beneath. The source covers a broader region. Both have nonzero resolved vertical motion. The import is not a bitwise restart: horizontal/vertical interpolation and interface reconstruction change individual values. Source reflectivity is at the −35 dBZ clear-air floor; initialized WOOF diagnostic reflectivity is 0 dBZ. Those distinct diagnostic values must not be read as storm growth. This pair proves the reachable import path and visible fields, not survival of a mature storm through a moving seam.
+The first gallery section compares the 60 km hex export with initialized 3 km WOOF-ArWen at the same UTC, at 1,000 m AGL, with reflectivity beneath. The source covers a broader region. Both have nonzero resolved vertical motion. The import is not a bitwise restart: horizontal/vertical interpolation and interface reconstruction change individual values. Source reflectivity is at the −35 dBZ clear-air floor; initialized WOOF-ArWen diagnostic reflectivity is 0 dBZ. Those distinct diagnostic values must not be read as storm growth. This pair proves the reachable import path and visible fields, not survival of a mature storm through a moving seam.
 
-Viewed: the source and initialized WOOF w at 1,000 m, source vertical vorticity at 1,000 m, and both initialization reflectivity maps. Also viewed WOOF vertical vorticity at 1,000 m at 01:00 UTC: weak broad gradients with finer terrain-related texture, not a compact tornadic vortex.
+Viewed: the source and initialized WOOF-ArWen w at 1,000 m, source vertical vorticity at 1,000 m, and both initialization reflectivity maps. Also viewed WOOF-ArWen vertical vorticity at 1,000 m at 01:00 UTC: weak broad gradients with finer terrain-related texture, not a compact tornadic vortex.
 
 The source 03:00 UTC reflectivity map was also viewed. It has a broad precipitation band from Texas northeastward; it is three hours after the clear initialization. The measured two-hour fine LES box near 36°N, 91°W remains calm. Broad-source extrema and cropped-target extrema therefore have different spatial support.
 
@@ -26,11 +26,11 @@ Viewed the full three-domain time series at all three heights, covering all 25 t
 
 ## Time series
 
-The source/3 km chart was viewed. It compares different footprints and unequal native history cadence (source three-hourly; WOOF five-minutely). Its max w and max absolute vorticity are useful audit values, not storm-object continuity metrics. Updraft area with w ≥ 5 m/s is zero. Full-tree charts and exact raw receipts accompany the final gallery. Statistics exclude a two-cell boundary rim; extrema are horizontal extrema at the stated height, not a whole-volume maximum.
+The source/3 km chart was viewed. It compares different footprints and unequal native history cadence (source three-hourly; WOOF-ArWen five-minutely). Its max w and max absolute vorticity are useful audit values, not storm-object continuity metrics. Updraft area with w ≥ 5 m/s is zero. Full-tree charts and exact raw receipts accompany the final gallery. Statistics exclude a two-cell boundary rim; extrema are horizontal extrema at the stated height, not a whole-volume maximum.
 
 ## Texas precipitation-band handoff, 03:00–05:00 UTC
 
-Viewed the 03Z source and initialized 3 km WOOF w maps at 1,000 m AGL. The broad positive w pattern over Texas and neighboring subsidence remain visible at initialization. The source map has a much broader footprint; the cropped target preserves the broad pattern through horizontal/vertical interpolation.
+Viewed the 03Z source and initialized 3 km WOOF-ArWen w maps at 1,000 m AGL. The broad positive w pattern over Texas and neighboring subsidence remain visible at initialization. The source map has a much broader footprint; the cropped target preserves the broad pattern through horizontal/vertical interpolation.
 
 Viewed all four selected band reflectivity times: 03:00, 03:05, 04:00 and 05:00 UTC. The initial 0 dBZ diagnostic precedes physics diagnosis. At 03:05 the broad Texas band is visible above 50 dBZ; through 04–05Z it develops a more organized line extending toward Oklahoma, with roughly 50–60 dBZ cores. This is a precipitation-system comparison across changed resolution and physics, not a byte-exact restart or Xenia validation.
 

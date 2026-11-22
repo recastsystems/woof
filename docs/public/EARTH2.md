@@ -9,7 +9,7 @@ FCN3 inference needs 17 GiB of free GPU memory, a 24 GB card or larger (measured
 
 Wind Gust AFNO is refused because its published weights use the NVIDIA Community Model License.
 
-Run a short AI-driven WOOF regional forecast on a 16 GB card:
+Run a short AI-driven WOOF-ArWen regional forecast on a 16 GB card:
 
 ```sh
 woof earth2 --model ucast --cycle 2024-09-24T12 --hours 12 \

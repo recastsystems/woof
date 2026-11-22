@@ -105,7 +105,7 @@ def cf_seconds(values, units, absolute):
 
 def producer_init(metadata):
     """A producer's init_time attribute. CF and our exporters write UTC; a value with no offset is UTC
-    (ml-export of WOOF history writes 2024-09-24T12:00:00), never local time."""
+    (ml-export of WOOF-ArWen history writes 2024-09-24T12:00:00), never local time."""
     value = metadata.get('attributes', {}).get('init_time')
     if not value:
         return None
@@ -200,7 +200,7 @@ def history_export_vocabulary():
 
 
 def history_export_arguments(domain, threads):
-    """Shared WOOF history export vocabulary for standalone and roster tracks."""
+    """Shared WOOF-ArWen history export vocabulary for standalone and roster tracks."""
     rules = json.loads(TABLE.read_text())['history_export']
     return ['--domains', domain, '--levels', ','.join(map(str, rules['levels_hpa'])),
             '--grid', rules['grid'], '--names', rules['names'],

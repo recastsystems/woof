@@ -126,3 +126,20 @@ def test_the_render_door_hands_the_renderer_its_own_maps_credited_line(tmp_path,
         assert themes["RENDER"] == {"text": {"source_label": f"Hex mem003 of 36 · {ECMWF}"}}
     else:
         assert "RUSTWX_THEME" not in environments["RENDER"]
+
+
+def test_the_hosts_bars_ride_the_same_theme_beside_the_credit(tmp_path, monkeypatch):
+    """WOOF's rain bands ($WOOF_HEX_THEME_LEVELS) reach the renderer as colormaps.levels, with the credit line kept;
+    alone they make a theme of their own; a malformed value changes nothing. THE BREAKAGE THIS PREVENTS (a WOOF hex-region
+    run, 2026-11-14): hex 1 h and total rain were drawn on the renderer's one 0.01-15 in bar."""
+
+    monkeypatch.delenv("RUSTWX_THEME", raising=False)
+    monkeypatch.setenv(render_door.THEME_LEVELS_ENV, json.dumps({"qpf_1h": [0.01, 0.1, 1.0, 3.0], "bad": [3, 1]}))
+    monkeypatch.setenv(render_door.SOURCE_CREDIT_ENV, ECMWF)
+    theme = json.loads(Path(source_credit_theme(tmp_path, "Hex forecast", 1400, 1000)).read_text())
+    assert theme["colormaps"] == {"levels": {"qpf_1h": [0.01, 0.1, 1.0, 3.0]}}
+    assert theme["text"]["source_label"].endswith(ECMWF)
+    monkeypatch.delenv(render_door.SOURCE_CREDIT_ENV)
+    assert "text" not in json.loads(Path(source_credit_theme(tmp_path, "Hex forecast", 1400, 1000)).read_text())
+    monkeypatch.setenv(render_door.THEME_LEVELS_ENV, "not json")
+    assert source_credit_theme(tmp_path, "Hex forecast", 1400, 1000) is None

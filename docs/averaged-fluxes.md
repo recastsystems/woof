@@ -35,16 +35,16 @@ a new interval with count 1. Each nest owns its means, count and history
 schedule. Feedback does not copy these diagnostics into the parent. A
 moving nest clears its entire interval, matching WRF's startup after a move.
 The parent keeps its interval. WRF also restarts the parent when
-`input_from_hires` is enabled; WOOF already refuses that unsupported terrain
+`input_from_hires` is enabled; WOOF-ArWen already refuses that unsupported terrain
 input setting.
 Quicklook frames do not reset the full-history interval.
 
-WOOF checkpoints carry the means, count and pending history reset. This
+WOOF-ArWen checkpoints carry the means, count and pending history reset. This
 preserves continuation both inside an interval and at its end. Stock WRF
 4.6.1 has a different restart behavior: `start_em.F` unconditionally sets
-`avgflx_count=0`, even when restarting. WOOF deliberately preserves it.
+`avgflx_count=0`, even when restarting. WOOF-ArWen deliberately preserves it.
 Importing native `wrfrst` averaged-flux state is refused because that door
-does not restore the native history alarm state. Use WOOF checkpoints for
+does not restore the native history alarm state. Use WOOF-ArWen checkpoints for
 continuation with averaged fluxes.
 
 The real two-domain continuation check passes with default numerics.
@@ -64,5 +64,5 @@ At 0 no averaged-flux arrays or update kernels are used.
 
 `do_avgflx_cugd=1` is refused. In WRF 4.6.1 those convective means read
 CFU1/CFD1/DFU1/EFU1/DFD1/EFD1 from Grell-Devenyi (`cu_physics=93`), which
-WOOF does not implement. Grell-3 (`cu_physics=5`) does not produce those
+WOOF-ArWen does not implement. Grell-3 (`cu_physics=5`) does not produce those
 fields in that WRF version.

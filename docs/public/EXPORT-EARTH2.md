@@ -1,7 +1,7 @@
 # Export WOOF output for Earth2Studio
 
 `woof export --earth2 PROFILE` converts WOOF's wrfout-shaped histories,
-including WOOF output and hex's converted frames, into per-channel Zarr
+including WOOF-ArWen output and hex's converted frames, into per-channel Zarr
 stores for Earth2Studio 0.19.0. It uses the Rust engine behind
 [`woof ml-export`](../ml-export.md) for pressure interpolation, wind rotation
 and regridding. `--for` selects a consumer's input channels from metadata;
@@ -84,7 +84,7 @@ The identities and formulas below come from
 
 <!-- END GENERATED earth2-grib2 -->
 
-The 24-hour WOOF proof exported 25 frames, decoded all 50 GRIB2 files and
+The 24-hour WOOF-ArWen proof exported 25 frames, decoded all 50 GRIB2 files and
 passed 30 point comparisons against source arithmetic. Source omega at
 500 hPa reached -42.12 Pa s-1. At +12 and +24 hours, aligned land-cell
 100 m / 10 m median speed ratios were 1.44 and 1.71, using 10 m speeds
@@ -146,7 +146,7 @@ observation panels, probability contours and track overlays for these files.
 
 ### StormCast-CONUS conditioning
 
-Export the WOOF parent history, then run the packaged
+Export the WOOF-ArWen parent history, then run the packaged
 [StormCast example](../../examples/earth2/stormcast_from_woof.py) in an
 environment with `earth2studio[stormcast-conus]==0.19.0` and matching NATTEN:
 
@@ -159,7 +159,7 @@ python examples/earth2/stormcast_from_woof.py \
 ```
 
 The example starts from HRRR analysis and reads the 26 conditioning channels
-from the exported WOOF forecast through `InferenceOutputSource`. It uses
+from the exported WOOF-ArWen forecast through `InferenceOutputSource`. It uses
 `pregridded_conditioning()` for the already matching HRRR coordinates.
 The measured 512 x 768 window produced seven hourly frames through
 2024-05-22 00Z: 73.6 s forecast time and 7.53 GiB peak GPU memory on a

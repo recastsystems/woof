@@ -32,6 +32,7 @@ def upload(path,shape,*,dtype="float32"):
     if dtype not in ("float32","int32","<f4","<i4"):
         raise ValueError("prepared ocean upload requires float32 or int32")
     out=cp.empty(tuple(shape),dtype=dtype)
+    if expected==0:return out  # a lake-only grid has no open edge; mmap refuses empty files
     with path.open('rb') as f:
         with mmap.mmap(f.fileno(),0,access=mmap.ACCESS_COPY) as view:
             ptr=ctypes.addressof(ctypes.c_char.from_buffer(view))

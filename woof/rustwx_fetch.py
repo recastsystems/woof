@@ -3,7 +3,7 @@
 ``woof fetch --engine rust`` moves bytes through ``rw_fetch``, the
 sixth binary of the vendored ``tools/rustwx`` workspace, instead of
 through the stdlib ``urllib`` transports in :mod:`tools`.  What that
-buys is machinery WOOF would otherwise have to reimplement:
+buys is machinery WOOF-ArWen would otherwise have to reimplement:
 
 * **Parallel whole-file range GETs** -- one 700 MB serial TCP
   stream becomes a bounded few concurrent ones (``wx-core`` range

@@ -21,16 +21,19 @@ class SourceHorizonError(ValueError):
     pass
 
 
-def last_posted_lead(row: Mapping[str, Any], cycle_hour: int) -> int:
-    """The last forecast hour the source posts for a cycle at this UTC hour (IFS HRES: 360 h at 00/12Z, 144 h at
-    06/18Z; GFS 384 h; AIFS 360 h)."""
+def last_posted_lead(row: Mapping[str, Any], cycle_hour: "int | _dt.datetime") -> int:
+    """The last forecast hour the source posts for a cycle (IFS HRES: 360 h at 00/12Z, 144 h at 06/18Z, and 240 h
+    and 90 h before the 2024-11-12 06Z run; GFS 384 h; AIFS 360 h). ``cycle_hour`` is the cycle or its UTC hour; the
+    hour alone reads the publisher's current range (init_sources.ladder_for)."""
+    from .init_sources import ladder_for
+
     forecast = row.get("forecast") or {}
     if not forecast:
         raise SourceHorizonError(f"source {row.get('id')!r} declares no forecast hours (an analysis source), so it "
                                  "has no last hour to start from")
-    for ladder in forecast.get("ladders") or ():
-        if ladder.get("cycle_hours") is None or int(cycle_hour) in ladder["cycle_hours"]:
-            return int(ladder["steps"][-1][0])
+    ladder = ladder_for(forecast, cycle_hour)
+    if ladder is not None:
+        return int(ladder["steps"][-1][0])
     return int(forecast["max_hours"])
 
 
@@ -40,7 +43,7 @@ def beyond_source(row: Mapping[str, Any], source_cycle: _dt.datetime, lead_hours
     if not row.get("forecast"):
         horizon = 0
     else:
-        horizon = last_posted_lead(row, source_cycle.hour)
+        horizon = last_posted_lead(row, source_cycle)
     end = float(lead_hours) + float(hours)
     if end <= horizon:
         return None
@@ -56,7 +59,7 @@ def resolve_lead(row: Mapping[str, Any], source_cycle: _dt.datetime, lead_hours:
     if from_last_hour:
         if lead_hours:
             raise SourceHorizonError("--lead-hours and --from-last-hour name two different starts; pass one")
-        return last_posted_lead(row, source_cycle.hour)
+        return last_posted_lead(row, source_cycle)
     lead = int(lead_hours or 0)
     if lead < 0:
         raise SourceHorizonError("--lead-hours must be nonnegative")

@@ -2,7 +2,7 @@
 
 `met_intermediate` uses `grib_core::grib2::unpack_message_wps32` for integer
 packing. The ordinary `unpack_message`, scan-normalized and window APIs keep
-their binary64 contract for mapped WOOF/HRRR preparation and other consumers.
+their binary64 contract for mapped WOOF-ArWen/HRRR preparation and other consumers.
 GRIB1 decoding and its missing sentinel are unchanged.
 
 The referee is NOAA-GSL WPS ungrib, using the same GRIB and Vtable. In

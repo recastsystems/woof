@@ -1,4 +1,4 @@
-"""``woof run --wrfinput DIR --analysis BUNDLE``: a WOOF forecast that starts from an analysis.
+"""``woof run --wrfinput DIR --analysis BUNDLE``: a WOOF-ArWen forecast that starts from an analysis.
 
 The bundle (:mod:`woof.io.analysis_bundle`, ``docs/analysis-bundle-wrf.md``) is checked byte
 for byte, its grid, vertical coordinate and static fields are checked against the run's, and
@@ -13,7 +13,7 @@ code a plain ``--wrfinput`` run does.  Four starts:
   (:class:`woof.da.iau.IauForcing`, ``--iau-mode 3d``);
 * **warm start** (``--restart-from WRFRST`` at the valid time): the WRF restart's state with
   the increment added at the restart instant (``--iau off``) or forced over the window;
-* **cycling restart** (``--restart CHECKPOINT`` at the valid time): a WOOF checkpoint of the
+* **cycling restart** (``--restart CHECKPOINT`` at the valid time): a WOOF-ArWen checkpoint of the
   member's own run, continued with the increment added or forced.  The same command resumes an
   interrupted analysis leg: a checkpoint inside the window rebuilds the forcing from the bundle
   and integrates on, bit for bit the unbroken leg (the forcing holds no state the bundle and

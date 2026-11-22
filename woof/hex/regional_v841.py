@@ -34,6 +34,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from . import rkind_libm
+from .native_powf import powf_native_gnu
 from .errors import ConfigurationRefusal, MpasPortError
 from .lbc import LbcAdmissionError, LbcFile, LbcInventory, LbcPool, rkind_interval_seconds
 
@@ -286,13 +287,16 @@ def compute_mesh_scaling_regional(
     one = dtype.type(1.0)
     two = dtype.type(2.0)
     quarter = dtype.type(0.25)
+    # gfortran evaluates RKIND ``**0.25`` with GNU libm powf, which is not correctly rounded: on the
+    # 2024-05-21 storm mesh the correctly rounded hook differs from it on 64 edges and 33 cells, enough to
+    # move the relaxation zone after one step. powf_native_gnu is GNU's own algorithm (0 of those differ).
     scaling_edge = (
         one
-        / rkind_libm.powf_rkind(
+        / powf_native_gnu(
             (padded_density[c0] + padded_density[c1]) / two, quarter
         )
     ).astype(dtype)
-    scaling_cell = (one / rkind_libm.powf_rkind(density, quarter)).astype(dtype)
+    scaling_cell = (one / powf_native_gnu(density, quarter)).astype(dtype)
     return scaling_cell, scaling_edge
 
 

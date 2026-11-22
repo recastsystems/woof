@@ -16,8 +16,15 @@ extern "C" __global__ void noahmp_tsnosoi_snow_papers(
     for(int j=0;j<7;++j){z[j]=x[j];t[j]=x[7+j];df[j]=x[14+j];hc[j]=x[21+j];
         phi[j]=j>top?solar[(size_t)c*7+j]:0.f;penetrating+=phi[j];}
     const real *p=x+35;real bottom;
-    if(opt_stc==2 || opt_tbot==1) noahmp_hrt_selected_core(opt_stc,opt_tbot,isnow,z,t,p[0],p[6]-p[4],df,hc,p[1]-penetrating,phi,ai,bi,ci,rhs,&bottom);
-    else noahmp_hrt_core(isnow,z,t,p[0],p[6]-p[4],df,hc,p[1]-penetrating,phi,ai,bi,ci,rhs,&bottom);
+    // One HRT call, never an if/else between noahmp_hrt_selected_core and
+    // noahmp_hrt_core: with both inlined on the same local arrays, sm_120
+    // code generation (NVRTC 12.9 and 13.0; compute_89 PTX and -G are right)
+    // produced a wrong right-hand side. The top-layer source came out 5.4x
+    // too negative, a 5 mm snow layer ran 271 K -> 109 K in 47 min and the
+    // health gate stopped the run at TSK 146 K (RTX 5090, opt_alb=3).
+    // The selected core is the pinned core's arithmetic whenever
+    // opt_stc != 2 and opt_tbot == 2; only those two branches differ.
+    noahmp_hrt_selected_core(opt_stc,opt_tbot,isnow,z,t,p[0],p[6]-p[4],df,hc,p[1]-penetrating,phi,ai,bi,ci,rhs,&bottom);
     noahmp_hstep_core(isnow,p[3],ai,bi,ci,rhs,t);
     for(int j=0;j<7;++j)y[j]=t[j];y[7]=bottom;
 }

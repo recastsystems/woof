@@ -66,7 +66,7 @@ PINS: tuple[Pin, ...] = (
         "importlib.metadata"),
     Pin("hdf5_version", "netCDF4 / HDF5 versions", "HDF5",
         "netCDF4.__hdf5libversion__"),
-    Pin("arwen_version_and_commit", "WOOF version and git commit", None,
+    Pin("arwen_version_and_commit", "WOOF-ArWen version and git commit", None,
         "woof.__version__ + woof.supervisor.git_commit"),
     Pin("config_bytes", "Configuration file bytes", None, "run context"),
     Pin("input_artifact_bytes", "Every input artifact's bytes", None,

@@ -262,7 +262,7 @@ def _member_map_plan(rows, products):
 
 
 def render_roster(root, trajectories, request, *, member_order, history_ledger):
-    """Render each ordinary member grid, then track the completed WOOF parents.
+    """Render each ordinary member grid, then track the completed WOOF-ArWen parents.
 
     Runs before the session seals its PASS/restart receipts. Histories survive
     failures; successful maps and tracks retire them through the writer ledger.

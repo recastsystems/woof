@@ -107,7 +107,7 @@ ENGINE_PIN_MODULE = TREE / "src" / "hexcore" / "engine_pin.py"
 
 DISTRIBUTION = "woof"
 PYPI_JSON = f"https://pypi.org/pypi/{DISTRIBUTION}/json"
-ENGINE_REPOSITORY = "https://github.com/FahrenheitResearch/arwen"
+ENGINE_REPOSITORY = "https://github.com/recastsystems/arwen"
 
 #: The lowest engine this port has ever pinned a seam against.  Earlier
 #: engines predate the column-batch seam and have nothing to measure.

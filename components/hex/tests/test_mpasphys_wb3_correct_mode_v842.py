@@ -14,9 +14,11 @@ from types import SimpleNamespace
 import pytest
 
 from woof.hex.mpasphys import kessler_v842, thompson_v842, wsm6_v842
-from woof.hex.mpasphys.driver_v842 import correct_source, resolve_namelist, slot_corrections
+from woof.hex.mpasphys.driver_v842 import CORRECTIONS_V842, correct_source, resolve_namelist, slot_corrections
 
 from test_mpasphys_correct_mode_v842 import deck
+
+OWNERS = CORRECTIONS_V842['WB3']['owners']['microphysics']
 
 
 def gap_keys(config):
@@ -26,7 +28,7 @@ def gap_keys(config):
 def test_WB3_is_requested_for_active_microphysics_and_settles_per_implementation():
     native = resolve_namelist(deck(mode='correct', skip='RP3,WB5'))                   # WSM6, native-cpu
     assert 'WB3' not in native.corrections
-    assert gap_keys(native) == [('WB3', 'microphysics', 'mp_wsm6', 'native-cpu', 'p2-wsm6')]
+    assert gap_keys(native) == [('WB3', 'microphysics', 'mp_wsm6', 'native-cpu', OWNERS['mp_wsm6'])]
     for text, scheme in ((deck(mode='correct', skip='RP3'), 'mp_wsm6'),
                          (deck('convection_permitting', mode='correct', skip='RP1,RP3'), 'mp_thompson'),
                          (deck('none', mode='correct', config_microp_scheme='mp_kessler'), 'mp_kessler')):
@@ -35,7 +37,7 @@ def test_WB3_is_requested_for_active_microphysics_and_settles_per_implementation
         assert 'WB3' in cuda.corrections and not any(g.finding == 'WB3' for g in cuda.gaps), scheme
     aerosols = resolve_namelist(deck('none', mode='correct', config_microp_scheme='mp_thompson_aerosols'),
                                 backends={'microphysics': 'hex-cuda'})
-    assert ('WB3', 'microphysics', 'mp_thompson_aerosols', 'hex-cuda', 'p4-thompson-aerosols') in gap_keys(aerosols)
+    assert ('WB3', 'microphysics', 'mp_thompson_aerosols', 'hex-cuda', OWNERS['mp_thompson_aerosols']) in gap_keys(aerosols)
     dry = resolve_namelist(deck('none', mode='correct'))
     assert dry.selectors['microphysics'] == 'off' and 'WB3' not in dry.corrections and not dry.gaps
     assert resolve_namelist(deck()).corrections == frozenset()

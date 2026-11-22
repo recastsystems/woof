@@ -1,4 +1,4 @@
-"""The WOOF LES scalar must survive physics without loading moist air."""
+"""The WOOF-ArWen LES scalar must survive physics without loading moist air."""
 from dataclasses import replace
 
 from woof.hex.arwen_les import model_row, validate

@@ -3,7 +3,8 @@
 This chapter goes from nothing to rendered forecast products. Every command
 in it was run, in this order, on a fresh install before it was printed here:
 the door commands against the installed 0.2.0 wheel, the forecast against the
-repository checkout, the GPU steps on an RTX 5070 Ti. Where output is shown
+repository checkout, the GPU steps on an RTX 5070 Ti. The transcripts are from
+that 0.2.0 run and are kept as captured. Where output is shown
 it is that run's output, except where a block is marked as a *form*: the
 shape of a line rather than a captured one. The card transcripts in 2.6 come
 from a second machine, a 10 GiB RTX 3080; their `ADMISSION` lines are
@@ -18,7 +19,11 @@ closing each one by name.
 
 ## 2.1 Install
 
+In a Python environment of its own (a system Python that marks itself
+externally managed, as Ubuntu 26.04's does, refuses `pip install` outside one):
+
 ```sh
+python3 -m venv hexgpu && . hexgpu/bin/activate   # Debian and Ubuntu: sudo apt install python3-venv first
 pip install recast-woof
 ```
 
@@ -33,7 +38,7 @@ individual woof source files by SHA-256. A bare install reached an engine the
 pin refused, and the forecast door refused at launch with a digest mismatch
 that named neither the version that works nor the fact that pip chose it.
 
-woof hex 0.4.14 declares `gpuwm>=2.9.12,<2.10`, inside the 2.9 minor, so
+woof hex 0.6.2 declares `gpuwm>=3.0.0,<3.1`, inside the 3.0 minor, so
 installing it never downgrades an engine you already have. An engine inside
 that range whose radiation helper set this release has not measured is refused
 at the forecast door by name, with the version to install. The range is
@@ -123,6 +128,12 @@ Doctor exits 1 while any required item is missing, so it works as a gate in
 a script. `woof hex doctor --explain` prints the whole pasteable remedy
 block for each finding; `woof hex doctor --json` emits the same findings as
 data. Run doctor after every step below until it says `Every check passed.`
+or names `WPS_GEOG` alone (next paragraph).
+
+On 0.6.1 with gpuwm 3.0.3 a fresh install's doctor names one missing item,
+`WPS_GEOG`, the geography archive a door needs to *build* a static file.
+This chapter supplies its static file (2.4), so none of its steps needs it;
+`woof fetch-geog` stages it for the doors that build statics.
 
 ## 2.3 Close the gaps doctor names
 
@@ -144,7 +155,7 @@ woof you have: the transcript above was taken against the published woof
 2.5.2 wheel, whose bundle carries `rw_wrfbatch` and **not** `rw_mpas_init`
 or `rw_mpas_convert`, which is exactly the shortfall the doctor reports
 there. The four MPAS bridge binaries enter the bundle at gpuwm 2.5.3, and
-this distribution's declared range is `gpuwm>=2.9.12,<2.10` (the floor is
+this distribution's declared range is `gpuwm>=3.0.0,<3.1` (the floor is
 far past 2.5.3, for the seam bytes the port pins): a conforming install cannot
 land on the engine that transcript was taken from. Doctor
 asks the woof you actually have what its bundle declares, so it never sends
@@ -194,7 +205,16 @@ is wrong. You need four things:
    the MPAS-Atmosphere project's published mesh downloads, from the
    `MPAS-Tools` generator, or from the engine's own `woof mesh` door
    (chapter 4). This quickstart uses the published 40,962-cell global mesh
-   `x1.40962`: the one a 10 GiB card holds.
+   `x1.40962`: the one a 10 GiB card holds. The published pair, grid and
+   static, unpacked into `assets/`:
+
+   ```sh
+   mkdir -p assets
+   wget -q -P assets https://www2.mmm.ucar.edu/projects/mpas/atmosphere_meshes/x1.40962.tar.gz
+   wget -q -P assets https://www2.mmm.ucar.edu/projects/mpas/atmosphere_meshes/x1.40962_static.tar.gz
+   tar xzf assets/x1.40962.tar.gz -C assets && tar xzf assets/x1.40962_static.tar.gz -C assets
+   ```
+
 2. **The matching static file** (`x1.40962.static.nc`), carrying terrain,
    land use, soil and vegetation for that exact mesh. The published meshes
    have published statics; a generated mesh gets its static from the same
@@ -214,8 +234,16 @@ is wrong. You need four things:
    absolute path it could not find, which is correct and is not a hint about
    where to get one. Take them from the repository and put them where
    2.5 expects.
-4. **Meteorological input**: a WPS intermediate file from `ungrib` (GFS,
-   ERA5, whatever you drive with), valid at your start time.
+4. **Meteorological input**: a WPS intermediate file valid at your start
+   time, from `ungrib` (GFS, ERA5, whatever you drive with) or from
+   `woof hex init-source`, which fetches and decodes one itself:
+
+   ```sh
+   woof hex init-source --source gfs --cycle 2026-08-12T06 --out-dir work/met --grid assets/x1.40962.grid.nc --static assets/x1.40962.static.nc --vertical-spec verification/vertical-specs/tc55-v1.json --stop-after decode
+   ```
+
+   That writes `work/met/MET:2026-08-12_06`, the file 2.5 reads.
+   `woof hex init-source --list` names every source it can fetch.
 
 For 1 and 2, on this mesh, the public download and the registered row are the
 same bytes: verified 2026-08-24 by fetching both archives fresh and hashing
@@ -250,7 +278,7 @@ woof hex mesh-check --grid assets/x1.40962.grid.nc --static assets/x1.40962.stat
 
 ## 2.5 First initial conditions
 
-Build an init from your WPS intermediate file. Every physics switch is
+Build an init from your WPS intermediate file (here the one 2.4 wrote). Every physics switch is
 required and has no default, each one changes the numbers in a file that
 would open cleanly either way, so a default would be a silent wrong answer.
 Each refusal prints the native namelist key it corresponds to (chapter 5
@@ -258,7 +286,7 @@ maps them all).
 
 ```sh
 woof hex init \
-  --met     <path-to-WPS-intermediate> \
+  --met     work/met/MET:2026-08-12_06 \
   --grid    assets/x1.40962.grid.nc \
   --static  assets/x1.40962.static.nc \
   --vertical-spec verification/vertical-specs/tc55-v1.json \
@@ -281,7 +309,7 @@ compatibility mode passes `--capsule` + `--reference` naming a
 native-minted init-class file instead; chapter 5.1 has both modes and
 their receipts. `--nfglevels` must cover the levels actually in your met
 file; declare too few and the door refuses with the real count (the
-proving run's met file, a GFS intermediate, carried 34). The run above
+GFS intermediate this page's runs used carried 34). The run above
 wrote a 385 MB `x1.40962.init.nc` plus
 `x1.40962.init.nc.provenance.json`: the SHA-256 of every input, the
 engine binary, the argv, the engine's own receipt, and the output. The
@@ -304,8 +332,11 @@ woof hex forecast --preflight \
   --init    work/x1.40962.init.nc \
   --init-source "GFS 2026-08-12 06Z" \
   --hours 1.0 --history-every-minutes 30 \
-  --out work/fc-01
+  --out work/fc-01-preflight
 ```
+
+Give preflight a folder of its own: it leaves its scratch tree in its `--out`,
+and the forecast in 2.7 then refuses that folder as one another run owns.
 
 Through 0.3.1 this command also needed `--repo <gpuwm-hex-checkout>/tree`
 (the drivers were not in the wheel) and `--gpuwm-checkout` (a woof git
@@ -316,9 +347,11 @@ version and `RECORD` digest.
 
 On a card that holds the mesh, preflight binds it, admits it, runs the
 driver's own source-pin and host checks, and exits 0. This transcript is
-from a 10 GiB RTX 3080 with a desktop session on it, run 2026-08-25; the `ADMISSION` and
-`ARCHITECTURE` lines are the ones the door prints for that card and that
-free reading today:
+from a 10 GiB RTX 3080 with a display session on it, run 2026-08-25; the `ADMISSION` and
+`ARCHITECTURE` lines are the ones the door printed for that card and that
+free reading then. On 0.6.1's default route (2.7) the same command prints
+its admission as one JSON record, `native_memory_admission`, and ends with
+a `native-pool-preflight` record and exit 0. The 2026-08-25 lines:
 
 ```
 [mesh-binding] bound x1.40962: nCells=40962, nEdges=122880, dx=120000.0 m, dt=120.0 s
@@ -388,29 +421,35 @@ Re-run on 2026-08-27 on the 10 GiB RTX 3080 in a desktop, from the installed
 wheel and a published `woof` 2.5.6 clone: **165.4 s of integration and 244 s
 wall**, same 30/30 steps, same three frames, `status=passed`.
 
-When it finishes, `--out` holds three history files (analysis, +30 min,
-+60 min), `cuda-v841-forecast-receipt.json` (the driver's receipt, stating
-exactly what this run claims and, at equal prominence, what it does not)
-and `forecast-receipt.json`, the door's own, carrying the admission
-decision, the mesh binding, the driver's receipt embedded whole, and the
-render command. The door's last two lines have the form:
+On 0.6.1 this command runs on the default route, MPAS's own physics in
+correct mode, and its first lines say so, with the one correction it does
+not apply. When it finishes, `--out` holds three history files,
+`history.2026-08-12_06.00.00.nc`, `history.2026-08-12_06.30.00.nc` and
+`history.2026-08-12_07.00.00.nc` (analysis, +30 min, +60 min), a `diag.*.nc`
+file beside each, and `native-physics-receipt.json`, the run's receipt. It
+prints one JSON record of the finished run, then starts the standard
+products in the background and returns. Its last two lines have the form:
 
 ```
-DOOR mesh=<row> steps=<n> frames=<n> status=passed out=<out>
-NEXT woof hex render --history <out>/cuda-history.<valid-time>.nc --mesh <grid> --out <out>/png --simulation-start <start>
+PRODUCTS detached pid=<pid> log=<out>/products.log out=<out>/products
+PRODUCTS $ woof hex products --forecast <out> --mesh <grid> --init <init> --out <out>/products --simulation-start <start>
 ```
+
+`<out>/products.log` ends with a `PRODUCTS done maps=<n> ...` line when the
+maps are in `<out>/products` (for this hour 271 maps and 12 point pictures,
+done about 11 s after the command returned on the RTX 5090 run). The WOOF-ArWen
+route (`--physics-suite arwen_mpas_column`) writes `cuda-history.*.nc` frames
+and the receipts chapter 6.3 lists instead.
 
 ## 2.8 First rendered products
 
-Spell it out, and add `--window focus`, which the `NEXT` line does not
-carry. The door's default window is `mesh`, and the `rw_mpas_convert` in
-every published bundle answers `unknown render window 'mesh' (known: focus,
-global)`, so the pasted `NEXT` line fails on a published engine (7.1).
-`render` needs no checkout and no GPU:
+To render a frame yourself, name its history file. `render` needs no
+checkout and no GPU; `--window focus` is the window the outputs below were
+drawn on:
 
 ```sh
 woof hex render \
-  --history work/fc-01/cuda-history.2026-08-12_07.00.00.nc \
+  --history work/fc-01/history.2026-08-12_07.00.00.nc \
   --mesh    assets/x1.40962.grid.nc \
   --out     work/png \
   --simulation-start 2026-08-12_06:00:00 \
@@ -429,7 +468,7 @@ DOOR rendered=41 skipped=0 failed=0 out=work/png
 41 product PNGs, filed under `work/png/<domain>/<product>/<valid-day>/`
 (for this mesh the focus window is `d01-22km`), with a
 `render-manifest.json` carrying engine digests, per-frame results, and the
-exact invocations. 3.6 seconds on the proving node. That is the whole loop:
+exact invocations. 3.6 seconds on the 0.2.0 run's machine. That is the whole loop:
 install → doctor → assets → init → forecast → pictures.
 
 Re-run 2026-08-27 on a desktop against the published 2.5.7 bridge bundle:
@@ -438,6 +477,20 @@ moved because the renderer's catalog grew, not because anything here changed.
 End to end (empty machine to these pictures, including every command that
 failed on the way) **16 min 46 s**, with the mesh pair and the met file
 already on disk.
+
+On 0.6.1 (gpuwm 3.0.3) the command above rendered 22 products in 10.5 s
+from an empty home, under `work/png/focus/<product>/2026-08-12/`, exit 0.
+It also prints one `COLUMNS ... failed=1` line (`column store not written`),
+while its `DOOR` line ends `failed=0`. Every
+command in the blocks of 2.1, 2.2 and 2.4 to 2.8 as printed was run, section
+by section, on a pre-release build of 0.6.1 from an empty home (Ubuntu 26.04,
+Python 3.14, one RTX 5090, 18 Nov 2026), with the wheel file standing in for
+the package name: each exited 0 except `woof hex doctor`, which exited 1 for
+`WPS_GEOG` alone (2.2). The build road of 2.3 is for those building the Rust
+binaries from a `woof` source checkout, and its `<gpuwm-checkout>` paths are
+the reader's own. The vertical specs came from PyPI's 0.6.0 source
+archive, the newest published then; its `tc55-v1.json` is the same file.
+That run, from the first install to these pictures, took 5 min 18 s.
 
 ## Where to next
 

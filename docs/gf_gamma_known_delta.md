@@ -19,10 +19,10 @@ gfortran binds the F2008 `gamma()` intrinsic to glibc's `tgammaf`. glibc's
 `tgammaf` is **not correctly rounded**: measured against a 113-bit oracle over
 all 59,768,833 float32 arguments of `[0.25, 36]`, it returns the wrong float32
 on **23,575,230 of them (39.4440 %)**, worst **6 ULP**; `tgammaf(4.0f)`
-returns 6.00000048 rather than 6. WOOF's earlier gamma returned those same
+returns 6.00000048 rather than 6. WOOF-ArWen's earlier gamma returned those same
 wrong answers bit for bit. What replaced it at 2.6.6 is **correctly rounded**
-on every one of those 59,768,833 arguments, so WOOF and WRF now disagree
-about `fzu`, deliberately, with WOOF on the correct side. Both gammas, the
+on every one of those 59,768,833 arguments, so WOOF-ArWen and WRF now disagree
+about `fzu`, deliberately, with WOOF-ArWen on the correct side. Both gammas, the
 earlier one and the current one, are this project's own work under the
 project's licence.
 
@@ -32,11 +32,11 @@ project's licence.
 
 | | through 2.6.5 | 2.7.0 onward |
 | --- | --- | --- |
-| `gfk_tgamma` | WOOF's earlier gamma, `glibc_flt32.cuh` | WOOF's current gamma, `glibc_flt32.cuh` |
+| `gfk_tgamma` | WOOF-ArWen's earlier gamma, `glibc_flt32.cuh` | WOOF-ArWen's current gamma, `glibc_flt32.cuh` |
 | licence of that code | Apache-2.0, original work | Apache-2.0, original work |
 | answer | glibc 2.39's word, right or wrong | the correctly rounded word |
 | `fzu` vs WRF | bitwise | differs; bounded and measured below |
-| CUDA vs WOOF's own CPU reference | differed on 23,575,230 of 59,768,833 arguments | **identical on all 59,768,833** |
+| CUDA vs WOOF-ArWen's own CPU reference | differed on 23,575,230 of 59,768,833 arguments | **identical on all 59,768,833** |
 | `gfk_lgamma_pos`, `gfk_expm1`, `gfk_exp2` | FDLIBM and Arm helper routines, called only by the earlier gamma | deleted |
 
 **What went with it.** `gfk_lgamma_pos`, `gfk_expm1` and `gfk_exp2` were
@@ -244,7 +244,7 @@ computed in 113 bits and rounded once to float32, over the same 53,687,093
 reachable cases (unit lic-02):
 
 ```
-distance from the TRUE fzu            WOOF              glibc
+distance from the TRUE fzu            WOOF-ArWen              glibc
   0 ULP                       29,943,177 (55.774 %)   15,394,696 (28.675 %)
   1 ULP                       22,565,059 (42.031 %)   21,790,676 (40.588 %)
   2 ULP                        1,169,684 ( 2.179 %)   10,760,564 (20.043 %)
@@ -252,18 +252,18 @@ distance from the TRUE fzu            WOOF              glibc
   4 ULP                                1              1,212,671 ( 2.259 %)
   5-11 ULP                             0                399,714 ( 0.744 %)
 
-strictly closer to the truth:  WOOF 49.946 %   glibc 9.591 %   equal 40.463 %
-mean |relative error|:         WOOF 3.83e-8   glibc 9.67e-8  (glibc 2.53x worse)
+strictly closer to the truth:  WOOF-ArWen 49.946 %   glibc 9.591 %   equal 40.463 %
+mean |relative error|:         WOOF-ArWen 3.83e-8   glibc 9.67e-8  (glibc 2.53x worse)
 ```
 
-**The supported claim:** *WOOF computes the value the Grell-Freitas equations
+**The supported claim:** *WOOF-ArWen computes the value the Grell-Freitas equations
 define. WRF computes a value up to 6 ULP away in gamma and up to 11 ULP away
 in `fzu`, because gfortran binds `gamma()` to a `tgammaf` that is not
 correctly rounded on 39.44 per cent of its domain. Where the two differ,
-WOOF is closer to the defined value on 49.95 per cent of the reachable set
+WOOF-ArWen is closer to the defined value on 49.95 per cent of the reachable set
 and further on 9.59.*
 
-**The claim that is NOT supported, and must not be made:** "WOOF forecasts
+**The claim that is NOT supported, and must not be made:** "WOOF-ArWen forecasts
 better here." Two reasons, both from this repository's own records. First,
 **neither answer is determined**: even with a mathematically perfect gamma,
 rounding three gammas to float32 and doing one float32 multiply and one
@@ -283,16 +283,16 @@ application to GF before or after this change is recorded here.
 the GF shallow `k22` MAXLOC section-offset correction (shipped default
 corrected, WRF-faithful behind `k22_wrf_faithful`), and
 `docs/wdm6_oracle_known_deltas.md`'s standing rule, *"float64 is the
-defensible arithmetic, and WOOF's standing rule is not to be bit-exact to a
+defensible arithmetic, and WOOF-ArWen's standing rule is not to be bit-exact to a
 rounding artifact."* glibc's 6-ULP gamma is a rounding artifact.
 
-**And this divergence is not new to WOOF; it shrank by one.** WOOF's float32
+**And this divergence is not new to WOOF-ArWen; it shrank by one.** WOOF-ArWen's float32
 CPU authority `woof/verify/gf_deep_ref.py::_tgammaf` has been
 `(float)tgamma((double)x)` (correctly rounded) since the port landed, gated
 at 4 ULP with the 7.3 per cent consequence recorded. MEASURED: `gfk_tgamma`
 now returns the same word as that model on **all 59,768,833** arguments of
 `[0.25, 36]`, where before the CUDA and CPU paths differed on 23,575,230.
-This change makes WOOF internally consistent; it does not introduce a new
+This change makes WOOF-ArWen internally consistent; it does not introduce a new
 kind of disagreement.
 
 ---

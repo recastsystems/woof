@@ -4,5 +4,5 @@
   "description": "GOCART primary aerosols: dust, sea salt, BC and OC with no sulfur rows, so no oxidant source (and no keyed download) is needed; 13 species.",
   "wrf_chem_opt": null,
   "wrf_tracer_opt": null,
-  "provenance": "WOOF subset of chem_opt=300 for runs without an oxidant source (DESIGN 6.4: 'the user can run gocart_lite minus the sulfur rows')"
+  "provenance": "WOOF-ArWen subset of chem_opt=300 for runs without an oxidant source (DESIGN 6.4: 'the user can run gocart_lite minus the sulfur rows')"
 }

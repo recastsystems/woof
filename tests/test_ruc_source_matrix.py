@@ -1,4 +1,4 @@
-"""RUC runs from every source WOOF can drive, and the matrix is pinned here.
+"""RUC runs from every source WOOF-ArWen can drive, and the matrix is pinned here.
 
 The claim this file holds is the arbitrary acceptance test applied to one
 scheme: **adding a future model must be metadata/table work**.  For the RUC

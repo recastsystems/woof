@@ -111,11 +111,14 @@ def _experiment(domain_count: int, *, nz: int = 49, run_seconds: int = 3600,
     ("mapping", "exp", "interval", "hierarchy", "message"),
     [
         (
+            # A mapping's max_dom is the layout its certification covered,
+            # not a ceiling (WOOF run_c8297bf7540c928d); what fails closed
+            # is more than WRF's 21 max_domains.
             _target_mapping(max_dom=1),
-            _experiment(2),
+            _experiment(22),
             3600,
             True,
-            "max_dom",
+            "at most 21 domains",
         ),
         (
             # A count with NO explicit ladder is what an imported WRF
@@ -171,6 +174,24 @@ def test_mapped_target_contract_returns_bound_receipt():
         == "mapping-reference-count"
     assert receipt["boundary_interval_seconds"] == 3600
     assert receipt["require_lateral_boundaries"] is True
+
+
+def test_mapped_target_contract_adopts_more_domains_than_the_reference():
+    """A mapping's max_dom is its certified layout, recorded, not a ceiling.
+
+    WOOF 2026-11-10, run_c8297bf7540c928d: a five-domain 9 km -> 40 m ladder
+    from IFS 0.1 deg was refused by "mapped target allows max_dom=4" after
+    its box was rented.  Every child is built by the shared native hierarchy
+    the HRRR door runs for max_dom = 1..21, so five domains are adopted and
+    the receipt keeps the mapping's 4 beside the count it ran.
+    """
+
+    receipt = mapped_direct._validate_target_contract(
+        _target_mapping(), _experiment(5), 3600, hierarchy=True,
+    )
+    assert receipt["domain_count"] == 5
+    assert receipt["mapping_max_dom"] == 4
+    assert receipt["domain_ids"] == [1, 2, 3, 4, 5]
 
 
 def test_mapped_target_contract_adopts_an_explicit_experiment_ladder():
@@ -1353,7 +1374,7 @@ def test_mapped_hierarchy_preserves_five_minute_offsets_end_to_end(
 @pytest.mark.parametrize(
     ("domain_count", "cadence", "nz", "mapping_updates", "message"),
     [
-        (2, 3600, 49, {"max_dom": 1}, "max_dom"),
+        (22, 3600, 49, {"max_dom": 1}, "at most 21 domains"),
         # nz differing from the mapping's reference count is ADOPTED
         # when the experiment carries an explicit ladder, so the
         # ladder-less imported-config shape is what still fails closed

@@ -38,7 +38,6 @@ GUARDED_FRONT_DOORS = {
     # them, docs/storm-nests.md); a mapped single-domain bundle still refuses.
     "woof/mapped_direct.py": "mapped-adapter single-domain prepared-cache",
     "woof/prepared_single_domain_forecast.py": "prepared single-domain",
-    "woof/da/nested_forecast.py": "DA nested free-forecast",
 }
 
 
@@ -88,40 +87,6 @@ def test_the_audit_list_is_the_whole_set_of_callers():
 # ---------------------------------------------------------------------------
 # The one front door that is a pure function: prove the real refusal
 # ---------------------------------------------------------------------------
-
-def test_the_da_nested_leg_refuses_a_dormant_child():
-    from woof.da import nested_forecast as nf
-    from test_da_nested_forecast import _nowcast_experiment
-
-    exp = _nowcast_experiment()
-    child = nf.nest_domain_config(
-        exp, nf.NestGeometry(ratio=3, nx=126, ny=126))
-
-    # Control: an ordinary child is admitted, unchanged by the guard.
-    assert nf.nested_experiment(exp, child).domains[1] is child
-
-    dormant = replace(child, spawn=SpawnConfig(
-        trigger="uh", threshold=60.0, earliest_s=0.0, latest_s=3600.0))
-    with pytest.raises(ValueError, match="does not implement "
-                                         "spawn-triggered"):
-        nf.nested_experiment(exp, dormant)
-
-
-def test_the_refusal_names_the_route_and_the_domain():
-    from woof.da import nested_forecast as nf
-    from test_da_nested_forecast import _nowcast_experiment
-
-    exp = _nowcast_experiment()
-    child = nf.nest_domain_config(
-        exp, nf.NestGeometry(ratio=3, nx=126, ny=126))
-    dormant = replace(child, spawn=SpawnConfig(
-        trigger="time", at_s=600.0))
-    with pytest.raises(ValueError) as err:
-        nf.nested_experiment(exp, dormant)
-    message = str(err.value)
-    assert "DA nested free-forecast" in message
-    assert f"d{int(child.grid_id):02d}" in message
-
 
 # ---------------------------------------------------------------------------
 # The run route watches AND lands the newborn: the lift, and its evidence

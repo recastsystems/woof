@@ -241,7 +241,7 @@ fn cmd_fetch(options: &Options) -> Result<String, Box<dyn Error>> {
     let name = url.rsplit('/').next().filter(|n| !n.is_empty()).ok_or_else(|| err(format!("{url} ends in no file name")))?;
     let agent = rw_obs::net::agent();
     let subject = format!("prepbufr {}", seam_time(cycle));
-    let mut response = agent.get(&url).call().map_err(|e| err(format!("{subject}: GET {url} failed: {e}")))?;
+    let mut response = rw_http::get(&agent, &url).map_err(|e| err(format!("{subject}: GET {url} failed: {e}")))?;
     let status = response.status().as_u16();
     if !(200..300).contains(&status) {
         return Err(err(format!("{subject}: GET {url} answered HTTP {status}; NOMADS keeps about two days")));

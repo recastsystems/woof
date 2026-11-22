@@ -1,6 +1,6 @@
 # Watching a run, and knowing when a frame is safe to read
 
-If you are driving WOOF from your own script, you need two things the
+If you are driving WOOF-ArWen from your own script, you need two things the
 tool has to give you rather than make you guess:
 
 1. **Where the run is** -- which model time step, on which domain, at
@@ -48,13 +48,13 @@ index -- is appended **after** WRF's sentence rather than inside it.
 
 Two accurate differences from `wrf.exe`, both deliberate:
 
-- **History filenames carry no colons.** WOOF writes
+- **History filenames carry no colons.** WOOF-ArWen writes
   `wrfout_d01_2026-05-20_18_00_00`, not `...18:00:00`, so the same run
   directory works on Windows. Valid times *inside* log lines keep WRF's
   colon spelling, which is what a WRF-shaped parser expects.
 - **`Timing for Writing` is a latency, not a blocking time.** WRF writes
   history synchronously and reports how long the model was stalled.
-  WOOF writes it on a per-domain side thread and the model is never
+  WOOF-ArWen writes it on a per-domain side thread and the model is never
   stalled, so "how long the write took" is not a number you can act on.
   What is reported instead is the seconds from the model reaching that
   frame's valid time to the file being durable -- "how far behind the
@@ -246,7 +246,7 @@ A size check or an mtime check races the writer. Poll this instead:
  "guarantee":"the named file was fsynced, self-validated and renamed onto its final name before this marker was published; ..."}
 ```
 
-**What the marker guarantees.** WOOF publishes a history file by
+**What the marker guarantees.** WOOF-ArWen publishes a history file by
 writing a temporary, closing the netCDF handle, `fsync`ing it,
 re-opening it and validating its variable inventory, and only then
 `os.replace`-ing it onto its final name. The marker is written after
@@ -274,7 +274,7 @@ directory.
 ### What was already safe, and what was not
 
 Worth being exact, because it changes what you have to defend against.
-WOOF's history writer has always published atomically, and its
+WOOF-ArWen's history writer has always published atomically, and its
 in-flight temporary is hidden behind a leading dot, so a `wrfout_d01_*`
 glob has never been able to see a partial file. What you could not do
 before was ask *when*: every consumer polled the frames themselves, and
@@ -343,7 +343,7 @@ number is host wall time across the step's launches too.
 
 ## How this relates to the other progress artifacts
 
-WOOF publishes four things, and they are not redundant:
+WOOF-ArWen publishes four things, and they are not redundant:
 
 | artifact | written by | what it is for |
 |---|---|---|

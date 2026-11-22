@@ -3520,28 +3520,36 @@ extern "C" __global__ void mynnsfc_subnormal(float *x) {
 _MODULES = {}
 
 
-def cuda_source(waves=False):
-    """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-SFC/MPAS/module_sf_mynnsfc_driver.F90:73-87 @1d6e370e."""
+def cuda_source(waves=False, corrections=()):
+    """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-SFC/MPAS/module_sf_mynnsfc_driver.F90:73-87 @1d6e370e.
+
+    ``corrections``: correct mode's fork ids (SF1); none is the pinned source byte for byte."""
     kernels=files('woof').joinpath('core/kernels')
+    body=SOURCE
+    if "SF1" in _corrections_key(corrections):
+        if body.count(_SF1[0])!=1:
+            raise ValueError(f"MYNN-SFC correct mode: SF1 anchor found {body.count(_SF1[0])} times")
+        body=body.replace(*_SF1)
     source = ("typedef float real;\n#define SL_LOG mynn_glibc_logf\n"
             "#define SL_EXP mynn_glibc_expf\n#define SL_POW mynn_glibc_powf\n"
             "#define SL_ATAN glibc_atanf\n#define SL_SQRT __fsqrt_rn\n"
             + kernels.joinpath('mynn_libm.cuh').read_text()
-            + kernels.joinpath('glibc_trig_flt32.cuh').read_text() + SOURCE + _driver_source())
+            + kernels.joinpath('glibc_trig_flt32.cuh').read_text() + body + _driver_source())
     if waves:
         from ...wave_surface import rrfs_mynn_source
         source = rrfs_mynn_source(source)
     return source
 
 
-def module(waves=False):
+def module(waves=False, corrections=()):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-SFC/MPAS/module_sf_mynnsfc_driver.F90:73-87,747-788."""
     import cupy as cp
     from cupy.cuda import compiler, function
     dev=cp.cuda.runtime.getDevice()
-    key = (dev, waves)
+    chosen=_corrections_key(corrections)
+    key = (dev, waves) if not chosen else (dev, waves, chosen)
     if key not in _MODULES:
-        binary,_=compiler.compile_using_nvrtc(cuda_source(waves=waves),
+        binary,_=compiler.compile_using_nvrtc(cuda_source(waves=waves, corrections=chosen),
             options=_hex_numerics.options(('--std=c++17','--fmad=false','--ftz=false',
                      '--prec-div=true','--prec-sqrt=true')),
             arch=_compilation_target(dev, xp=cp),cache_in_memory=True)
@@ -3554,7 +3562,7 @@ def module(waves=False):
 
 def run_packed(fields, options, *, vegtype=None, errors=None,
                xice_threshold=0.02, present=MPAS_PRESENT,
-               itimestep=None, initflag=None, ocean_z0=None):
+               itimestep=None, initflag=None, ocean_z0=None, corrections=()):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/physics_noaa/MYNN-SFC/MPAS/module_sf_mynnsfc_driver.F90:103-740.
 
     Two lowest profile levels use FIELDS u3d/u3d2, v3d/v3d2, dz8w/dz8w2.
@@ -3581,7 +3589,7 @@ def run_packed(fields, options, *, vegtype=None, errors=None,
         if value.dtype!=cp.int32 or value.shape!=(n,) or not value.flags.c_contiguous:
             raise TypeError('MYNN-SFC integer carriers require contiguous int32 (nCells,) storage')
     if n:
-        module(waves=ocean_z0 is not None).get_function('mynnsfc_columns')(((n+127)//128,),(128,),
+        module(waves=ocean_z0 is not None, corrections=corrections).get_function('mynnsfc_columns')(((n+127)//128,),(128,),
             (fields,options,vegtype,errors,np.float32(xice_threshold),np.uint64(present),np.int32(n),
              np.int32(-1 if itimestep is None else itimestep),
              np.int32(-1 if initflag is None else initflag)) + wave_args)
@@ -3694,7 +3702,7 @@ def driver(mesh, diagnostics, surface, profiles, *, itimestep,len_disp,
            xice_threshold,config_frac_seaice=False,config_do_restart=False,
            config_do_DAcycling=False,config_lsm_scheme='sf_ruc',
            config_mynn_sfcflux_land=0,config_mynn_sfcflux_water=0,spp_pbl=0,
-           sea_state=None, ocean_z0=None):
+           sea_state=None, ocean_z0=None, corrections=()):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_sfclayer.F:1148-1209,1390-1463 @1d6e370e."""
     import cupy as cp
     initflag=int(not (config_do_restart or config_do_DAcycling or itimestep>1))
@@ -3706,12 +3714,12 @@ def driver(mesh, diagnostics, surface, profiles, *, itimestep,len_disp,
     options=cp.asarray([values[name] for name in OPTIONS],cp.int32)
     packed,sea=from_mpas(mesh,diagnostics,surface,profiles,len_disp=len_disp,
                          xice_threshold=xice_threshold,config_frac_seaice=config_frac_seaice)
-    errors=run_packed(packed,options,xice_threshold=xice_threshold,ocean_z0=ocean_z0)
+    errors=run_packed(packed,options,xice_threshold=xice_threshold,ocean_z0=ocean_z0,corrections=corrections)
     if config_frac_seaice:
         # hpbl_p is shared by both native calls; the first cold-start update
         # is visible to the sea call, without modifying diag_physics%hpbl.
         sea[FIELDS.index('pblh')]=packed[FIELDS.index('pblh')]
-        errors=run_packed(sea,options,xice_threshold=xice_threshold,errors=errors,ocean_z0=ocean_z0)
+        errors=run_packed(sea,options,xice_threshold=xice_threshold,errors=errors,ocean_z0=ocean_z0,corrections=corrections)
         # RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_sfclayer.F:335-361,1434-1445 @1d6e370e
         # These globals survive sfclayer deallocation for native sea-ice/RUC.
         if sea_state is not None:
@@ -3741,9 +3749,29 @@ def launch_slot(call):
         config_lsm_scheme=call.options['config_lsm_scheme'],
         config_mynn_sfcflux_land=call.options['config_mynn_sfcflux_land'],
         config_mynn_sfcflux_water=call.options['config_mynn_sfcflux_water'],
-        sea_state=pools['prepared'],ocean_z0=feedback(pools))
+        sea_state=pools['prepared'],ocean_z0=feedback(pools),corrections=getattr(call,'corrections',()))
 
 
 def register_backend(registry):
     """RRFS MPAS-Model-rrfs/src/core_atmosphere/physics/mpas_atmphys_driver_sfclayer.F:1390-1463 @1d6e370e."""
-    registry.register('surface_layer',SCHEME,BACKEND,launch_slot)
+    registry.register('surface_layer',SCHEME,BACKEND,launch_slot,corrections=CORRECTIONS)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Correct mode: the fork corrections this scheme carries (woof.hex.mpasphys.rrfs.fork_corrections).
+# Exact mode never calls cuda_source with an id: its source is the pinned transcription byte for byte.
+# ---------------------------------------------------------------------------------------------------
+#: The fork correction ids this implementation applies (declared in the suite table's cuda_entries row).
+CORRECTIONS = ("SF1",)
+#: SF1 (MYNN-SFC f0c1839): the cold-start reset condition, upstream's .not.(restart .or. loc_cycle).
+_SF1 = ("if (((itimestep==1)&&((!restart)||(!loc_cycle)))) {",
+        "if (((itimestep==1)&&(!(restart||loc_cycle)))) {")
+
+
+def _corrections_key(corrections) -> tuple:
+    return tuple(sorted(set(corrections or ()) & set(CORRECTIONS)))
+
+
+# WOOF_HEX_AD_PARAMS (default unset: nothing changes) runs the forward at chosen values of the carried constants.
+from .. import ad_params_override as _ad_params_override
+_ad_params_override.patch_module(globals(), "mynnsfc")

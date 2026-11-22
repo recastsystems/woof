@@ -12,7 +12,7 @@ import os
 import numpy as np
 import pytest
 
-gpu = pytest.mark.skipif(os.environ.get("HEX_LTS_GPU_TESTS") != "1", reason="requires explicit GPU mutex job")
+gpu = pytest.mark.skipif(os.environ.get("HEX_LTS_GPU_TESTS") != "1", reason="requires an explicit GPU job (HEX_LTS_GPU_TESTS=1)")
 
 
 def _kernels():

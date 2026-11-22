@@ -203,7 +203,9 @@ def _run(command: list[str], *, what: str, schema: str) -> dict:
     if result.returncode != 0:
         tail = [line for line in (result.stderr or "").splitlines()
                 if line.strip() and not line.startswith("usage:")
-                and not line.startswith(" ")]
+                and not line.startswith(" ")
+                # rw-http's retry notes precede the door's own error line.
+                and not line.startswith("rw-http:")]
         detail = tail[0] if tail else f"exit {result.returncode}"
         raise RuntimeError(f"rw_nexrad {what}: {detail}")
     try:

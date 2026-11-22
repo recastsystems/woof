@@ -94,7 +94,7 @@ can run for each trusted row.
 | `gem-gdps` | per-valid-time GDPS GRIB2 (Datamart per-variable files, concatenable) plus the analysis terrain record | ECCC's global GDPS through the generic mapped route.  Packaged profile supplies mapping/composition/provenance -- 33 pressure levels, the single 0-10 cm ISBA soil layer, and the once-per-cycle analysis invariants (orography, land mask, ice) broadcast by the generic invariant grammar; not stock-WRF certified |
 | `ecmwf-open-data` | ordered three-hourly `oper` GRIB2 step files | ECMWF's open-data IFS at 0.25 degrees through the generic mapped route.  Packaged profile supplies mapping/composition/provenance -- 14 pressure levels (earlier publications: 13 levels, depth-below-land soil and no surface geopotential, read through the same mapping), dewpoint-derived 2 m humidity, index-addressed IFS soil and cycle-analysis in-band terrain are table data; 0.25-degree open data (CC-BY-4.0), the 9 km HRES is access-restricted; not stock-WRF certified |
 | `gefs` | one verified member's `pgrb2a`+`pgrb2b` pair per valid time (concatenated), staged by `woof-member-prep` | One MEMBER of NCEP's 31-forecast global ensemble through the generic mapped route.  Packaged profile supplies mapping/composition/provenance -- the 31-level ladder is the measured exact union of the two products' disjoint isobaric sets, every state selector pins PDT 1 (mean/spread and accumulation twins refuse at the byte level), four Noah soil layers split across the pair; in-band terrain; not stock-WRF certified |
-| `hex-global` | woof hex export frames (`--field-set full`, a lat-lon window or global-mesh), each also named as its `hex_in_band_surface` supplement, plus `--author-input-manifest` | A woof hex forecast as a WOOF domain's initial and boundary source through the packaged `hex-history-netcdf-v1` profile (the 55 MPAS model levels read directly); the boundary cadence is the export's, named to `woof domain --cadence`; not stock-WRF certified.  The whole route is the fenced block in `native-mapped-source-authoring.md` |
+| `hex-global` | woof hex export frames (`--field-set full`, a lat-lon window or global-mesh), each also named as its `hex_in_band_surface` supplement, plus `--author-input-manifest` | A woof hex forecast as a WOOF-ArWen domain's initial and boundary source through the packaged `hex-history-netcdf-v1` profile (the parent's own MPAS model levels read directly, as many as the frames carry); the boundary cadence is the export's, named to `woof domain --cadence`; not stock-WRF certified.  The whole route is the fenced block in `native-mapped-source-authoring.md` |
 | `mapped` | mapping, composition, ordered inputs, role bindings, SHA manifest | Generic GRIB1, GRIB2, or NetCDF; new mappings are validated, not certified |
 
 All executing routes require an output path that does not already exist.
@@ -431,6 +431,20 @@ four-layer soil column -- is borrowed from the SAME HOUR's ERA5
 pressure-level/single-level analysis.  A donor hour that disagrees with
 the model-level hour refuses by name rather than composing across times.
 
+The two files need not share their grid points.  A MARS request with
+`grid=0.25/0.25` anchors its lattice at the requested north-west corner,
+while the surface analysis is stored on the 0.25 degree lattice, so a
+box whose corners are not multiples of 0.25 (say `52.1/-100.3/45.1/-92.3`)
+gives two lattices a part of a cell apart.  When the donor publishes
+every model-level point the borrow is the exact subset, unchanged; when
+it does not, the native engine regrids the donor onto the model-level
+grid (bilinear, the land mask nearest, soil, skin and water state over
+same-class neighbours only), lets the model-level file's outer row or
+column lie up to one donor step outside the surface file, and the
+preparation receipt records the regrid, how many rows and columns took
+the edge cell, and how far apart the lattices were.  A model-level file
+reaching further than one step beyond the surface file still refuses.
+
 The vertical coordinate is table data read from the producer, not a
 coefficient table shipped beside the code: the 137 A/B interface
 coefficients ride IN BAND in the GRIB2 Section-4 coordinate values (276
@@ -462,7 +476,7 @@ the `woof sim` line that runs the forecast with `--render-products
 all`, drawing every product from each output as it lands.  Run again,
 it prepares into the next free `CONFIG-prepared-N` (a folder that
 exists is never written over), keeps `DIR/inputs.json` while the
-folder's files are unchanged, and after they or this WOOF's decoders
+folder's files are unchanged, and after they or this WOOF-ArWen's decoders
 change writes a new one and says which one it replaced; each
 preparation keeps its own copy of the manifest it was made from.  A
 named `--output-root` that exists is refused before anything is

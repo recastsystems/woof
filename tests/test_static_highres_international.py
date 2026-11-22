@@ -587,43 +587,30 @@ def _count_requests():
     return seen, urlopen
 
 
-def test_a_dateline_terrain_domain_refuses_before_any_network_request(
+def test_a_dateline_terrain_domain_asks_for_the_tiles_either_side(
         tmp_path):
-    """The frame refusal is plan review, not a late discovery.
-
-    ``domain_footprint`` continues a dateline domain past 180 degrees and
-    the tile enumerators read it in that frame, but the mosaic window is
-    still written in the cut -180..180 frame.  The run must therefore stop
-    on the footprint it just computed, with the network untouched: a
-    silently enormous fetch that ends in "no" is exactly the failure this
-    program refuses.
+    """RETIRES test_a_dateline_terrain_domain_refuses_before_any_network_
+    request: a dateline footprint is built turned half a turn now
+    (tests/test_static_highres_dateline.py proves the terrain), so the run
+    asks for the tiles on both sides of the line and, when the source
+    publishes none of them (all water), keeps the baseline and says so.
     """
     seen, urlopen = _count_requests()
     config = HighresStaticConfig(enabled=True, cache_root=tmp_path,
                                  fields="terrain",
                                  terrain_source="copernicus-dem-glo30")
     grid = _dateline_grid()
-    # The footprint really is continued, and really does enumerate tiles:
-    # without the refusal this run has somewhere to go.
     bbox = domain_footprint(grid, 3)
     assert bbox.lon_max > 180.0
-    assert len(copernicus_dem_tile_ids(bbox)) > 0
 
-    with pytest.raises(HighresRefusal) as failure:
-        apply_highres_statics(
-            _baseline(40, 40), grid, config=config, domain_id=1,
-            case_date=date(2021, 5, 15), landuse_attrs=MODIS21_ATTRS,
-            urlopen=urlopen)
+    fields, _receipt = apply_highres_statics(
+        _baseline(40, 40), grid, config=config, domain_id=1,
+        case_date=date(2021, 5, 15), landuse_attrs=MODIS21_ATTRS,
+        urlopen=urlopen)
 
-    assert failure.value.reason == "dateline-window-unbuilt"
-    assert seen == [], (
-        f"{len(seen)} network request(s) were made before the refusal; "
-        "the frame check must run on the footprint, not after the fetch")
-    # Names the breakage and both ways out.
-    detail = failure.value.detail
-    assert "shifted" in detail
-    assert "Move the domain off 180 degrees" in detail
-    assert "30-arc-second baseline" in detail
+    asked = " ".join(str(url) for url in seen)
+    assert "E179" in asked and "W180" in asked
+    np.testing.assert_array_equal(fields["HGT_M"], np.full((40, 40), 500.0))
 
 
 def test_a_pole_enclosing_domain_refuses_before_enumerating_its_tiles(
@@ -720,32 +707,27 @@ def test_the_pole_enclosing_refusal_names_the_pole_not_the_dateline(
         assert "30-arc-second baseline" in detail
 
 
-def test_a_domain_on_the_line_still_gets_the_dateline_wording(tmp_path):
-    """The branch did not cost the on-the-line domain its own statement.
+def test_a_writer_handed_a_line_footprint_names_the_turned_build(tmp_path):
+    """RETIRES test_a_domain_on_the_line_still_gets_the_dateline_wording.
 
-    A domain straddling 180 degrees has a narrow continued range, really
-    does have tiles either side of a line, and really can be moved off
-    it.  That footprint must keep the dateline wording and must not be
-    told to shrink away from a pole it is nowhere near.
+    Production no longer refuses a domain on the line; a caller that hands
+    a window writer the continued footprint directly is told the way that
+    builds (the half turn), not told to shrink away from a pole.
     """
-    seen, urlopen = _count_requests()
-    config = HighresStaticConfig(enabled=True, cache_root=tmp_path,
-                                 fields="terrain",
-                                 terrain_source="copernicus-dem-glo30")
-    grid = _dateline_grid()
-    bbox = domain_footprint(grid, 3)
-    assert bbox.lon_max - bbox.lon_min < 180.0
+    from woof.static.highres_fetch import (FetchedFile,
+                                            derive_global_terrain_window)
 
+    continued = FootprintBBox(lat_min=29.3, lat_max=30.7,
+                              lon_min=179.2, lon_max=180.8)
+    tile = FetchedFile(path=tmp_path / "absent.tif", url="derived:test",
+                       sha256="0" * 64, bytes=1, fetched_utc="",
+                       cache_hit=False)
     with pytest.raises(HighresRefusal) as failure:
-        apply_highres_statics(
-            _baseline(40, 40), grid, config=config, domain_id=1,
-            case_date=date(2021, 5, 15), landuse_attrs=MODIS21_ATTRS,
-            urlopen=urlopen)
+        derive_global_terrain_window([tile], continued, tmp_path)
     detail = failure.value.detail
     assert failure.value.reason == "dateline-window-unbuilt"
-    assert seen == []
     assert "either side of the line" in detail
-    assert "Move the domain off 180 degrees" in detail
+    assert "turned half a turn" in detail
     assert "occupies every longitude" not in detail
     assert "Shrink the domain" not in detail
     assert "30-arc-second baseline" in detail

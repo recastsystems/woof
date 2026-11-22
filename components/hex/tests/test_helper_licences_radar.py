@@ -46,7 +46,7 @@ def _notice(radar_count: int = 1) -> str:
         "  tools/rustwx/vendor/crates-io/libloading-0.9.0/LICENSE\n"
         f"{DASH}\n\nCopyright (c) 2015, Simonas Kazlauskas\n\nISC text\n\n\n"
         f"{RULE}\nEND WOOF SIMULATED RADAR DEPENDENCY LICENCE TEXTS\n\n"
-        f"{RULE}\n5.  WOOF TUI\n"
+        f"{RULE}\n5.  WOOF-ArWen TUI\n"
     )
 
 

@@ -78,7 +78,7 @@ RESULTS_THAT_MOVE: dict[str, tuple[str, ...]] = {
         "undilute CAPE integral, as WRF does. On the measured column aa0 "
         "moved from 0 to 0.0349, which changes where convection triggers.",
 
-        "Grell-Freitas (cu_physics = 3) evaluates gamma with WOOF's "
+        "Grell-Freitas (cu_physics = 3) evaluates gamma with WOOF-ArWen's "
         "correctly rounded float32 implementation; the glibc-derived one is "
         "removed. On the 216-column capture RAINCV and PRATEC move by at "
         "most 7.3 percent, median 1.6 percent.",

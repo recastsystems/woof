@@ -8,7 +8,7 @@ the original text. CPU checks here; the whole-column words against the native bu
 tests/mpas_wb5_v842/test_mpasphys_wb5_columns_gpu_v842.py.
 """
 from woof.hex.mpasphys import wsm6_v842
-from woof.hex.mpasphys.driver_v842 import resolve_namelist
+from woof.hex.mpasphys.driver_v842 import CORRECTIONS_V842, resolve_namelist
 
 from test_mpasphys_correct_mode_v842 import deck
 
@@ -16,7 +16,7 @@ from test_mpasphys_correct_mode_v842 import deck
 def test_WB5_is_requested_for_WSM6_only_and_settles_per_implementation():
     native = resolve_namelist(deck(mode='correct', skip='RP3,WB3'))                    # WSM6, native-cpu
     assert [(g.finding, g.slot, g.scheme, g.owner) for g in native.gaps] == [
-        ('WB5', 'microphysics', 'mp_wsm6', 'p2-wsm6')]
+        ('WB5', 'microphysics', 'mp_wsm6', CORRECTIONS_V842['WB5']['owners']['microphysics'])]
     cuda = resolve_namelist(deck(mode='correct', skip='RP3'), backends={'microphysics': 'hex-cuda'})
     assert {'WB3', 'WB5'} <= cuda.corrections and not cuda.gaps
     thompson = resolve_namelist(deck('convection_permitting', mode='correct'),

@@ -28,7 +28,7 @@
         "lake_ice_depth",
         "snow_water_equivalent"
       ],
-      "grid_alignment": "exact_coordinate_subset",
+      "grid_alignment": "exact_coordinate_subset_or_bilinear_mask_aware_nearest",
       "time_alignment": "valid_time_exact"
     }
   },

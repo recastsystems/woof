@@ -1,7 +1,7 @@
 # Modified 2026-10-28: experimental HRRR-like profile and aerosol route support.
 """Pinned MPAS-A 8.4.2 MMM MYNN driver boundary.
 
-The adapter is separate from WOOF's WRF/GSL implementation. The registration
+The adapter is separate from WOOF-ArWen's WRF/GSL implementation. The registration
 entry binds f4's slot registry; the forecast provider supplies original driver
 arguments and persistent pool synchronization.
 All weather-field arithmetic below executes in CUDA; Python handles arguments.
@@ -10038,7 +10038,20 @@ error_flags[batch_first+thread]=errflg;
 #: and 2020-01-01 at t=6672600 s, delp(kts) = 0.0 in both).  The corrected thickness is the layer's
 #: own hydrostatic weight rho*g*dz, the formula the NOAA-GSL MYNN-EDMF uses for every level
 #: (module_bl_mynnedmf.F90:4270), so it is positive with the hydrostatic interior thicknesses.
+#: RP8: boulac_length0 and boulac_length (bl_mynn_subroutines.F90:1327 and 1482, MMM-physics a4baf7f and 550b5b4)
+#: take the downward search's linear branch (bbb = 0: two adjacent levels of exactly equal theta) with
+#: tl = (qtke - zdo_sup)/(beta*(theta(izz) - theta(k))).  The parcel can stop there only when theta(k) > theta(izz),
+#: so that tl is negative and the downward length comes out short by twice the distance the parcel travels into
+#: the layer.  NCAR/MYNN-EDMF PR 94 (merged 2026-11-05, v6.1.1) and WRF PR 2431 use theta(k) - theta(izz), the
+#: bbb -> 0 limit of the quadratic branch above it.  BouLac is reached only with config_mynn_mixlength = 1
+#: (the hrrr-like profile); MPAS-A's default 2 never calls it.
 MYNN_TEXT_CORRECTIONS = {
+    "RP8": (
+        ("tl = mpas_div(mpas_sub(qtke(k), zdo_sup), mpas_mul(beta, mpas_sub(theta(izz), theta(k))));",
+         "tl = mpas_div(mpas_sub(qtke(k), zdo_sup), mpas_mul(beta, mpas_sub(theta(k), theta(izz))));", 1),
+        ("tl = mpas_div(mpas_sub(qtke(iz), zdo_sup), mpas_mul(beta, mpas_sub(theta(izz), theta(iz))));",
+         "tl = mpas_div(mpas_sub(qtke(iz), zdo_sup), mpas_mul(beta, mpas_sub(theta(iz), theta(izz))));", 1),
+    ),
     "RP7": (
         ("delp(kts) = mpas_sub(psfc, mpas_div(mpas_add(mpas_mul(p(((kts) + (1))), dz(kts)), "
          "mpas_mul(p(kts), dz(((kts) + (1))))), mpas_add(dz(kts), dz(((kts) + (1))))));",

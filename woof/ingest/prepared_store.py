@@ -250,8 +250,8 @@ def _hold_domain_carrier(dst: np.ndarray, src, name: str, index: int) -> None:
     passed whole to every tile, e.g. the 3D PWP ocean status word
     ``fields/_pwp_status``, shape (1,)) has no rows to scatter.  Scattering
     it raised "IndexError: tuple index out of range" at the start of every
-    store-direct forecast with sf_ocean_physics = 2, which 48 h runs select
-    by default (full CONUS HRRR, --devices 2, 2026-10-21).  Slab 0's
+    store-direct forecast with sf_ocean_physics = 2, which 48 h runs then
+    selected by default (full CONUS HRRR, --devices 2, 2026-10-21).  Slab 0's
     words are kept; a later slab that built different words is refused,
     because the domain would otherwise start from one slab's arbitrary view.
     """
@@ -711,7 +711,7 @@ def _store_boundaries(reader, metadata, boundary_source=None):
     return boundary_source
 
 
-def store_from_prepared_cache(path, *, expected_identity, cfg, static,
+def _store_from_prepared_cache_once(path, *, expected_identity, cfg, static,
                               landuse_attrs, grid, valid_time,
                               rows_per_slab: int | None = None,
                               budget_bytes: int | None = None,
@@ -930,6 +930,19 @@ def store_from_prepared_cache(path, *, expected_identity, cfg, static,
         # right for whichever rule a caller passes.
         inv = inventory_fn(state, None)
         ginv = tdriver.geography_inventory(state)
+        # Sea ice is switched on by the DOMAIN's ocean ice (woof.ocean.seaice
+        # .initialize), but each slab initializes only its own rows: a slab
+        # whose activation differs from slab 0's restarts the build with the
+        # domain's answer (store_from_prepared_cache), so every slab carries
+        # the carriers and values a whole-domain build gives every column.
+        from woof.ocean.seaice import DOMAIN_OCEAN_ICE
+        slab_ice = "fields/ice_volume" in inv
+        if index == 0:
+            first_slab_ice = slab_ice
+        elif slab_ice != first_slab_ice and not DOMAIN_OCEAN_ICE.get():
+            raise _SlabIceDisagreement(
+                f"slab {index} {'holds' if slab_ice else 'lacks'} ocean ice that slab 0 "
+                f"{'lacks' if slab_ice else 'holds'}")
         if not allocated:
             allocated = True
             manifest = hoststore.manifest_from_arrays(
@@ -1039,3 +1052,27 @@ def store_from_prepared_cache(path, *, expected_identity, cfg, static,
         # silently one slab tall.
         coord=coord, base=base, boundaries=boundaries, missing=missing,
         receipt=receipt)
+
+
+class _SlabIceDisagreement(PreparedStoreError):
+    """Row slabs disagree on whether the sea ice model is on (see the loop)."""
+
+
+def store_from_prepared_cache(path, *args, **kwargs):
+    """:func:`_store_from_prepared_cache_once`, with sea ice decided for the DOMAIN.
+
+    A domain whose ocean ice lies only in some row slabs is built a second
+    time with ``woof.ocean.seaice.DOMAIN_OCEAN_ICE`` set, so the ice model is
+    on in every slab exactly as it is on every column of a whole-domain build
+    (column-local kernels; ice-free columns keep the cold seed).
+    """
+    from woof.ocean.seaice import DOMAIN_OCEAN_ICE
+
+    try:
+        return _store_from_prepared_cache_once(path, *args, **kwargs)
+    except _SlabIceDisagreement:
+        token = DOMAIN_OCEAN_ICE.set(True)
+        try:
+            return _store_from_prepared_cache_once(path, *args, **kwargs)
+        finally:
+            DOMAIN_OCEAN_ICE.reset(token)

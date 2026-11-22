@@ -214,7 +214,7 @@ def _unpack_slab(fout, iout, cp) -> dict:
 _SELECTED_MODULES = {}
 
 
-def evaluate_water_slab(fields: dict, n: int, *, opt_inf=1, opt_run=3, opt_infdv=0, soil_update_steps=1, calculate_soil=True, opt_tdrn=0, opt_irr=0) -> dict:
+def evaluate_water_slab(fields: dict, n: int, *, opt_inf=1, opt_run=3, opt_infdv=0, soil_update_steps=1, calculate_soil=True, opt_tdrn=0, opt_irr=0, opt_snow_compact=1, opt_runsub=0, wetland=0) -> dict:
     """Evaluate ``n`` land columns of WATER in one launch, slab in slab out.
 
     Returns every name in :data:`OUTPUT_NAMES`: the column state WRF mutates
@@ -237,6 +237,32 @@ def evaluate_water_slab(fields: dict, n: int, *, opt_inf=1, opt_run=3, opt_infdv
         raise ValueError("RUN8 requires opt_infdv=1,2,3: native FSUR is unassigned at zero")
     if type(opt_tdrn) is not int or opt_tdrn not in (0,1,2):
         raise ValueError("WATER opt_tdrn must be 0,1,2")
+    if type(opt_snow_compact) is not int or opt_snow_compact not in (1, 2):
+        raise ValueError("WATER opt_snow_compact must be 1 or 2")
+    if opt_runsub and opt_runsub != opt_run and opt_snow_compact != 1:
+        # The split WATER kernel (_evaluate_split) has no C_bd forcing slot,
+        # so a split-runoff run would silently compact snow at the fixed C_bd
+        # while its run claims opt_snow_compact = 2.
+        raise ValueError("opt_snow_compact = 2 is not carried by the split runoff "
+                         "path (opt_runsub != opt_run); choose one of them")
+    if wetland:
+        # Zhang et al. (2022) wetland scheme: it replaces the saturated
+        # fraction of the saturation-fraction runoffs (their Eqs. 4-7), so
+        # it needs one of them, and the store is advanced once per LSM step.
+        from woof.core.noahmp_wetland import validate_water
+        validate_water(opt_run=opt_run, soil_update_steps=soil_update_steps,
+                       calculate_soil=calculate_soil)
+        if opt_runsub and opt_runsub != opt_run:
+            # The split WATER kernel (k_water_split) carries no wetland tail:
+            # the store would never advance and its saturated fraction would
+            # never reach the runoff, while the run said wetland was on.
+            raise ValueError("noahmp_wetland=1 with a split runoff pair (opt_runsrf/opt_runsub "
+                             "different): the split WATER kernel has no wetland tail, so the "
+                             "wetland store would silently never run")
+    if opt_runsub and opt_runsub != opt_run:
+        return _evaluate_split(fields, n, opt_inf=opt_inf, opt_run=opt_run, opt_runsub=opt_runsub,
+                               opt_infdv=opt_infdv, soil_update_steps=soil_update_steps,
+                               calculate_soil=calculate_soil, opt_irr=opt_irr, opt_tdrn=opt_tdrn)
     par, fin, iin = pack_water_slab(fields, n)
     if opt_run == 8:
         selected_par=cp.empty((n,P_STRIDE+3),dtype=cp.float32)
@@ -285,12 +311,35 @@ def evaluate_water_slab(fields: dict, n: int, *, opt_inf=1, opt_run=3, opt_infdv
         copy_slab_slots(extended,[(0,par),(base,parameter_slab(fields,n))]);par=extended
         base=fin.shape[1];extended=cp.empty((n,base+5),dtype=cp.float32)
         copy_slab_slots(extended,[(0,fin),*[(base+k,_take(fields,name,1,n,cp))for k,name in enumerate(('croplu','mifac','fifac','iramtmi','iramtfi'))]]);fin=extended
-    fout = cp.zeros((n, OUT_STRIDE+len(groundwater_fields)+(1 if opt_tdrn else 0)+(4 if opt_irr else 0)), dtype=cp.float32)
+    if opt_snow_compact == 2:
+        # Re-implemented from published descriptions, not bitwise to
+        # upstream (Abolafia-Rosenzweig et al. 2024, Eq. 11-12): the option
+        # kernel reads surface pressure from one slot after every other tail.
+        base=fin.shape[1];extended=cp.empty((n,base+1),dtype=cp.float32)
+        copy_slab_slots(extended,[(0,fin),(base,_take(fields,"psfc",1,n,cp))]);fin=extended
+    if wetland:
+        # Tails in the kernel's order: par +SMCREF(layer 1) (+FSATMX for
+        # opt_run 3, which has no FSATMX tail of its own), fin +open flag.
+        base=par.shape[1];extended=cp.empty((n,base+(2 if opt_run==3 else 1)),dtype=cp.float32)
+        copy_slab_slots(extended,[(0,par),(base,cp.ascontiguousarray(_take(fields,"smcref",NSOIL,n,cp)[:,0])),
+                                  *([(base+1,_take(fields,"fsatmx",1,n,cp))] if opt_run==3 else [])]);par=extended
+        base=fin.shape[1];extended=cp.empty((n,base+1),dtype=cp.float32)
+        copy_slab_slots(extended,[(0,fin),(base,_take(fields,"wetland_open",1,n,cp))]);fin=extended
+    fout = cp.zeros((n, OUT_STRIDE+len(groundwater_fields)+(1 if opt_tdrn else 0)+(4 if opt_irr else 0)+(2 if wetland else 0)), dtype=cp.float32)
     iout = cp.zeros(n, dtype=cp.int32)
     if n:
         extra = ()
-        if opt_inf == 1 and opt_run == 3 and soil_update_steps==1 and calculate_soil and opt_tdrn==0 and opt_irr==0:
+        if opt_inf == 1 and opt_run == 3 and soil_update_steps==1 and calculate_soil and opt_tdrn==0 and opt_irr==0 and opt_snow_compact==1 and not wetland:
             kernel = get_kernel("noahmp_water", "k_water")
+        elif wetland:
+            from woof.core.noahmp_kernel_sources import compile_runtime_unit
+            card = cp.cuda.runtime.getDevice()
+            if card not in _SELECTED_MODULES:
+                _SELECTED_MODULES[card] = compile_runtime_unit(
+                    "noahmp_water", module_key="noahmp_water_selected",
+                    selected_options=True)
+            kernel = _SELECTED_MODULES[card].get_function("k_water_wetland")
+            extra = (np.int32(opt_inf), np.int32(opt_run), np.int32(opt_tdrn), np.int32(bool(opt_irr)), np.int32(opt_snow_compact))
         else:
             from woof.core.noahmp_kernel_sources import compile_runtime_unit
             card = cp.cuda.runtime.getDevice()
@@ -299,7 +348,7 @@ def evaluate_water_slab(fields: dict, n: int, *, opt_inf=1, opt_run=3, opt_infdv
                     "noahmp_water", module_key="noahmp_water_selected",
                     selected_options=True)
             kernel = _SELECTED_MODULES[card].get_function("k_water_selected")
-            extra = (np.int32(opt_inf), np.int32(opt_run), np.int32(opt_infdv),np.int32(soil_update_steps),np.int32(calculate_soil),np.int32(opt_tdrn),np.int32(bool(opt_irr)))
+            extra = (np.int32(opt_inf), np.int32(opt_run), np.int32(opt_infdv),np.int32(soil_update_steps),np.int32(calculate_soil),np.int32(opt_tdrn),np.int32(bool(opt_irr)),np.int32(opt_snow_compact))
         blocks = (n + THREADS - 1) // THREADS
         # Every *input* pointer is made contiguous first.  All three are
         # allocations here, so nothing is copied; the call is a guard that
@@ -322,6 +371,99 @@ def evaluate_water_slab(fields: dict, n: int, *, opt_inf=1, opt_run=3, opt_infdv
     if opt_irr:
         base=OUT_STRIDE+len(groundwater_fields)+(1 if opt_tdrn else 0)
         result.update(split_slab_slots(fout,{name:(base+k,1)for k,name in enumerate(('iramtmi','iramtfi','irmirate','irfirate'))}))
+    if wetland:
+        base=OUT_STRIDE+len(groundwater_fields)+(1 if opt_tdrn else 0)+(4 if opt_irr else 0)
+        result.update(split_slab_slots(fout,{"wetland_fsat":(base,1),"wetland_inflow":(base+1,1)}))
+    return result
+
+
+_SPLIT_MODULES = {}
+
+
+def _split_surface_tail(fields, n, srf, cp):
+    """The surface option's parameter tail, laid out as the stock tail is."""
+    if srf == 8:
+        return 3, [(k, _take(fields, name, 1, n, cp)) for k, name in enumerate(("bbvic", "bdvic", "gdvic"))]
+    if srf == 6:
+        return 8, [(4, _take(fields, "bvic", 1, n, cp))]
+    if srf == 7:
+        return 8, [(0, _take(fields, "smcref", NSOIL, n, cp)),
+                   *[(k, _take(fields, name, 1, n, cp)) for k, name in enumerate(("axaj", "bxaj", "xxaj"), 5)]]
+    if srf in (1, 2):
+        return 6, [(0, _take(fields, "fsatmx", 1, n, cp)), (1, _take(fields, "timean", 1, n, cp)),
+                   (2, _take(fields, "psisat", NSOIL, n, cp))]
+    if srf == 5:
+        return 5, [(0, _take(fields, "fsatmx", 1, n, cp)), (1, _take(fields, "psisat", NSOIL, n, cp))]
+    return 0, []
+
+
+def _evaluate_split(fields, n, *, opt_inf, opt_run, opt_runsub, opt_infdv, soil_update_steps,
+                    calculate_soil, opt_irr, opt_tdrn):
+    """WATER with separate surface/subsurface runoff options (opt_runsrf/opt_runsub).
+
+    Re-implemented from published descriptions, not bitwise to upstream: the
+    gates of our own WRF-v4 port are reassigned per He et al. 2023
+    (NCAR/TN-575+STR Sect. 3.7.8); see woof/core/noahmp_runoff_split.py.
+    Layout: the surface option's stock tail at offset 0, then a subsurface
+    tail the surface tail does not already carry; the groundwater carriers
+    are those of :func:`noahmp_runoff_split.carrier_run`.
+    """
+    import cupy as cp
+    from woof.core import noahmp_runoff_split as split
+    from woof.core.noahmp_kernel_sources import compile_runtime_unit
+
+    srf, sub = opt_run, split.kernel_subsurface(opt_runsub)
+    split.validate(srf, opt_runsub, opt_tdrn=opt_tdrn, opt_infdv=opt_infdv)
+    par, fin, iin = pack_water_slab(fields, n)
+    width, slots = _split_surface_tail(fields, n, srf, cp)
+    if sub in (1, 2) and srf not in (1, 2):
+        slots += [(width, _take(fields, "fsatmx", 1, n, cp)), (width + 1, _take(fields, "timean", 1, n, cp)),
+                  (width + 2, _take(fields, "psisat", NSOIL, n, cp))]
+        width += 6
+    if sub == 5 and srf != 5:
+        slots += [(width, _take(fields, "fsatmx", 1, n, cp)), (width + 1, _take(fields, "psisat", NSOIL, n, cp))]
+        width += 5
+    if width:
+        selected_par = cp.zeros((n, P_STRIDE + width), dtype=cp.float32)
+        copy_slab_slots(selected_par, [(0, par), *[(P_STRIDE + k, v) for k, v in slots]])
+        par = selected_par
+    carriers = split.carrier_run(srf, opt_runsub)
+    groundwater_fields = (("zwt", "wa", "smcwtd", "deeprech", "rech") if carriers == 5
+                          else ("zwt", "wa", "wt") if carriers in (1, 2) else ())
+    if groundwater_fields:
+        selected_fin = cp.zeros((n, IN_STRIDE + (9 if carriers == 5 else 3)), dtype=cp.float32)
+        slots = [(0, fin), *[(IN_STRIDE + k, _take(fields, name, 1, n, cp)) for k, name in enumerate(groundwater_fields)]]
+        if carriers == 5:
+            slots.append((IN_STRIDE + 5, _take(fields, "smceq", NSOIL, n, cp)))
+        copy_slab_slots(selected_fin, slots)
+        fin = selected_fin
+    if opt_irr:
+        from woof.core.noahmp_irrigation_slab import parameter_slab
+        base=par.shape[1];extended=cp.empty((n,base+35),dtype=cp.float32)
+        copy_slab_slots(extended,[(0,par),(base,parameter_slab(fields,n))]);par=extended
+        base=fin.shape[1];extended=cp.empty((n,base+5),dtype=cp.float32)
+        copy_slab_slots(extended,[(0,fin),*[(base+k,_take(fields,name,1,n,cp))for k,name in enumerate(('croplu','mifac','fifac','iramtmi','iramtfi'))]]);fin=extended
+    fout = cp.zeros((n, OUT_STRIDE + len(groundwater_fields) + (4 if opt_irr else 0)), dtype=cp.float32)
+    iout = cp.zeros(n, dtype=cp.int32)
+    if n:
+        card = cp.cuda.runtime.getDevice()
+        key = (card, srf, sub)
+        if key not in _SPLIT_MODULES:
+            _SPLIT_MODULES[key] = compile_runtime_unit(
+                "noahmp_water", module_key=f"noahmp_water_split:{srf}:{sub}",
+                selected_options=True, runoff_split=(srf, sub))
+        kernel = _SPLIT_MODULES[key].get_function("k_water_split")
+        assert fout.flags.c_contiguous and iout.flags.c_contiguous
+        kernel(((n + THREADS - 1) // THREADS,), (THREADS,),
+               (cp.ascontiguousarray(par), cp.ascontiguousarray(fin), cp.ascontiguousarray(iin), fout, iout,
+                np.int32(n), np.int32(opt_inf), np.int32(opt_infdv), np.int32(soil_update_steps),
+                np.int32(calculate_soil), np.int32(0), np.int32(bool(opt_irr))))
+    result = _unpack_slab(fout, iout, cp)
+    if groundwater_fields:
+        result.update(split_slab_slots(fout, {name: (OUT_STRIDE + k, 1) for k, name in enumerate(groundwater_fields)}))
+    if opt_irr:
+        base = OUT_STRIDE + len(groundwater_fields)
+        result.update(split_slab_slots(fout, {name: (base + k, 1) for k, name in enumerate(('iramtmi', 'iramtfi', 'irmirate', 'irfirate'))}))
     return result
 
 

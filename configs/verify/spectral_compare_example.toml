@@ -1,6 +1,6 @@
 schema = "gpuwm.spectral-comparison-source/v1"
-title = "WOOF versus matched WRF: d03 +6 h spectral comparison"
-left_label = "WOOF"
+title = "WOOF-ArWen versus matched WRF: d03 +6 h spectral comparison"
+left_label = "WOOF-ArWen"
 reference_label = "WRF v4.6.1"
 
 # Remove the lateral-relaxation / edge-taper region before the transform.

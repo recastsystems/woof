@@ -1,4 +1,4 @@
-# Publishing a prepared WOOF release
+# Publishing a prepared WOOF-ArWen release
 
 The [publish workflow](../../.github/workflows/publish.yml) promotes a complete,
 qualified set of files. It does not rebuild release distributions. Keep the

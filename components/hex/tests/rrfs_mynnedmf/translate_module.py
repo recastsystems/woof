@@ -14,6 +14,50 @@ from pathlib import Path
 import re
 
 
+#: Preprocessor macro table for sources whose #if lines are decided by value (the MYNN-EDMF v6 layout, e.g.
+#: ``#if ((EM_CORE == 1) || defined(mpas))`` at v6.1.1 src/module_bl_mynnedmf_driver.F90:412). None keeps the pinned
+#: rule (every #if names WRF or HARDCODE_VERTICAL and is disabled). A name mapped to None is undefined (value 0);
+#: a name not in the table is an error, so no #if is ever decided by guess.
+MACROS = None
+#: Citation heads written into the generated text; the defaults are the pinned RRFS fork's.
+CITE_ROUTINE = "RRFS 1d6e370e MPAS-Model-rrfs/"
+CITE_LINE = "MPAS-Model-rrfs/"
+#: Source path recorded per routine; None keeps the RRFS fork tree's.
+SOURCE_PATH = None
+#: v6 layout: an OPTIONAL scalar dummy that is written (intent out/inout, the v6.1.1 diagnostics module) is a
+#: MynnOptionalRef (a pointer that may be null) so a write reaches the caller's variable. False keeps the pinned text.
+OPTIONAL_SCALAR_REFS = False
+
+
+def _cpp_condition(text, macros, where):
+    """Value of a #if/#ifdef/#ifndef condition under MACROS (C preprocessor rules for the subset used)."""
+    head, _, expression = text.partition(" ")
+    if head in ("#ifdef", "#ifndef"):
+        name = expression.strip()
+        if name not in macros:
+            raise ValueError(("undecidable preprocessor name", where, text))
+        value = macros[name] is not None
+        return value if head == "#ifdef" else not value
+
+    def defined(match):
+        if match[1] not in macros:
+            raise ValueError(("undecidable preprocessor name", where, text))
+        return " 1 " if macros[match[1]] is not None else " 0 "
+    expression = re.sub(r"defined\s*\(\s*(\w+)\s*\)", defined, expression)
+    expression = re.sub(r"defined\s+(\w+)", defined, expression)
+
+    def value(match):
+        if match[1] not in macros:
+            raise ValueError(("undecidable preprocessor name", where, text))
+        return " 0 " if macros[match[1]] is None else " " + str(macros[match[1]]) + " "
+    expression = re.sub(r"\b([A-Za-z_]\w*)\b", value, expression)
+    expression = expression.replace("||", " or ").replace("&&", " and ")
+    expression = re.sub(r"!(?!=)", " not ", expression)
+    if not re.fullmatch(r"[\s\d()=!<>a-z]*", expression):
+        raise ValueError(("unsupported preprocessor expression", where, text))
+    return bool(eval(expression, {"__builtins__": {}}))
+
+
 def split_top(text, separator=","):
     result, start, depth, quote = [], 0, 0, None
     for index, char in enumerate(text):
@@ -33,6 +77,22 @@ def statements(path):
     pending, start, enabled, stack = "", 0, True, []
     for lineno, line in enumerate(path.read_text().splitlines(), 1):
         line = line.strip()
+        if line.startswith("#") and MACROS is not None:
+            # v6 layout: (parent enabled, branch taken) per level; # define/# undef only inside disabled regions.
+            directive = " ".join(line[1:].split())
+            if directive.startswith(("if ", "ifdef ", "ifndef ")):
+                taken = enabled and _cpp_condition("#" + directive, MACROS, (str(path), lineno))
+                stack.append((enabled, taken))
+                enabled = taken
+            elif directive == "else":
+                parent, taken = stack[-1]
+                enabled = parent and not taken
+                stack[-1] = (parent, True)
+            elif directive == "endif":
+                enabled = stack.pop()[0]
+            elif enabled:
+                raise ValueError((path, lineno, line))
+            continue
         if line.startswith("#"):
             if line.startswith("#if"):
                 assert "WRF" in line or "HARDCODE_VERTICAL" in line, (path, lineno, line)
@@ -78,6 +138,7 @@ class Variable:
     parameter: bool = False
     initial: str | None = None
     line: int = 0
+    allocatable: bool = False
 
 
 def declaration(stmt, line):
@@ -101,7 +162,8 @@ def declaration(stmt, line):
         if not var:
             raise ValueError((line, stmt, item))
         dimensions = split_top(var[2]) if var[2] is not None else split_top(dim[1]) if dim else []
-        output.append(Variable(var[1], kind, dimensions, intent[1] if intent else "", "optional" in attrs, "parameter" in attrs, initial, line))
+        output.append(Variable(var[1], kind, dimensions, intent[1] if intent else "", "optional" in attrs, "parameter" in attrs, initial, line,
+                               "allocatable" in attrs))
     return output
 
 
@@ -115,6 +177,7 @@ class Routine:
     end: int = 0
     variables: dict = field(default_factory=dict)
     body: list = field(default_factory=list)
+    result: str | None = None
 
 
 def parse_modules(paths):
@@ -122,10 +185,17 @@ def parse_modules(paths):
     for path in paths:
         for line, stmt in statements(path):
             begin = re.match(r"(subroutine|function)\s+(\w+)\s*\((.*)\)$", stmt)
+            result_clause = re.match(r"(function)\s+(\w+)\s*\((.*)\)\s*result\s*\(\s*(\w+)\s*\)$", stmt)
+            if result_clause:
+                begin = result_clause
             end = re.match(r"end\s*(subroutine|function)\b", stmt)
             if begin:
                 assert current is None
-                current = Routine(begin[2], split_top(begin[3]), begin[1] == "function", ('src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/' + ('MPAS/' if 'MPAS' in path.parts else '') + path.name), line)
+                source = (SOURCE_PATH(path) if SOURCE_PATH is not None else
+                          'src/core_atmosphere/physics/physics_noaa/MYNN-EDMF/' + ('MPAS/' if 'MPAS' in path.parts else '') + path.name)
+                current = Routine(begin[2], [a for a in split_top(begin[3]) if a], begin[1] == "function", source, line)
+                if result_clause:
+                    current.result = result_clause[4]
                 routines[current.name] = current
             elif end:
                 assert current is not None
@@ -186,7 +256,13 @@ class Expression:
                 args = []
                 if self.peek() != ")":
                     while True:
-                        args.append(self.parse())
+                        if (re.fullmatch(r"[a-z_]\w*", self.peek()) and self.index + 1 < len(self.tokens)
+                                and self.tokens[self.index + 1] == "="):
+                            keyword = self.pop()
+                            self.pop("=")
+                            args.append(("keyword", keyword, self.parse()))
+                        else:
+                            args.append(self.parse())
                         if self.peek() != ",":
                             break
                         self.pop()
@@ -367,6 +443,16 @@ class Emitter:
                 if ranges and self.scalar_index is not None:
                     code += f".linear({self.scalar_index})"
                 return code, var.kind
+            if name in ("maxval", "minval") and any(arg[0] == "keyword" for arg in arguments):
+                (mask,) = [arg for arg in arguments if arg[0] == "keyword"]
+                if mask[1] != "mask" or len(arguments) != 2:
+                    raise ValueError(("unsupported reduction keywords", tree))
+                array, kind = self.emit(arguments[0])
+                previous = self.scalar_index
+                self.scalar_index = "mynn_element"
+                condition, _ = self.emit(mask[2])
+                self.scalar_index = previous
+                return f"mynn_{name}_mask({array}, [&] (int mynn_element) {{ return {condition}; }})", kind
             args = [self.emit(arg) for arg in arguments if not (arg[0] == "name" and arg[1] == "kind_phys")]
             if name == "present":
                 return f"({args[0][0]}.present())", "bool"
@@ -382,7 +468,7 @@ class Emitter:
                 for missing in target.arguments[len(args):]:
                     assert target.variables[missing].optional
                     args.append(("{}", target.variables[missing].kind))
-                return "f_" + name + "(" + ", ".join(x[0] for x in args) + ")", target.variables[name].kind
+                return "f_" + name + "(" + ", ".join(x[0] for x in args) + ")", target.variables[target.result or name].kind
             if name in ("min", "max"):
                 kind = args[0][1]
                 result = args[0][0]
@@ -478,6 +564,10 @@ class Emitter:
                     arg = re.sub(r",\s*kind\s*=\s*kind_phys(?=\))", ",kind_phys", arg)
                     tree = Expression.tree(arg)
                     value = self.emit(tree)[0]
+                    if OPTIONAL_SCALAR_REFS and self.optional_ref(var, target):
+                        own = self.variables.get(tree[1]) if tree[0] == "name" else None
+                        if not (own is not None and self.optional_ref(own, self.routine)):
+                            value = f"MynnOptionalRef<{var.kind}>(&({value}))"
                     if var.dimensions and tree[0] == "name" and len(self.variables[tree[1]].dimensions) != len(var.dimensions):
                         # Original Fortran sequence association; in this pin
                         # the main driver passes its full 2D rthraten to DDMF.
@@ -492,8 +582,39 @@ class Emitter:
                 else:
                     raise ValueError((target.name, "missing argument", name, stmt))
             return f"f_{target.name}(" + ", ".join(values) + ");"
+        if match := re.match(r"allocate\s*\((.*)\)$", stmt):
+            # v6 layout (MYNN-EDMF v6.1.1 driver): ALLOCATE of a local allocatable from the column arena; the storage
+            # returns with the routine's frame. source= fills every element.
+            items, source = [], None
+            for item in split_top(match[1]):
+                if keyword := re.match(r"source\s*=(.*)$", item):
+                    source = keyword[1]
+                else:
+                    items.append(item)
+            code = []
+            for item in items:
+                var_match = re.fullmatch(r"(\w+)\s*\((.*)\)", item)
+                var = self.variables[var_match[1]]
+                if not var.allocatable:
+                    raise ValueError(("ALLOCATE of a non-allocatable", stmt))
+                lows, highs = [], []
+                for bounds in split_top(var_match[2]):
+                    edges = split_top(bounds, ":")
+                    lo, hi = (edges if len(edges) == 2 else ("1", edges[0]))
+                    lows.append(self.expression(lo)[0])
+                    highs.append(self.expression(hi)[0])
+                code.append(f"{var.name} = mynn_array<{var.kind}, {len(var.dimensions)}, mynn_tile>(arena, "
+                            f"{{{', '.join(lows)}}}, {{{', '.join(highs)}}});")
+                if source is not None:
+                    code.append(self.assignment(var.name, source))
+            return " ".join(code)
+        if match := re.match(r"deallocate\s*\((.*)\)$", stmt):
+            for name in split_top(match[1]):
+                if not self.variables[name].allocatable:
+                    raise ValueError(("DEALLOCATE of a non-allocatable", stmt))
+            return "; /* DEALLOCATE: the storage returns with the routine's arena frame. */"
         if stmt == "return":
-            return "return" + (" " + self.routine.name if self.routine.function else "") + ";"
+            return "return" + (" " + (self.routine.result or self.routine.name) if self.routine.function else "") + ";"
         if stmt == "exit":
             return "break;"
         if stmt == "cycle":
@@ -509,10 +630,18 @@ class Emitter:
             return self.assignment(match[1], rhs)
         raise ValueError((self.routine.name, stmt))
 
+    @staticmethod
+    def optional_ref(var, routine):
+        """An OPTIONAL scalar dummy of routine that it writes (v6 layout: a MynnOptionalRef)."""
+        return (OPTIONAL_SCALAR_REFS and var.optional and not var.dimensions and routine is not None
+                and var.name in routine.arguments and var.intent in ("out", "inout"))
+
     def variable(self, var, argument=False):
         if var.dimensions:
             return f"MynnArray<{var.kind}, {len(var.dimensions)}> {var.name}"
         kind = "MynnText" if var.kind == "char" else var.kind
+        if argument and self.optional_ref(var, self.routine):
+            return f"MynnOptionalRef<{kind}> {var.name}"
         if var.optional:
             kind = f"MynnOptional<{kind}>"
         written = var.intent in ("out", "inout") or (not var.intent and self.routine and any(re.match(rf"{var.name}\s*=", stmt) for _, stmt in self.routine.body))
@@ -558,9 +687,9 @@ class Emitter:
 
     def routine_code(self):
         routine = self.routine
-        result = routine.variables[routine.name].kind if routine.function else "void"
+        result = routine.variables[routine.result or routine.name].kind if routine.function else "void"
         args = ", ".join(self.variable(routine.variables[name], True) for name in routine.arguments)
-        output = [f"// RRFS 1d6e370e MPAS-Model-rrfs/{routine.source}:{routine.start}-{routine.end}", f"__device__ __noinline__ {result} f_{routine.name}({args}) {{", "MynnFrame mynn_frame(arena);"]
+        output = [f"// {CITE_ROUTINE}{routine.source}:{routine.start}-{routine.end}", f"__device__ __noinline__ {result} f_{routine.name}({args}) {{", "MynnFrame mynn_frame(arena);"]
         for name in routine.arguments:
             var = routine.variables[name]
             if var.dimensions:
@@ -569,7 +698,10 @@ class Emitter:
         for name, var in routine.variables.items():
             if name in routine.arguments:
                 continue
-            if var.dimensions:
+            if var.dimensions and var.allocatable:
+                # Unallocated: no storage (a reference before its ALLOCATE dereferences a null pointer and traps).
+                output.append(self.variable(var) + "{};")
+            elif var.dimensions:
                 lo, hi = self.bounds(var)
                 output.append(self.variable(var) + f" = mynn_array<{var.kind}, {len(var.dimensions)}, mynn_tile>(arena, {lo}, {hi});")
             else:
@@ -590,9 +722,9 @@ class Emitter:
                     self.lane_elementwise = False
             except Exception as error:
                 raise ValueError(f"{routine.source}:{line}: {stmt}") from error
-            output.append(f"// MPAS-Model-rrfs/{routine.source}:{line}\n{code}")
+            output.append(f"// {CITE_LINE}{routine.source}:{line}\n{code}")
         if routine.function:
-            output.append(f"return {routine.name};")
+            output.append(f"return {routine.result or routine.name};")
         output.append("}")
         return "\n".join(output)
 
@@ -615,8 +747,26 @@ __device__ __forceinline__ static int mynn_trip(int lo, int hi, int st) {
 }"""
 
 
-def generate(paths, out, receipt):
+def reachable(routines, entry):
+    """Routines entry calls, directly or through function references, entry included."""
+    seen, todo = set(), [entry]
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        for _, statement in routines[name].body:
+            for called in re.findall(r"\b(\w+)\s*\(", statement):
+                if called in routines and called not in seen:
+                    todo.append(called)
+    return {name: routine for name, routine in routines.items() if name in seen}
+
+
+def generate(paths, out, receipt, *, entry=None, header=None):
     globals_, routines = parse_modules(paths)
+    if entry is not None:
+        # v6 layout: the init/finalize/CCPP routines of the unified driver are never called by the MPAS entry.
+        routines = reachable(routines, entry)
     imported = {
         'r_d':'287.', 'r_v':'461.6', 'cp':'1004.5', 'cpv':'4.*r_v',
         'cliq':'4190.', 'cice':'2106.', 'grav':'9.80616', 'karman':'0.4',
@@ -626,7 +776,7 @@ def generate(paths, out, receipt):
     globals_ = {**{name:Variable(name,'float',parameter=True,initial=value)
                   for name,value in imported.items()}, **globals_}
     emitter = Emitter(globals_, routines)
-    pieces = ["// Generated from pinned RRFS MYNN-EDMF c942418; see translation receipt.", "template<int MYNN_LANES> struct MynnColumn {", "MynnArena& arena;", "int active_i = -1; int active_j = -1;",
+    pieces = [header or "// Generated from pinned RRFS MYNN-EDMF c942418; see translation receipt.", "template<int MYNN_LANES> struct MynnColumn {", "MynnArena& arena;", "int active_i = -1; int active_j = -1;",
               LANE_MEMBERS]
     for var in globals_.values():
         emitter.constant = True
@@ -644,7 +794,7 @@ def generate(paths, out, receipt):
     text = "\n".join(pieces) + "\n"
     out.write_text(text)
     result = {"scope": "whole-module mechanical translation; compilation and numerical proof separate",
-              "preprocessor": {"WRF_CHEM": 0},
+              "preprocessor": {"WRF_CHEM": 0} if MACROS is None else dict(MACROS),
               "sources": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
               "generated_sha256": hashlib.sha256(text.encode()).hexdigest(),
               "lane_plan": {"lane_safe_routines": sorted(lane_safe),
